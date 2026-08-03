@@ -269,3 +269,75 @@ test('non-admins are blocked from the admin API', async () => {
   const res = await bob.api('GET', '/api/admin/users');
   assert.equal(res.status, 403);
 });
+
+test('request detail is returned with camelCase fields for the editor', async () => {
+  const admin = await loginAsAdmin();
+  const ws = await admin.api('POST', '/api/workspaces', { name: 'Fields Workspace' });
+  const tree = await admin.api('GET', `/api/workspaces/${ws.json.workspace.id}/content`);
+  const projectId = tree.json.projects[0].id;
+  const col = await admin.api('POST', '/api/collections', { projectId, name: 'Fields' });
+  const req = await admin.api('POST', '/api/requests', {
+    collectionId: col.json.collection.id, name: 'Body', method: 'POST',
+    url: 'https://api.example.com/x', apiType: 'SOAP',
+  });
+  await admin.api('PUT', `/api/requests/${req.json.request.id}`, {
+    bodyType: 'JSON', bodyJson: { a: 1 }, apiType: 'GRAPHQL',
+  });
+  const detail = await admin.api('GET', `/api/requests/${req.json.request.id}`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.json.request.bodyType, 'JSON');
+  assert.equal(detail.json.request.apiType, 'GRAPHQL');
+  assert.deepEqual(detail.json.request.bodyJson, { a: 1 });
+});
+
+test('admins can delete requests, collections, workspaces and teams', async () => {
+  const admin = await loginAsAdmin();
+  const ws = await admin.api('POST', '/api/workspaces', { name: 'Delete Workspace' });
+  const workspaceId = ws.json.workspace.id;
+  const tree = await admin.api('GET', `/api/workspaces/${workspaceId}/content`);
+  const projectId = tree.json.projects[0].id;
+  const col = await admin.api('POST', '/api/collections', { projectId, name: 'To Delete' });
+  const collectionId = col.json.collection.id;
+  const req = await admin.api('POST', '/api/requests', {
+    collectionId, name: 'R', method: 'GET', url: 'https://api.example.com/x',
+  });
+
+  const delReq = await admin.api('DELETE', `/api/requests/${req.json.request.id}`);
+  assert.equal(delReq.status, 200);
+  const missingReq = await admin.api('GET', `/api/requests/${req.json.request.id}`);
+  assert.equal(missingReq.status, 404);
+
+  const delCol = await admin.api('DELETE', `/api/collections/${collectionId}`);
+  assert.equal(delCol.status, 200);
+
+  const delWs = await admin.api('DELETE', `/api/workspaces/${workspaceId}`);
+  assert.equal(delWs.status, 200);
+  const list = await admin.api('GET', '/api/workspaces');
+  assert.ok(!list.json.workspaces.some((w) => w.id === workspaceId));
+
+  const team = await admin.api('POST', '/api/teams', { name: 'Disposable' });
+  const delTeam = await admin.api('DELETE', `/api/teams/${team.json.team.id}`);
+  assert.equal(delTeam.status, 200);
+});
+
+test('non-admin workspace members cannot delete requests', async () => {
+  const admin = await loginAsAdmin();
+  const bob = makeClient();
+  await bob.api('POST', '/api/auth/login', { email: 'bob@test.io', password: 'bobpass123' });
+
+  const ws = await admin.api('POST', '/api/workspaces', { name: 'Locked Down' });
+  const workspaceId = ws.json.workspace.id;
+  const team = await admin.api('POST', '/api/teams', { name: 'Viewers' });
+  await admin.api('POST', `/api/teams/${team.json.team.id}/members`, { email: 'bob@test.io', role: 'VIEWER' });
+  await admin.api('POST', `/api/workspaces/${workspaceId}/teams`, { teamId: team.json.team.id, role: 'VIEWER' });
+
+  const tree = await admin.api('GET', `/api/workspaces/${workspaceId}/content`);
+  const projectId = tree.json.projects[0].id;
+  const col = await admin.api('POST', '/api/collections', { projectId, name: 'Guarded' });
+  const req = await admin.api('POST', '/api/requests', {
+    collectionId: col.json.collection.id, name: 'R', method: 'GET', url: 'https://api.example.com/x',
+  });
+
+  const attempt = await bob.api('DELETE', `/api/requests/${req.json.request.id}`);
+  assert.equal(attempt.status, 403);
+});

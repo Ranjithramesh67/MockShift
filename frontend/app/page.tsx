@@ -39,8 +39,15 @@ function Workspace() {
               <RequestConfigurator onOpenCurl={() => setCurlOpen(true)} />
             ) : state.viewMode === 'response' ? (
               <ResponsePane />
+            ) : state.viewMode === 'side' ? (
+              <SplitPane
+                orientation="horizontal"
+                top={<RequestConfigurator onOpenCurl={() => setCurlOpen(true)} />}
+                bottom={<ResponsePane />}
+              />
             ) : (
               <SplitPane
+                orientation="vertical"
                 top={<RequestConfigurator onOpenCurl={() => setCurlOpen(true)} />}
                 bottom={<ResponsePane />}
               />

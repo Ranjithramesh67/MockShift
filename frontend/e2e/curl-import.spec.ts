@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import { signupFreshUser } from './helpers';
 
 /**
  * Verifies that pasting a complex cURL command populates the request editor:
@@ -26,9 +27,20 @@ async function rowValues(page: Page, rowTestId: string): Promise<{ key: string; 
 }
 
 test('pasting a complex cURL command populates method, URL, headers and body', async ({ page }) => {
+  await signupFreshUser(page);
   await page.goto('/');
 
-  await page.getByTestId('import-curl-button').click();
+  // Signup creates a private workspace ("My Workspace") with no collections.
+  // Select it, then create a collection to import the request into.
+  await page.getByTestId('workspace-My Workspace').click();
+  await expect(page.getByTestId('sidebar')).toBeVisible();
+  await page.getByTestId('new-collection').click();
+  await expect(page.getByTestId('new-collection-modal')).toBeVisible();
+  await page.getByTestId('create-name').fill('Imports');
+  await page.getByTestId('create-submit').click();
+  await expect(page.getByTestId('new-collection-modal')).not.toBeVisible();
+
+  await page.getByTestId('topbar-import-curl').click();
   await expect(page.getByTestId('curl-modal')).toBeVisible();
   await page.getByTestId('curl-paste-input').fill(COMPLEX_CURL);
   await page.getByTestId('curl-import-confirm').click();

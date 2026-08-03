@@ -92,8 +92,19 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.get('/:teamId/members', async (req, res, next) => {
+router.delete('/:teamId', async (req, res, next) => {
   try {
+    const { teamId } = req.params;
+    const myRole = await teamRole(req.user.id, teamId);
+    if (!roleAtLeast(myRole, 'ADMIN')) return res.status(403).json({ error: 'Team admin required' });
+    await query(`DELETE FROM teams WHERE id = $1`, [teamId]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:teamId/members', async (req, res, next) => {  try {
     const role = await teamRole(req.user.id, req.params.teamId);
     if (!role) return res.status(403).json({ error: 'Not a member of this team' });
     res.json({ members: await teamWithMembers(req.params.teamId) });

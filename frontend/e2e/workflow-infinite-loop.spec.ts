@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import { signupFreshUser } from './helpers';
 
 /**
  * Verifies the workflow builder refuses to save a workflow whose loop can
@@ -6,6 +7,7 @@ import { test, expect, Page } from '@playwright/test';
  */
 
 async function openWorkflowBuilder(page: Page) {
+  await signupFreshUser(page);
   await page.goto('/');
   await page.getByTestId('main-tab-workflow').click();
   await expect(page.getByTestId('workflow-builder')).toBeVisible();

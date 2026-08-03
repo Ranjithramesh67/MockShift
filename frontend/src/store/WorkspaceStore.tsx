@@ -127,6 +127,11 @@ interface WorkspaceState {
   createCollection: (name: string) => Promise<void>;
   createRequest: (input: { name: string; method: string; url: string; apiType: ApiType }) => Promise<void>;
 
+  deleteRequest: (requestId: string) => Promise<void>;
+  deleteCollection: (collectionId: string) => Promise<void>;
+  deleteWorkspace: (workspaceId: string) => Promise<void>;
+  deleteTeam: (teamId: string) => Promise<void>;
+
   loadAuthProvider: (collectionId: string) => Promise<void>;
   saveAuthProvider: (provider: AuthProvider) => Promise<void>;
   testAuthProvider: () => Promise<{ resolvedHeader: { headerKey: string; headerValue: string } | null; tokenResponse: string } | null>;
@@ -265,6 +270,58 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     await selectRequest(request.id);
   }, [activeCollectionId, tree, selectRequest]);
 
+  const deleteRequest = useCallback(async (requestId: string) => {
+    await contentApi.deleteRequest(requestId);
+    setActiveRequest(null);
+    setLastRun(null);
+    if (tree) {
+      setTree({ ...tree, requests: tree.requests.filter((r) => r.id !== requestId) });
+    }
+  }, [tree]);
+
+  const deleteCollection = useCallback(async (collectionId: string) => {
+    await contentApi.deleteCollection(collectionId);
+    if (activeCollectionId === collectionId) {
+      setActiveCollectionId(null);
+      setActiveCollectionName('');
+      setAuthProvider(null);
+      setActiveRequest(null);
+      setLastRun(null);
+    }
+    if (tree) {
+      setTree({
+        ...tree,
+        collections: tree.collections.filter((c) => c.id !== collectionId),
+        requests: tree.requests.filter((r) => r.collection_id !== collectionId),
+      });
+    }
+  }, [tree, activeCollectionId]);
+
+  const deleteWorkspace = useCallback(async (workspaceId: string) => {
+    await workspaceApi.remove(workspaceId);
+    if (activeWorkspaceId === workspaceId) {
+      setActiveWorkspaceId(null);
+      setActiveWorkspaceRole(null);
+      setTree(null);
+      setActiveCollectionId(null);
+      setActiveCollectionName('');
+      setAuthProvider(null);
+      setActiveRequest(null);
+      setLastRun(null);
+    }
+    const updated = await workspaceApi.list();
+    setWorkspaces(updated.workspaces);
+    if (activeWorkspaceId === workspaceId && updated.workspaces.length > 0) {
+      await selectWorkspace(updated.workspaces[0].id);
+    }
+  }, [activeWorkspaceId, selectWorkspace]);
+
+  const deleteTeam = useCallback(async (teamId: string) => {
+    await teamApi.delete(teamId);
+    const updated = await teamApi.list();
+    setTeams(updated.teams);
+  }, []);
+
   const loadAuthProvider = useCallback(async (collectionId: string) => {
     const { authProvider: p } = await contentApi.getAuthProvider(collectionId);
     setAuthProvider(p);
@@ -335,6 +392,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       createWorkspace,
       createCollection,
       createRequest,
+      deleteRequest,
+      deleteCollection,
+      deleteWorkspace,
+      deleteTeam,
       loadAuthProvider,
       saveAuthProvider,
       testAuthProvider,
@@ -348,6 +409,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       activeCollectionId, activeCollectionName, authProvider, activeRequest, lastRun,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, createWorkspace, createCollection, createRequest,
+      deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
       loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree, inviteToTeam, shareWorkspace, unshareWorkspace,
     ]
   );

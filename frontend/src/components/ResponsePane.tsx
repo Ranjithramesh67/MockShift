@@ -16,7 +16,7 @@ export function ResponsePane() {
       ''
     );
     if (ct.includes('xml')) return 'xml';
-    if (ct.includes('html')) return 'html';
+    if (ct.includes('html')) return 'text';
     return 'json';
   })();
 
