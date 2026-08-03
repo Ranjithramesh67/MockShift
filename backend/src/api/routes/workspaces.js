@@ -121,9 +121,20 @@ router.patch('/:workspaceId', async (req, res, next) => {
   }
 });
 
-// ------------------------------------------------------------------ Teams in workspace
-router.get('/:workspaceId/teams', async (req, res, next) => {
+router.delete('/:workspaceId', async (req, res, next) => {
   try {
+    const { workspaceId } = req.params;
+    const role = await getWorkspaceRole(req.user.id, workspaceId);
+    if (!roleAtLeast(role, 'ADMIN')) return res.status(403).json({ error: 'Workspace admin required' });
+    await query(`DELETE FROM workspaces WHERE id = $1`, [workspaceId]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------------ Teams in workspace
+router.get('/:workspaceId/teams', async (req, res, next) => {  try {
     const { rows } = await query(
       `SELECT wt.id AS share_id, t.id AS team_id, t.name, wt.role
          FROM workspace_teams wt JOIN teams t ON t.id = wt.team_id

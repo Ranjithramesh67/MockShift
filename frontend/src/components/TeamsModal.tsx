@@ -57,8 +57,7 @@ export function TeamsModal({ open, onClose }: { open: boolean; onClose: () => vo
         </p>
       )}
       <section className="modal-section">
-        <h3>Create team</h3>
-        <form onSubmit={onCreateTeam} className="modal-form">
+        <h3>Create team</h3>        <form onSubmit={onCreateTeam} className="modal-form">
           <label className="auth-field">
             <span>Team name</span>
             <input type="text" data-testid="team-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -73,7 +72,23 @@ export function TeamsModal({ open, onClose }: { open: boolean; onClose: () => vo
 
       {ws.teams.map((team) => (
         <section key={team.id} className="modal-section">
-          <h3>{team.name}</h3>
+          <div className="modal-section-head">
+            <h3>{team.name}</h3>
+            {team.myRole === 'ADMIN' && (
+              <button
+                type="button"
+                className="ghost-button small danger-text"
+                data-testid={`delete-team-${team.name}`}
+                onClick={() => {
+                  if (window.confirm(`Delete team "${team.name}"? Members lose access to workspaces shared with this team.`)) {
+                    ws.deleteTeam(team.id).catch((err) => setError(err instanceof Error ? err.message : 'Failed to delete team'));
+                  }
+                }}
+              >
+                Delete team
+              </button>
+            )}
+          </div>
           <ul className="share-list">
             {team.members.map((m) => (
               <li key={m.id} className="share-row">

@@ -54,7 +54,7 @@ export function Sidebar() {
         {ws.error && <p className="auth-error">{ws.error}</p>}
         <ul className="sidebar-list">
           {ws.workspaces.map((w) => (
-            <li key={w.id}>
+            <li key={w.id} className="sidebar-row">
               <button
                 type="button"
                 className={`sidebar-item ${ws.activeWorkspaceId === w.id ? 'active' : ''}`}
@@ -63,6 +63,20 @@ export function Sidebar() {
               >
                 <span className="sidebar-item-name">{w.name}</span>
                 <span className={`vis-badge vis-${w.visibility.toLowerCase()}`}>{w.visibility}</span>
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                title="Delete workspace"
+                aria-label={`Delete workspace ${w.name}`}
+                data-testid={`delete-workspace-${w.name}`}
+                onClick={() => {
+                  if (window.confirm(`Delete workspace "${w.name}"? This removes all of its projects, collections and requests.`)) {
+                    ws.deleteWorkspace(w.id).catch((err) => alert(err instanceof Error ? err.message : 'Failed to delete workspace'));
+                  }
+                }}
+              >
+                ×
               </button>
             </li>
           ))}
@@ -144,11 +158,25 @@ export function Sidebar() {
                     >
                       +
                     </button>
+                    <button
+                      type="button"
+                      className="icon-button danger"
+                      title="Delete collection"
+                      aria-label={`Delete collection ${c.name}`}
+                      data-testid={`delete-collection-${c.name}`}
+                      onClick={() => {
+                        if (window.confirm(`Delete collection "${c.name}" and all of its requests?`)) {
+                          ws.deleteCollection(c.id).catch((err) => alert(err instanceof Error ? err.message : 'Failed to delete collection'));
+                        }
+                      }}
+                    >
+                      ×
+                    </button>
                     <ul className="sidebar-list">
                       {ws.tree!.requests
                         .filter((r) => r.collection_id === c.id)
                         .map((r) => (
-                          <li key={r.id}>
+                          <li key={r.id} className="sidebar-row">
                             <button
                               type="button"
                               className={`sidebar-item sidebar-item-indent ${ws.activeRequest?.id === r.id ? 'active' : ''}`}
@@ -158,6 +186,20 @@ export function Sidebar() {
                               <span className={`method-badge method-${r.method}`}>{r.method}</span>
                               <span className="sidebar-item-name">{r.name}</span>
                               {r.api_type !== 'REST' && <span className="vis-badge api-type-badge">{r.api_type}</span>}
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-button danger"
+                              title="Delete request"
+                              aria-label={`Delete request ${r.name}`}
+                              data-testid={`delete-request-${r.name}`}
+                              onClick={() => {
+                                if (window.confirm(`Delete request "${r.name}"?`)) {
+                                  ws.deleteRequest(r.id).catch((err) => alert(err instanceof Error ? err.message : 'Failed to delete request'));
+                                }
+                              }}
+                            >
+                              ×
                             </button>
                           </li>
                         ))}

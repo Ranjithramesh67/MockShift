@@ -34,12 +34,13 @@ export interface ApiRequest {
   queryParams: KeyValueEntry[];
   bodyType: BodyType;
   bodyJson: string | null; // serialized JSON/XML/form text shown in the editor
+  bodyText?: string | null; // raw text body captured by cURL import
   contentType: RequestContentType;
   formula: string; // pre-request / pre-step sandbox formula
   apiType: ApiType;
 }
 
-export type ViewMode = 'split' | 'request' | 'response';
+export type ViewMode = 'split' | 'side' | 'request' | 'response';
 
 export interface MockResponse {
   status: number;

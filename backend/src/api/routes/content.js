@@ -143,11 +143,17 @@ router.get('/requests/:requestId', async (req, res, next) => {
     );
     res.json({
       request: {
-        ...request,
+        id: request.id,
+        name: request.name,
+        method: request.method,
+        url: request.url,
         headers: request.headers || [],
         queryParams: request.query_params || [],
+        bodyType: request.body_type,
         bodyJson: request.body_json,
         bodyText: request.body_text,
+        apiType: request.api_type,
+        collectionId: request.collection_id,
         workspaceId: ws,
         workspaceRole: role,
         authProvider: normalizeProvider(provider.rows[0]),
@@ -209,8 +215,39 @@ router.put('/requests/:requestId', async (req, res, next) => {
   }
 });
 
-router.post('/requests/:requestId/run', async (req, res, next) => {
+router.delete('/requests/:requestId', async (req, res, next) => {
   try {
+    const { requestId } = req.params;
+    const existing = await query(
+      `SELECT collection_id FROM api_requests WHERE id = $1`,
+      [requestId]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
+    const ws = await workspaceOfCollection(existing.rows[0].collection_id);
+    const role = await getWorkspaceRole(req.user.id, ws);
+    if (!roleAtLeast(role, 'EDITOR')) return res.status(403).json({ error: 'Editor or admin access required' });
+    await query(`DELETE FROM api_requests WHERE id = $1`, [requestId]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/collections/:collectionId', async (req, res, next) => {
+  try {
+    const { collectionId } = req.params;
+    const ws = await workspaceOfCollection(collectionId);
+    if (!ws) return res.status(404).json({ error: 'Collection not found' });
+    const role = await getWorkspaceRole(req.user.id, ws);
+    if (!roleAtLeast(role, 'EDITOR')) return res.status(403).json({ error: 'Editor or admin access required' });
+    await query(`DELETE FROM collections WHERE id = $1`, [collectionId]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/requests/:requestId/run', async (req, res, next) => {  try {
     const { requestId } = req.params;
     const existing = await query(
       `SELECT id FROM api_requests WHERE id = $1`,

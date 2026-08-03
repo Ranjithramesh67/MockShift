@@ -156,6 +156,7 @@ export const workspaceApi = {
   list: () => apiFetch<{ workspaces: Workspace[] }>('/api/workspaces'),
   create: (input: { name: string; visibility?: WorkspaceVisibility; organizationId?: string }) =>
     apiFetch<{ workspace: Workspace }>('/api/workspaces', { method: 'POST', body: input }),
+  remove: (workspaceId: string) => apiFetch(`/api/workspaces/${workspaceId}`, { method: 'DELETE' }),
   content: (workspaceId: string) => apiFetch<ContentTree>(`/api/workspaces/${workspaceId}/content`),
   share: (workspaceId: string, teamId: string, role: UserRole) =>
     apiFetch(`/api/workspaces/${workspaceId}/teams`, { method: 'POST', body: { teamId, role } }),
@@ -167,6 +168,7 @@ export const workspaceApi = {
 export const teamApi = {
   list: () => apiFetch<{ teams: Team[] }>('/api/teams'),
   create: (input: { name: string; organizationId?: string }) => apiFetch<{ team: Team }>('/api/teams', { method: 'POST', body: input }),
+  delete: (teamId: string) => apiFetch(`/api/teams/${teamId}`, { method: 'DELETE' }),
   invite: (teamId: string, email: string, role: UserRole) =>
     apiFetch<{ members: TeamMember[] }>(`/api/teams/${teamId}/members`, { method: 'POST', body: { email, role } }),
   setRole: (teamId: string, userId: string, role: UserRole) =>
@@ -178,8 +180,12 @@ export const teamApi = {
 export const contentApi = {
   createCollection: (projectId: string, name: string) =>
     apiFetch<{ collection: { id: string; name: string; project_id: string } }>('/api/collections', { method: 'POST', body: { projectId, name } }),
+  deleteCollection: (collectionId: string) =>
+    apiFetch(`/api/collections/${collectionId}`, { method: 'DELETE' }),
   createRequest: (input: { collectionId: string; name: string; method: string; url: string; apiType: ApiType }) =>
     apiFetch<{ request: { id: string; name: string; method: string; url: string; api_type: ApiType; collection_id: string } }>('/api/requests', { method: 'POST', body: input }),
+  deleteRequest: (requestId: string) =>
+    apiFetch(`/api/requests/${requestId}`, { method: 'DELETE' }),
   getRequest: (requestId: string) => apiFetch<{ request: RequestDetail }>(`/api/requests/${requestId}`),
   updateRequest: (requestId: string, patch: Record<string, unknown>) =>
     apiFetch<{ request: { id: string } }>(`/api/requests/${requestId}`, { method: 'PUT', body: patch }),

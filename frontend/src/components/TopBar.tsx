@@ -7,10 +7,11 @@ import { useAuth } from '@/lib/auth';
 import { useApp } from '@/store/AppStore';
 import type { ViewMode } from '@/lib/types';
 
-const VIEW_OPTIONS: Array<{ id: ViewMode; label: string }> = [
-  { id: 'split', label: 'Split' },
-  { id: 'request', label: 'Request' },
-  { id: 'response', label: 'Response' },
+const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string }> = [
+  { id: 'side', label: 'Side by side', title: 'Request on the left, response on the right' },
+  { id: 'split', label: 'Split', title: 'Request on top, response below' },
+  { id: 'request', label: 'Request', title: 'Request pane only' },
+  { id: 'response', label: 'Response', title: 'Response pane only' },
 ];
 
 export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
@@ -40,6 +41,7 @@ export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
               key={v.id}
               className={`view-option ${state.viewMode === v.id ? 'active' : ''}`}
               data-testid={`view-${v.id}`}
+              title={v.title}
               onClick={() => dispatch({ type: 'SET_VIEW_MODE', mode: v.id })}
             >
               {v.label}
