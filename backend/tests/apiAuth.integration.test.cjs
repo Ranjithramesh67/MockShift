@@ -1,0 +1,271 @@
+'use strict';
+
+const { test, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const http = require('node:http');
+const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.resolve(__dirname, '..', '..');
+const PGENV = {
+  ...process.env,
+  PGHOST: '127.0.0.1',
+  PGPORT: '5432',
+  PGUSER: 'postgres',
+  PGPASSWORD: 'postgres',
+  PGDATABASE: 'apihub',
+  AUTH_SECRET: 'test-auth-secret-for-integration',
+  VAULT_KEY: 'test-vault-key-do-not-use-in-prod',
+};
+
+function psqlReset() {
+  return execFileSync(
+    'psql',
+    ['-q', '-v', 'ON_ERROR_STOP=1', '-d', 'apihub', '-c', 'DROP SCHEMA IF EXISTS app CASCADE; DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public'],
+    { env: PGENV, stdio: 'pipe', encoding: 'utf8' }
+  );
+}
+
+let server;
+let base;
+let mockUpstream;
+
+async function createMockUpstream() {
+  return new Promise((resolve) => {
+    const upstream = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        if (req.url === '/token') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ access_token: 'itoken-9876', token_type: 'Bearer' }));
+        }
+        if (req.url.startsWith('/echo')) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ headers: req.headers }));
+        }
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'not found' }));
+      });
+    });
+    upstream.listen(0, '127.0.0.1', () => resolve(upstream));
+  });
+}
+
+function makeClient() {
+  let cookie = '';
+  async function api(method, url, body) {
+    const headers = {};
+    if (cookie) headers.Cookie = cookie;
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    const res = await fetch(`${base}${url}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    const setCookie = res.headers.get('set-cookie');
+    if (setCookie) {
+      const m = /ah\.session=([^;]+)/.exec(setCookie);
+      if (m) cookie = `ah.session=${m[1]}`;
+    }
+    let json = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+    return { status: res.status, json };
+  }
+  return { api, get cookie() { return cookie; } };
+}
+
+const mockBase = () => `http://127.0.0.1:${mockUpstream.address().port}`;
+
+async function loginAsAdmin() {
+  const client = makeClient();
+  await client.api('POST', '/api/auth/login', { email: 'admin@test.io', password: 'adminpass123' });
+  return client;
+}
+
+before(async () => {
+  // Reset the shared dev/test database the same way db/tests/run.sh does.
+  psqlReset();
+  for (const file of fs.readdirSync(path.join(ROOT, 'db', 'migrations')).filter((f) => f.endsWith('.sql')).sort()) {
+    execFileSync('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '-d', 'apihub', '-f', path.join(ROOT, 'db', 'migrations', file)], {
+      env: PGENV,
+      stdio: 'pipe',
+    });
+  }
+
+  mockUpstream = await createMockUpstream();
+  process.env.PGDATABASE = 'apihub';
+  process.env.AUTH_SECRET = 'test-auth-secret-for-integration';
+  process.env.VAULT_KEY = 'test-vault-key-do-not-use-in-prod';
+
+  const { createApp } = require('../src/api/server');
+  server = await new Promise((resolve) => {
+    const app = createApp();
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  base = `http://127.0.0.1:${server.address().port}`;
+});
+
+after(async () => {
+  if (server) await new Promise((r) => server.close(r));
+  if (mockUpstream) await new Promise((r) => mockUpstream.close(r));
+  await require('../src/api/db').pool.end();
+});
+
+test('health endpoint responds', async () => {
+  const { api } = makeClient();
+  const res = await api('GET', '/api/health');
+  assert.equal(res.status, 200);
+  assert.equal(res.json.ok, true);
+});
+
+test('first signup bootstraps an ADMIN user with a private workspace', async () => {
+  const { api } = makeClient();
+  const res = await api('POST', '/api/auth/signup', { email: 'admin@test.io', password: 'adminpass123', name: 'Admin' });
+  assert.equal(res.status, 201);
+  assert.equal(res.json.user.user.role, 'ADMIN');
+  assert.equal(res.json.user.organizations.length, 1);
+
+  const ws = await api('GET', '/api/workspaces');
+  assert.equal(ws.status, 200);
+  assert.equal(ws.json.workspaces.length, 1);
+  assert.equal(ws.json.workspaces[0].name, 'My Workspace');
+  assert.equal(ws.json.workspaces[0].role, 'ADMIN');
+});
+
+test('login validates credentials and session survives me()', async () => {
+  const { api } = makeClient();
+  const bad = await api('POST', '/api/auth/login', { email: 'admin@test.io', password: 'wrongpass123' });
+  assert.equal(bad.status, 401);
+  const good = await api('POST', '/api/auth/login', { email: 'admin@test.io', password: 'adminpass123' });
+  assert.equal(good.status, 200);
+  const me = await api('GET', '/api/auth/me');
+  assert.equal(me.status, 200);
+  assert.equal(me.json.user.email, 'admin@test.io');
+});
+
+test('a user cannot create a workspace in an organization they do not admin', async () => {
+  const bob = makeClient();
+  const signup = await bob.api('POST', '/api/auth/signup', { email: 'bob@test.io', password: 'bobpass123', name: 'Bob' });
+  assert.equal(signup.json.user.user.role, 'EDITOR');
+
+  const admin = await loginAsAdmin();
+  const me = await admin.api('GET', '/api/auth/me');
+  const adminOrgId = me.json.organizations[0].id;
+
+  const ownWs = await bob.api('POST', '/api/workspaces', { name: 'My Own Org Space' });
+  assert.equal(ownWs.status, 201, 'bob can create a workspace inside his own org');
+
+  const foreign = await bob.api('POST', '/api/workspaces', { name: 'Nope', organizationId: adminOrgId });
+  assert.equal(foreign.status, 403, 'bob cannot create a workspace in another org');
+});
+
+test('team sharing grants cross-user access to a private workspace', async () => {
+  const admin = await loginAsAdmin();
+  const bob = makeClient();
+  await bob.api('POST', '/api/auth/login', { email: 'bob@test.io', password: 'bobpass123' });
+
+  const wsRes = await admin.api('POST', '/api/workspaces', { name: 'Shared Space' });
+  assert.equal(wsRes.status, 201);
+  const workspaceId = wsRes.json.workspace.id;
+
+  const teamRes = await admin.api('POST', '/api/teams', { name: 'Delivery' });
+  assert.equal(teamRes.status, 201);
+  const teamId = teamRes.json.team.id;
+
+  const invite = await admin.api('POST', `/api/teams/${teamId}/members`, { email: 'bob@test.io', role: 'EDITOR' });
+  assert.equal(invite.status, 201);
+
+  const share = await admin.api('POST', `/api/workspaces/${workspaceId}/teams`, { teamId, role: 'EDITOR' });
+  assert.equal(share.status, 201);
+
+  const list = await bob.api('GET', '/api/workspaces');
+  assert.ok(list.json.workspaces.some((w) => w.id === workspaceId), 'bob should see the shared workspace');
+  const shared = list.json.workspaces.find((w) => w.id === workspaceId);
+  assert.equal(shared.role, 'EDITOR');
+
+  const tree = await bob.api('GET', `/api/workspaces/${workspaceId}/content`);
+  assert.equal(tree.status, 200);
+  assert.equal(tree.json.projects.length, 1);
+});
+
+test('AUTH request + folder provider injects the token into sibling requests', async () => {
+  const admin = await loginAsAdmin();
+  const ws = await admin.api('POST', '/api/workspaces', { name: 'Auth Workspace' });
+  const workspaceId = ws.json.workspace.id;
+  const tree = await admin.api('GET', `/api/workspaces/${workspaceId}/content`);
+  const projectId = tree.json.projects[0].id;
+
+  const col = await admin.api('POST', '/api/collections', { projectId, name: 'Secured' });
+  const collectionId = col.json.collection.id;
+
+  const auth = await admin.api('POST', '/api/requests', {
+    collectionId, name: 'Token', method: 'POST', url: `${mockBase()}/token`, apiType: 'AUTH',
+  });
+  assert.equal(auth.json.request.api_type, 'AUTH');
+
+  const target = await admin.api('POST', '/api/requests', {
+    collectionId, name: 'Balance', method: 'GET', url: `${mockBase()}/echo`,
+  });
+  const targetId = target.json.request.id;
+
+  const prov = await admin.api('PUT', `/api/collections/${collectionId}/auth-provider`, {
+    authType: 'BEARER_TOKEN', tokenRequestId: auth.json.request.id,
+    tokenPath: 'access_token', headerKey: 'Authorization', headerPrefix: 'Bearer',
+  });
+  assert.equal(prov.status, 200);
+  assert.equal(prov.json.authProvider.authType, 'BEARER_TOKEN');
+
+  const testProv = await admin.api('POST', `/api/collections/${collectionId}/auth-provider/test`);
+  assert.equal(testProv.status, 200);
+  assert.equal(testProv.json.resolvedHeader.headerValue, 'Bearer itoken-9876');
+
+  const run = await admin.api('POST', `/api/requests/${targetId}/run`);
+  assert.equal(run.status, 200);
+  assert.equal(run.json.runStatus, 'SUCCESS');
+  assert.equal(run.json.resolvedAuth.headerValue, 'Bearer itoken-9876');
+  const echoed = JSON.parse(run.json.response.body);
+  assert.equal(echoed.headers.authorization, 'Bearer itoken-9876');
+});
+
+test('folder provider rejects a token request that is not AUTH-type', async () => {
+  const admin = await loginAsAdmin();
+  const ws = await admin.api('POST', '/api/workspaces', { name: 'Guard Workspace' });
+  const tree = await admin.api('GET', `/api/workspaces/${ws.json.workspace.id}/content`);
+  const projectId = tree.json.projects[0].id;
+  const col = await admin.api('POST', '/api/collections', { projectId, name: 'Guarded' });
+  const rest = await admin.api('POST', '/api/requests', {
+    collectionId: col.json.collection.id, name: 'Plain', method: 'GET', url: `${mockBase()}/echo`,
+  });
+  const prov = await admin.api('PUT', `/api/collections/${col.json.collection.id}/auth-provider`, {
+    authType: 'BEARER_TOKEN', tokenRequestId: rest.json.request.id, tokenPath: 'access_token',
+  });
+  assert.equal(prov.status, 400);
+});
+
+test('admin can deactivate a user and they can no longer log in', async () => {
+  const admin = await loginAsAdmin();
+  const carol = makeClient();
+  await carol.api('POST', '/api/auth/signup', { email: 'carol@test.io', password: 'carolpass123', name: 'Carol' });
+  await carol.api('POST', '/api/auth/login', { email: 'carol@test.io', password: 'carolpass123' });
+
+  const users = await admin.api('GET', '/api/admin/users');
+  const carolUser = users.json.users.find((u) => u.email === 'carol@test.io');
+  const patch = await admin.api('PATCH', `/api/admin/users/${carolUser.id}`, { isActive: false });
+  assert.equal(patch.status, 200);
+
+  const login = await carol.api('POST', '/api/auth/login', { email: 'carol@test.io', password: 'carolpass123' });
+  assert.equal(login.status, 403);
+});
+
+test('non-admins are blocked from the admin API', async () => {
+  const bob = makeClient();
+  await bob.api('POST', '/api/auth/login', { email: 'bob@test.io', password: 'bobpass123' });
+  const res = await bob.api('GET', '/api/admin/users');
+  assert.equal(res.status, 403);
+});
