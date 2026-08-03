@@ -1,0 +1,31 @@
+{
+  "name": "@apihub/execution-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sandboxed formula execution and API request dispatch",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest --runInBand",
+    "test:rce": "jest tests/sandbox.rce.test.js --runInBand",
+    "test:order": "jest tests/orderId.increment.test.js --runInBand",
+    "test:dispatch": "jest tests/requestDispatcher.test.js --runInBand",
+    "test:workflow": "jest tests/workflowChaining.integration.test.js --runInBand",
+    "test:api": "node --test tests/apiAuth.integration.test.cjs",
+    "test:api:unit": "node --test \"src/api/__tests__/*.test.cjs\"",
+    "start:api": "node src/api/server.js",
+    "reset:db": "node scripts/reset-db.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "bullmq": "^6.0.6",
+    "express": "^5.2.1",
+    "ioredis": "^6.0.0",
+    "isolated-vm": "^5.0.3",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

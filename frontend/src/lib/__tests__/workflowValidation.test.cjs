@@ -1,0 +1,98 @@
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { validateWorkflow } = require('../workflowValidation.js');
+
+function step(overrides = {}) {
+  return {
+    id: 'step_1',
+    label: 'Call API',
+    requestId: 'req_1',
+    delayMs: 0,
+    loop: { type: 'none' },
+    onFailure: 'abort',
+    formula: '',
+    ...overrides,
+  };
+}
+
+function workflow(steps, name = 'Order flow') {
+  return { id: 'wf_1', name, steps };
+}
+
+test('a plain sequential workflow is valid', () => {
+  const result = validateWorkflow(
+    workflow([step(), step({ id: 'step_2', label: 'Second' })])
+  );
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.errors, []);
+});
+
+test('fixed-count loop with a positive integer is valid', () => {
+  const result = validateWorkflow(workflow([step({ loop: { type: 'count', count: 5 } })]));
+  assert.equal(result.valid, true);
+});
+
+test('until-loop referencing an upstream step is valid', () => {
+  const result = validateWorkflow(
+    workflow([
+      step({ id: 'order', label: 'Create order' }),
+      step({
+        id: 'poll',
+        label: 'Poll status',
+        loop: { type: 'until', condition: "$steps.order.response.body.status === 'complete'" },
+      }),
+    ])
+  );
+  assert.equal(result.valid, true);
+});
+
+test('rejects a zero count as an infinite/non-terminating loop', () => {
+  const result = validateWorkflow(workflow([step({ loop: { type: 'count', count: 0 } })]));
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('non-terminating')));
+});
+
+test('rejects a negative count', () => {
+  const result = validateWorkflow(workflow([step({ loop: { type: 'count', count: -3 } })]));
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('non-terminating')));
+});
+
+test('rejects a fractional or non-integer count', () => {
+  const result = validateWorkflow(workflow([step({ loop: { type: 'count', count: 2.5 } })]));
+  assert.equal(result.valid, false);
+});
+
+test('rejects an empty until-condition as an infinite loop', () => {
+  const result = validateWorkflow(workflow([step({ loop: { type: 'until', condition: '' } })]));
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('would run forever')));
+});
+
+test('rejects an until-condition that references its own step', () => {
+  const result = validateWorkflow(
+    workflow([
+      step({
+        id: 'poll',
+        label: 'Poll',
+        loop: { type: 'until', condition: "$steps.poll.response.body.status === 'complete'" },
+      }),
+    ])
+  );
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('own result')));
+});
+
+test('rejects a workflow with no steps', () => {
+  const result = validateWorkflow(workflow([]));
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('at least one step')));
+});
+
+test('rejects steps without a selected request', () => {
+  const result = validateWorkflow(workflow([step({ requestId: null })]));
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('no request selected')));
+});
