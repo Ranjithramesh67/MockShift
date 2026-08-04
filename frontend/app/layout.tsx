@@ -7,12 +7,12 @@ export const metadata: Metadata = {
   description:
     'Design, test and automate your APIs. A Postman-style workspace with teams, sharing, auth providers and workflow automation.',
   icons: {
-    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="%23ff6c37"/><text x="12" y="16.5" font-size="11" font-weight="bold" text-anchor="middle" fill="white" font-family="Arial">AH</text></svg>',
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="%237cf29c"/><text x="12" y="16.5" font-size="11" font-weight="bold" text-anchor="middle" fill="%230a0d0a" font-family="Arial">AH</text></svg>',
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0b0e14',
+  themeColor: '#0a0d0a',
   width: 'device-width',
   initialScale: 1,
 };

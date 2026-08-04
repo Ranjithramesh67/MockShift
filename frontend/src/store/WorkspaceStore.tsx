@@ -50,6 +50,7 @@ export function toEditorRequest(d: {
   bodyJson?: unknown;
   bodyText?: string | null;
   apiType?: ApiType;
+  formula?: string;
 }): ApiRequest {
   let bodyJson: string | null = null;
   if (d.bodyJson !== undefined && d.bodyJson !== null) {
@@ -67,7 +68,7 @@ export function toEditorRequest(d: {
     bodyType: (d.bodyType || 'NONE') as BodyType,
     bodyJson,
     contentType: contentTypeForBodyType(d.bodyType || 'NONE'),
-    formula: '',
+    formula: d.formula ?? '',
     apiType: (d.apiType || 'REST') as ApiType,
   };
 }
@@ -81,6 +82,7 @@ export function toServerPatch(r: ApiRequest): Record<string, unknown> {
     headers: r.headers,
     queryParams: r.queryParams,
     bodyType: r.bodyType,
+    formula: r.formula || '',
   };
   if (r.bodyType === 'JSON') {
     if (r.bodyJson) {

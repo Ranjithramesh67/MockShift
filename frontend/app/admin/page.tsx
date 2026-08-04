@@ -13,17 +13,24 @@ export default function AdminPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', email: '', role: 'EDITOR' as UserRole, password: '' });
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
   }, [loading, user, router]);
 
-  useEffect(() => {
+  const load = () => {
     if (!user) return;
     adminApi
       .users()
       .then((res) => setUsers(res.users))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load users'));
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   if (loading) return <div className="loading-screen">Loading…</div>;
@@ -57,6 +64,23 @@ export default function AdminPage() {
     }
   };
 
+  const createUser = async () => {
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      await adminApi.createUser(createForm);
+      setNotice(`User "${createForm.email}" created.`);
+      setCreateOpen(false);
+      setCreateForm({ name: '', email: '', role: 'EDITOR', password: '' });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Create failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="admin-page" data-testid="admin-page">
       <header className="admin-header">
@@ -65,13 +89,25 @@ export default function AdminPage() {
           <span className="brand-name">API Hub</span>
           <span className="brand-env">Admin</span>
         </div>
-        <Link href="/" className="ghost-button" data-testid="back-to-app">
-          Back to workspace
-        </Link>
+        <div className="admin-header-actions">
+          <Link href="/manage" className="ghost-button" data-testid="manage-link">
+            Manage
+          </Link>
+          <Link href="/" className="ghost-button" data-testid="back-to-app">
+            Back to workspace
+          </Link>
+        </div>
       </header>
       <main className="admin-main">
-        <h1>Users</h1>
-        <p className="admin-subtitle">Manage platform roles and account status.</p>
+        <div className="admin-title-row">
+          <div>
+            <h1>Users</h1>
+            <p className="admin-subtitle">Manage platform roles and account status.</p>
+          </div>
+          <button type="button" className="primary-button" data-testid="create-user-open" onClick={() => setCreateOpen(true)}>
+            Create user
+          </button>
+        </div>
         {error && (
           <p className="auth-error" role="alert" data-testid="admin-error">
             {error}
@@ -112,6 +148,7 @@ export default function AdminPage() {
                     onChange={(e) => patch(u, { role: e.target.value as UserRole })}
                   >
                     <option value="ADMIN">ADMIN</option>
+                    <option value="MANAGER">MANAGER</option>
                     <option value="EDITOR">EDITOR</option>
                     <option value="VIEWER">VIEWER</option>
                   </select>
@@ -136,6 +173,77 @@ export default function AdminPage() {
             ))}
           </tbody>
         </table>
+
+        {createOpen && (
+          <div className="modal-overlay" data-testid="create-user-modal" onClick={() => setCreateOpen(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Create user</h2>
+              </div>
+              <div className="modal-body">
+                <div className="modal-form">
+                  <label className="field">
+                    <span className="field-label">Name</span>
+                    <input
+                      className="text-input"
+                      data-testid="create-user-name"
+                      value={createForm.name}
+                      onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Email</span>
+                    <input
+                      className="text-input"
+                      type="email"
+                      data-testid="create-user-email"
+                      value={createForm.email}
+                      onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Role</span>
+                    <select
+                      className="compact-select"
+                      data-testid="create-user-role"
+                      value={createForm.role}
+                      onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as UserRole })}
+                    >
+                      <option value="MANAGER">MANAGER</option>
+                      <option value="EDITOR">EDITOR</option>
+                      <option value="VIEWER">VIEWER</option>
+                      <option value="ADMIN">ADMIN</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Password (min 8 chars)</span>
+                    <input
+                      className="text-input"
+                      type="password"
+                      data-testid="create-user-password"
+                      value={createForm.password}
+                      onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="ghost-button" data-testid="create-user-cancel" onClick={() => setCreateOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  data-testid="create-user-confirm"
+                  disabled={busy || !createForm.email || !createForm.name || createForm.password.length < 8}
+                  onClick={createUser}
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

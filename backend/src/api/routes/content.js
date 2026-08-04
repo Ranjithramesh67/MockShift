@@ -2,7 +2,7 @@
 
 const { Router } = require('express');
 const { query } = require('../db');
-const { requireAuth, roleAtLeast, getWorkspaceRole, getProjectAccess } = require('../access');
+const { requireAuth, roleAtLeast, getProjectAccess, canReadWorkspace } = require('../access');
 const { runRequest, runTokenRequest } = require('../runner');
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
 
@@ -13,11 +13,6 @@ const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'
 const BODY_TYPES = ['NONE', 'JSON', 'FORM_URLENCODED', 'MULTIPART', 'RAW_TEXT', 'GRAPHQL'];
 const API_TYPES = ['REST', 'SOAP', 'GRAPHQL', 'AUTH'];
 
-async function workspaceOfProject(projectId) {
-  const { rows } = await query(`SELECT workspace_id FROM projects WHERE id = $1`, [projectId]);
-  return rows[0]?.workspace_id || null;
-}
-
 async function workspaceOfCollection(collectionId) {
   const { rows } = await query(
     `SELECT p.workspace_id FROM collections c JOIN projects p ON p.id = c.project_id WHERE c.id = $1`,
@@ -26,13 +21,38 @@ async function workspaceOfCollection(collectionId) {
   return rows[0]?.workspace_id || null;
 }
 
+async function projectOfCollection(collectionId) {
+  const { rows } = await query(
+    `SELECT project_id FROM collections WHERE id = $1`,
+    [collectionId]
+  );
+  return rows[0]?.project_id || null;
+}
+
+// True when the user can edit content inside a project: workspace editors
+// and above, plus project managers and approved project members with
+// EDITOR+ roles.
+async function canWriteProjectContent(userId, projectId) {
+  const access = await getProjectAccess(userId, projectId);
+  return Boolean(access && roleAtLeast(access.level, 'EDITOR'));
+}
+
+// True when the user can read content inside a project.
+async function canReadProjectContent(userId, projectId) {
+  return Boolean(await getProjectAccess(userId, projectId));
+}
+
 async function requireCollectionWrite(req, res, next) {
   try {
-    const ws = await workspaceOfCollection(req.params.collectionId || req.body.collectionId);
-    if (!ws) return res.status(404).json({ error: 'Collection not found' });
-    const role = await getWorkspaceRole(req.user.id, ws);
-    if (!roleAtLeast(role, 'EDITOR')) return res.status(403).json({ error: 'Editor or admin access required' });
-    req.workspaceId = ws;
+    const collectionId = req.params.collectionId || req.body.collectionId;
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    const ws = await workspaceOfCollection(collectionId);
+    if (ws) req.workspaceId = ws;
+    req.projectId = projectId;
     next();
   } catch (err) {
     next(err);
@@ -43,6 +63,9 @@ async function requireCollectionWrite(req, res, next) {
 router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
   try {
     const { workspaceId } = req.params;
+    if (!(await canReadWorkspace(req.user.id, workspaceId))) {
+      return res.status(403).json({ error: 'No access to this workspace' });
+    }
     const { rows: projects } = await query(
       `SELECT id, name FROM projects WHERE workspace_id = $1 ORDER BY name`,
       [workspaceId]
@@ -68,15 +91,17 @@ router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
       can_access: accessByProject.get(p.id)?.can_access ?? false,
       access_status: accessByProject.get(p.id)?.access_status ?? null,
     }));
-    const projectIds = projects.map((p) => p.id);
+    const accessibleProjectIds = projectsWithAccess
+      .filter((p) => p.can_access)
+      .map((p) => p.id);
     let collections = [];
     let requests = [];
-    if (projectIds.length) {
+    if (accessibleProjectIds.length) {
       collections = (await query(
         `SELECT c.id, c.name, c.project_id,
                 (SELECT ap.auth_type FROM auth_providers ap WHERE ap.collection_id = c.id) AS has_auth
            FROM collections c WHERE c.project_id = ANY($1::uuid[]) ORDER BY c.name`,
-        [projectIds]
+        [accessibleProjectIds]
       )).rows;
       const collectionIds = collections.map((c) => c.id);
       if (collectionIds.length) {
@@ -87,7 +112,7 @@ router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
         )).rows;
       }
     }
-    res.json({ workspaceId, projects, collections, requests });
+    res.json({ workspaceId, projects: projectsWithAccess, collections, requests });
   } catch (err) {
     next(err);
   }
@@ -97,10 +122,9 @@ router.post('/collections', async (req, res, next) => {
   try {
     const { projectId, name } = req.body || {};
     if (!projectId || !name) return res.status(400).json({ error: 'projectId and name are required' });
-    const ws = await workspaceOfProject(projectId);
-    if (!ws) return res.status(404).json({ error: 'Project not found' });
-    const role = await getWorkspaceRole(req.user.id, ws);
-    if (!roleAtLeast(role, 'EDITOR')) return res.status(403).json({ error: 'Editor or admin access required' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
     const { rows } = await query(
       `INSERT INTO collections (project_id, name) VALUES ($1, $2) RETURNING id, name, project_id`,
       [projectId, String(name).trim()]
@@ -116,10 +140,11 @@ router.post('/requests', async (req, res, next) => {
   try {
     const { collectionId, name, method, url, apiType } = req.body || {};
     if (!collectionId || !name) return res.status(400).json({ error: 'collectionId and name are required' });
-    const ws = await workspaceOfCollection(collectionId);
-    if (!ws) return res.status(404).json({ error: 'Collection not found' });
-    const role = await getWorkspaceRole(req.user.id, ws);
-    if (!roleAtLeast(role, 'EDITOR')) return res.status(403).json({ error: 'Editor or admin access required' });
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
 
     const { rows } = await query(
       `INSERT INTO api_requests
@@ -147,15 +172,18 @@ router.get('/requests/:requestId', async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
-              api_type, collection_id
+              api_type, collection_id, formula
          FROM api_requests WHERE id = $1`,
       [req.params.requestId]
     );
     const request = rows[0];
     if (!request) return res.status(404).json({ error: 'Request not found' });
+    const projectId = await projectOfCollection(request.collection_id);
+    if (!projectId || !(await canReadProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'No access to this request' });
+    }
     const ws = await workspaceOfCollection(request.collection_id);
-    const role = await getWorkspaceRole(req.user.id, ws);
-    if (!role) return res.status(403).json({ error: 'No access to this request' });
+    const access = await getProjectAccess(req.user.id, projectId);
 
     const provider = await query(
       `SELECT auth_type, token_request_id, token_path, header_key, header_prefix
@@ -175,8 +203,9 @@ router.get('/requests/:requestId', async (req, res, next) => {
         bodyText: request.body_text,
         apiType: request.api_type,
         collectionId: request.collection_id,
+        formula: request.formula || '',
         workspaceId: ws,
-        workspaceRole: role,
+        workspaceRole: access ? access.level : null,
         authProvider: normalizeProvider(provider.rows[0]),
       },
     });
@@ -193,9 +222,10 @@ router.put('/requests/:requestId', async (req, res, next) => {
       [requestId]
     );
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
-    const ws = await workspaceOfCollection(existing.rows[0].collection_id);
-    const role = await getWorkspaceRole(req.user.id, ws);
-    if (!roleAtLeast(role, 'EDITOR')) return res.status(403).json({ error: 'Editor or admin access required' });
+    const projectId = await projectOfCollection(existing.rows[0].collection_id);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
 
     const b = req.body || {};
     const fields = {
@@ -208,6 +238,7 @@ router.put('/requests/:requestId', async (req, res, next) => {
       body_type: b.bodyType,
       body_json: b.bodyJson,
       body_text: b.bodyText,
+      formula: b.formula,
     };
     const sets = [];
     const params = [requestId];
@@ -244,9 +275,10 @@ router.delete('/requests/:requestId', async (req, res, next) => {
       [requestId]
     );
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
-    const ws = await workspaceOfCollection(existing.rows[0].collection_id);
-    const role = await getWorkspaceRole(req.user.id, ws);
-    if (!roleAtLeast(role, 'EDITOR')) return res.status(403).json({ error: 'Editor or admin access required' });
+    const projectId = await projectOfCollection(existing.rows[0].collection_id);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
     await query(`DELETE FROM api_requests WHERE id = $1`, [requestId]);
     res.json({ ok: true });
   } catch (err) {
@@ -257,10 +289,11 @@ router.delete('/requests/:requestId', async (req, res, next) => {
 router.delete('/collections/:collectionId', async (req, res, next) => {
   try {
     const { collectionId } = req.params;
-    const ws = await workspaceOfCollection(collectionId);
-    if (!ws) return res.status(404).json({ error: 'Collection not found' });
-    const role = await getWorkspaceRole(req.user.id, ws);
-    if (!roleAtLeast(role, 'EDITOR')) return res.status(403).json({ error: 'Editor or admin access required' });
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
     await query(`DELETE FROM collections WHERE id = $1`, [collectionId]);
     res.json({ ok: true });
   } catch (err) {
