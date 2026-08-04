@@ -341,3 +341,95 @@ test('non-admin workspace members cannot delete requests', async () => {
   const attempt = await bob.api('DELETE', `/api/requests/${req.json.request.id}`);
   assert.equal(attempt.status, 403);
 });
+
+test('project managers can approve access requests and grant real access', async () => {
+  const admin = await loginAsAdmin();
+
+  // Admin creates a MANAGER and an ordinary EDITOR.
+  const mgrCreate = await admin.api('POST', '/api/admin/users', {
+    email: 'mgr@test.io', name: 'Mgr', role: 'MANAGER', password: 'managerpass123',
+  });
+  assert.equal(mgrCreate.status, 201);
+  const editorCreate = await admin.api('POST', '/api/admin/users', {
+    email: 'outsider@test.io', name: 'Outsider', role: 'EDITOR', password: 'outsider123',
+  });
+  assert.equal(editorCreate.status, 201);
+
+  // Admin creates a project and assigns the manager.
+  const ws = await admin.api('POST', '/api/workspaces', { name: 'Governed' });
+  const workspaceId = ws.json.workspace.id;
+  const tree = await admin.api('GET', `/api/workspaces/${workspaceId}/content`);
+  const projectId = tree.json.projects[0].id;
+  const assign = await admin.api('POST', `/api/manage/projects/${projectId}/managers`, {
+    userId: mgrCreate.json.user.id,
+  });
+  assert.equal(assign.status, 200);
+  const col = await admin.api('POST', '/api/collections', { projectId, name: 'API' });
+  const req = await admin.api('POST', '/api/requests', {
+    collectionId: col.json.collection.id, name: 'Echo', method: 'GET', url: `${mockBase()}/echo`,
+  });
+
+  // The outsider cannot read the project before approval.
+  const outsider = makeClient();
+  await outsider.api('POST', '/api/auth/login', { email: 'outsider@test.io', password: 'outsider123' });
+  const beforeTree = await outsider.api('GET', `/api/workspaces/${workspaceId}/content`);
+  assert.equal(beforeTree.status, 403);
+
+  // Outsider requests access; the manager sees and approves it.
+  const request = await outsider.api('POST', `/api/projects/${projectId}/access-requests`, {
+    reason: 'Need to test the payments API',
+  });
+  assert.equal(request.status, 201);
+  const manager = makeClient();
+  await manager.api('POST', '/api/auth/login', { email: 'mgr@test.io', password: 'managerpass123' });
+  const listReq = await manager.api('GET', '/api/manage/access-requests');
+  assert.equal(listReq.status, 200);
+  const pending = listReq.json.accessRequests.find((r) => r.project_id === projectId && r.email === 'outsider@test.io');
+  assert.ok(pending, 'manager should see the pending request');
+
+  const review = await manager.api('POST', `/api/manage/access-requests/${pending.id}/review`, { approve: true });
+  assert.equal(review.status, 200);
+
+  // Now the outsider has real read access: the tree loads and flags the
+  // project as accessible, and the request detail is reachable.
+  const afterTree = await outsider.api('GET', `/api/workspaces/${workspaceId}/content`);
+  assert.equal(afterTree.status, 200);
+  const project = afterTree.json.projects.find((p) => p.id === projectId);
+  assert.ok(project, 'tree should contain the project');
+  assert.equal(project.can_access, true);
+
+  const detail = await outsider.api('GET', `/api/requests/${req.json.request.id}`);
+  assert.equal(detail.status, 200);
+
+  // But the outsider still cannot delete content.
+  const deny = await outsider.api('DELETE', `/api/requests/${req.json.request.id}`);
+  assert.equal(deny.status, 403);
+
+  // Managers can see their managed projects and history.
+  const mgrProjects = await manager.api('GET', '/api/manage/projects');
+  assert.ok(mgrProjects.json.projects.some((p) => p.id === projectId && p.is_manager));
+  const mgrUsers = await manager.api('GET', '/api/manage/users');
+  assert.equal(mgrUsers.status, 200);
+  const mgrAudit = await manager.api('GET', '/api/manage/audit-logs');
+  assert.equal(mgrAudit.status, 200);
+});
+
+test('managers cannot see other projects they do not manage', async () => {
+  const admin = await loginAsAdmin();
+  const other = await admin.api('POST', '/api/workspaces', { name: 'Unmanaged' });
+  const tree = await admin.api('GET', `/api/workspaces/${other.json.workspace.id}/content`);
+  const projectId = tree.json.projects[0].id;
+
+  const manager = makeClient();
+  await manager.api('POST', '/api/auth/login', { email: 'mgr@test.io', password: 'managerpass123' });
+  const projects = await manager.api('GET', '/api/manage/projects');
+  assert.ok(!projects.json.projects.some((p) => p.id === projectId));
+
+  // Manager is not a reviewer for it either.
+  const otherEditor = makeClient();
+  await otherEditor.api('POST', '/api/auth/login', { email: 'outsider@test.io', password: 'outsider123' });
+  const accessReq = await otherEditor.api('POST', `/api/projects/${projectId}/access-requests`, { reason: 'try' });
+  assert.equal(accessReq.status, 201);
+  const review = await manager.api('POST', `/api/manage/access-requests/${accessReq.json.accessRequest.id}/review`, { approve: true });
+  assert.equal(review.status, 403);
+});

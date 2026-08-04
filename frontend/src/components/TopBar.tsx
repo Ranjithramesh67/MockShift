@@ -19,6 +19,8 @@ import {
   BellIcon,
   ChevronIcon,
   CheckIcon,
+  BoltIcon,
+  UserIcon,
 } from './icons';
 
 const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string; icon: typeof LayoutIcon }> = [
@@ -194,15 +196,35 @@ export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
         </button>
         <NotificationBell />
         <div className="user-menu">
+          <Link
+            href="/automations"
+            className="ghost-button"
+            data-testid="automations-link"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <BoltIcon size={14} />
+            Automations
+          </Link>
           {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
+            <Link
+              href="/manage"
+              className="ghost-button"
+              data-testid="manage-link"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <ShieldIcon size={14} />
+              Manage
+            </Link>
+          )}
+          {user?.role === 'ADMIN' && (
             <Link
               href="/admin"
               className="ghost-button"
               data-testid="admin-link"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
-              <ShieldIcon size={14} />
-              Manage
+              <UserIcon size={14} />
+              Admin
             </Link>
           )}
           <button

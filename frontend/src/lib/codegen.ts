@@ -117,7 +117,7 @@ function generateAxios(r: CodeGenRequest): string {
   config.push(`url: ${jsString(r.url)}`);
   const headers = effectiveHeaders(r);
   if (headers.length) {
-    config.push(`headers: {\n${INDENT}${headers.map((h) => `${q(h.key)}: ${jsString(h.value)}`).join(',\n${INDENT}')}\n}`);
+    config.push(`headers: {\n${headers.map((h) => `${INDENT}${q(h.key)}: ${jsString(h.value)}`).join(',\n')}\n}`);
   }
   const params = (r.queryParams || []).filter((p) => p && p.enabled !== false && p.key);
   if (params.length) {

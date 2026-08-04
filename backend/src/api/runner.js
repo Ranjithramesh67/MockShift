@@ -2,8 +2,11 @@
 
 const { query } = require('./db');
 const { resolveAuthHeader, applyAuthHeader, normalizeProvider } = require('./authToken');
+const { FormulaRunner } = require('../sandbox/formulaRunner');
 
 const TEMPLATE_RE = /\{\{\s*([A-Za-z0-9_\-\.]+)\s*\}\}/g;
+
+const formulaRunner = new FormulaRunner({ timeoutMs: 150 });
 
 function substitute(input, variables) {
   if (typeof input !== 'string') return input;
@@ -27,7 +30,7 @@ async function resolveVariables(requestId, userId) {
 async function loadRequest(requestId) {
   const { rows } = await query(
     `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
-            api_type, collection_id
+            api_type, collection_id, formula
        FROM api_requests WHERE id = $1`,
     [requestId]
   );
@@ -86,6 +89,7 @@ async function runTokenRequest(tokenRequestId, userId) {
 /**
  * Execute a stored request for a user.
  * - resolves environment variables ({{key}})
+ * - applies the pre-request sandbox formula (may mutate req / $vars)
  * - applies the folder auth provider (calls the AUTH request, extracts the
  *   token, injects the configured header)
  * - performs the HTTP call and records run_history
@@ -94,7 +98,7 @@ async function runRequest(requestId, userId) {
   const request = await loadRequest(requestId);
   if (!request) throw Object.assign(new Error('Request not found'), { status: 404 });
 
-  const vars = await resolveVariables(request.id, userId);
+  let vars = await resolveVariables(request.id, userId);
   let resolvedAuth = null;
   const provider = await loadAuthProvider(request.collection_id);
 
@@ -109,19 +113,43 @@ async function runRequest(requestId, userId) {
     resolvedAuth = resolveAuthHeader(provider, tokenRun.parsed);
   }
 
-  const url = substitute(request.url, vars);
+  const req = {
+    method: (request.method || 'GET').toUpperCase(),
+    url: request.url,
+    headers: headersObject(request.headers),
+    query: Object.fromEntries((request.query_params || []).map((q) => [q.key, q.value])),
+    body:
+      request.body_type === 'JSON' && request.body_json
+        ? JSON.parse(JSON.stringify(request.body_json))
+        : request.body_text ?? null,
+  };
+
+  if (request.formula) {
+    const outcome = await formulaRunner.run({ source: request.formula, req, vars });
+    if (outcome.req !== undefined) Object.assign(req, outcome.req);
+    if (outcome.vars !== undefined) vars = outcome.vars;
+  }
+
+  const url = substitute(req.url, vars);
   if (!/^https?:\/\//i.test(url)) {
     throw Object.assign(new Error(`Unsupported URL scheme: ${url}`), { status: 400 });
   }
 
-  let headers = (request.headers || []).map((h) => ({ ...h, value: substitute(h.value, vars) }));
+  let headers = Object.entries(req.headers || {}).map(([key, value]) => ({
+    key,
+    value: substitute(value, vars),
+    enabled: true,
+  }));
   if (resolvedAuth) headers = applyAuthHeader(headers, resolvedAuth);
   const fetchHeaders = headersObject(headers);
 
   const body =
-    request.body_type === 'JSON' && request.body_json
-      ? JSON.stringify(request.body_json)
-      : substitute(request.body_text || null, vars);
+    req.body !== null && req.body !== undefined
+      ? typeof req.body === 'string'
+        ? substitute(req.body, vars)
+        : JSON.stringify(req.body)
+      : null;
+
   if (body && !Object.keys(fetchHeaders).some((k) => k.toLowerCase() === 'content-type')) {
     fetchHeaders['Content-Type'] =
       request.body_type === 'JSON' ? 'application/json' : request.body_type === 'FORM_URLENCODED' ? 'application/x-www-form-urlencoded' : 'text/plain';
@@ -135,9 +163,9 @@ async function runRequest(requestId, userId) {
   let httpStatus = 0;
   try {
     const res = await fetch(url, {
-      method: (request.method || 'GET').toUpperCase(),
+      method: req.method,
       headers: fetchHeaders,
-      body: ['GET', 'HEAD'].includes(request.method) ? undefined : body,
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : body,
       redirect: 'follow',
       signal: AbortSignal.timeout(15000),
     });
@@ -165,7 +193,7 @@ async function runRequest(requestId, userId) {
       request.id,
       userId,
       status,
-      JSON.stringify({ url, method: request.method, headers: fetchHeaders, body }),
+      JSON.stringify({ url, method: req.method, headers: fetchHeaders, body }),
       responseSnapshot ? JSON.stringify(responseSnapshot) : null,
       startedAt,
       finishedAt,
@@ -179,7 +207,7 @@ async function runRequest(requestId, userId) {
     error,
     response: responseSnapshot,
     resolvedAuth,
-    requestSnapshot: { url, method: request.method, headers: fetchHeaders, body },
+    requestSnapshot: { url, method: req.method, headers: fetchHeaders, body },
     variables: vars,
   };
 }

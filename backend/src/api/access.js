@@ -88,12 +88,21 @@ async function canReadWorkspace(userId, workspaceId) {
   const role = await getWorkspaceRole(userId, workspaceId);
   if (role) return true;
   const { rows } = await query(
-    `SELECT visibility FROM workspaces w
+    `SELECT w.visibility FROM workspaces w
        JOIN organization_members om ON om.org_id = w.organization_id
       WHERE w.id = $1 AND om.user_id = $2 AND w.visibility = 'PUBLIC'`,
     [workspaceId, userId]
   );
-  return rows.length > 0;
+  if (rows.length > 0) return true;
+  const grant = await query(
+    `SELECT 1 FROM projects p
+       LEFT JOIN project_managers pm ON pm.project_id = p.id AND pm.user_id = $2
+       LEFT JOIN project_members pme ON pme.project_id = p.id AND pme.user_id = $2
+      WHERE p.workspace_id = $1 AND (pm.user_id IS NOT NULL OR pme.user_id IS NOT NULL)
+      LIMIT 1`,
+    [workspaceId, userId]
+  );
+  return grant.rows.length > 0;
 }
 
 async function canMutateWorkspace(userId, workspaceId) {
@@ -149,7 +158,8 @@ async function getOrgIdsForUser(userId) {
 
 /**
  * Effective access a user has to a project. Priority:
- *   global ADMIN  > org admin > project MANAGER > workspace role.
+ *   global ADMIN  > org admin > project MANAGER > project member
+ *   > workspace role.
  * Returns null when the user has no access.
  */
 async function getProjectAccess(userId, projectId) {
@@ -160,7 +170,9 @@ async function getProjectAccess(userId, projectId) {
             EXISTS (SELECT 1 FROM organization_members om
                      WHERE om.org_id = w.organization_id AND om.user_id = $1 AND om.role = 'ADMIN') AS is_org_admin,
             EXISTS (SELECT 1 FROM project_managers pm
-                     WHERE pm.project_id = p.id AND pm.user_id = $1) AS is_manager
+                     WHERE pm.project_id = p.id AND pm.user_id = $1) AS is_manager,
+            (SELECT pm.role FROM project_members pm
+              WHERE pm.project_id = p.id AND pm.user_id = $1) AS member_role
        FROM projects p
        JOIN workspaces w ON w.id = p.workspace_id
       WHERE p.id = $2`,
@@ -173,6 +185,9 @@ async function getProjectAccess(userId, projectId) {
   }
   if (row.is_manager) {
     return { level: 'MANAGER', workspaceRole: 'MANAGER', isManager: true };
+  }
+  if (row.member_role) {
+    return { level: row.member_role, workspaceRole: row.member_role, isManager: false };
   }
   const workspaceRole = await getWorkspaceRole(userId, row.workspace_id);
   if (!workspaceRole) return null;

@@ -79,6 +79,7 @@ export interface RequestDetail {
   bodyJson: string | null;
   bodyText: string | null;
   apiType: ApiType;
+  formula: string;
   collectionId: string;
   workspaceId: string;
   workspaceRole: UserRole;

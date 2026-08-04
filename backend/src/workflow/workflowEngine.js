@@ -12,6 +12,24 @@ function parseBody(body) {
   }
 }
 
+const MAX_LOOP_ITERATIONS = 1000;
+
+// Normalizes the UI's loop shape ({ type: 'count'|'until', ... }) and the
+// legacy numeric form into a single config, or null when there is no loop.
+function getLoopConfig(step) {
+  const loop = step && step.loop;
+  if (typeof loop === 'number') return { type: 'count', count: Math.max(0, loop) };
+  if (loop && typeof loop === 'object') {
+    if (loop.type === 'count') {
+      return { type: 'count', count: Math.max(0, Number(loop.count) || 0) };
+    }
+    if (loop.type === 'until') {
+      return { type: 'until', condition: loop.condition };
+    }
+  }
+  return null;
+}
+
 function summarizeSteps(steps) {
   const summary = {};
   for (const [key, value] of Object.entries(steps || {})) {
@@ -210,10 +228,37 @@ class WorkflowEngine {
 
     state.vars = { ...(run.vars || {}), [step.id]: parseBody(run.responseSnapshot.body) };
 
+    const loopConfig = getLoopConfig(step);
     const nextIteration = iteration + 1;
-    if (nextIteration < (step.loop || 1)) {
-      await this.enqueueStep(workflow, stepIndex, nextIteration, state, step.loopDelayMs || 0);
-      return { step: step.id, status: 'SUCCESS', iteration: nextIteration };
+    if (loopConfig) {
+      if (loopConfig.type === 'count') {
+        if (nextIteration < loopConfig.count) {
+          await this.enqueueStep(workflow, stepIndex, nextIteration, state, step.loopDelayMs || 0);
+          return { step: step.id, status: 'SUCCESS', iteration: nextIteration };
+        }
+      } else if (loopConfig.type === 'until') {
+        if (nextIteration >= MAX_LOOP_ITERATIONS) {
+          this.logger.warn(`workflow ${workflow.id} run ${state.runId}: until-loop on step ${step.id} hit safety cap`);
+        } else {
+          let keepGoing = false;
+          try {
+            keepGoing = await this.evaluateCondition({ condition: loopConfig.condition }, state);
+          } catch (err) {
+            state.steps[stepKey] = {
+              status: 'FAILED',
+              startedAt,
+              finishedAt: new Date().toISOString(),
+              error: `until-loop condition: ${String(err.message || err)}`,
+            };
+            await this.handleFailure(workflow, state);
+            return { step: step.id, status: 'FAILED', handled: 'loop-condition-error' };
+          }
+          if (keepGoing) {
+            await this.enqueueStep(workflow, stepIndex, nextIteration, state, step.loopDelayMs || 0);
+            return { step: step.id, status: 'SUCCESS', iteration: nextIteration };
+          }
+        }
+      }
     }
 
     await this.continue(workflow, { ...state, stepIndex: stepIndex + 1, iteration: 0 });
@@ -228,4 +273,4 @@ class WorkflowEngine {
   }
 }
 
-module.exports = { WorkflowEngine, parseBody, summarizeSteps };
+module.exports = { WorkflowEngine, parseBody, summarizeSteps, getLoopConfig };
