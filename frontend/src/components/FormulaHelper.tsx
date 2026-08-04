@@ -36,6 +36,56 @@ const SNIPPETS: HelperSnippet[] = [
     description: 'Adds (or subtracts) days from an ISO timestamp',
   },
   {
+    title: 'Date in 2 hours',
+    code: '$utils.addHours($utils.now(), 2)',
+    description: 'Adds (or subtracts) hours from an ISO timestamp',
+  },
+  {
+    title: 'Date in 30 minutes',
+    code: '$utils.addMinutes($utils.now(), 30)',
+    description: 'Adds (or subtracts) minutes from an ISO timestamp',
+  },
+  {
+    title: 'Date in 3 months',
+    code: '$utils.addMonths($utils.now(), 3)',
+    description: 'Adds (or subtracts) months, clamping to the end of month',
+  },
+  {
+    title: 'Epoch milliseconds',
+    code: '$utils.timestamp()',
+    description: 'Current Unix time in milliseconds since the epoch',
+  },
+  {
+    title: 'Capitalize a string',
+    code: '$utils.capitalize("hello world")',
+    description: 'Uppercases the first character of the string',
+  },
+  {
+    title: 'Lowercase a string',
+    code: '$utils.lower("HeLLo")',
+    description: 'Converts the string to lowercase',
+  },
+  {
+    title: 'Uppercase a string',
+    code: '$utils.upper("HeLLo")',
+    description: 'Converts the string to uppercase',
+  },
+  {
+    title: 'Trim whitespace',
+    code: '$utils.trim("  spaced  ")',
+    description: 'Removes leading and trailing whitespace',
+  },
+  {
+    title: 'Base64 encode',
+    code: '$utils.base64Encode("text to encode")',
+    description: 'Encodes a UTF-8 string to base64',
+  },
+  {
+    title: 'Base64 decode',
+    code: '$utils.base64Decode("dGV4dCB0byBlbmNvZGU=")',
+    description: 'Decodes a base64 string back to UTF-8',
+  },
+  {
     title: 'Read request body',
     code: 'req.body',
     description: 'Access or mutate the outgoing request body',

@@ -105,6 +105,7 @@ export interface RunResult {
     statusText: string;
     headers: Record<string, string>;
     body: string;
+    bodyEncoding?: 'text' | 'base64';
     durationMs: number;
   } | null;
   resolvedAuth: { headerKey: string; headerValue: string } | null;

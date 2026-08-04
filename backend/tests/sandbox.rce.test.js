@@ -118,4 +118,33 @@ describe('sandbox legitimate usage', () => {
     });
     expect(outcome.returned).toEqual({ body: { order_id: 6 } });
   });
+
+  test('time, string and base64 helpers compute correctly', async () => {
+    const outcome = await runner.run({
+      source: [
+        'req.body.hours = $utils.addHours("2026-01-01T00:00:00.000Z", 2);',
+        'req.body.minutes = $utils.addMinutes("2026-01-01T00:00:00.000Z", 30);',
+        'req.body.months = $utils.addMonths("2026-01-31T00:00:00.000Z", 1);',
+        'req.body.ts = $utils.timestamp();',
+        'req.body.cap = $utils.capitalize("hello world");',
+        'req.body.lower = $utils.lower("HeLLo");',
+        'req.body.upper = $utils.upper("HeLLo");',
+        'req.body.trimmed = $utils.trim("  spaced  ");',
+        'req.body.b64 = $utils.base64Encode("héllo → 🌍");',
+        'req.body.b64dec = $utils.base64Decode("aGVsbG8gd29ybGQ=");',
+      ].join('\n'),
+      req: { body: {} },
+      vars: {},
+    });
+    expect(outcome.req.body.hours).toBe('2026-01-01T02:00:00.000Z');
+    expect(outcome.req.body.minutes).toBe('2026-01-01T00:30:00.000Z');
+    expect(outcome.req.body.months).toBe('2026-02-28T00:00:00.000Z');
+    expect(typeof outcome.req.body.ts).toBe('number');
+    expect(outcome.req.body.cap).toBe('Hello world');
+    expect(outcome.req.body.lower).toBe('hello');
+    expect(outcome.req.body.upper).toBe('HELLO');
+    expect(outcome.req.body.trimmed).toBe('spaced');
+    expect(outcome.req.body.b64).toBe('aMOpbGxvIOKGkiDwn4yN');
+    expect(outcome.req.body.b64dec).toBe('hello world');
+  });
 });
