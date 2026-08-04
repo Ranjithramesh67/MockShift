@@ -6,6 +6,7 @@ import { useWorkspace } from '@/store/WorkspaceStore';
 import { contentApi } from '@/lib/api';
 import { parseCurl } from '@/lib/curl';
 import { Modal } from './Modal';
+import { ImportIcon } from './icons';
 
 export function CurlModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { dispatch } = useApp();
@@ -83,7 +84,8 @@ export function CurlModal({ open, onClose }: { open: boolean; onClose: () => voi
         <button type="button" className="ghost-button" onClick={onClose}>
           Cancel
         </button>
-        <button type="button" className="primary-button" disabled={busy} data-testid="curl-import-confirm" onClick={onImport}>
+        <button type="button" className="primary-button" disabled={busy} data-testid="curl-import-confirm" onClick={onImport} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <ImportIcon size={14} />
           {busy ? 'Importing…' : 'Import'}
         </button>
       </div>

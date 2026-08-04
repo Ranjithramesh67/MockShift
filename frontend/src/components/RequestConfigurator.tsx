@@ -1,16 +1,37 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { ApiRequest, ApiType, BodyType, HttpMethod, RequestContentType } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { KeyValueRows } from './KeyValueRows';
 import { CodeEditor } from './CodeEditor';
 import { TabBar } from './TabBar';
-import { generateCurl } from '@/lib/curl';
+import { CodeGenModal } from './CodeGenModal';
+import { FormulaHelper } from './FormulaHelper';
+import {
+  SendIcon,
+  SaveIcon,
+  CodeIcon,
+  ImportIcon,
+  RowsIcon,
+  ListIcon,
+  FormulaIcon,
+  RequestIcon,
+} from './icons';
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 const API_TYPES: ApiType[] = ['REST', 'SOAP', 'GRAPHQL', 'AUTH'];
+
+const METHOD_COLORS: Record<HttpMethod, string> = {
+  GET: '#1f6feb',
+  POST: '#2ea043',
+  PUT: '#9e6a03',
+  PATCH: '#8957e5',
+  DELETE: '#da3633',
+  HEAD: '#6b7684',
+  OPTIONS: '#6b7684',
+};
 
 type BodyKind = 'NONE' | 'JSON' | 'XML' | 'FORM_URLENCODED' | 'MULTIPART' | 'GRAPHQL' | 'RAW_TEXT';
 
@@ -58,7 +79,13 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
   const ws = useWorkspace();
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
-  if (!request) return <div className="panel-empty">Select a request from the sidebar to edit it.</div>;
+  if (!request)
+    return (
+      <div className="panel-empty" data-testid="request-configurator">
+        <RequestIcon size={28} />
+        Select a request from the sidebar to edit it.
+      </div>
+    );
 
   const update = (patch: Partial<ApiRequest>) => ws.updateActiveRequest(patch);
 
@@ -95,10 +122,13 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
     }
   };
 
-  const onExportCurl = () => {
-    navigator.clipboard?.writeText(generateCurl(request)).catch(() => undefined);
-    dispatch({ type: 'SHOW_TOAST', kind: 'info', message: 'cURL command copied to clipboard.' });
+  const [codegenOpen, setCodegenOpen] = useState(false);
+
+  const onExportCode = () => {
+    setCodegenOpen(true);
   };
+
+  const actionBtn = { display: 'inline-flex', alignItems: 'center', gap: 6 } as const;
 
   return (
     <div className="request-configurator" data-testid="request-configurator">
@@ -108,6 +138,7 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           value={request.method}
           aria-label="Method"
           data-testid="method-select"
+          style={{ color: METHOD_COLORS[request.method] }}
           onChange={(e) => update({ method: e.target.value as HttpMethod })}
         >
           {METHODS.map((m) => (
@@ -139,26 +170,30 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
             </option>
           ))}
         </select>
-        <button type="button" className="primary-button" data-testid="send-button" onClick={onSend}>
+        <button type="button" className="primary-button" data-testid="send-button" onClick={onSend} style={actionBtn}>
+          <SendIcon size={14} />
           Send
         </button>
-        <button type="button" className="ghost-button" data-testid="save-request-button" onClick={onSave}>
+        <button type="button" className="ghost-button" data-testid="save-request-button" onClick={onSave} style={actionBtn}>
+          <SaveIcon size={14} />
           Save
         </button>
-        <button type="button" className="ghost-button" data-testid="export-curl-button" onClick={onExportCurl}>
-          Export cURL
+        <button type="button" className="ghost-button" data-testid="codegen-open-button" onClick={onExportCode} style={actionBtn}>
+          <CodeIcon size={14} />
+          Code
         </button>
-        <button type="button" className="ghost-button" data-testid="import-curl-button" onClick={onOpenCurl}>
-          Import cURL
+        <button type="button" className="ghost-button" data-testid="import-curl-button" onClick={onOpenCurl} style={actionBtn}>
+          <ImportIcon size={14} />
+          Import
         </button>
       </div>
 
       <TabBar
         tabs={[
-          { id: 'params', label: 'Params' },
-          { id: 'headers', label: 'Headers' },
-          { id: 'body', label: 'Body' },
-          { id: 'formula', label: 'Formula' },
+          { id: 'params', label: 'Params', icon: RowsIcon },
+          { id: 'headers', label: 'Headers', icon: ListIcon },
+          { id: 'body', label: 'Body', icon: CodeIcon },
+          { id: 'formula', label: 'Formula', icon: FormulaIcon },
         ]}
         active={activeTab}
         onChange={(tab) => dispatch({ type: 'SET_REQUEST_TAB', tab })}
@@ -216,9 +251,6 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
         )}
         {activeTab === 'formula' && (
           <div className="formula-editor">
-            <p className="hint">
-              Pre-request formula executed in the sandbox. Helpers: $utils, $vars, req.body, req.headers.
-            </p>
             <CodeEditor
               value={request.formula}
               onChange={(value) => update({ formula: value })}
@@ -226,9 +258,16 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
               height="100%"
               ariaLabel="Formula editor"
             />
+            <FormulaHelper
+              onInsert={(code) => {
+                const current = request.formula;
+                update({ formula: current ? `${current}\n${code}` : code });
+              }}
+            />
           </div>
         )}
       </div>
+      {codegenOpen && <CodeGenModal request={request} onClose={() => setCodegenOpen(false)} />}
     </div>
   );
 }

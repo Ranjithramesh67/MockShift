@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useApp } from '@/store/AppStore';
+import { CheckIcon, AlertIcon, InfoIcon } from './icons';
 
 export function ToastHost() {
   const { state, dispatch } = useApp();
@@ -14,9 +15,13 @@ export function ToastHost() {
   }, [toast, dispatch]);
 
   if (!toast) return null;
+
+  const Icon = toast.kind === 'success' ? CheckIcon : toast.kind === 'error' ? AlertIcon : InfoIcon;
+
   return (
     <div className={`toast toast-${toast.kind}`} data-testid="toast" role="status">
-      {toast.message}
+      <Icon size={16} />
+      <span>{toast.message}</span>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 const { query } = require('./db');
 const { readSessionToken, verifySession } = require('./authLib');
 
-const ROLE_RANK = { ADMIN: 3, EDITOR: 2, VIEWER: 1 };
+const ROLE_RANK = { ADMIN: 4, MANAGER: 3, EDITOR: 2, VIEWER: 1 };
 
 function roleAtLeast(role, min) {
   if (!role) return false;
@@ -126,15 +126,112 @@ async function requireWorkspaceWrite(req, res, next) {
   }
 }
 
+/**
+ * Express middleware: requires the user's global role to be MANAGER or ADMIN.
+ */
+function requireManagerOrAdmin(req, res, next) {
+  if (!req.user || !['ADMIN', 'MANAGER'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Manager or admin privileges required' });
+  }
+  next();
+}
+
+/**
+ * Organization IDs the user belongs to.
+ */
+async function getOrgIdsForUser(userId) {
+  const { rows } = await query(
+    `SELECT org_id FROM organization_members WHERE user_id = $1`,
+    [userId]
+  );
+  return rows.map((r) => r.org_id);
+}
+
+/**
+ * Effective access a user has to a project. Priority:
+ *   global ADMIN  > org admin > project MANAGER > workspace role.
+ * Returns null when the user has no access.
+ */
+async function getProjectAccess(userId, projectId) {
+  const { rows } = await query(
+    `SELECT p.workspace_id,
+            w.organization_id,
+            (SELECT role FROM users WHERE id = $1) AS global_role,
+            EXISTS (SELECT 1 FROM organization_members om
+                     WHERE om.org_id = w.organization_id AND om.user_id = $1 AND om.role = 'ADMIN') AS is_org_admin,
+            EXISTS (SELECT 1 FROM project_managers pm
+                     WHERE pm.project_id = p.id AND pm.user_id = $1) AS is_manager
+       FROM projects p
+       JOIN workspaces w ON w.id = p.workspace_id
+      WHERE p.id = $2`,
+    [userId, projectId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  if (row.global_role === 'ADMIN' || row.is_org_admin) {
+    return { level: 'ADMIN', workspaceRole: 'ADMIN', isManager: false };
+  }
+  if (row.is_manager) {
+    return { level: 'MANAGER', workspaceRole: 'MANAGER', isManager: true };
+  }
+  const workspaceRole = await getWorkspaceRole(userId, row.workspace_id);
+  if (!workspaceRole) return null;
+  return { level: workspaceRole, workspaceRole, isManager: false };
+}
+
+async function canReadProject(userId, projectId) {
+  return Boolean(await getProjectAccess(userId, projectId));
+}
+
+async function canWriteProject(userId, projectId) {
+  const access = await getProjectAccess(userId, projectId);
+  return Boolean(access && roleAtLeast(access.level, 'EDITOR'));
+}
+
+async function requireProjectRead(req, res, next) {
+  try {
+    const { projectId } = req.params;
+    if (!projectId) return res.status(400).json({ error: 'projectId required' });
+    const access = await getProjectAccess(req.user.id, projectId);
+    if (!access) return res.status(403).json({ error: 'No access to this project' });
+    req.projectAccess = access;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function requireProjectWrite(req, res, next) {
+  try {
+    const { projectId } = req.params;
+    if (!projectId) return res.status(400).json({ error: 'projectId required' });
+    const access = await getProjectAccess(req.user.id, projectId);
+    if (!access || !roleAtLeast(access.level, 'EDITOR')) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    req.projectAccess = access;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   ROLE_RANK,
   roleAtLeast,
   loadUserById,
   requireAuth,
   requireAdmin,
+  requireManagerOrAdmin,
+  getOrgIdsForUser,
   getWorkspaceRole,
+  getProjectAccess,
+  canReadProject,
+  canWriteProject,
   canReadWorkspace,
   canMutateWorkspace,
   requireWorkspaceAccess,
   requireWorkspaceWrite,
+  requireProjectRead,
+  requireProjectWrite,
 };

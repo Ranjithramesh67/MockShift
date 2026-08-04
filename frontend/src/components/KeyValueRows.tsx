@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { KeyValueEntry } from '@/lib/types';
+import { XIcon, PlusIcon } from './icons';
 
 interface KeyValueRowsProps {
   entries: KeyValueEntry[];
@@ -46,6 +47,7 @@ export function KeyValueRows({
               checked={entry.enabled}
               onChange={(e) => update(index, { enabled: e.target.checked })}
               aria-label="Enabled"
+              title="Toggle entry"
             />
           </label>
           <input
@@ -71,16 +73,26 @@ export function KeyValueRows({
               type="button"
               className="icon-button"
               aria-label="Remove row"
+              title="Remove row"
               onClick={() => remove(index)}
             >
-              x
+              <XIcon size={13} />
             </button>
           </div>
         </div>
       ))}
-      <button type="button" className="ghost-button" onClick={add} data-testid={`${testIdPrefix}-add`}>
-        + Add row
-      </button>
+      <div>
+        <button
+          type="button"
+          className="ghost-button small"
+          onClick={add}
+          data-testid={`${testIdPrefix}-add`}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+        >
+          <PlusIcon size={12} />
+          Add row
+        </button>
+      </div>
     </div>
   );
 }

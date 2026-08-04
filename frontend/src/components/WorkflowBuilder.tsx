@@ -7,6 +7,7 @@ import { useWorkspace } from '@/store/WorkspaceStore';
 import { validateWorkflow } from '@/lib/workflowValidation';
 import { makeId } from '@/lib/defaultState';
 import { CodeEditor } from './CodeEditor';
+import { SaveIcon, PlusIcon, ArrowUpIcon, ArrowDownIcon, XIcon, GripIcon, WorkflowIcon } from './icons';
 
 const LOOP_TYPE_LABELS: Array<{ id: LoopConfig['type']; label: string }> = [
   { id: 'none', label: 'No loop' },
@@ -45,6 +46,7 @@ export function WorkflowBuilder() {
   if (!draft) {
     return (
       <div className="panel-empty">
+        <WorkflowIcon size={28} />
         No workflow selected. Add a workflow to start chaining requests.
       </div>
     );
@@ -107,11 +109,13 @@ export function WorkflowBuilder() {
           data-testid="workflow-name-input"
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
         />
-        <button type="button" className="primary-button" data-testid="workflow-save-button" onClick={onSave}>
+        <button type="button" className="primary-button" data-testid="workflow-save-button" onClick={onSave} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <SaveIcon size={14} />
           Save workflow
         </button>
-        <button type="button" className="ghost-button" data-testid="add-step-button" onClick={addStep}>
-          + Add step
+        <button type="button" className="ghost-button" data-testid="add-step-button" onClick={addStep} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <PlusIcon size={14} />
+          Add step
         </button>
       </div>
 
@@ -131,7 +135,7 @@ export function WorkflowBuilder() {
         {steps.map((step, index) => (
           <div
             key={step.id}
-            className="step-card"
+            className={`step-card ${dragIndex === index ? 'dragging' : ''}`}
             data-testid={`step-card-${index}`}
             draggable
             onDragStart={() => setDragIndex(index)}
@@ -145,7 +149,7 @@ export function WorkflowBuilder() {
           >
             <div className="step-card-header">
               <span className="drag-handle" title="Drag to reorder">
-                ::
+                <GripIcon size={14} />
               </span>
               <span className="step-number">#{index + 1}</span>
               <input
@@ -161,28 +165,31 @@ export function WorkflowBuilder() {
                   type="button"
                   className="icon-button"
                   aria-label="Move step up"
+                  title="Move step up"
                   disabled={index === 0}
                   onClick={() => moveStep(index, index - 1)}
                 >
-                  up
+                  <ArrowUpIcon size={13} />
                 </button>
                 <button
                   type="button"
                   className="icon-button"
                   aria-label="Move step down"
+                  title="Move step down"
                   disabled={index === steps.length - 1}
                   onClick={() => moveStep(index, index + 1)}
                 >
-                  down
+                  <ArrowDownIcon size={13} />
                 </button>
                 <button
                   type="button"
-                  className="icon-button"
+                  className="icon-button danger"
                   aria-label="Remove step"
+                  title="Remove step"
                   data-testid={`remove-step-button-${index}`}
                   onClick={() => removeStep(index)}
                 >
-                  x
+                  <XIcon size={13} />
                 </button>
               </div>
             </div>

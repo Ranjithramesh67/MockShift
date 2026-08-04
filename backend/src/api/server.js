@@ -6,6 +6,13 @@ const adminRoutes = require('./routes/admin');
 const workspaceRoutes = require('./routes/workspaces');
 const teamRoutes = require('./routes/teams');
 const contentRoutes = require('./routes/content');
+const manageRoutes = require('./routes/manage');
+const projectRoutes = require('./routes/projects');
+const workflowRoutes = require('./routes/workflows');
+const automationRoutes = require('./routes/automations').router;
+const notificationRoutes = require('./routes/notifications');
+const { query } = require('./db');
+const { runWorkflow, syncAllSchedules } = require('./workflowService');
 
 function createApp() {
   const app = express();
@@ -15,11 +22,46 @@ function createApp() {
     res.json({ ok: true, service: 'apihub-api' });
   });
 
+  // Public webhook trigger for WEBHOOK automations (no auth by design).
+  // Registered before the authenticated /api routers so requireAuth does not
+  // intercept it.
+  app.post('/api/webhooks/:token', async (req, res, next) => {
+    try {
+      const { token } = req.params;
+      const { rows } = await query(
+        `SELECT id, workflow_id, enabled, input_vars FROM automations
+          WHERE webhook_token = $1 AND trigger_type = 'WEBHOOK'`,
+        [token]
+      );
+      const automation = rows[0];
+      if (!automation || !automation.enabled) {
+        return res.status(404).json({ error: 'Webhook not found' });
+      }
+      const inputVars =
+        req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+          ? { ...(automation.input_vars || {}), ...req.body }
+          : automation.input_vars || {};
+      const runId = await runWorkflow({
+        workflowId: automation.workflow_id,
+        trigger: 'WEBHOOK',
+        inputVars,
+      });
+      res.status(202).json({ ok: true, runId });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.use('/api/auth', authRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/manage', manageRoutes);
   app.use('/api/workspaces', workspaceRoutes);
   app.use('/api/teams', teamRoutes);
   app.use('/api', contentRoutes);
+  app.use('/api', projectRoutes);
+  app.use('/api', workflowRoutes);
+  app.use('/api', automationRoutes);
+  app.use('/api', notificationRoutes);
 
   // 404 for unknown API routes.
   app.use('/api', (req, res) => {
@@ -50,8 +92,15 @@ function startServer({ port = Number(process.env.PORT || 3001) } = {}) {
   });
 }
 
-module.exports = { createApp, startServer };
+module.exports = { createApp, startServer, syncAllSchedules };
 
 if (require.main === module) {
   startServer();
+  // Re-register persisted cron schedules after a restart.
+  setTimeout(() => {
+    syncAllSchedules().then((n) => {
+      // eslint-disable-next-line no-console
+      console.log(`[api] synced ${n} scheduled automations`);
+    });
+  }, 2000);
 }

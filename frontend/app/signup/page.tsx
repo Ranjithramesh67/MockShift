@@ -4,6 +4,13 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { BoltIcon, CheckIcon, LockIcon, TeamIcon } from '@/components/icons';
+
+const FEATURES = [
+  { icon: BoltIcon, text: 'Build and test requests with REST, SOAP, GraphQL and Auth' },
+  { icon: TeamIcon, text: 'Share workspaces and collaborate with your team' },
+  { icon: CheckIcon, text: 'Chain requests into automated workflows' },
+];
 
 export default function SignupPage() {
   const router = useRouter();
@@ -34,60 +41,91 @@ export default function SignupPage() {
 
   return (
     <div className="auth-screen" data-testid="auth-screen">
-      <form className="auth-card" onSubmit={onSubmit} data-testid="signup-form">
-        <div className="auth-brand">
-          <span className="brand-mark">AH</span>
-          <span className="brand-name">API Hub</span>
+      <div className="auth-shell">
+        <div className="auth-brand-panel">
+          <div className="auth-brand">
+            <span className="brand-mark">AH</span>
+            <span className="brand-name">API Hub</span>
+          </div>
+          <div className="auth-brand-tagline">
+            <h2>
+              Test your APIs, <span>on autopilot.</span>
+            </h2>
+            <p>
+              A collaborative workspace for designing, testing and automating API requests —
+              with teams, shared collections and folder-level auth providers.
+            </p>
+          </div>
+          <ul className="auth-feature-list">
+            {FEATURES.map((f) => (
+              <li key={f.text}>
+                <f.icon />
+                <span>{f.text}</span>
+              </li>
+            ))}
+          </ul>
         </div>
-        <h1 className="auth-title">Create your account</h1>
-        <p className="auth-hint">The first account on a fresh install becomes the platform administrator.</p>
-        {error && (
-          <p className="auth-error" role="alert" data-testid="auth-error">
-            {error}
-          </p>
-        )}
-        <label className="auth-field">
-          <span>Name</span>
-          <input
-            type="text"
-            autoComplete="name"
-            data-testid="signup-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <label className="auth-field">
-          <span>Email</span>
-          <input
-            type="email"
-            autoComplete="email"
-            data-testid="signup-email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </label>
-        <label className="auth-field">
-          <span>Password</span>
-          <input
-            type="password"
-            autoComplete="new-password"
-            data-testid="signup-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
-        <button type="submit" className="primary-button auth-submit" disabled={busy} data-testid="signup-submit">
-          {busy ? 'Creating…' : 'Create account'}
-        </button>
-        <p className="auth-alt">
-          Already have an account?{' '}
-          <Link href="/login" data-testid="goto-login">
-            Sign in
-          </Link>
-        </p>
-      </form>
+        <div className="auth-card-wrap">
+          <form className="auth-card" onSubmit={onSubmit} data-testid="signup-form">
+            <h1 className="auth-title">Create your account</h1>
+            <p className="auth-hint">The first account on a fresh install becomes the platform administrator.</p>
+            {error && (
+              <p className="auth-error" role="alert" data-testid="auth-error">
+                {error}
+              </p>
+            )}
+            <label className="auth-field">
+              <span>Name</span>
+              <input
+                type="text"
+                autoComplete="name"
+                placeholder="Ada Lovelace"
+                data-testid="signup-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <label className="auth-field">
+              <span>Email</span>
+              <input
+                type="email"
+                autoComplete="email"
+                placeholder="you@company.com"
+                data-testid="signup-email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </label>
+            <label className="auth-field">
+              <span>Password</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                placeholder="8+ characters"
+                data-testid="signup-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              className="primary-button auth-submit"
+              disabled={busy}
+              data-testid="signup-submit"
+            >
+              {busy ? 'Creating…' : 'Create account'}
+            </button>
+            <p className="auth-alt">
+              Already have an account?{' '}
+              <Link href="/login" data-testid="goto-login">
+                Sign in
+              </Link>
+            </p>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

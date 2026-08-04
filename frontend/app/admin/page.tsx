@@ -26,7 +26,7 @@ export default function AdminPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load users'));
   }, [user]);
 
-  if (loading) return <div className="auth-screen">Loading…</div>;
+  if (loading) return <div className="loading-screen">Loading…</div>;
   if (!user) return null;
   if (user.role !== 'ADMIN') {
     return (
@@ -71,17 +71,21 @@ export default function AdminPage() {
       </header>
       <main className="admin-main">
         <h1>Users</h1>
+        <p className="admin-subtitle">Manage platform roles and account status.</p>
         {error && (
           <p className="auth-error" role="alert" data-testid="admin-error">
             {error}
           </p>
         )}
-        {notice && <p className="test-result" data-testid="admin-notice">{notice}</p>}
+        {notice && (
+          <p className="test-result" data-testid="admin-notice">
+            {notice}
+          </p>
+        )}
         <table className="admin-table" data-testid="admin-table">
           <thead>
             <tr>
               <th>Name</th>
-              <th>Email</th>
               <th>Role</th>
               <th>Status</th>
               <th>Actions</th>
@@ -90,8 +94,15 @@ export default function AdminPage() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id} data-testid={`admin-user-${u.email}`}>
-                <td>{u.name}</td>
-                <td>{u.email}</td>
+                <td>
+                  <div className="admin-user-cell">
+                    <span className="admin-avatar">{u.name.charAt(0).toUpperCase()}</span>
+                    <div>
+                      <div className="admin-user-name">{u.name}</div>
+                      <div className="admin-user-email">{u.email}</div>
+                    </div>
+                  </div>
+                </td>
                 <td>
                   <select
                     className="compact-select"

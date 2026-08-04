@@ -3,9 +3,51 @@
 const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth, requireAdmin } = require('../access');
+const { hashPassword } = require('../authLib');
+const { logAudit } = require('../audit');
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
+
+router.post('/users', async (req, res, next) => {
+  try {
+    const { email, name, role, password } = req.body || {};
+    if (!email || !name || !password) {
+      return res.status(400).json({ error: 'email, name and password are required' });
+    }
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    if (String(password).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const roleValue = ['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'].includes(role) ? role : 'EDITOR';
+
+    const existing = await query(`SELECT id FROM users WHERE email = $1`, [normalizedEmail]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'A user with that email already exists' });
+    }
+
+    const { rows } = await query(
+      `INSERT INTO users (email, password_hash, name, role)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, email, name, role, is_active, created_at`,
+      [normalizedEmail, hashPassword(String(password)), String(name).trim() || normalizedEmail, roleValue]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'user',
+      entityId: rows[0].id,
+      action: 'create_user',
+      detail: { email: normalizedEmail, role: roleValue },
+      ip: req.ip,
+    });
+    res.status(201).json({ user: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/users', async (req, res, next) => {
   try {
@@ -28,7 +70,7 @@ router.patch('/users/:userId', async (req, res, next) => {
     if (target.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
     if (role !== undefined) {
-      if (!['ADMIN', 'EDITOR', 'VIEWER'].includes(role)) {
+      if (!['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'].includes(role)) {
         return res.status(400).json({ error: 'Invalid role' });
       }
       if (userId === req.user.id && role !== 'ADMIN') {
