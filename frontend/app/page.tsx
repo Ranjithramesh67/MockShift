@@ -74,7 +74,12 @@ function GuardedWorkspace() {
   }, [loading, user, router]);
 
   if (loading) {
-    return <div className="auth-screen" data-testid="loading-splash">Loading…</div>;
+    return (
+      <div className="loading-screen" data-testid="loading-splash">
+        <span className="spinner" />
+        Loading workspace…
+      </div>
+    );
   }
   if (!user) return null;
 

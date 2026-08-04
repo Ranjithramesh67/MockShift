@@ -2,7 +2,7 @@
 
 const { Router } = require('express');
 const { query } = require('../db');
-const { requireAuth, roleAtLeast, getWorkspaceRole } = require('../access');
+const { requireAuth, roleAtLeast, getWorkspaceRole, getProjectAccess } = require('../access');
 const { runRequest, runTokenRequest } = require('../runner');
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
 
@@ -47,6 +47,27 @@ router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
       `SELECT id, name FROM projects WHERE workspace_id = $1 ORDER BY name`,
       [workspaceId]
     );
+    const accessByProject = new Map();
+    await Promise.all(
+      projects.map(async (p) => {
+        const [access, requests] = await Promise.all([
+          getProjectAccess(req.user.id, p.id),
+          query(
+            `SELECT status FROM access_requests WHERE project_id = $1 AND user_id = $2`,
+            [p.id, req.user.id]
+          ),
+        ]);
+        accessByProject.set(p.id, {
+          can_access: !!access,
+          access_status: requests.rows[0]?.status ?? null,
+        });
+      })
+    );
+    const projectsWithAccess = projects.map((p) => ({
+      ...p,
+      can_access: accessByProject.get(p.id)?.can_access ?? false,
+      access_status: accessByProject.get(p.id)?.access_status ?? null,
+    }));
     const projectIds = projects.map((p) => p.id);
     let collections = [];
     let requests = [];

@@ -5,12 +5,13 @@ import type { ApiType } from '@/lib/types';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
 import { Modal } from './Modal';
+import { RestIcon, SoapIcon, GraphqlIcon, KeyIcon } from './icons';
 
-const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string }> = [
-  { id: 'REST', label: 'REST', hint: 'Standard JSON/HTTP API' },
-  { id: 'SOAP', label: 'SOAP', hint: 'XML envelope service' },
-  { id: 'GRAPHQL', label: 'GraphQL', hint: 'Query language API' },
-  { id: 'AUTH', label: 'Auth / Token', hint: 'Token endpoint used by a folder auth provider' },
+const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: typeof RestIcon }> = [
+  { id: 'REST', label: 'REST', hint: 'Standard JSON/HTTP API', icon: RestIcon },
+  { id: 'SOAP', label: 'SOAP', hint: 'XML envelope service', icon: SoapIcon },
+  { id: 'GRAPHQL', label: 'GraphQL', hint: 'Query language API', icon: GraphqlIcon },
+  { id: 'AUTH', label: 'Auth / Token', hint: 'Token endpoint used by a folder auth provider', icon: KeyIcon },
 ];
 
 export type CreateKind = 'workspace' | 'collection' | 'request';
@@ -115,7 +116,10 @@ export function CreateModal({
                     data-testid={`api-type-${opt.id}`}
                     onClick={() => setApiType(opt.id)}
                   >
-                    <strong>{opt.label}</strong>
+                    <strong>
+                      <opt.icon size={15} />
+                      {opt.label}
+                    </strong>
                     <span>{opt.hint}</span>
                   </button>
                 ))}
