@@ -41,6 +41,10 @@ async function createMockUpstream() {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ access_token: 'itoken-9876', token_type: 'Bearer' }));
         }
+        if (req.url === '/echo-body') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(body);
+        }
         if (req.url.startsWith('/echo')) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ headers: req.headers }));
@@ -288,6 +292,40 @@ test('request detail is returned with camelCase fields for the editor', async ()
   assert.equal(detail.json.request.bodyType, 'JSON');
   assert.equal(detail.json.request.apiType, 'GRAPHQL');
   assert.deepEqual(detail.json.request.bodyJson, { a: 1 });
+});
+
+test('pre-request formula mutates the outgoing JSON body and round-trips', async () => {
+  const admin = await loginAsAdmin();
+  const ws = await admin.api('POST', '/api/workspaces', { name: 'Formula Workspace' });
+  const tree = await admin.api('GET', `/api/workspaces/${ws.json.workspace.id}/content`);
+  const projectId = tree.json.projects[0].id;
+  const col = await admin.api('POST', '/api/collections', { projectId, name: 'Formula' });
+
+  const req = await admin.api('POST', '/api/requests', {
+    collectionId: col.json.collection.id, name: 'Order', method: 'POST', url: `${mockBase()}/echo-body`,
+  });
+  const requestId = req.json.request.id;
+
+  const saved = await admin.api('PUT', `/api/requests/${requestId}`, {
+    bodyType: 'JSON',
+    bodyJson: { amount: 19.99 },
+    formula: 'req.body.userId = 2',
+  });
+  assert.equal(saved.status, 200);
+
+  const detail = await admin.api('GET', `/api/requests/${requestId}`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.json.request.formula, 'req.body.userId = 2');
+
+  const run = await admin.api('POST', `/api/requests/${requestId}/run`);
+  assert.equal(run.status, 200);
+  assert.equal(run.json.runStatus, 'SUCCESS');
+  const dispatched = JSON.parse(run.json.requestSnapshot.body);
+  assert.equal(dispatched.userId, 2, 'formula should add userId to the dispatched body');
+  assert.equal(dispatched.amount, 19.99, 'original body fields are preserved');
+
+  const echoed = JSON.parse(run.json.response.body);
+  assert.equal(echoed.userId, 2, 'upstream should receive the formula-mutated body');
 });
 
 test('admins can delete requests, collections, workspaces and teams', async () => {

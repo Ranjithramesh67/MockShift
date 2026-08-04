@@ -47,6 +47,8 @@ export interface MockResponse {
   statusText: string;
   headers: Record<string, string>;
   body: string;
+  /** 'base64' when the upstream content-type is binary (PDF, images, …), otherwise 'text'. */
+  bodyEncoding?: 'text' | 'base64';
   durationMs: number;
 }
 

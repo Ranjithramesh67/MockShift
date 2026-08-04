@@ -170,12 +170,25 @@ async function runRequest(requestId, userId) {
       signal: AbortSignal.timeout(15000),
     });
     httpStatus = res.status;
-    const text = await res.text();
+    const resContentType = res.headers.get('content-type') || '';
+    const isBinary =
+      /application\/pdf|image\/|audio\/|video\/|application\/octet-stream|application\/zip|application\/x-(?:zip|tar|gzip|7z|rar)/i.test(
+        resContentType
+      );
+    let body;
+    let bodyEncoding = 'text';
+    if (isBinary) {
+      body = Buffer.from(await res.arrayBuffer()).toString('base64');
+      bodyEncoding = 'base64';
+    } else {
+      body = await res.text();
+    }
     responseSnapshot = {
       status: res.status,
       statusText: res.statusText,
       headers: Object.fromEntries(res.headers),
-      body: text,
+      body,
+      bodyEncoding,
       durationMs: Date.now() - fetchStarted,
     };
     if (res.status >= 400) status = 'FAILED';
