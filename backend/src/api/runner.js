@@ -175,19 +175,19 @@ async function runRequest(requestId, userId) {
       /application\/pdf|image\/|audio\/|video\/|application\/octet-stream|application\/zip|application\/x-(?:zip|tar|gzip|7z|rar)/i.test(
         resContentType
       );
-    let body;
+    let responseBody;
     let bodyEncoding = 'text';
     if (isBinary) {
-      body = Buffer.from(await res.arrayBuffer()).toString('base64');
+      responseBody = Buffer.from(await res.arrayBuffer()).toString('base64');
       bodyEncoding = 'base64';
     } else {
-      body = await res.text();
+      responseBody = await res.text();
     }
     responseSnapshot = {
       status: res.status,
       statusText: res.statusText,
       headers: Object.fromEntries(res.headers),
-      body,
+      body: responseBody,
       bodyEncoding,
       durationMs: Date.now() - fetchStarted,
     };

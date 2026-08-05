@@ -126,6 +126,13 @@ router.delete('/:workspaceId', async (req, res, next) => {
     const { workspaceId } = req.params;
     const role = await getWorkspaceRole(req.user.id, workspaceId);
     if (!roleAtLeast(role, 'ADMIN')) return res.status(403).json({ error: 'Workspace admin required' });
+    const { rows } = await query(`SELECT name, visibility FROM workspaces WHERE id = $1`, [workspaceId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Workspace not found' });
+    if (rows[0].name === 'My Workspace') {
+      return res.status(409).json({
+        error: 'Your personal "My Workspace" cannot be deleted. Create a new workspace instead.',
+      });
+    }
     await query(`DELETE FROM workspaces WHERE id = $1`, [workspaceId]);
     res.json({ ok: true });
   } catch (err) {
