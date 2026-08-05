@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useApp } from '@/store/AppStore';
+import { useNav } from '@/store/NavStore';
 import type { ViewMode } from '@/lib/types';
 import { notificationApi, type Notification } from '@/lib/api';
 import {
@@ -116,6 +117,7 @@ function NotificationBell() {
 export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
   const { user, logout } = useAuth();
   const { state, dispatch } = useApp();
+  const { setView } = useNav();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewsOpen, setViewsOpen] = useState(false);
@@ -200,6 +202,7 @@ export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
             href="/automations"
             className="ghost-button"
             data-testid="automations-link"
+            onClick={() => setView('automations')}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
             <BoltIcon size={14} />
@@ -210,6 +213,7 @@ export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
               href="/manage"
               className="ghost-button"
               data-testid="manage-link"
+              onClick={() => setView('manage')}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <ShieldIcon size={14} />
@@ -221,6 +225,7 @@ export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
               href="/admin"
               className="ghost-button"
               data-testid="admin-link"
+              onClick={() => setView('admin')}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <UserIcon size={14} />

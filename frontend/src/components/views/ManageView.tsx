@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { useNav } from '@/store/NavStore';
 import {
   manageApi,
   type ManageOverview,
@@ -35,7 +35,7 @@ function fmtDate(iso: string | null | undefined): string {
 
 export function ManageView() {
   const { user } = useAuth();
-  const { setView } = useNav();
+  const router = useRouter();
   const [tab, setTab] = useState<TabId>('overview');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -79,7 +79,7 @@ export function ManageView() {
         <div className="auth-card" data-testid="manage-forbidden">
           <h1 className="auth-title">Manager access required</h1>
           <p>Only managers and administrators can view this section.</p>
-          <button type="button" className="ghost-button" data-testid="manage-forbidden-back" onClick={() => setView('workspace')}>
+          <button type="button" className="ghost-button" data-testid="manage-forbidden-back" onClick={() => router.push('/')}>
             Back to workspace
           </button>
         </div>
@@ -158,7 +158,7 @@ export function ManageView() {
         </div>
         <div className="admin-header-actions">
           {canAdmin && (
-            <button type="button" className="ghost-button" data-testid="manage-to-admin" onClick={() => setView('admin')}>
+            <button type="button" className="ghost-button" data-testid="manage-to-admin" onClick={() => router.push('/admin')}>
               Admin console
             </button>
           )}

@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { useNav } from '@/store/NavStore';
 import { adminApi, type AdminUser, type UserRole } from '@/lib/api';
 
 export function AdminView() {
   const { user } = useAuth();
-  const { setView } = useNav();
+  const router = useRouter();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,7 +35,7 @@ export function AdminView() {
         <div className="auth-card" data-testid="admin-forbidden">
           <h1 className="auth-title">Admin access required</h1>
           <p>Only administrators can view this section.</p>
-          <button type="button" className="ghost-button" data-testid="admin-forbidden-back" onClick={() => setView('workspace')}>
+          <button type="button" className="ghost-button" data-testid="admin-forbidden-back" onClick={() => router.push('/')}>
             Back to workspace
           </button>
         </div>
