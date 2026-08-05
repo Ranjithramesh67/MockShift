@@ -1,10 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Regression: opening /manage, /admin or /automations, then clicking any API
- * request in the sidebar must switch back to the workspace and open the
- * request editor. Previously the view stayed on the admin page when the click
- * happened while the top-level navigation was still settling.
+ * Top-level pages (/manage, /admin, /automations) hide the workspace sidebar
+ * panel (workspace chips + collections tree). Clicking the rail "APIs" button
+ * must navigate back to the workspace and restore the panel + request editor.
  *
  * Depends on the seed data created by `cd backend && npm run seed:dev`
  * (ADMIN account, "My Workspace", "Mock API Demo" collection).
@@ -16,7 +15,7 @@ const PAGES: Array<{ testId: string; url: string; pageTestId: string }> = [
 ];
 
 for (const p of PAGES) {
-  test(`clicking a request from ${p.url} navigates back to the request editor`, async ({ page }) => {
+  test(`sidebar panel is hidden on ${p.url} and rail-apis returns to the editor`, async ({ page }) => {
     await page.goto('/login');
     await page.getByTestId('login-email').fill('boss1785867669@test.io');
     await page.getByTestId('login-password').fill('bosspass123');
@@ -26,16 +25,23 @@ for (const p of PAGES) {
     await page.getByTestId('workspace-My Workspace').click();
     const req = page.getByTestId('sidebar-request-GET all posts');
     await expect(req).toBeVisible();
+    await req.click();
+    await expect(page.getByTestId('url-input')).toBeVisible();
 
     await page.getByTestId(p.testId).click();
     await expect(page).toHaveURL(new RegExp(p.url));
     await expect(page.getByTestId(p.pageTestId)).toBeVisible();
-    await expect(req).toBeVisible();
 
-    await req.click();
+    // Workspace panel (workspace chips + collections tree) must be hidden.
+    await expect(page.getByTestId('workspace-My Workspace')).not.toBeVisible();
+    await expect(req).not.toBeVisible();
+    // The icon rail stays so the user can navigate back.
+    await expect(page.getByTestId('rail-apis')).toBeVisible();
 
+    await page.getByTestId('rail-apis').click();
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL('/');
+    await expect(page.getByTestId('workspace-My Workspace')).toBeVisible();
     await expect(page.getByTestId('url-input')).toBeVisible();
   });
 }

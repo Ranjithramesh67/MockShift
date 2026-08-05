@@ -3,18 +3,27 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
-## Current turn (completed)
-- **Bug (FIXED)**: opening `/manage`, `/admin` or `/automations`, then clicking any API/request in the
-  workspace did not switch the view — the screen stayed on the manage/admin/automations page.
-- **Root cause**: `Sidebar.goWorkspace()` skipped `router.push('/')` when `usePathname()` still
-  reported `/`. Clicking a request while the top-level navigation was still in flight let the pending
-  `/manage` (etc.) navigation complete afterwards; `RouteViewSync` then set the view back to the
-  admin page.
-- **Fix**: `goWorkspace()` now always calls `router.push('/')` (a push to the current route is a
-  no-op, so the normal in-workspace flow is unaffected). Committed `6faed49`.
-- **Regression tests** added (`frontend/e2e/nav-*.spec.ts`, seeded-ADMIN based): click a request from
-  each of `/manage`, `/admin`, `/automations`; the in-flight-transition race; and a no-full-reload
-  sanity check. All 9 e2e specs, 28 frontend unit tests, and `next build` pass.
+## Current turn (in progress)
+User-reported polish items (all three pending — do not mark done until verified):
+1. **Hide sidebar when in automations/manage/admin views**: when the user opens
+   `/automations`, `/manage` or `/admin`, the "Workspaces / Collections" side panel (and the icon
+   rail? decide) should not be shown. Today `AppShell` always renders `<Sidebar/>` next to
+   `<main className="main-area">`; for `view !== 'workspace'` it should be hidden (layout/
+   responsiveness issue too — see #2). Keep `data-testid="sidebar"` e2e hooks in mind (nav tests in
+   `frontend/e2e/nav-*.spec.ts` click requests from `/manage`/`/admin`/`/automations` — those tests
+   assert the sidebar tree is still reachable; if the panel is hidden on those routes, re-point the
+   tests to assert the request click only from `/`, or verify whether hiding only the panel (not the
+   rail) is acceptable).
+2. **Admin "Create user" modal breaks layout**: opening the create-user modal (Admin console /
+   `AdminView.tsx`) collapses the page responsiveness. Likely the modal (or a wide element inside it,
+   e.g. a role dropdown / long input) overflows, or the `.app-body`/`.admin-view` scroll container
+   isn't handling a wide/overflowing child — investigate and fix CSS (modal should be centered,
+   max-width, scrollable). Verify in desktop + narrow widths.
+3. **Large response overflows instead of scrolling**: for a very large API response, the response
+   pane grows taller instead of showing a scrollable view inside the pane. Likely
+   `ResponsePane.tsx` / `.response-*` CSS lacks `overflow:auto` + constrained height, or the
+   parent `.app-body`/split-pane flex chain has no `min-height:0`. Fix so the pane scrolls
+   internally.
 
 ## User
 - Repo owner: **Ranjithramesh67** — https://github.com/Ranjithramesh67/MockShift (branch `master`).

@@ -82,7 +82,7 @@ export function AppShell() {
     <div className="app">
       <TopBar onOpenCurl={() => setCurlOpen(true)} />
       <div className="app-body">
-        <Sidebar />
+        <Sidebar panelHidden={view !== 'workspace'} />
         <main className="main-area">
           {view === 'workspace' ? (
             <WorkspaceArea onOpenCurl={() => setCurlOpen(true)} />

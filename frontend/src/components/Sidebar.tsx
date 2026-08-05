@@ -339,7 +339,7 @@ function TeamsPanel({ onManage }: { onManage: () => void }) {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const ws = useWorkspace();
   const { user } = useAuth();
   const { dispatch } = useApp();
@@ -454,7 +454,7 @@ export function Sidebar() {
         )}
       </nav>
 
-      <div className="sidebar-panel">
+      <div className={`sidebar-panel ${panelHidden ? 'sidebar-panel-hidden' : ''}`}>
         {rail === 'apis' ? (
           <>
             <div className="sidebar-section">
