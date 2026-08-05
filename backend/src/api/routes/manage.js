@@ -372,7 +372,7 @@ router.get('/history', async (req, res, next) => {
         `SELECT rh.id, rh.trigger, rh.status, rh.started_at, rh.finished_at,
                 rh.request_id, rh.workflow_id,
                 u.email AS user_email, u.name AS user_name,
-                COALESCE(ar.name, wc.name) AS name
+                COALESCE(ar.name, wc.name, '(deleted)') AS name
            FROM run_history rh
            LEFT JOIN users u ON u.id = rh.user_id
            LEFT JOIN api_requests ar ON ar.id = rh.request_id
@@ -387,7 +387,7 @@ router.get('/history', async (req, res, next) => {
       `SELECT rh.id, rh.trigger, rh.status, rh.started_at, rh.finished_at,
               rh.request_id, rh.workflow_id,
               u.email AS user_email, u.name AS user_name,
-              COALESCE(ar.name, wc.name) AS name
+              COALESCE(ar.name, wc.name, '(deleted)') AS name
          FROM run_history rh
          LEFT JOIN users u ON u.id = rh.user_id
          LEFT JOIN api_requests ar ON ar.id = rh.request_id

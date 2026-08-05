@@ -123,37 +123,37 @@ and upstream-echoed bodies contain `userId: 2`, and asserts
   (`req.body.userId = 42` dispatched as `userId: 42`).
 
 ### Test matrix (all green at last run)
-- Backend: `npm run test:api` 15/15 · `npm run test:api:unit` 14/14 ·
+- Backend: `npm run test:api` 16/16 · `npm run test:api:unit` 14/14 ·
   `npm test` (jest) 39/39.
-- Frontend: `npm run test` 17/17 · `npm run build` OK · `npm run test:e2e`
-  (Playwright) 4/4.
-- DB: `cd db && bash tests/run.sh` — all pass.
+- Frontend: `npm run test` 28/28 · `npm run build` OK (after the `Link`
+  import fix) · `npm run test:e2e` (Playwright) 4/4.
+- DB: `cd db && bash tests/run.sh` — all pass (includes migration 005).
 
 ## 7. Current uncommitted changes
 
 ```
-M backend/package.json
-M backend/scripts/mock-upstream.js
-M backend/src/sandbox/formulaRunner.js
-M backend/tests/apiAuth.integration.test.cjs
-M backend/tests/sandbox.rce.test.js
-M frontend/src/components/FormulaHelper.tsx
-?? backend/scripts/mock-data.json
-?? backend/scripts/seed-dev.js
-?? docs/SESSION.md
+M backend/src/api/routes/manage.js        (COALESCE '(deleted)' for orphaned run rows)
+M backend/tests/apiAuth.integration.test.cjs (regression test: delete a run request)
+M frontend/src/components/Sidebar.tsx     (import Link from 'next/link' — fixes next build)
+?? db/migrations/005_relax_run_history_target.sql
 ```
 
-Nothing has been committed or pushed beyond `472cdf4`.
+The response-pane prettify/preview/PDF feature and all prior session work are
+already committed and pushed on `master` (HEAD `22f4e17` + this session's
+commit).
 
 ## 8. Known issues / notes for the next agent
 
-- **Deleting a run request via the API fails**: `DELETE /requests/:id` fails
-  with `run_history_target` check violation once a run exists, because
-  `run_history.request_id` is `ON DELETE SET NULL` while the check constraint
-  requires exactly one of `request_id`/`workflow_id` to be non-null. The
-  integration test only deletes never-run requests, so this slipped through.
-  Fix direction: cascade delete (or null out) dependent `run_history` rows in
-  the delete handler, or relax the constraint to allow both null.
+- ~~**Deleting a run request via the API fails**~~ **FIXED**: migration
+  `005_relax_run_history_target.sql` relaxes the `run_history_target` CHECK constraint to
+  `NOT (request_id IS NOT NULL AND workflow_id IS NOT NULL)`, so `ON DELETE SET NULL` from a request/
+  workflow deletion no longer violates it. Run history is preserved as an audit trail; the manage
+  `/history` query labels orphaned rows `(deleted)` via a third `COALESCE` fallback. Regression test
+  added to `apiAuth.integration.test.cjs` (run a request → delete it → 200, rows preserved). App RLS
+  hides both-null rows from user-visible history, which is acceptable.
+- **Production build bug fixed**: `Sidebar.tsx` was missing `import Link from 'next/link'` (added);
+  `next build` now passes. `npm run test:e2e` may spawn its own dev server and conflict with a running
+  one on port 3000 — kill existing `next dev` before running e2e, or rely on `reuseExistingServer`.
 - The mock store is in-memory; restarting `mock-upstream.js` resets POST/PUT/
   DELETE mutations back to `mock-data.json`.
 - `redis-cli config set dir` is a protected setting in this build; Redis was
