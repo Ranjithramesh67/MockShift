@@ -73,6 +73,14 @@ All planned features are implemented and pushed to `origin/master`:
   `docs/SESSION.md` §8 for the fix direction.
 
 ## Recent fixes (this session)
+- **Sidebar UX redesign** (`frontend/src/components/Sidebar.tsx` + `globals.css`): split the single
+  mixed pane into a **left icon rail** (APIs & collections / Teams / Automations / Manage / Admin,
+  role-gated) plus a **context panel**. The APIs panel now leads with compact **workspace chips**
+  (one-tap switching, active state, hover-reveal delete that stays disabled for "My Workspace", and a
+  "+" chip to add a workspace) and an empty state when no workspace is selected. Teams moved to their
+  own rail panel with team cards (member avatar clusters + counts). All existing `data-testid` hooks
+  kept; the Playwright e2e suite (4 tests) still passes unchanged, frontend unit tests 28/28,
+  `tsc --noEmit` clean.
 - **Fixed `backend/src/api/runner.js` TDZ bug**: the response-body `let body` shadowed the request-body
   `const body` inside the `try` block, so ANY request with a body (POST/PUT/PATCH/DELETE) failed with
   `Cannot access 'body' before initialization`. Renamed the inner variable to `responseBody`.
