@@ -154,7 +154,7 @@ export const authApi = {
   signup: (input: { email: string; password: string; name?: string }) =>
     apiFetch<{ user: Session }>('/api/auth/signup', { method: 'POST', body: input }),
   login: (input: { email: string; password: string }) =>
-    apiFetch<Session>('/api/auth/login', { method: 'POST', body: input }),
+    apiFetch<{ user: Session }>('/api/auth/login', { method: 'POST', body: input }),
   logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
   me: () => apiFetch<Session>('/api/auth/me'),
 };

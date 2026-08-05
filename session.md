@@ -3,6 +3,13 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
+## Current turn (in progress)
+- **Bug**: opening `/manage`, `/admin` or `/automations`, then clicking any API/request in the
+  workspace does not switch the view — the screen stays on the manage/admin/automations page.
+  Suspected cause: the sidebar-redesign routing (NavStore/AppShell) does not navigate away from the
+  top-level pages when a request is selected. Fix navigation so selecting a request always shows the
+  request editor.
+
 ## User
 - Repo owner: **Ranjithramesh67** — https://github.com/Ranjithramesh67/MockShift (branch `master`).
 - Git author email used on this machine: monkeycode-ai@chaitin.com.

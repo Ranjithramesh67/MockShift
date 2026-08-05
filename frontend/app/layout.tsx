@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/lib/auth';
+import { AppProvider } from '@/store/AppStore';
+import { WorkspaceProvider } from '@/store/WorkspaceStore';
+import { NavProvider } from '@/store/NavStore';
+import { RouteViewSync } from '@/components/RouteViewSync';
 
 export const metadata: Metadata = {
   title: 'API Hub — API testing & workflow platform',
@@ -29,7 +33,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <AppProvider>
+            <WorkspaceProvider>
+              <NavProvider initialView="workspace">
+                <RouteViewSync />
+                {children}
+              </NavProvider>
+            </WorkspaceProvider>
+          </AppProvider>
+        </AuthProvider>
       </body>
     </html>
   );

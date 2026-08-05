@@ -2,9 +2,10 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp } from '@/store/AppStore';
-import { useNav, type AppView } from '@/store/NavStore';
+import { useNav } from '@/store/NavStore';
 import { useAuth } from '@/lib/auth';
 import { accessRequestApi } from '@/lib/api';
 import { CreateModal, type CreateKind } from './CreateModal';
@@ -27,7 +28,7 @@ import {
 
 type RailTab = 'apis' | 'teams';
 
-function WorkspaceChips({ onOpenCreate }: { onOpenCreate: (kind: CreateKind) => void }) {
+function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: CreateKind) => void; onNavigate: () => void }) {
   const ws = useWorkspace();
   return (
     <div className="workspace-chips" data-testid="workspace-chips">
@@ -38,7 +39,10 @@ function WorkspaceChips({ onOpenCreate }: { onOpenCreate: (kind: CreateKind) => 
             className={`workspace-chip ${ws.activeWorkspaceId === w.id ? 'active' : ''}`}
             data-testid={`workspace-${w.name}`}
             title={w.name}
-            onClick={() => ws.selectWorkspace(w.id).catch(() => undefined)}
+            onClick={() => {
+              ws.selectWorkspace(w.id).catch(() => undefined);
+              onNavigate();
+            }}
           >
             <span className="workspace-chip-icon">
               <WorkspaceIcon size={12} />
@@ -87,11 +91,12 @@ function WorkspaceChips({ onOpenCreate }: { onOpenCreate: (kind: CreateKind) => 
   );
 }
 
-function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess }: {
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate }: {
   onOpenCreate: (kind: CreateKind, collectionId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
   onRequestAccess: (project: { id: string; name: string }) => void;
+  onNavigate: () => void;
 }) {
   const ws = useWorkspace();
   const { dispatch } = useApp();
@@ -104,6 +109,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   const onSelectRequest = (id: string) => {
     dispatch({ type: 'SELECT_REQUEST', id });
     ws.selectRequest(id).catch(() => undefined);
+    onNavigate();
   };
 
   if (!ws.tree) return null;
@@ -170,6 +176,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                       onClick={() => {
                         toggleCollection(c.id);
                         ws.selectCollection(c.id, c.name).catch(() => undefined);
+                        onNavigate();
                       }}
                     >
                       <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
@@ -336,6 +343,9 @@ export function Sidebar() {
   const ws = useWorkspace();
   const { user } = useAuth();
   const { dispatch } = useApp();
+  const { setView } = useNav();
+  const router = useRouter();
+  const pathname = usePathname();
   const [rail, setRail] = useState<RailTab>('apis');
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
   const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
@@ -349,6 +359,11 @@ export function Sidebar() {
   const openCreate = (kind: CreateKind, collectionId?: string) => {
     setTargetCollectionId(collectionId ?? null);
     setCreateKind(kind);
+  };
+
+  const goWorkspace = () => {
+    setView('workspace');
+    if (pathname !== '/') router.push('/');
   };
 
   const submitAccessRequest = async () => {
@@ -368,6 +383,7 @@ export function Sidebar() {
     await ws.selectCollection(collectionId, ws.tree?.collections.find((c) => c.id === collectionId)?.name ?? '');
     setAuthCollectionId(collectionId);
     setAuthOpen(true);
+    goWorkspace();
   };
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
@@ -381,7 +397,10 @@ export function Sidebar() {
           data-testid="rail-apis"
           title="APIs & collections"
           aria-label="APIs & collections"
-          onClick={() => setRail('apis')}
+          onClick={() => {
+            setRail('apis');
+            goWorkspace();
+          }}
         >
           <CollectionIcon size={17} />
         </button>
@@ -402,6 +421,7 @@ export function Sidebar() {
           data-testid="rail-automations"
           title="Automations"
           aria-label="Automations"
+          onClick={() => setView('automations')}
         >
           <BoltIcon size={17} />
         </Link>
@@ -412,6 +432,7 @@ export function Sidebar() {
             data-testid="rail-manage"
             title="Manage"
             aria-label="Manage"
+            onClick={() => setView('manage')}
           >
             <ShieldIcon size={17} />
           </Link>
@@ -423,6 +444,7 @@ export function Sidebar() {
             data-testid="rail-admin"
             title="Admin"
             aria-label="Admin"
+            onClick={() => setView('admin')}
           >
             <UserIcon size={17} />
           </Link>
@@ -438,7 +460,7 @@ export function Sidebar() {
               </div>
               {ws.loading && <p className="hint">Loading…</p>}
               {ws.error && <p className="auth-error">{ws.error}</p>}
-              <WorkspaceChips onOpenCreate={openCreate} />
+              <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} />
             </div>
 
             {ws.tree && ws.activeWorkspaceId ? (
@@ -447,6 +469,7 @@ export function Sidebar() {
                 onOpenSharing={() => setSharingOpen(true)}
                 onOpenAuth={onOpenAuth}
                 onRequestAccess={(p) => setRequestingProject(p)}
+                onNavigate={goWorkspace}
               />
             ) : (
               !ws.loading && (
