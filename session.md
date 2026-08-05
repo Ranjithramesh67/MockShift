@@ -13,10 +13,13 @@
 2. **Make the changes** — implement the requested code changes.
 3. **Push code to GitHub every time** — after the changes, commit and `git push origin master`.
    Do not leave work sitting uncommitted/unpushed at the end of a turn.
-4. Follow the no-delete guardrail: move build caches aside (e.g. `.next.bak-*`) instead of `rm -rf`;
+4. **Update `session.md` AFTER the push too** — once the code changes are committed and pushed,
+   refresh this file with what was completed (status, known issues, anything a fresh AI would need),
+   then commit + push that `session.md` update as well. Keep `docs/SESSION.md` in sync when useful.
+5. Follow the no-delete guardrail: move build caches aside (e.g. `.next.bak-*`) instead of `rm -rf`;
    never delete user data without confirmation.
-5. Keep `data-testid` / `aria-label` hooks green so the Playwright e2e suite keeps passing.
-6. AI/LLM feature is **out of scope** (deferred by the user) — do not build or add AI placeholders.
+6. Keep `data-testid` / `aria-label` hooks green so the Playwright e2e suite keeps passing.
+7. AI/LLM feature is **out of scope** (deferred by the user) — do not build or add AI placeholders.
 
 ## Status (as of the last push)
 All planned features are implemented and pushed to `origin/master`:
