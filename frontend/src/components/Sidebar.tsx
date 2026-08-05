@@ -105,7 +105,9 @@ export function Sidebar() {
                 title="Delete workspace"
                 aria-label={`Delete workspace ${w.name}`}
                 data-testid={`delete-workspace-${w.name}`}
+                disabled={w.name === 'My Workspace'}
                 onClick={() => {
+                  if (w.name === 'My Workspace') return;
                   if (
                     window.confirm(
                       `Delete workspace "${w.name}"? This removes all of its projects, collections and requests.`
