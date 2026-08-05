@@ -319,6 +319,13 @@ textarea {
   gap: 6px;
 }
 
+/* When a top-level view (automations/manage/admin) is open the workspace
+   panel (workspace chips + collections tree) is hidden; only the icon rail
+   remains so users can navigate back. */
+.sidebar-panel-hidden {
+  display: none;
+}
+
 .sidebar-section {
   padding: 4px 2px;
 }
@@ -1096,6 +1103,23 @@ textarea {
   background: var(--bg-input);
 }
 
+/* Constrain the response editor to the pane so very large bodies scroll
+   inside it instead of growing the page. The wrapper gets a definite flex
+   height, then the CodeMirror chain resolves height:100% down to the
+   .cm-scroller (which scrolls). */
+.response-body .code-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.response-body .code-editor .cm-theme,
+.response-body .code-editor .cm-editor {
+  height: 100% !important;
+}
+.response-body .code-editor .cm-scroller {
+  overflow: auto !important;
+}
+
 .editor-placeholder {
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -1681,6 +1705,22 @@ textarea {
    Modals
    ========================================================================== */
 .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 8, 12, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: backdrop-in 0.18s var(--ease);
+}
+
+/* Views that hand-write their own overlay (AdminView, ManageView,
+   AutomationsView, CodeGenModal, Sidebar access-request) use .modal-overlay.
+   Keep it identical to .modal-backdrop so those modals are fixed/centered and
+   do not expand the page layout. */
+.modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(6, 8, 12, 0.6);
