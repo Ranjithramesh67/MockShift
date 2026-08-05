@@ -164,10 +164,12 @@ commit).
 
 ## 9. How to continue
 
+**Working order (user-mandated):** 1) update `session.md` first, 2) make the
+changes, 3) commit + push to `origin/master`.
+
 1. If services are down, start them per section 2, then hit the preview link.
 2. If the DB was reset (e.g., by `db/tests/run.sh` or an integration test),
    restore sample data with `cd backend && npm run seed:dev`.
 3. Sign in as `boss1785867669@test.io` / `bosspass123`, open "Mock API Demo",
    press Run on any request to confirm the stack.
-4. Outstanding candidate work: the run-history delete bug in section 8, and
-   committing the uncommitted changes from section 7 when the user asks.
+4. The `DELETE /requests/:id` run-history bug is fixed (section 8).
