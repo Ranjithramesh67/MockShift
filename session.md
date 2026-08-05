@@ -8,14 +8,15 @@
 - Git author email used on this machine: monkeycode-ai@chaitin.com.
 
 ## Working rules for the AI (user-mandated — follow every session)
-1. **Push code to GitHub every time** — after any code change, commit and `git push origin master`.
+1. **Update `session.md` FIRST** — at the start of every turn, before any code change, record the
+   plan/pending work in this file so a fresh AI always sees the latest picture.
+2. **Make the changes** — implement the requested code changes.
+3. **Push code to GitHub every time** — after the changes, commit and `git push origin master`.
    Do not leave work sitting uncommitted/unpushed at the end of a turn.
-2. **Update `session.md` (this file) every time** — keep it current: completed/pending work,
-   accounts, known issues, and anything a fresh AI would need. Commit + push the update too.
-3. Follow the no-delete guardrail: move build caches aside (e.g. `.next.bak-*`) instead of `rm -rf`;
+4. Follow the no-delete guardrail: move build caches aside (e.g. `.next.bak-*`) instead of `rm -rf`;
    never delete user data without confirmation.
-4. Keep `data-testid` / `aria-label` hooks green so the Playwright e2e suite keeps passing.
-5. AI/LLM feature is **out of scope** (deferred by the user) — do not build or add AI placeholders.
+5. Keep `data-testid` / `aria-label` hooks green so the Playwright e2e suite keeps passing.
+6. AI/LLM feature is **out of scope** (deferred by the user) — do not build or add AI placeholders.
 
 ## Status (as of the last push)
 All planned features are implemented and pushed to `origin/master`:
