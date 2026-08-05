@@ -24,6 +24,10 @@
 ## Status (as of the last push)
 All planned features are implemented and pushed to `origin/master`:
 
+- **Working rules** now require the full loop every session: update `session.md`
+  first → make changes → push → update `session.md` again after the push (commit
+  `8a64eb6`).
+
 - **MANAGER RBAC + project access requests / approvals** (migration `003_rbac_manager_approvals.sql`,
   `access.js`, `audit.js`, routes `manage.js`/`projects.js`/`admin.js`, RLS).
 - **Admin/manager audit views** (`app/manage/page.tsx`, `app/admin/page.tsx`): users, projects +
