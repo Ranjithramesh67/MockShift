@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
@@ -345,7 +345,6 @@ export function Sidebar() {
   const { dispatch } = useApp();
   const { setView } = useNav();
   const router = useRouter();
-  const pathname = usePathname();
   const [rail, setRail] = useState<RailTab>('apis');
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
   const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
@@ -363,7 +362,11 @@ export function Sidebar() {
 
   const goWorkspace = () => {
     setView('workspace');
-    if (pathname !== '/') router.push('/');
+    // Always navigate to '/' — never skip based on usePathname(), which can be
+    // stale while a /manage|/admin|/automations navigation is still in flight.
+    // If we skipped, the in-flight navigation would complete afterwards and
+    // RouteViewSync would snap the view back to the admin page.
+    router.push('/');
   };
 
   const submitAccessRequest = async () => {
