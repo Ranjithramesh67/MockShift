@@ -165,7 +165,8 @@ commit).
 ## 9. How to continue
 
 **Working order (user-mandated):** 1) update `session.md` first, 2) make the
-changes, 3) commit + push to `origin/master`.
+changes, 3) commit + push to `origin/master`, 4) update `session.md` again
+after the push with what was completed and push that update too.
 
 1. If services are down, start them per section 2, then hit the preview link.
 2. If the DB was reset (e.g., by `db/tests/run.sh` or an integration test),
