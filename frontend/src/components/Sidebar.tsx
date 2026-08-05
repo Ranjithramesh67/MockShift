@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp } from '@/store/AppStore';
 import { useNav, type AppView } from '@/store/NavStore';

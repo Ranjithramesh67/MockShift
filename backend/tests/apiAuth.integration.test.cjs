@@ -358,6 +358,45 @@ test('admins can delete requests, collections, workspaces and teams', async () =
   assert.equal(delTeam.status, 200);
 });
 
+test('deleting a request that has run history succeeds and preserves the audit row', async () => {
+  const admin = await loginAsAdmin();
+  const ws = await admin.api('POST', '/api/workspaces', { name: 'Run-Delete Workspace' });
+  const tree = await admin.api('GET', `/api/workspaces/${ws.json.workspace.id}/content`);
+  const projectId = tree.json.projects[0].id;
+  const col = await admin.api('POST', '/api/collections', { projectId, name: 'Runs' });
+  const req = await admin.api('POST', '/api/requests', {
+    collectionId: col.json.collection.id, name: 'Ran Once', method: 'POST', url: `${mockBase()}/echo-body`,
+  });
+  const requestId = req.json.request.id;
+
+  const run = await admin.api('POST', `/api/requests/${requestId}/run`);
+  assert.equal(run.status, 200);
+  assert.equal(run.json.runStatus, 'SUCCESS');
+
+  const { query } = require('../src/api/db');
+  const beforeRows = await query('SELECT count(*)::int AS n FROM run_history WHERE request_id = $1', [requestId]);
+  assert.ok(beforeRows.rows[0].n >= 1, 'the run should be recorded before deletion');
+
+  const beforeOrphans = await query(
+    'SELECT count(*)::int AS n FROM run_history WHERE request_id IS NULL AND workflow_id IS NULL'
+  );
+
+  const del = await admin.api('DELETE', `/api/requests/${requestId}`);
+  assert.equal(del.status, 200, 'deleting a run request must not violate run_history_target');
+
+  const missing = await admin.api('GET', `/api/requests/${requestId}`);
+  assert.equal(missing.status, 404);
+
+  const afterOrphans = await query(
+    'SELECT count(*)::int AS n FROM run_history WHERE request_id IS NULL AND workflow_id IS NULL'
+  );
+  assert.equal(
+    afterOrphans.rows[0].n,
+    beforeOrphans.rows[0].n + beforeRows.rows[0].n,
+    'run history rows are preserved (SET NULL) after deleting the request'
+  );
+});
+
 test('non-admin workspace members cannot delete requests', async () => {
   const admin = await loginAsAdmin();
   const bob = makeClient();

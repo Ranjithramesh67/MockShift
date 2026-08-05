@@ -32,6 +32,9 @@ All planned features are implemented and pushed to `origin/master`:
 - **Automations** (`app/automations/page.tsx`, routes `automations.js`/`workflows.js`, schedule +
   webhook triggers, failure notifications via `workflowService.js`).
 - **Mock upstream + seed** (`backend/scripts/mock-upstream.js`, `seed-dev.js`, `mock-data.json`).
+- **Postman-style response pane** (`ResponsePane.tsx`, `responseView.js`): Pretty/Raw/Preview tabs,
+  Prettify, HTML preview iframe, inline PDF/image viewer + Download (binary bodies base64 via
+  `runner.js` `bodyEncoding`).
 - **MonkeyCode green rebrand** (`app/globals.css`).
 
 ## Run it
@@ -69,21 +72,29 @@ All planned features are implemented and pushed to `origin/master`:
   button for it (`Sidebar.tsx`). Deleting any other workspace still works.
 
 ## Known open item
-- `DELETE /requests/:id` fails once a run exists (`run_history_target` check violation); see
-  `docs/SESSION.md` §8 for the fix direction.
+- **FIXED this session** — `DELETE /requests/:id` (and collections/workspaces) no longer fails after a
+  run exists. Migration `005_relax_run_history_target.sql` relaxes the `run_history_target` CHECK so
+  `ON DELETE SET NULL` no longer violates it; run history is preserved as an audit trail (app shows
+  `(deleted)` for orphaned rows). Regression test added in `apiAuth.integration.test.cjs`.
+  Verified end-to-end: run a request → delete it → `200 {"ok":true}`.
+
+## Response pane (Postman-style) — implemented
+- `frontend/src/components/ResponsePane.tsx` + `frontend/src/lib/responseView.js` (pure helpers, unit
+  tested) + `globals.css`:
+  - **Pretty / Raw / Preview** view-mode tabs on the response body; **Prettify** button (JSON via
+    `JSON.stringify(...,2)`, XML/HTML via a tag-depth indenter).
+  - **Preview**: HTML renders in a sandboxed `iframe`; JSON/XML show formatted text.
+  - **PDF / images**: binary responses are base64-encoded by the backend
+    (`backend/src/api/runner.js` `bodyEncoding: 'base64'` when content-type is binary) and rendered
+    inline (PDF viewer iframe / image) with a **Download** button (Blob + `URL.createObjectURL`).
+  - Demo: `GET sample PDF` and `GET HTML page` requests in the seeded collection hit
+    `http://127.0.0.1:3999/files/sample.pdf` and `/html`.
 
 ## Recent fixes (this session)
-- **Sidebar UX redesign** (`frontend/src/components/Sidebar.tsx` + `globals.css`): split the single
-  mixed pane into a **left icon rail** (APIs & collections / Teams / Automations / Manage / Admin,
-  role-gated) plus a **context panel**. The APIs panel now leads with compact **workspace chips**
-  (one-tap switching, active state, hover-reveal delete that stays disabled for "My Workspace", and a
-  "+" chip to add a workspace) and an empty state when no workspace is selected. Teams moved to their
-  own rail panel with team cards (member avatar clusters + counts). All existing `data-testid` hooks
-  kept; the Playwright e2e suite (4 tests) still passes unchanged, frontend unit tests 28/28,
-  `tsc --noEmit` clean.
-- **Fixed `backend/src/api/runner.js` TDZ bug**: the response-body `let body` shadowed the request-body
-  `const body` inside the `try` block, so ANY request with a body (POST/PUT/PATCH/DELETE) failed with
-  `Cannot access 'body' before initialization`. Renamed the inner variable to `responseBody`.
-  Verified: formula request now runs SUCCESS (was FAILED); `test:api` 15/15, unit 14/14, jest 39/39.
-- **"My Workspace" delete protection implemented**: backend `DELETE /api/workspaces/:id` returns 409
-  for workspaces named `My Workspace`; the sidebar delete button is disabled for it.
+- **Fixed production build**: `frontend/src/components/Sidebar.tsx` used `<Link>` without importing
+  `next/link` (introduced in the sidebar-redesign commit) — `next build` failed type-check; added the
+  import.
+- **Fixed `DELETE /requests/:id` after a run** (migration 005, see above). `manage.js` run-history
+  queries now `COALESCE(ar.name, wc.name, '(deleted)')` so preserved history rows read cleanly.
+- Prior session fixes (already pushed): sidebar icon-rail redesign, `runner.js` TDZ fix (shadowed
+  `body` var renamed to `responseBody`), "My Workspace" delete protection, response preview/PDF.
