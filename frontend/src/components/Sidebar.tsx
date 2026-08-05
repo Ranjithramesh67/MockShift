@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp } from '@/store/AppStore';
+import { useNav, type AppView } from '@/store/NavStore';
 import { useAuth } from '@/lib/auth';
 import { accessRequestApi } from '@/lib/api';
 import { CreateModal, type CreateKind } from './CreateModal';
