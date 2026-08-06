@@ -12,6 +12,16 @@ function parseBody(body) {
   }
 }
 
+// Turns a step label into a template-safe, dot-path-addressable key.
+// "Create User" -> "create_user"; "GET /posts" -> "get_posts".
+function sanitizeLabel(label) {
+  const key = String(label || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return key || 'step';
+}
+
 const MAX_LOOP_ITERATIONS = 1000;
 
 // Normalizes the UI's loop shape ({ type: 'count'|'until', ... }) and the
@@ -37,6 +47,7 @@ function summarizeSteps(steps) {
     if (!summary[id]) {
       summary[id] = {
         status: value.status,
+        request: value.request,
         response: value.response,
         error: value.error,
         startedAt: value.startedAt,
@@ -199,6 +210,7 @@ class WorkflowEngine {
         vars: state.vars,
         persistVars: false,
         formula: step.formula,
+        passInputs: step.passInputs,
       });
     } catch (err) {
       state.steps[stepKey] = {
@@ -226,7 +238,31 @@ class WorkflowEngine {
       return { step: step.id, status: 'FAILED', handled: 'http' };
     }
 
-    state.vars = { ...(run.vars || {}), [step.id]: parseBody(run.responseSnapshot.body) };
+    // Expose this step's request + response to subsequent steps under friendly,
+    // label-based keys so they can be templated ({{step.<label>.id}}) or read
+    // from formulas (vars.step.<label>.id). `vars[step.id]` stays for backward
+    // compatibility.
+    const responseBody = parseBody(run.responseSnapshot.body);
+    const labelKey = sanitizeLabel(step.label || step.id);
+    state.vars = {
+      ...(run.vars || {}),
+      [step.id]: responseBody,
+      step: {
+        ...(state.vars.step || {}),
+        [step.id]: responseBody,
+        [labelKey]: responseBody,
+      },
+      stepRequest: {
+        ...(state.vars.stepRequest || {}),
+        [step.id]: run.requestSnapshot,
+        [labelKey]: run.requestSnapshot,
+      },
+      stepResponse: {
+        ...(state.vars.stepResponse || {}),
+        [step.id]: run.responseSnapshot,
+        [labelKey]: run.responseSnapshot,
+      },
+    };
 
     const loopConfig = getLoopConfig(step);
     const nextIteration = iteration + 1;
@@ -273,4 +309,4 @@ class WorkflowEngine {
   }
 }
 
-module.exports = { WorkflowEngine, parseBody, summarizeSteps, getLoopConfig };
+module.exports = { WorkflowEngine, parseBody, summarizeSteps, getLoopConfig, sanitizeLabel };

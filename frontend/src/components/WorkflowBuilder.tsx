@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import type { LoopConfig, Workflow, WorkflowStep } from '@/lib/types';
+import type { LoopConfig, StepPassInput, Workflow, WorkflowStep } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
-import { validateWorkflow } from '@/lib/workflowValidation';
+import { validateWorkflow, sanitizeLabel } from '@/lib/workflowValidation';
 import { makeId } from '@/lib/defaultState';
 import { CodeEditor } from './CodeEditor';
 import { SaveIcon, PlusIcon, ArrowUpIcon, ArrowDownIcon, XIcon, GripIcon, WorkflowIcon } from './icons';
@@ -25,6 +25,195 @@ function emptyStep(index: number): WorkflowStep {
     onFailure: 'abort',
     formula: '',
   };
+}
+
+function defaultPassForm(priorSteps: WorkflowStep[]): StepPassInput {
+  return {
+    sourceStepId: priorSteps[priorSteps.length - 1]?.id ?? '',
+    data: 'response',
+    field: '',
+    target: 'header',
+    targetKey: '',
+  };
+}
+
+const PASS_TARGET_LABELS: Array<{ id: StepPassInput['target']; label: string }> = [
+  { id: 'header', label: 'Header' },
+  { id: 'query', label: 'Query param' },
+  { id: 'url', label: 'URL param' },
+  { id: 'body', label: 'Body' },
+];
+
+const PASS_DATA_LABELS: Array<{ id: StepPassInput['data']; label: string }> = [
+  { id: 'response', label: 'Response' },
+  { id: 'request', label: 'Request' },
+];
+
+function PassInputSection({
+  step,
+  priorSteps,
+  stepIndex,
+  onChange,
+}: {
+  step: WorkflowStep;
+  priorSteps: WorkflowStep[];
+  stepIndex: number;
+  onChange: (passInputs: StepPassInput[]) => void;
+}) {
+  const passInputs = step.passInputs ?? [];
+  const [form, setForm] = useState<StepPassInput>(() => defaultPassForm(priorSteps));
+
+  useEffect(() => {
+    setForm((f) =>
+      priorSteps.some((p) => p.id === f.sourceStepId) ? f : defaultPassForm(priorSteps)
+    );
+  }, [priorSteps]);
+
+  const addInput = () => {
+    if (!form.sourceStepId) return;
+    onChange([
+      ...passInputs,
+      {
+        sourceStepId: form.sourceStepId,
+        data: form.data,
+        field: (form.field || '').trim() || undefined,
+        target: form.target,
+        targetKey: (form.targetKey || '').trim() || undefined,
+      },
+    ]);
+    setForm(defaultPassForm(priorSteps));
+  };
+
+  const removeInput = (i: number) => onChange(passInputs.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="step-condition">
+      <span className="field-label">Pass data from previous step into this request</span>
+
+      {priorSteps.length > 0 && (
+        <div className="pass-refs">
+          <span className="pass-ref-title">
+            References from earlier steps (use in URL/headers/body templates or the formula):
+          </span>
+          {priorSteps.map((p) => {
+            const key = sanitizeLabel(p.label || p.id);
+            return (
+              <div className="pass-ref" key={p.id}>
+                <span className="pass-ref-name">{p.label || p.id}:</span>
+                <code>{`{{step.${key}.response}}`}</code>
+                <code>{`{{stepRequest.${key}.url}}`}</code>
+                <code>{`{{stepResponse.${key}.status}}`}</code>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="pass-form">
+        <select
+          className="compact-select"
+          aria-label="Source step"
+          data-testid={`pass-source-${stepIndex}`}
+          value={form.sourceStepId}
+          onChange={(e) => setForm({ ...form, sourceStepId: e.target.value })}
+        >
+          <option value="">Select a step...</option>
+          {priorSteps.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label || p.id}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="compact-select"
+          aria-label="Pass data type"
+          data-testid={`pass-data-${stepIndex}`}
+          value={form.data}
+          onChange={(e) => setForm({ ...form, data: e.target.value as StepPassInput['data'] })}
+        >
+          {PASS_DATA_LABELS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+
+        <input
+          className="text-input"
+          type="text"
+          placeholder="Field (e.g. id)"
+          aria-label="Pass field path"
+          data-testid={`pass-field-${stepIndex}`}
+          value={form.field}
+          onChange={(e) => setForm({ ...form, field: e.target.value })}
+        />
+
+        <select
+          className="compact-select"
+          aria-label="Pass target"
+          data-testid={`pass-target-${stepIndex}`}
+          value={form.target}
+          onChange={(e) => setForm({ ...form, target: e.target.value as StepPassInput['target'] })}
+        >
+          {PASS_TARGET_LABELS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+
+        <input
+          className="text-input"
+          type="text"
+          placeholder="Key"
+          aria-label="Pass destination key"
+          data-testid={`pass-key-${stepIndex}`}
+          value={form.targetKey}
+          onChange={(e) => setForm({ ...form, targetKey: e.target.value })}
+        />
+
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Add pass-through"
+          title="Add pass-through"
+          data-testid={`pass-add-${stepIndex}`}
+          disabled={!form.sourceStepId}
+          onClick={addInput}
+        >
+          <PlusIcon size={13} />
+        </button>
+      </div>
+
+      {passInputs.length > 0 && (
+        <ul className="pass-list">
+          {passInputs.map((pi, i) => {
+            const src = priorSteps.find((p) => p.id === pi.sourceStepId);
+            return (
+              <li key={i} className="pass-list-item" data-testid={`pass-item-${stepIndex}-${i}`}>
+                <span>
+                  {src ? src.label : pi.sourceStepId} · {pi.data}
+                  {pi.field ? `.${pi.field}` : ''} → {pi.target}
+                  {pi.targetKey ? `:${pi.targetKey}` : ''}
+                </span>
+                <button
+                  type="button"
+                  className="icon-button danger"
+                  aria-label="Remove pass-through"
+                  title="Remove pass-through"
+                  data-testid={`pass-remove-${stepIndex}-${i}`}
+                  onClick={() => removeInput(i)}
+                >
+                  <XIcon size={12} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export function WorkflowBuilder() {
@@ -301,6 +490,13 @@ export function WorkflowBuilder() {
                 ariaLabel={`Pre-step formula for step ${index + 1}`}
               />
             </div>
+
+            <PassInputSection
+              step={step}
+              priorSteps={steps.slice(0, index)}
+              stepIndex={index}
+              onChange={(passInputs) => updateStep(index, { passInputs })}
+            />
           </div>
         ))}
       </div>

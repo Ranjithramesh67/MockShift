@@ -342,6 +342,62 @@ describe('workflow chaining (BullMQ)', () => {
     expect(http.callsFor('req-invoice')).toHaveLength(1);
   });
 
+  test('passes the previous step request and response into the next request via passInputs', async () => {
+    const http = new RecordingHttpExecutor();
+    http.setResponse('req-order', { status: 201, body: JSON.stringify({ order_id: 99, trace: 'T-1' }) });
+    http.setResponse('req-invoice', { status: 201, body: '{}' });
+    const { engine, runStore } = makeEngine({
+      name: 'pass',
+      http,
+      workflows: [
+        {
+          id: 'wf-pass',
+          steps: [
+            { id: 'order', label: 'Place Order', requestId: 'req-order' },
+            {
+              id: 'invoice',
+              requestId: 'req-invoice',
+              passInputs: [
+                {
+                  sourceStepId: 'order',
+                  data: 'response',
+                  field: 'order_id',
+                  target: 'header',
+                  targetKey: 'x-order-id',
+                },
+                {
+                  sourceStepId: 'order',
+                  data: 'response',
+                  field: 'trace',
+                  target: 'query',
+                  targetKey: 'trace',
+                },
+                { sourceStepId: 'order', data: 'request', field: 'url', target: 'url', targetKey: 'from' },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const runId = await engine.start({ workflowId: 'wf-pass' });
+    const run = await waitForRun(runStore, runId);
+
+    expect(run.status).toBe('SUCCESS');
+    // Friendly, label-based vars for the previous step are exposed to later steps.
+    expect(run.vars.step.order).toEqual({ order_id: 99, trace: 'T-1' });
+    expect(run.vars.step.place_order).toEqual({ order_id: 99, trace: 'T-1' });
+    expect(run.vars.stepRequest.order.url).toContain('api.example.com/orders');
+    expect(run.vars.stepResponse.order.status).toBe(201);
+
+    const invoiceCall = http.callsFor('req-invoice')[0];
+    expect(invoiceCall.headers['x-order-id']).toBe('99');
+    expect(invoiceCall.query.trace).toBe('T-1');
+    expect(invoiceCall.url).toContain(
+      `from=${encodeURIComponent('https://api.example.com/orders')}`
+    );
+  });
+
   test('registers and removes cron schedules', async () => {
     const http = new RecordingHttpExecutor();
     http.setResponse('req-order', { status: 201, body: '{}' });
