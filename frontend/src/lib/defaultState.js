@@ -19,7 +19,7 @@ function requestFromCurl(name, curlInput) {
     bodyJson: parsed.bodyJson || parsed.bodyText || null,
     bodyText: parsed.bodyText || null,
     contentType: parsed.contentType,
-    formula: '', apiType: 'REST',
+    formula: '', apiType: 'REST', assertions: [],
   };
 }
 
@@ -35,7 +35,7 @@ const defaultRequests = [
     bodyJson: JSON.stringify({ email: 'user@example.com', password: 's3cret' }, null, 2),
     bodyText: null,
     contentType: 'application/json',
-    formula: '', apiType: 'REST',
+    formula: '', apiType: 'REST', assertions: [],
   },
   {
     id: 'req_create_order',
@@ -48,7 +48,7 @@ const defaultRequests = [
     bodyJson: JSON.stringify({ customer: '{{customerId}}', items: [{ sku: 'A1', qty: 2 }] }, null, 2),
     bodyText: null,
     contentType: 'application/json',
-    formula: '', apiType: 'REST',
+    formula: '', apiType: 'REST', assertions: [],
   },
   {
     id: 'req_get_order',
@@ -61,7 +61,7 @@ const defaultRequests = [
     bodyJson: null,
     bodyText: null,
     contentType: 'text/plain',
-    formula: '', apiType: 'REST',
+    formula: '', apiType: 'REST', assertions: [],
   },
   {
     id: 'req_charge',

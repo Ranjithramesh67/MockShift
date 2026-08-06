@@ -3121,3 +3121,173 @@ textarea {
   background: rgba(210, 153, 34, 0.15);
   color: var(--warn);
 }
+
+/* ==========================================================================
+   Response assertions
+   ========================================================================== */
+.assertions-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.assertions-help {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.assertions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assertion-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.assertion-row .assertion-path {
+  min-width: 220px;
+  flex: 1 1 220px;
+}
+
+.assertion-row .assertion-expected {
+  width: 120px;
+}
+
+.assertions-summary {
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+
+.assertions-summary.assertions-pass {
+  background: rgba(63, 185, 80, 0.08);
+  border-color: rgba(63, 185, 80, 0.25);
+}
+
+.assertions-summary.assertions-fail {
+  background: rgba(248, 81, 73, 0.08);
+  border-color: rgba(248, 81, 73, 0.25);
+}
+
+.assertions-summary-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.assertions-summary.assertions-pass .assertions-summary-title { color: var(--ok); }
+.assertions-summary.assertions-fail .assertions-summary-title { color: var(--err); }
+
+.assertions-results {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.assertion-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.assertion-result.pass { color: var(--ok); }
+.assertion-result.fail { color: var(--err); }
+
+/* ==========================================================================
+   Collection runner modal
+   ========================================================================== */
+.collection-run-summary {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  padding: 10px 12px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.run-count-ok { color: var(--ok); }
+.run-count-fail { color: var(--err); }
+
+.collection-run-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.collection-run-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  font-size: 13px;
+}
+
+.collection-run-row.run-row-ok { border-left: 3px solid var(--ok); }
+.collection-run-row.run-row-fail { border-left: 3px solid var(--err); }
+
+.collection-run-status {
+  display: inline-flex;
+  color: var(--ok);
+}
+
+.collection-run-row.run-row-fail .collection-run-status { color: var(--err); }
+
+.collection-run-name {
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-run-time {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.collection-run-assertions {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.collection-run-assertions.text-ok { color: var(--ok); }
+.collection-run-assertions.text-fail { color: var(--err); }
+
+.collection-run-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--err);
+  font-size: 12px;
+  flex-basis: 100%;
+  margin-left: 24px;
+}

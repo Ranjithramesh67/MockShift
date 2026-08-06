@@ -12,6 +12,7 @@ import { CreateModal, type CreateKind } from './CreateModal';
 import { SharingModal } from './SharingModal';
 import { TeamsModal } from './TeamsModal';
 import { AuthProviderModal } from './AuthProviderModal';
+import { CollectionRunnerModal } from './CollectionRunnerModal';
 import {
   WorkspaceIcon,
   TeamIcon,
@@ -24,6 +25,7 @@ import {
   BoltIcon,
   ShieldIcon,
   UserIcon,
+  PlayIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
@@ -91,12 +93,13 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
   );
 }
 
-function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate }: {
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection }: {
   onOpenCreate: (kind: CreateKind, collectionId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
   onRequestAccess: (project: { id: string; name: string }) => void;
   onNavigate: () => void;
+  onRunCollection: (collectionId: string, collectionName: string) => void;
 }) {
   const ws = useWorkspace();
   const { dispatch } = useApp();
@@ -186,6 +189,16 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                       {c.has_auth && <span className="vis-badge auth-badge">AUTH</span>}
                     </button>
                     <div className="tree-collection-actions">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        title="Run collection"
+                        aria-label={`Run collection ${c.name}`}
+                        data-testid={`run-collection-${c.name}`}
+                        onClick={() => onRunCollection(c.id, c.name)}
+                      >
+                        <PlayIcon size={13} />
+                      </button>
                       <button
                         type="button"
                         className="icon-button"
@@ -352,6 +365,8 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const [teamsOpen, setTeamsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authCollectionId, setAuthCollectionId] = useState<string | null>(null);
+  const [runnerOpen, setRunnerOpen] = useState(false);
+  const [runnerCollectionName, setRunnerCollectionName] = useState('');
   const [requestingProject, setRequestingProject] = useState<{ id: string; name: string } | null>(null);
   const [accessReason, setAccessReason] = useState('');
 
@@ -387,6 +402,17 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
     setAuthCollectionId(collectionId);
     setAuthOpen(true);
     goWorkspace();
+  };
+
+  const onRunCollection = async (collectionId: string, collectionName: string) => {
+    setRunnerCollectionName(collectionName);
+    setRunnerOpen(true);
+    try {
+      await ws.runCollection(collectionId);
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Collection run failed' });
+      setRunnerOpen(false);
+    }
   };
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
@@ -473,6 +499,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
                 onOpenAuth={onOpenAuth}
                 onRequestAccess={(p) => setRequestingProject(p)}
                 onNavigate={goWorkspace}
+                onRunCollection={onRunCollection}
               />
             ) : (
               !ws.loading && (
@@ -543,6 +570,16 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
       <SharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} />
       <TeamsModal open={teamsOpen} onClose={() => setTeamsOpen(false)} />
       <AuthProviderModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      <CollectionRunnerModal
+        open={runnerOpen}
+        running={ws.collectionRunRunning}
+        collectionName={runnerCollectionName}
+        result={ws.collectionRun}
+        onClose={() => {
+          setRunnerOpen(false);
+          ws.clearCollectionRun();
+        }}
+      />
     </aside>
   );
 }

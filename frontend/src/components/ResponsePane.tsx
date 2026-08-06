@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { CodeEditor } from './CodeEditor';
-import { AlertIcon, ExportIcon } from './icons';
+import { AlertIcon, ExportIcon, CheckIcon, XIcon } from './icons';
 import {
   isPdf,
   isImage,
@@ -14,6 +14,7 @@ import {
   filenameForResponse,
   downloadBlob,
 } from '@/lib/responseView';
+import { assertionCounts, allAssertionsPassed } from '@/lib/assertions';
 
 type ViewMode = 'pretty' | 'raw' | 'preview';
 
@@ -147,6 +148,26 @@ export function ResponsePane() {
           Auth injected: <code>
             {run.resolvedAuth.headerKey}: {run.resolvedAuth.headerValue}
           </code>
+        </div>
+      )}
+
+      {run?.testResults && run.testResults.length > 0 && (
+        <div
+          className={`assertions-summary ${allAssertionsPassed(run.testResults) ? 'assertions-pass' : 'assertions-fail'}`}
+          data-testid="assertions-summary"
+        >
+          <span className="assertions-summary-title">
+            {allAssertionsPassed(run.testResults) ? <CheckIcon size={13} /> : <XIcon size={13} />}
+            Assertions {assertionCounts(run.testResults).passed}/{assertionCounts(run.testResults).total} passed
+          </span>
+          <ul className="assertions-results" data-testid="assertions-results">
+            {run.testResults.map((t) => (
+              <li key={t.id} className={t.passed ? 'assertion-result pass' : 'assertion-result fail'}>
+                {t.passed ? <CheckIcon size={12} /> : <XIcon size={12} />}
+                {t.message}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
