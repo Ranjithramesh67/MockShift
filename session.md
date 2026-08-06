@@ -4,6 +4,16 @@
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
 ## Current turn (in progress)
+NEW FEATURE: Admin panel Users should be **project-wise** — today `/api/admin/users` returns a flat
+global list and `AdminView.tsx` shows no project association. Plan:
+1. Backend `GET /api/admin/users` — add a `projects` array per user (project id/name + kind
+   `manager`/`member` + role), aggregating `project_managers` + `project_members`.
+2. Frontend `AdminView.tsx` — add a "Projects" column rendering project badges (MANAGER vs member);
+   update `AdminUser` type in `lib/api.ts`.
+3. Verify: backend `test:api`, frontend unit + build, e2e (modal-create-user / nav specs),
+   manual smoke via preview.
+
+## Current turn (in progress, previous)
 DONE — verification turn completed and pushed (commit `2e1a655`). The three polish items are
 confirmed done. The environment was fully rebuilt from scratch (postgres, redis, frontend deps,
 playwright chromium) and the full test matrix is green:

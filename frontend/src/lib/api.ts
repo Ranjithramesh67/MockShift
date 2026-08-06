@@ -116,6 +116,7 @@ export interface RunResult {
 export interface AdminUser extends User {
   workspace_count?: number;
   request_count?: number;
+  projects?: Array<{ id: string; name: string; kind: 'manager' | 'member'; role: string }>;
 }
 
 export class ApiError extends Error {
