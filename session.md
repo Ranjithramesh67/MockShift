@@ -4,51 +4,15 @@
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
 ## Current turn (in progress)
-NEW FEATURE: Admin panel Users should be **project-wise** — today `/api/admin/users` returns a flat
-global list and `AdminView.tsx` shows no project association. Plan:
-1. Backend `GET /api/admin/users` — add a `projects` array per user (project id/name + kind
-   `manager`/`member` + role), aggregating `project_managers` + `project_members`.
-2. Frontend `AdminView.tsx` — add a "Projects" column rendering project badges (MANAGER vs member);
-   update `AdminUser` type in `lib/api.ts`.
-3. Verify: backend `test:api`, frontend unit + build, e2e (modal-create-user / nav specs),
-   manual smoke via preview.
-
-## Current turn (in progress, previous)
-DONE — verification turn completed and pushed (commit `2e1a655`). The three polish items are
-confirmed done. The environment was fully rebuilt from scratch (postgres, redis, frontend deps,
-playwright chromium) and the full test matrix is green:
-
-- `npx playwright test` (all e2e, incl. the three regression specs): **11/11 passed**.
-- Frontend `npm run test`: 28/28 · `npm run build`: OK.
-- Backend `test:api` 16/16 · `test:api:unit` 14/14 · `npm test` (jest) 39/39.
-- `db/tests/run.sh`: all pass.
-
-The fixes were already committed before this turn; this turn only verified them and pushed the
-`session.md`/`docs/SESSION.md` updates (commit `2e1a655`, already on `origin/master`).
-Services left running for convenience: postgres (5432), redis (6379), backend (3001),
-mock-upstream (3999), frontend dev (3000). DB is re-seeded with the demo accounts.
-
-## Current turn (in progress, previous content)
-User-reported polish items (all three pending — do not mark done until verified):
-1. **Hide sidebar when in automations/manage/admin views**: when the user opens
-   `/automations`, `/manage` or `/admin`, the "Workspaces / Collections" side panel (and the icon
-   rail? decide) should not be shown. Today `AppShell` always renders `<Sidebar/>` next to
-   `<main className="main-area">`; for `view !== 'workspace'` it should be hidden (layout/
-   responsiveness issue too — see #2). Keep `data-testid="sidebar"` e2e hooks in mind (nav tests in
-   `frontend/e2e/nav-*.spec.ts` click requests from `/manage`/`/admin`/`/automations` — those tests
-   assert the sidebar tree is still reachable; if the panel is hidden on those routes, re-point the
-   tests to assert the request click only from `/`, or verify whether hiding only the panel (not the
-   rail) is acceptable).
-2. **Admin "Create user" modal breaks layout**: opening the create-user modal (Admin console /
-   `AdminView.tsx`) collapses the page responsiveness. Likely the modal (or a wide element inside it,
-   e.g. a role dropdown / long input) overflows, or the `.app-body`/`.admin-view` scroll container
-   isn't handling a wide/overflowing child — investigate and fix CSS (modal should be centered,
-   max-width, scrollable). Verify in desktop + narrow widths.
-3. **Large response overflows instead of scrolling**: for a very large API response, the response
-   pane grows taller instead of showing a scrollable view inside the pane. Likely
-   `ResponsePane.tsx` / `.response-*` CSS lacks `overflow:auto` + constrained height, or the
-   parent `.app-body`/split-pane flex chain has no `min-height:0`. Fix so the pane scrolls
-   internally.
+DONE — admin Users list is now **project-wise** (pushed as `a5b12bb`):
+- `GET /api/admin/users` returns `projects[]` per user (`{id,name,kind:'manager'|'member',role}`),
+  aggregated from `project_managers` + `project_members`.
+- `AdminView.tsx` shows a **Projects** column with per-project chips (MANAGER highlighted).
+- Verified: backend `test:api` 16/16, frontend unit 28/28 + build OK, e2e **11/11**.
+- Demo data: pm@… is MANAGER of the ADMIN's Default Project, dev@… is a VIEWER member (see admin
+  /users) — inserted directly into the dev DB, not part of `seed:dev`.
+- Note for future sessions: do NOT run `next build` while `next dev` is live on the same `.next`
+  dir — it clobbers dev chunks and breaks login/e2e; restart `npm run dev` afterwards.
 
 ## User
 - Repo owner: **Ranjithramesh67** — https://github.com/Ranjithramesh67/MockShift (branch `master`).
