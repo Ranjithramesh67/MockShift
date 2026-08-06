@@ -3,7 +3,25 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
-## Current turn (in progress)
+## Current turn (in progress, previous)
+DONE — **Workflow pass-through** implemented, tested (full matrix green) and ready to push:
+- Answer to the original question: response pass-through ALREADY existed via `vars[stepId]`
+  templates/formulas; the REQUEST snapshot was not exposed and there was no UI option.
+- `workflowEngine.js` now stores `vars.step.<labelKey>`, `vars.stepRequest.<labelKey>`,
+  `vars.stepResponse.<labelKey>` after each successful step (`sanitizeLabel`, e.g. "Create the
+  order" -> `create_the_order`); `$steps` summaries include the request snapshot.
+- `requestDispatcher.js` new `passInputs` option injects a previous step's request/response
+  (optional dot-path `field`) into url query param / query / header / body.
+- `WorkflowBuilder.tsx` per-step "Pass data from previous step into this request" UI with source
+  select, data type, field, target, key, add/remove list + reference chips
+  (`{{step.<key>.response}}` etc.). Validation in `workflowValidation.js` (source must be earlier).
+- Verified: backend jest **40/40**, test:api 16/16, api:unit 14/14, db tests pass, frontend unit
+  **34/34**, `tsc --noEmit` clean, e2e **14/14** (3 new specs in `workflow-pass-inputs.spec.ts`).
+- NOTE: dev DB had been reset this turn — re-ran `npm run seed:dev` and re-inserted the admin demo
+  rows (pm=MANAGER, dev=VIEWER of ADMIN's Default Project) via SQL into `project_managers` /
+  `project_members` (not part of seed).
+
+## Current turn (in progress, previous)
 DONE — admin Users list is now **project-wise** (pushed as `a5b12bb`):
 - `GET /api/admin/users` returns `projects[]` per user (`{id,name,kind:'manager'|'member',role}`),
   aggregated from `project_managers` + `project_members`.

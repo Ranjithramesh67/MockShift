@@ -67,6 +67,24 @@ export type LoopConfig =
 
 export type FailurePolicy = 'abort' | 'skip';
 
+/**
+ * Pass a previous step's request or response value into this step's outgoing
+ * request. `data: 'request'` / `'response'` selects which snapshot the value is
+ * taken from; `field` is an optional dot path into it (e.g. 'id', 'headers.ct');
+ * `target` says where to put the value (url query param / query / header / body);
+ * `targetKey` names the destination key (defaults per-target).
+ */
+export type StepPassInputData = 'request' | 'response';
+export type StepPassInputTarget = 'url' | 'query' | 'header' | 'body';
+
+export interface StepPassInput {
+  sourceStepId: string;
+  data: StepPassInputData;
+  field?: string;
+  target: StepPassInputTarget;
+  targetKey?: string;
+}
+
 export interface WorkflowStep {
   id: string; // stable client-side id (nanoid-like)
   label: string;
@@ -75,6 +93,7 @@ export interface WorkflowStep {
   loop: LoopConfig;
   onFailure: FailurePolicy;
   formula: string;
+  passInputs?: StepPassInput[];
 }
 
 export interface Workflow {

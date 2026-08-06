@@ -18,6 +18,18 @@ function stepLabel(step) {
   return step.label || step.id || '(unnamed step)';
 }
 
+/**
+ * Turn a step label into a template/dot-path safe key, matching the backend's
+ * sanitizeLabel in workflowEngine.js. "Create User" -> "create_user".
+ */
+function sanitizeLabel(label) {
+  const key = String(label || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return key || 'step';
+}
+
 function stepReferences(condition) {
   const refs = [];
   const regex = /\$steps(?:\['([^']+)'\]|\["([^"]+)"\]|\.([A-Za-z0-9_]+))/g;
@@ -48,7 +60,7 @@ function validateWorkflow(workflow) {
   const seen = new Set();
   let totalIterations = 0;
 
-  for (const step of workflow.steps) {
+  for (const [index, step] of workflow.steps.entries()) {
     const label = stepLabel(step);
     if (seen.has(step.id)) {
       errors.push({ stepId: step.id, message: `Duplicate step id "${step.id}".` });
@@ -97,6 +109,44 @@ function validateWorkflow(workflow) {
         totalIterations += MAX_TOTAL_ITERATIONS;
       }
     }
+
+    // Passed values from previous steps must reference steps that ran earlier.
+    const priorIds = new Set(workflow.steps.slice(0, index).map((s) => s.id));
+    for (const input of step.passInputs || []) {
+      if (!input || !input.sourceStepId) {
+        errors.push({
+          stepId: step.id,
+          message: `Step "${label}" has a pass-through entry with no source step.`,
+        });
+        continue;
+      }
+      if (!priorIds.has(input.sourceStepId)) {
+        errors.push({
+          stepId: step.id,
+          message:
+            `Step "${label}" passes data from a step that does not run before it - ` +
+            `source must be an earlier step.`,
+        });
+      }
+      if (input.data !== 'request' && input.data !== 'response') {
+        errors.push({
+          stepId: step.id,
+          message: `Step "${label}" pass-through data type must be "request" or "response".`,
+        });
+      }
+      if (!['url', 'query', 'header', 'body'].includes(input.target)) {
+        errors.push({
+          stepId: step.id,
+          message: `Step "${label}" pass-through target must be url, query, header or body.`,
+        });
+      }
+      if ((input.target === 'url' || input.target === 'query' || input.target === 'header') && !input.targetKey) {
+        errors.push({
+          stepId: step.id,
+          message: `Step "${label}" pass-through to "${input.target}" needs a destination key.`,
+        });
+      }
+    }
   }
 
   if (totalIterations > MAX_TOTAL_ITERATIONS) {
@@ -111,4 +161,4 @@ function validateWorkflow(workflow) {
   return { valid: errors.length === 0, errors };
 }
 
-module.exports = { validateWorkflow, stepReferences, MAX_TOTAL_ITERATIONS };
+module.exports = { validateWorkflow, stepReferences, sanitizeLabel, MAX_TOTAL_ITERATIONS };

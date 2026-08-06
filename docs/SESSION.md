@@ -145,6 +145,35 @@ showed a flat global user table with no project association.
 - NOTE: demo project-wise rows (pm=MANAGER, dev=VIEWER of the ADMIN's Default Project) were
   inserted directly into the dev DB, NOT part of `seed:dev`.
 
+### 5.7 Workflow steps can now pass the previous request/response into the next (this turn)
+User request: "Do we have an option to pass the request to next flow and the response to next
+flow in workflow? If that is not available then implement that." Response pass-through already
+worked (each step's parsed body is stored under `vars[stepId]`, so `{{order.id}}` templates and
+`$vars.order.id` formulas chained steps), but the previous step's REQUEST snapshot was not exposed
+and there was no UI option. Implemented:
+- `backend/src/workflow/workflowEngine.js` stores friendly vars after every successful step:
+  `vars.step.<stepId>` and `vars.step.<labelKey>` (parsed body), `vars.stepRequest.<labelKey>`
+  (outgoing request snapshot), `vars.stepResponse.<labelKey>` (full response). `labelKey` comes
+  from `sanitizeLabel(label)` ("Create the order" -> `create_the_order`). `$steps.<id>.request`
+  summaries now include the request snapshot too. `vars[stepId]` is kept for backward compat.
+- `backend/src/engine/requestDispatcher.js` gained a `passInputs` option (passed from each
+  workflow step): `{ sourceStepId, data: 'request'|'response', field?: 'a.b', target,
+  targetKey? }` injects a resolved value into the current request as a URL query param (`url`),
+  query param (`query`), header (`header`) or body merge/key (`body`). Runs after the formula and
+  before template substitution; ignored silently if the source step's value is missing.
+- `frontend/src/components/WorkflowBuilder.tsx` per-step **"Pass data from previous step into this
+  request"** section: source-step select (earlier steps only), data type (Request/Response),
+  optional dot-path field, target (Header/Query param/URL param/Body) and destination key, with
+  an add/remove list and copyable reference chips `{{step.<key>.response}}`,
+  `{{stepRequest.<key>.url}}`, `{{stepResponse.<key>.status}}`.
+- `frontend/src/lib/workflowValidation.js` rejects passInputs whose source step does not run
+  before the step, unknown data/target values, or missing destination keys for url/query/header.
+  `sanitizeLabel` exported and mirrored on the backend.
+- `frontend/src/lib/types.ts` adds `StepPassInput` + `WorkflowStep.passInputs`.
+- Tests: backend jest `workflowChaining.integration.test.js` (new passInputs test, 7/7),
+  frontend unit 34/34 (6 new), new e2e spec `e2e/workflow-pass-inputs.spec.ts` (3 tests),
+  full e2e 14/14, TS `--noEmit` clean.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
@@ -159,19 +188,23 @@ showed a flat global user table with no project association.
 
 ### Test matrix (all green at last run)
 - Backend: `npm run test:api` 16/16 · `npm run test:api:unit` 14/14 ·
-  `npm test` (jest) 39/39.
-- Frontend: `npm run test` 28/28 · `npm run build` OK (after the `Link`
-  import fix) · `npm run test:e2e` (Playwright) **11/11** (includes the three
-  polish-item regression specs: nav-from-manage, modal-create-user, large-response).
+  `npm test` (jest) **40/40** (includes the new passInputs chaining test).
+- Frontend: `npm run test` **34/34** · `tsc --noEmit` clean · `npm run test:e2e`
+  (Playwright) **14/14** (11 existing + 3 new workflow pass-inputs specs).
 - DB: `cd db && bash tests/run.sh` — all pass (includes migration 005).
 
 ## 7. Current uncommitted changes
 
 ```
-M backend/src/api/routes/manage.js        (COALESCE '(deleted)' for orphaned run rows)
-M backend/tests/apiAuth.integration.test.cjs (regression test: delete a run request)
-M frontend/src/components/Sidebar.tsx     (import Link from 'next/link' — fixes next build)
-?? db/migrations/005_relax_run_history_target.sql
+M backend/src/engine/requestDispatcher.js        (passInputs injection option)
+M backend/src/workflow/workflowEngine.js          (friendly step/stepRequest/stepResponse vars)
+M backend/tests/workflowChaining.integration.test.js (passInputs test)
+M frontend/src/components/WorkflowBuilder.tsx     (pass-data-from-previous-step UI)
+M frontend/src/lib/workflowValidation.js           (+ sanitizeLabel, passInputs validation)
+M frontend/src/lib/types.ts                        (StepPassInput type)
+M frontend/src/lib/__tests__/workflowValidation.test.cjs (6 new tests)
+M frontend/app/globals.css                         (.pass-refs/.pass-form/.pass-list styles)
+?? frontend/e2e/workflow-pass-inputs.spec.ts       (3 new e2e tests)
 ```
 
 The response-pane prettify/preview/PDF feature and all prior session work are
@@ -195,6 +228,12 @@ commit).
 - `redis-cli config set dir` is a protected setting in this build; Redis was
   pointed away from the repo so no `dump.rdb` is written into `/workspace`
   (snapshots disabled via `save ""`).
+- During this turn the dev DB had been reset (seed users gone), which made the
+  nav/login e2e specs fail with "Invalid email or password". Fix: `cd backend &&
+  npm run seed:dev`, then re-insert the admin demo rows (pm=MANAGER, dev=VIEWER of
+  the ADMIN's Default Project) directly via SQL into `project_managers` /
+  `project_members` — these are NOT part of `seed:dev`. After any `db/tests/run.sh`
+  or DB reset, redo both steps before running e2e.
 - Installing Postgres/Redis/Playwright was required in this environment (they
   were absent); see section 2 for how they are started.
 

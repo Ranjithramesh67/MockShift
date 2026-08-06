@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { validateWorkflow } = require('../workflowValidation.js');
+const { validateWorkflow, sanitizeLabel } = require('../workflowValidation.js');
 
 function step(overrides = {}) {
   return {
@@ -95,4 +95,94 @@ test('rejects steps without a selected request', () => {
   const result = validateWorkflow(workflow([step({ requestId: null })]));
   assert.equal(result.valid, false);
   assert.ok(result.errors.some((e) => e.message.includes('no request selected')));
+});
+
+test('accepts a passInputs entry that references an earlier step', () => {
+  const result = validateWorkflow(
+    workflow([
+      step({ id: 'order', label: 'Create order' }),
+      step({
+        id: 'delivery',
+        label: 'Deliver',
+        passInputs: [
+          {
+            sourceStepId: 'order',
+            data: 'response',
+            field: 'id',
+            target: 'header',
+            targetKey: 'x-order-id',
+          },
+        ],
+      }),
+    ])
+  );
+  assert.equal(result.valid, true);
+});
+
+test('rejects a passInputs source that does not run before the step', () => {
+  const result = validateWorkflow(
+    workflow([
+      step({ id: 'order', label: 'Create order' }),
+      step({
+        id: 'delivery',
+        label: 'Deliver',
+        passInputs: [{ sourceStepId: 'missing', data: 'response', target: 'header' }],
+      }),
+    ])
+  );
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('must be an earlier step')));
+});
+
+test('rejects a passInputs entry that references a later step', () => {
+  const result = validateWorkflow(
+    workflow([
+      step({
+        id: 'order',
+        label: 'Create order',
+        passInputs: [{ sourceStepId: 'later', data: 'response', target: 'body' }],
+      }),
+      step({ id: 'later', label: 'Later' }),
+    ])
+  );
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('must be an earlier step')));
+});
+
+test('rejects a passInputs entry with an unknown data type or target', () => {
+  const result = validateWorkflow(
+    workflow([
+      step({ id: 'order', label: 'Create order' }),
+      step({
+        id: 'delivery',
+        label: 'Deliver',
+        passInputs: [{ sourceStepId: 'order', data: 'cookie', target: 'cookie' }],
+      }),
+    ])
+  );
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('must be "request" or "response"')));
+  assert.ok(result.errors.some((e) => e.message.includes('must be url, query, header or body')));
+});
+
+test('rejects a passInputs to url/query/header without a destination key', () => {
+  const result = validateWorkflow(
+    workflow([
+      step({ id: 'order', label: 'Create order' }),
+      step({
+        id: 'delivery',
+        label: 'Deliver',
+        passInputs: [{ sourceStepId: 'order', data: 'response', target: 'header' }],
+      }),
+    ])
+  );
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('needs a destination key')));
+});
+
+test('sanitizeLabel produces a template-safe key', () => {
+  assert.equal(sanitizeLabel('Create User'), 'create_user');
+  assert.equal(sanitizeLabel('  GET /posts  '), 'get_posts');
+  assert.equal(sanitizeLabel('Order Details'), 'order_details');
+  assert.equal(sanitizeLabel(''), 'step');
 });

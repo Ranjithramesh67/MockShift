@@ -72,6 +72,68 @@ function diffVars(next, prev) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// passInputs — chain a previous workflow step's request/response into the
+// current request. Each entry:
+//   { sourceStepId, data: 'request'|'response', field?: 'a.b', target,
+//     targetKey? }
+// Resolves the source value from vars.step[<id|label>] / vars.stepRequest,
+// applies an optional dot-path `field`, then injects it into the request.
+// ---------------------------------------------------------------------------
+function applyPassInputs(req, passInputs, vars) {
+  const responses = (vars && (vars.step || {})) || {};
+  const requests = (vars && (vars.stepRequest || {})) || {};
+
+  for (const input of passInputs || []) {
+    if (!input || !input.sourceStepId) continue;
+    const source =
+      input.data === 'request'
+        ? requests[input.sourceStepId]
+        : responses[input.sourceStepId];
+    if (source === undefined) continue;
+
+    let value = input.field ? resolvePath(source, input.field) : source;
+    if (value === undefined) continue;
+
+    switch (input.target) {
+      case 'url': {
+        const sep = req.url.includes('?') ? '&' : '?';
+        const name = input.targetKey || 'from';
+        req.url = `${req.url}${sep}${encodeURIComponent(name)}=${encodeURIComponent(String(value))}`;
+        break;
+      }
+      case 'query': {
+        req.query = req.query || {};
+        req.query[input.targetKey || 'value'] = String(value);
+        break;
+      }
+      case 'header': {
+        req.headers = req.headers || {};
+        req.headers[input.targetKey || 'x-previous-step'] = String(value);
+        break;
+      }
+      case 'body': {
+        if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
+          if (value && typeof value === 'object') {
+            req.body = { ...req.body, ...value };
+          } else {
+            req.body[input.targetKey || 'value'] = value;
+          }
+        } else {
+          req.body =
+            value && typeof value === 'object'
+              ? JSON.stringify(value)
+              : String(value);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return req;
+}
+
 class RequestDispatcher {
   constructor({
     sandbox,
@@ -100,6 +162,7 @@ class RequestDispatcher {
     vars: providedVars = null,
     persistVars = true,
     formula: formulaOverride = null,
+    passInputs = null,
   }) {
     const requestRow = await this.requestRepository.findById(requestId);
     if (!requestRow) {
@@ -119,6 +182,10 @@ class RequestDispatcher {
       if (outcome.vars !== undefined) {
         vars = outcome.vars;
       }
+    }
+
+    if (passInputs) {
+      applyPassInputs(req, passInputs, vars);
     }
 
     applyTemplates(req, vars);
@@ -156,5 +223,6 @@ module.exports = {
   RequestDispatcher,
   buildRequestObject,
   applyTemplates,
+  applyPassInputs,
   diffVars,
 };
