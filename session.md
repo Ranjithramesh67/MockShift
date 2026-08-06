@@ -3,6 +3,12 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
+## Current turn (completed, pushed as `18b5794` on 2026-08-06)
+PUSHED — **Workflow pass-through** (see the DONE block below for the full summary). Full matrix
+green at push time: backend jest 40/40, test:api 16/16, api:unit 14/14, db tests pass, frontend
+unit 34/34, tsc --noEmit clean, e2e 14/14. Preview link unchanged:
+https://3000-606b9b46b8d0d0bf.monkeycode-ai.live (dev server + backend + mock upstream all running).
+
 ## Current turn (in progress, previous)
 DONE — **Workflow pass-through** implemented, tested (full matrix green) and ready to push:
 - Answer to the original question: response pass-through ALREADY existed via `vars[stepId]`
