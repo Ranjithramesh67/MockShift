@@ -131,6 +131,20 @@ How each fix works (all CSS in `frontend/app/globals.css`):
    is `flex:1; min-height:0; overflow:hidden`, the CodeMirror chain resolves `height:100%` down to
    `.cm-scroller { overflow:auto !important }`.
 
+### 5.6 Admin users are now project-wise (this turn, committed in a5b12bb)
+User request: "Users are not project wise, in admin panel users". The admin Users list previously
+showed a flat global user table with no project association.
+- `backend/src/api/routes/admin.js` `GET /api/admin/users` now aggregates each user's project
+  memberships from `project_managers` + `project_members` into a `projects[]` array of
+  `{id, name, kind: 'manager'|'member', role}`.
+- `frontend/src/components/views/AdminView.tsx` renders a **Projects** column with per-project
+  chips (MANAGER projects highlighted in blue); `AdminUser` in `lib/api.ts` gained `projects`.
+- New CSS: `.admin-project-chips`, `.admin-project-chip`, `.admin-project-role`,
+  `.admin-project-chip.is-manager` in `globals.css`.
+- Verified: backend `test:api` 16/16, frontend unit 28/28 + `next build` OK, e2e 11/11.
+- NOTE: demo project-wise rows (pm=MANAGER, dev=VIEWER of the ADMIN's Default Project) were
+  inserted directly into the dev DB, NOT part of `seed:dev`.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
