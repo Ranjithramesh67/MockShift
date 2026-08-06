@@ -4,8 +4,9 @@
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
 ## Current turn (in progress)
-VERIFIED — the three polish items are confirmed done. The environment was fully rebuilt from scratch
-(postgres, redis, frontend deps, playwright chromium) and the full test matrix is green:
+DONE — verification turn completed and pushed (commit `2e1a655`). The three polish items are
+confirmed done. The environment was fully rebuilt from scratch (postgres, redis, frontend deps,
+playwright chromium) and the full test matrix is green:
 
 - `npx playwright test` (all e2e, incl. the three regression specs): **11/11 passed**.
 - Frontend `npm run test`: 28/28 · `npm run build`: OK.
@@ -13,7 +14,9 @@ VERIFIED — the three polish items are confirmed done. The environment was full
 - `db/tests/run.sh`: all pass.
 
 The fixes were already committed before this turn; this turn only verified them and pushed the
-`session.md`/`docs/SESSION.md` updates.
+`session.md`/`docs/SESSION.md` updates (commit `2e1a655`, already on `origin/master`).
+Services left running for convenience: postgres (5432), redis (6379), backend (3001),
+mock-upstream (3999), frontend dev (3000). DB is re-seeded with the demo accounts.
 
 ## Current turn (in progress, previous content)
 User-reported polish items (all three pending — do not mark done until verified):
