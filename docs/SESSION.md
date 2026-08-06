@@ -110,6 +110,27 @@ and upstream-echoed bodies contain `userId: 2`, and asserts
 - `backend/scripts/seed-dev.js` + `npm run seed:dev` (see section 4).
 - `backend/package.json` — added `seed:dev` script.
 
+### 5.5 Polish items — verified end-to-end (this turn)
+The three user-reported polish items were implemented in the prior commit (commit `8bde46f`) with
+Playwright regression specs. This turn rebuilt the environment from scratch (PostgreSQL 15,
+Redis, `frontend/node_modules`, Playwright chromium) and **ran the full matrix green**:
+- `frontend/e2e/nav-from-manage.spec.ts` — sidebar workspace panel hidden on `/manage`,
+  `/admin`, `/automations`; icon rail stays; rail-apis returns to the editor.
+- `frontend/e2e/modal-create-user.spec.ts` — create-user modal overlays as a fixed, centered,
+  scrollable card and does not grow the document.
+- `frontend/e2e/large-response.spec.ts` — 200 KB POST body response scrolls inside the
+  response pane; document height stays ≤ viewport.
+
+How each fix works (all CSS in `frontend/app/globals.css`):
+1. Sidebar: `AppShell.tsx` renders `<Sidebar panelHidden={view !== 'workspace'} />`; the class
+   `.sidebar-panel-hidden { display: none }` hides the workspace chips + collections tree while
+   the `.rail` (icon rail) remains for navigation.
+2. Modal: `.modal-overlay` is `position: fixed; inset: 0` with centered flex; `.modal` is
+   `width:640px; max-width:92vw; max-height:88vh` and `.modal-body { overflow-y:auto }`.
+3. Response pane: `.response-pane`/`.app-body` keep `min-height:0`; `.response-body .code-editor`
+   is `flex:1; min-height:0; overflow:hidden`, the CodeMirror chain resolves `height:100%` down to
+   `.cm-scroller { overflow:auto !important }`.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
@@ -126,7 +147,8 @@ and upstream-echoed bodies contain `userId: 2`, and asserts
 - Backend: `npm run test:api` 16/16 · `npm run test:api:unit` 14/14 ·
   `npm test` (jest) 39/39.
 - Frontend: `npm run test` 28/28 · `npm run build` OK (after the `Link`
-  import fix) · `npm run test:e2e` (Playwright) 4/4.
+  import fix) · `npm run test:e2e` (Playwright) **11/11** (includes the three
+  polish-item regression specs: nav-from-manage, modal-create-user, large-response).
 - DB: `cd db && bash tests/run.sh` — all pass (includes migration 005).
 
 ## 7. Current uncommitted changes

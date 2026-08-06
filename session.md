@@ -4,6 +4,18 @@
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
 ## Current turn (in progress)
+VERIFIED — the three polish items are confirmed done. The environment was fully rebuilt from scratch
+(postgres, redis, frontend deps, playwright chromium) and the full test matrix is green:
+
+- `npx playwright test` (all e2e, incl. the three regression specs): **11/11 passed**.
+- Frontend `npm run test`: 28/28 · `npm run build`: OK.
+- Backend `test:api` 16/16 · `test:api:unit` 14/14 · `npm test` (jest) 39/39.
+- `db/tests/run.sh`: all pass.
+
+The fixes were already committed before this turn; this turn only verified them and pushed the
+`session.md`/`docs/SESSION.md` updates.
+
+## Current turn (in progress, previous content)
 User-reported polish items (all three pending — do not mark done until verified):
 1. **Hide sidebar when in automations/manage/admin views**: when the user opens
    `/automations`, `/manage` or `/admin`, the "Workspaces / Collections" side panel (and the icon
@@ -45,6 +57,19 @@ User-reported polish items (all three pending — do not mark done until verifie
 
 ## Status (as of the last push)
 All planned features are implemented and pushed to `origin/master`:
+
+- **Three polish items VERIFIED** (full e2e + unit + build + DB test matrix green):
+  1. **Sidebar panel hidden on `/automations` `/manage` `/admin`** — `AppShell.tsx` passes
+     `panelHidden={view !== 'workspace'}`; `.sidebar-panel-hidden` (`display:none`) hides the
+     workspace chips + collections tree while the icon rail stays for navigation. Regression:
+     `frontend/e2e/nav-from-manage.spec.ts` (all 3 pages).
+  2. **Create-user modal no longer breaks layout** — `.modal-overlay` is `position:fixed`,
+     centered flex, `.modal` has `max-width:92vw` / `max-height:88vh` with scrollable `.modal-body`
+     (AdminView.tsx uses `.modal-overlay`). Regression: `frontend/e2e/modal-create-user.spec.ts`.
+  3. **Large responses scroll inside the pane** — `.response-body .code-editor` is
+     `flex:1; min-height:0`, CodeMirror chain resolves to `height:100%` with `.cm-scroller`
+     `overflow:auto`; `.response-pane`/`.app-body` flex chain has `min-height:0`. Regression:
+     `frontend/e2e/large-response.spec.ts` (200 KB body, page height unchanged).
 
 - **Working rules** now require the full loop every session: update `session.md`
   first → make changes → push → update `session.md` again after the push (commit
