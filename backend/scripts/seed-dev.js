@@ -191,6 +191,54 @@ async function ensureDemoCollection(client) {
   console.log(`[seed:dev] collection "${DEMO_COLLECTION}" ready (${collectionId}) with ${DEMO_REQUESTS.length} requests`);
 }
 
+// Demo rows for the Admin panel Users view: make the MANAGER a project manager
+// and the EDITOR a VIEWER member of the ADMIN's Default Project, so the
+// project-wise Projects column has something to show.
+async function ensureAdminDemoRows(client) {
+  const admin = await client.query(`SELECT id FROM users WHERE email = $1`, [
+    SEED_ACCOUNTS[0].email,
+  ]);
+  const adminId = admin.rows[0]?.id;
+  if (!adminId) return;
+
+  const { rows } = await client.query(
+    `SELECT wm.workspace_id FROM workspace_members wm
+      JOIN users u ON u.id = wm.user_id
+     WHERE u.id = $1 AND wm.role = 'ADMIN' LIMIT 1`,
+    [adminId]
+  );
+  const workspaceId = rows[0]?.workspace_id;
+  if (!workspaceId) return;
+
+  const project = await client.query(
+    `SELECT id FROM projects WHERE workspace_id = $1 AND name = 'Default Project' LIMIT 1`,
+    [workspaceId]
+  );
+  const projectId = project.rows[0]?.id;
+  if (!projectId) return;
+
+  const pm = await client.query(`SELECT id FROM users WHERE email = $1`, [
+    SEED_ACCOUNTS[1].email,
+  ]);
+  const dev = await client.query(`SELECT id FROM users WHERE email = $1`, [
+    SEED_ACCOUNTS[2].email,
+  ]);
+  if (pm.rows[0]) {
+    await client.query(
+      `INSERT INTO project_managers (project_id, user_id, created_by)
+       VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [projectId, pm.rows[0].id, adminId]
+    );
+  }
+  if (dev.rows[0]) {
+    await client.query(
+      `INSERT INTO project_members (project_id, user_id, role, granted_by)
+       VALUES ($1, $2, 'VIEWER', $3) ON CONFLICT DO NOTHING`,
+      [projectId, dev.rows[0].id, adminId]
+    );
+  }
+}
+
 async function main() {
   const client = await pool.connect();
   try {
