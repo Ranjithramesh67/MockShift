@@ -102,6 +102,7 @@ export function AdminView() {
             <th>Name</th>
             <th>Role</th>
             <th>Status</th>
+            <th>Projects</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -135,6 +136,20 @@ export function AdminView() {
                 <span className={`vis-badge ${u.is_active ? 'vis-active' : 'vis-inactive'}`}>
                   {u.is_active ? 'active' : 'inactive'}
                 </span>
+              </td>
+              <td>
+                {u.projects && u.projects.length > 0 ? (
+                  <div className="admin-project-chips" data-testid={`admin-projects-${u.email}`}>
+                    {u.projects.map((p) => (
+                      <span key={p.id} className={`admin-project-chip ${p.kind === 'manager' ? 'is-manager' : ''}`} title={`${p.kind === 'manager' ? 'Manager' : 'Member'} of ${p.name}`}>
+                        {p.name}
+                        <span className="admin-project-role">{p.kind === 'manager' ? 'MANAGER' : p.role}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="hint">—</span>
+                )}
               </td>
               <td>
                 <button

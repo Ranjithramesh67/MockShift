@@ -52,8 +52,25 @@ router.post('/users', async (req, res, next) => {
 router.get('/users', async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT id, email, name, role, is_active, created_at
-         FROM users ORDER BY created_at DESC`
+      `SELECT u.id, u.email, u.name, u.role, u.is_active, u.created_at,
+              COALESCE((
+                SELECT json_agg(x ORDER BY x.name)
+                  FROM (
+                    SELECT p.id, p.name,
+                           CASE WHEN pmg.project_id IS NOT NULL THEN 'manager' ELSE 'member' END AS kind,
+                           COALESCE(pmm.role::text, 'MANAGER') AS role
+                      FROM projects p
+                      JOIN (
+                        SELECT project_id FROM project_managers WHERE user_id = u.id
+                        UNION
+                        SELECT project_id FROM project_members WHERE user_id = u.id
+                      ) sub ON sub.project_id = p.id
+                      LEFT JOIN project_members pmm ON pmm.project_id = p.id AND pmm.user_id = u.id
+                      LEFT JOIN project_managers pmg ON pmg.project_id = p.id AND pmg.user_id = u.id
+                  ) x
+              ), '[]'::json) AS projects
+         FROM users u
+        ORDER BY u.created_at DESC`
     );
     res.json({ users: rows });
   } catch (err) {
