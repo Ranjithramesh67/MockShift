@@ -13,7 +13,9 @@ import {
   teamApi,
   workspaceApi,
   type ApiType,
+  type AssertionResult,
   type AuthProvider,
+  type CollectionRunResult,
   type ContentTree,
   type RunResult,
   type Team,
@@ -21,7 +23,7 @@ import {
   type UserRole,
   type Workspace,
 } from '@/lib/api';
-import type { ApiRequest, BodyType, RequestContentType } from '@/lib/types';
+import type { ApiRequest, Assertion, BodyType, RequestContentType } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 
 function contentTypeForBodyType(bt: string): RequestContentType {
@@ -51,6 +53,7 @@ export function toEditorRequest(d: {
   bodyText?: string | null;
   apiType?: ApiType;
   formula?: string;
+  assertions?: Assertion[];
 }): ApiRequest {
   let bodyJson: string | null = null;
   if (d.bodyJson !== undefined && d.bodyJson !== null) {
@@ -70,6 +73,7 @@ export function toEditorRequest(d: {
     contentType: contentTypeForBodyType(d.bodyType || 'NONE'),
     formula: d.formula ?? '',
     apiType: (d.apiType || 'REST') as ApiType,
+    assertions: Array.isArray(d.assertions) ? d.assertions : [],
   };
 }
 
@@ -83,6 +87,7 @@ export function toServerPatch(r: ApiRequest): Record<string, unknown> {
     queryParams: r.queryParams,
     bodyType: r.bodyType,
     formula: r.formula || '',
+    assertions: r.assertions ?? [],
   };
   if (r.bodyType === 'JSON') {
     if (r.bodyJson) {
@@ -116,6 +121,8 @@ interface WorkspaceState {
   authProvider: AuthProvider | null;
   activeRequest: ApiRequest | null;
   lastRun: RunResult | null;
+  collectionRun: CollectionRunResult | null;
+  collectionRunRunning: boolean;
 
   refresh: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
@@ -124,6 +131,8 @@ interface WorkspaceState {
   updateActiveRequest: (patch: Partial<ApiRequest>) => void;
   saveActiveRequest: () => Promise<void>;
   runActiveRequest: () => Promise<void>;
+  runCollection: (collectionId: string) => Promise<CollectionRunResult>;
+  clearCollectionRun: () => void;
 
   createWorkspace: (name: string, visibility?: Workspace['visibility']) => Promise<void>;
   createCollection: (name: string) => Promise<void>;
@@ -160,6 +169,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [authProvider, setAuthProvider] = useState<AuthProvider | null>(null);
   const [activeRequest, setActiveRequest] = useState<ApiRequest | null>(null);
   const [lastRun, setLastRun] = useState<RunResult | null>(null);
+  const [collectionRun, setCollectionRun] = useState<CollectionRunResult | null>(null);
+  const [collectionRunRunning, setCollectionRunRunning] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -245,6 +256,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const result = await contentApi.runRequest(activeRequest.id);
     setLastRun(result);
   }, [activeRequest]);
+
+  const runCollection = useCallback(async (collectionId: string) => {
+    setCollectionRunRunning(true);
+    setCollectionRun(null);
+    try {
+      const result = await contentApi.runCollection(collectionId);
+      setCollectionRun(result);
+      return result;
+    } finally {
+      setCollectionRunRunning(false);
+    }
+  }, []);
+
+  const clearCollectionRun = useCallback(() => {
+    setCollectionRun(null);
+  }, []);
 
   const createWorkspace = useCallback(async (name: string, visibility?: Workspace['visibility']) => {
     const { workspace } = await workspaceApi.create({ name, visibility });
@@ -384,6 +411,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       authProvider,
       activeRequest,
       lastRun,
+      collectionRun,
+      collectionRunRunning,
       refresh,
       selectWorkspace,
       selectRequest,
@@ -391,6 +420,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       updateActiveRequest,
       saveActiveRequest,
       runActiveRequest,
+      runCollection,
+      clearCollectionRun,
       createWorkspace,
       createCollection,
       createRequest,
@@ -409,8 +440,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [
       loading, error, workspaces, teams, activeWorkspaceId, activeWorkspaceRole, tree,
       activeCollectionId, activeCollectionName, authProvider, activeRequest, lastRun,
+      collectionRun, collectionRunRunning,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
-      saveActiveRequest, runActiveRequest, createWorkspace, createCollection, createRequest,
+      saveActiveRequest, runActiveRequest, runCollection, clearCollectionRun,
+      createWorkspace, createCollection, createRequest,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
       loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree, inviteToTeam, shareWorkspace, unshareWorkspace,
     ]

@@ -9,6 +9,7 @@ import { CodeEditor } from './CodeEditor';
 import { TabBar } from './TabBar';
 import { CodeGenModal } from './CodeGenModal';
 import { FormulaHelper } from './FormulaHelper';
+import { AssertionsEditor } from './AssertionsEditor';
 import {
   SendIcon,
   SaveIcon,
@@ -18,6 +19,7 @@ import {
   ListIcon,
   FormulaIcon,
   RequestIcon,
+  CheckIcon,
 } from './icons';
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
@@ -77,6 +79,7 @@ function bodyTypeForKind(kind: BodyKind): { bodyType: BodyType; contentType: Req
 export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) {
   const { state, dispatch } = useApp();
   const ws = useWorkspace();
+  const [codegenOpen, setCodegenOpen] = useState(false);
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
   if (!request)
@@ -121,8 +124,6 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
       dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Save failed' });
     }
   };
-
-  const [codegenOpen, setCodegenOpen] = useState(false);
 
   const onExportCode = () => {
     setCodegenOpen(true);
@@ -194,6 +195,7 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           { id: 'headers', label: 'Headers', icon: ListIcon },
           { id: 'body', label: 'Body', icon: CodeIcon },
           { id: 'formula', label: 'Formula', icon: FormulaIcon },
+          { id: 'tests', label: 'Tests', icon: CheckIcon },
         ]}
         active={activeTab}
         onChange={(tab) => dispatch({ type: 'SET_REQUEST_TAB', tab })}
@@ -265,6 +267,12 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
               }}
             />
           </div>
+        )}
+        {activeTab === 'tests' && (
+          <AssertionsEditor
+            assertions={request.assertions}
+            onChange={(assertions) => update({ assertions })}
+          />
         )}
       </div>
       {codegenOpen && <CodeGenModal request={request} onClose={() => setCodegenOpen(false)} />}

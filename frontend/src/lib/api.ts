@@ -1,5 +1,7 @@
 'use client';
 
+import type { Assertion } from './types';
+
 export type ApiType = 'REST' | 'SOAP' | 'GRAPHQL' | 'AUTH';
 export type WorkspaceVisibility = 'PRIVATE' | 'PUBLIC';
 export type UserRole = 'ADMIN' | 'MANAGER' | 'EDITOR' | 'VIEWER';
@@ -84,6 +86,7 @@ export interface RequestDetail {
   workspaceId: string;
   workspaceRole: UserRole;
   authProvider: AuthProvider | null;
+  assertions?: Assertion[];
 }
 
 export type AuthType = 'NONE' | 'BASIC' | 'BEARER_TOKEN' | 'OAUTH2';
@@ -94,6 +97,12 @@ export interface AuthProvider {
   tokenPath: string;
   headerKey: string;
   headerPrefix: string;
+}
+
+export interface AssertionResult {
+  id: string;
+  passed: boolean;
+  message: string;
 }
 
 export interface RunResult {
@@ -111,6 +120,30 @@ export interface RunResult {
   resolvedAuth: { headerKey: string; headerValue: string } | null;
   requestSnapshot: { url: string; method: string; headers: Record<string, string>; body: string | null };
   variables: Record<string, string>;
+  testResults?: AssertionResult[];
+  assertionsPassed?: boolean;
+}
+
+export interface CollectionRunItem {
+  requestId: string;
+  name: string;
+  runStatus: string;
+  httpStatus: number;
+  error: string | null;
+  durationMs: number | null;
+  assertions: AssertionResult[];
+  assertionsPassed: boolean;
+}
+
+export interface CollectionRunResult {
+  results: CollectionRunItem[];
+  summary: {
+    total: number;
+    passed: number;
+    failed: number;
+    assertionsTotal: number;
+    assertionsPassed: number;
+  };
 }
 
 export interface AdminUser extends User {
@@ -198,6 +231,8 @@ export const contentApi = {
   updateRequest: (requestId: string, patch: Record<string, unknown>) =>
     apiFetch<{ request: { id: string } }>(`/api/requests/${requestId}`, { method: 'PUT', body: patch }),
   runRequest: (requestId: string) => apiFetch<RunResult>(`/api/requests/${requestId}/run`, { method: 'POST' }),
+  runCollection: (collectionId: string) =>
+    apiFetch<CollectionRunResult>(`/api/collections/${collectionId}/run`, { method: 'POST' }),
   getAuthProvider: (collectionId: string) =>
     apiFetch<{ authProvider: AuthProvider | null }>(`/api/collections/${collectionId}/auth-provider`),
   setAuthProvider: (collectionId: string, provider: AuthProvider) =>

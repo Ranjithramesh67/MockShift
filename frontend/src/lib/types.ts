@@ -25,6 +25,19 @@ export interface KeyValueEntry {
   enabled: boolean;
 }
 
+export type AssertionType = 'status' | 'jsonPath' | 'header' | 'responseTime';
+export type AssertionOperator = 'eq' | 'neq' | 'contains' | 'gt' | 'lt';
+
+export interface Assertion {
+  id: string;
+  type: AssertionType;
+  operator: AssertionOperator;
+  /** jsonPath: dot path into the parsed body; header: header name. */
+  path?: string;
+  /** Value compared against (numbers parsed at evaluation time). */
+  expected?: string;
+}
+
 export interface ApiRequest {
   id: string;
   name: string;
@@ -38,6 +51,7 @@ export interface ApiRequest {
   contentType: RequestContentType;
   formula: string; // pre-request / pre-step sandbox formula
   apiType: ApiType;
+  assertions: Assertion[];
 }
 
 export type ViewMode = 'split' | 'side' | 'request' | 'response';
@@ -108,7 +122,7 @@ export interface AppState {
   requests: ApiRequest[];
   activeWorkflowId: string;
   workflows: Workflow[];
-  activeRequestTab: 'params' | 'headers' | 'body' | 'formula';
+  activeRequestTab: 'params' | 'headers' | 'body' | 'formula' | 'tests';
   lastResponse: MockResponse | null;
   viewMode: ViewMode;
   toast: { id: number; kind: 'success' | 'error' | 'info'; message: string } | null;
