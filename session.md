@@ -128,6 +128,11 @@ All planned features are implemented and pushed to `origin/master`:
   button for it (`Sidebar.tsx`). Deleting any other workspace still works.
 
 ## Known open item
+- **If login says "Invalid email or password", the dev DB was reset** (it has happened twice in this
+  environment — e.g. `db/seed.sql` or an external reset wipes app tables). Fix:
+  `cd backend && npm run seed:dev`, then re-insert the admin demo rows (pm=MANAGER, dev=VIEWER of
+  the ADMIN's Default Project) into `project_managers` / `project_members` directly via psql —
+  `seed:dev` does NOT recreate them (admin /users Projects column would look empty).
 - **FIXED this session** — `DELETE /requests/:id` (and collections/workspaces) no longer fails after a
   run exists. Migration `005_relax_run_history_target.sql` relaxes the `run_history_target` CHECK so
   `ON DELETE SET NULL` no longer violates it; run history is preserved as an audit trail (app shows
