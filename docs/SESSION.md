@@ -174,6 +174,26 @@ and there was no UI option. Implemented:
   frontend unit 34/34 (6 new), new e2e spec `e2e/workflow-pass-inputs.spec.ts` (3 tests),
   full e2e 14/14, TS `--noEmit` clean.
 
+### 5.8 Response assertions + collection runner (this turn, committed in 222cd58)
+User request: build the backlog features one by one. FEATURE 1 = response assertions / collection
+runner. The backend engine had already landed in `77ca26c` (`backend/src/engine/assertions.js`,
+`runner.js` evaluates assertions and returns `testResults`/`assertionsPassed`,
+`POST /api/collections/:id/run`, migration `006_request_assertions.sql`, `content.js` round-trips
+`assertions`). This turn added the frontend:
+- `types.ts`: `Assertion`, `assertions` on `ApiRequest`, `'tests'` request tab,
+  `RunResult.testResults`/`assertionsPassed`, `CollectionRunResult`.
+- `api.ts`: `RequestDetail.assertions`, `contentApi.runCollection()`.
+- `WorkspaceStore.tsx`: assertions round-trip + `runCollection` action (`collectionRun` state).
+- `RequestConfigurator.tsx`: **Tests** tab (`AssertionsEditor`); fixed a pre-existing Rules-of-Hooks
+  violation (useState after an early return).
+- `ResponsePane.tsx`: assertion result chips/list after each run.
+- `Sidebar.tsx`: per-collection **Run** button → `CollectionRunnerModal` (per-request results +
+  summary). Pure helpers in `lib/assertions.js` (unit tested).
+- Tests: frontend unit 37/37, e2e 15/15 (new `e2e/assertions-runner.spec.ts`), backend jest 47/47,
+  test:api 16/16, api:unit 14/14, db tests pass, tsc clean.
+- ENV NOTES: dev DB had been reset → `npm run seed:dev`; the backend process was stale (pre-pull
+  code) → restarted; migration 006 must be applied manually after a plain reset (see §8).
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to

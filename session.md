@@ -19,8 +19,27 @@ changes → push → update session.md after push) for EVERY feature.
 8. **Comments & collaboration** — inline comments on requests/collections + team mentions.
 9. **Global search** — Cmd-K quick switcher across requests, collections, workflows and runs.
 
-## Current turn (in progress)
-FEATURE 1 of the backlog: **Response assertions / collection runner** — plan below.
+## Current turn (completed, pushed as `222cd58` on 2026-08-06)
+PUSHED — **FEATURE 1: Response assertions / collection runner** (frontend; backend engine already
+in `77ca26c`). What landed:
+- `types.ts` — `Assertion` type, `assertions` on `ApiRequest`, `'tests'` request tab,
+  `RunResult.testResults`/`assertionsPassed`, `CollectionRunResult`.
+- `api.ts` — `RequestDetail.assertions`, `contentApi.runCollection()`.
+- `WorkspaceStore.tsx` — assertions round-trip (`toEditorRequest`/`toServerPatch`),
+  `runCollection` action + `collectionRun`/`collectionRunRunning` state.
+- `RequestConfigurator.tsx` — new **Tests** tab (`AssertionsEditor`: type/operator/path/expected,
+  add/remove); also fixed a pre-existing Rules-of-Hooks violation (useState after early return).
+- `ResponsePane.tsx` — assertion results (pass/fail chips + message list) after each run.
+- `Sidebar.tsx` `CollectionsTree` — per-collection **Run** button → `CollectionRunnerModal`
+  (per-request HTTP status, duration, assertions, error + summary).
+- `lib/assertions.js` (pure helper, unit-tested ×3) + `globals.css` styles.
+- e2e: `frontend/e2e/assertions-runner.spec.ts` (adds status assertion, sees it pass, runs collection).
+- Verified matrix: backend jest **47/47**, test:api **16/16**, api:unit **14/14**, db tests **all pass**,
+  frontend unit **37/37**, `tsc --noEmit` clean, e2e **15/15**.
+- Environment notes this turn: dev DB had been reset (login → "Invalid email or password") →
+  re-ran `npm run seed:dev`; backend server was running stale pre-pull code → restarted it; the
+  `assertions` column needs migration **006** (applied manually via psql, NOT applied by seed).
+- NEXT BACKLOG ITEM: **#2 Environments UI**.
 
 ## Current turn (completed, pushed as `18b5794` on 2026-08-06)
 PUSHED — **Workflow pass-through** (see the DONE block below for the full summary). Full matrix
@@ -152,6 +171,11 @@ All planned features are implemented and pushed to `origin/master`:
   `cd backend && npm run seed:dev`, then re-insert the admin demo rows (pm=MANAGER, dev=VIEWER of
   the ADMIN's Default Project) into `project_managers` / `project_members` directly via psql —
   `seed:dev` does NOT recreate them (admin /users Projects column would look empty).
+- **New migrations are NOT auto-applied.** After a plain `seed:dev`, apply any pending migration
+  manually, e.g. `PGHOST=127.0.0.1 PGPORT=5432 PGUSER=postgres PGPASSWORD=postgres PGDATABASE=apihub
+  psql -f db/migrations/006_request_assertions.sql` (this turn's `assertions` column). A full
+  `db/tests/run.sh` applies every migration. Restart the backend after pulling new backend code —
+  a stale server process keeps serving the pre-pull handlers.
 - **FIXED this session** — `DELETE /requests/:id` (and collections/workspaces) no longer fails after a
   run exists. Migration `005_relax_run_history_target.sql` relaxes the `run_history_target` CHECK so
   `ON DELETE SET NULL` no longer violates it; run history is preserved as an audit trail (app shows
