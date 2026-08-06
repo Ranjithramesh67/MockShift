@@ -3,6 +3,7 @@
 const { query } = require('./db');
 const { resolveAuthHeader, applyAuthHeader, normalizeProvider } = require('./authToken');
 const { FormulaRunner } = require('../sandbox/formulaRunner');
+const { evaluateAssertions } = require('../engine/assertions');
 
 const TEMPLATE_RE = /\{\{\s*([A-Za-z0-9_\-\.]+)\s*\}\}/g;
 
@@ -30,7 +31,7 @@ async function resolveVariables(requestId, userId) {
 async function loadRequest(requestId) {
   const { rows } = await query(
     `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
-            api_type, collection_id, formula
+            api_type, collection_id, formula, assertions
        FROM api_requests WHERE id = $1`,
     [requestId]
   );
@@ -198,10 +199,14 @@ async function runRequest(requestId, userId) {
   }
   const finishedAt = new Date().toISOString();
 
-  await query(
+  const testResults = evaluateAssertions(request.assertions || [], responseSnapshot || {});
+  const assertionsPassed = testResults.length > 0 && testResults.every((t) => t.passed);
+
+  const { rows: runRows } = await query(
     `INSERT INTO run_history
        (request_id, user_id, trigger, status, request_snapshot, response_snapshot, started_at, finished_at)
-     VALUES ($1, $2, 'MANUAL', $3, $4, $5, $6, $7)`,
+     VALUES ($1, $2, 'MANUAL', $3, $4, $5, $6, $7)
+     RETURNING id`,
     [
       request.id,
       userId,
@@ -213,8 +218,18 @@ async function runRequest(requestId, userId) {
     ],
     { userId }
   );
+  const runId = runRows[0]?.id || null;
+
+  for (const t of testResults) {
+    await query(
+      `INSERT INTO test_results (run_id, test_name, passed, assertions, error)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [runId, t.message, t.passed, JSON.stringify(t), t.passed ? null : t.message]
+    );
+  }
 
   return {
+    runId,
     runStatus: status,
     httpStatus,
     error,
@@ -222,6 +237,8 @@ async function runRequest(requestId, userId) {
     resolvedAuth,
     requestSnapshot: { url, method: req.method, headers: fetchHeaders, body },
     variables: vars,
+    testResults,
+    assertionsPassed,
   };
 }
 

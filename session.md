@@ -3,6 +3,25 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
+## Feature backlog (user-approved 2026-08-06: implement one by one, working-loop for each)
+The user answered "Which feature should I build next?" with: add everything below to the backlog,
+then build each feature one by one, following the working rules (update session.md first → make
+changes → push → update session.md after push) for EVERY feature.
+1. **Response assertions / collection runner** — per-request assertions (status, JSON path,
+   headers, response time) evaluated after each run; a "Run collection" runner that runs every
+   request in a collection and reports per-request pass/fail. (START HERE)
+2. **Environments UI** — visual editor for environments/variables (backend-supported; no dedicated UI).
+3. **Run history page** — dedicated UI listing past runs with request/response snapshots, status, timing.
+4. **Mock server per project** — per-project mock API server (routes + in-memory state) managed from the app.
+5. **Workflow triggers & notifications** — more trigger types (on-request, on-run-failure) + richer notifications.
+6. **Export / import collections** — export collections as JSON (+ cURL/OpenAPI) and import back.
+7. **Share links for requests** — shareable public read-only links to a request with sample response.
+8. **Comments & collaboration** — inline comments on requests/collections + team mentions.
+9. **Global search** — Cmd-K quick switcher across requests, collections, workflows and runs.
+
+## Current turn (in progress)
+FEATURE 1 of the backlog: **Response assertions / collection runner** — plan below.
+
 ## Current turn (completed, pushed as `18b5794` on 2026-08-06)
 PUSHED — **Workflow pass-through** (see the DONE block below for the full summary). Full matrix
 green at push time: backend jest 40/40, test:api 16/16, api:unit 14/14, db tests pass, frontend

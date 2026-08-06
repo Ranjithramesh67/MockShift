@@ -148,8 +148,8 @@ router.post('/requests', async (req, res, next) => {
 
     const { rows } = await query(
       `INSERT INTO api_requests
-         (collection_id, name, method, url, api_type, headers, query_params, body_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (collection_id, name, method, url, api_type, headers, query_params, body_type, assertions)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, name, method, url, api_type, collection_id`,
       [
         collectionId,
@@ -160,6 +160,7 @@ router.post('/requests', async (req, res, next) => {
         JSON.stringify([]),
         JSON.stringify([]),
         'NONE',
+        JSON.stringify([]),
       ]
     );
     res.status(201).json({ request: rows[0] });
@@ -172,7 +173,7 @@ router.get('/requests/:requestId', async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
-              api_type, collection_id, formula
+              api_type, collection_id, formula, assertions
          FROM api_requests WHERE id = $1`,
       [req.params.requestId]
     );
@@ -204,6 +205,7 @@ router.get('/requests/:requestId', async (req, res, next) => {
         apiType: request.api_type,
         collectionId: request.collection_id,
         formula: request.formula || '',
+        assertions: request.assertions || [],
         workspaceId: ws,
         workspaceRole: access ? access.level : null,
         authProvider: normalizeProvider(provider.rows[0]),
@@ -239,6 +241,7 @@ router.put('/requests/:requestId', async (req, res, next) => {
       body_json: b.bodyJson,
       body_text: b.bodyText,
       formula: b.formula,
+      assertions: b.assertions,
     };
     const sets = [];
     const params = [requestId];
@@ -247,7 +250,7 @@ router.put('/requests/:requestId', async (req, res, next) => {
       if (col === 'method' && !HTTP_METHODS.includes(value)) continue;
       if (col === 'api_type' && !API_TYPES.includes(value)) continue;
       if (col === 'body_type' && !BODY_TYPES.includes(value)) continue;
-      if (col === 'headers' || col === 'query_params') {
+      if (col === 'headers' || col === 'query_params' || col === 'assertions') {
         params.push(JSON.stringify(value));
       } else {
         params.push(value);
@@ -310,6 +313,68 @@ router.post('/requests/:requestId/run', async (req, res, next) => {  try {
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
     const result = await runRequest(requestId, req.user.id);
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ----------------------------------------------------------- Collection runner
+router.post('/collections/:collectionId/run', async (req, res, next) => {
+  try {
+    const { collectionId } = req.params;
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canReadProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'No access to this collection' });
+    }
+    const { rows } = await query(
+      `SELECT id, name FROM api_requests WHERE collection_id = $1 ORDER BY name`,
+      [collectionId]
+    );
+    const results = [];
+    for (const r of rows) {
+      try {
+        const result = await runRequest(r.id, req.user.id);
+        results.push({
+          requestId: r.id,
+          name: r.name,
+          runStatus: result.runStatus,
+          httpStatus: result.httpStatus,
+          error: result.error,
+          durationMs: result.response ? result.response.durationMs : null,
+          assertions: result.testResults,
+          assertionsPassed: result.assertionsPassed,
+        });
+      } catch (err) {
+        results.push({
+          requestId: r.id,
+          name: r.name,
+          runStatus: 'FAILED',
+          httpStatus: 0,
+          error: err.message,
+          durationMs: null,
+          assertions: [],
+          assertionsPassed: false,
+        });
+      }
+    }
+    const total = results.length;
+    const passed = results.filter((r) => r.runStatus === 'SUCCESS').length;
+    const assertionsTotal = results.reduce((n, r) => n + (r.assertions?.length || 0), 0);
+    const assertionsPassed = results.reduce(
+      (n, r) => n + (r.assertions?.filter((a) => a.passed).length || 0),
+      0
+    );
+    res.json({
+      results,
+      summary: {
+        total,
+        passed,
+        failed: total - passed,
+        assertionsTotal,
+        assertionsPassed,
+      },
+    });
   } catch (err) {
     next(err);
   }
