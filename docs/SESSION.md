@@ -194,6 +194,45 @@ runner. The backend engine had already landed in `77ca26c` (`backend/src/engine/
 - ENV NOTES: dev DB had been reset → `npm run seed:dev`; the backend process was stale (pre-pull
   code) → restarted; migration 006 must be applied manually after a plain reset (see §8).
 
+### 5.9 Workflow event triggers + richer notifications (this turn, committed in c15149e)
+FEATURE 5 from the backlog. Two new automation trigger types + richer failure notifications:
+- **ON_REQUEST**: runs the automation's workflow after a request in the project executes.
+  Optionally bound to a single watched request (`event_request_id`, NULL = any request).
+- **ON_RUN_FAILURE**: runs the workflow when a run in the project fails. Optionally bound to a
+  single watched workflow (`source_workflow_id`, NULL = any run). Loop-guarded: never re-fires
+  for runs that were themselves started by an ON_RUN_FAILURE event.
+- Migration `008_workflow_event_triggers.sql`: widened `automations.trigger_type` CHECK, added
+  `event_request_id` / `source_workflow_id` / `notify_webhook_url` (+ indexes), added `run_trigger`
+  enum values `ON_REQUEST` / `ON_RUN_FAILURE`, and `notifications.payload` (jsonb) + `link`.
+- `workflowService.fireWorkflowEvent()` matches enabled automations by trigger type + project
+  (+ optional watch target), runs their workflows with the event context injected as
+  `{{event.*}}` input vars. `reflectInAutomations` now resolves the failing run's project from
+  `run_history` (JOIN workflow_chains / collections — the table has no project_id column),
+  writes `payload` + `/automations` `link` on in-app failure notifications, and POSTs a
+  `{event:'run_failed',...}` JSON payload to `notify_webhook_url` when set (fire-and-forget,
+  5s timeout, http(s) only).
+- Routes: `automations.js` accepts the new trigger types + fields (with "target must be in this
+  project" validation) and exposes them via `toApi`; `content.js` fires ON_REQUEST after every
+  request run and ON_RUN_FAILURE on a failed run in the single-run and collection-run handlers.
+- Frontend: `AutomationsView.tsx` modal adds "On request run"/"On run failure" options with a
+  watch-request / watch-workflow selector + an optional notify webhook URL; cards render the
+  trigger type + watch target + webhook. `api.ts` extends `Automation`/`AutomationInput`/
+  `Notification` (payload + link).
+- `seed-dev.js` now calls `ensureAdminDemoRows()` from `main()` — one `npm run seed:dev` also
+  restores the pm=MANAGER / dev=VIEWER demo rows (previously manual SQL only).
+- Tests: `backend/tests/automationEvents.integration.test.cjs` (4: create/validate new trigger
+  types; ON_REQUEST fires; ON_RUN_FAILURE fires; richer notification + webhook delivery via a
+  local capture HTTP server). e2e `frontend/e2e/automations-events.spec.ts` (2). The engine is
+  exercised end-to-end (BullMQ + Redis are up).
+- Verified matrix: backend jest **47/47**, `test:api` **29/29** (+4), `test:api:unit` **24/24**,
+  db tests all pass, frontend unit **42/42**, `tsc --noEmit` clean, e2e **21/21** (+2).
+- Backend restarted (`term_1786129995092_9` PID 17833, :3001). Preview:
+  https://3000-606b9b46b8d0d0bf.monkeycode-ai.live
+- NOTE for the next agent: the full e2e suite is only green when run on a freshly reseeded DB —
+  `history.spec.ts` and `mock-server.spec.ts` each leave a request inside the seeded "Mock API
+  Demo" collection, so `assertions-runner.spec.ts` ("Requests: 8") fails on the second run without
+  a reseed (or manual cleanup of `history-e2e-request` / `mock-e2e-request`).
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
@@ -250,10 +289,11 @@ commit).
   (snapshots disabled via `save ""`).
 - During this turn the dev DB had been reset (seed users gone), which made the
   nav/login e2e specs fail with "Invalid email or password". Fix: `cd backend &&
-  npm run seed:dev`, then re-insert the admin demo rows (pm=MANAGER, dev=VIEWER of
-  the ADMIN's Default Project) directly via SQL into `project_managers` /
-  `project_members` — these are NOT part of `seed:dev`. After any `db/tests/run.sh`
-  or DB reset, redo both steps before running e2e.
+  npm run seed:dev`. The admin demo rows (pm=MANAGER, dev=VIEWER of the ADMIN's
+  Default Project) are ALSO restored by `seed:dev` now (`ensureAdminDemoRows` in
+  `main()`); previously they needed manual SQL into `project_managers` /
+  `project_members`. After any `db/tests/run.sh` or DB reset, re-run `seed:dev`
+  before running e2e.
 - Installing Postgres/Redis/Playwright was required in this environment (they
   were absent); see section 2 for how they are started.
 
