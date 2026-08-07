@@ -3,36 +3,40 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
-## Current turn (in progress)
-BACKLOG ITEM **#4 — Mock server per project**: a per-project mock API server (routes + in-memory
-state) managed from the app.
-
-**Plan:**
-- Migration `007_mock_servers.sql`: `mock_servers` (id, project_id FK → projects ON DELETE CASCADE,
-  name, enabled, created_at) + `mock_routes` (id, mock_server_id FK ON DELETE CASCADE, method,
-  path, status, headers jsonb, body text, delay_ms).
-- Backend `backend/src/api/routes/mockServers.js`:
-  - `GET /api/projects/:projectId/mock-server` (get or `{mockServer:null}`), `POST …` (create),
-    `PATCH /api/mock-servers/:id`, `DELETE /api/mock-servers/:id`.
-  - `GET/POST /api/mock-servers/:id/routes`, `PATCH/DELETE /api/mock-routes/:id`.
-  - Access: `requireProjectRead` / `requireProjectWrite` (route + route-level checks).
-- Mock dispatch (public, no auth — consumers hit it like any API): mounted in `server.js` at
-  `/mock/:projectId/*`; resolves the project's enabled mock server, matches method + path (with
-  `:param` segments) against routes, returns configured status/headers/body + optional delay.
-  Requests in the app point at `http://127.0.0.1:3001/mock/<projectId>/…`.
-- Frontend: `mockServerApi` in `api.ts` + a Mock Server management UI (list routes, add/edit/
-  delete with method/path/status/headers/body/delay) exposed in the workspace content area.
-- Tests: backend integration (`mockServer.integration.test.cjs`), frontend unit, e2e
-  `frontend/e2e/mock-server.spec.ts`; full matrix green before push. Then refresh this file +
-  `docs/SESSION.md`.
-
-**Progress (this turn):** implementation done (migration 007, path matcher, mockServers routes +
-mockDispatch mounted, api.ts types, MockServersModal + Sidebar wiring, styles, e2e spec).
-**Full matrix re-verified green this turn:** backend `test:api` 25/25, `test:api:unit` 24/24, jest
-47/47, db tests all pass, frontend unit 42/42, `tsc --noEmit` clean. New `mock-server.spec.ts` e2e
-passes. Full e2e suite: 18/19 — the single failure was the *known, pre-existing* `history.spec.ts`
-detail-modal flake (`history-detail-modal` timeout on open; passes in isolation both times it was
-re-run; already documented). State: ready to commit + push.
+## Current turn (completed, pushed as `c15149e` on 2026-08-07)
+BACKLOG ITEM **#5 — Workflow triggers & notifications** is DONE and on `origin/master`:
+- Two new automation trigger types:
+  - **ON_REQUEST** — runs the workflow after a request in the project executes. Optionally
+    bound to one watched request (`event_request_id`); NULL = any request in the project.
+  - **ON_RUN_FAILURE** — runs the workflow when a run in the project fails. Optionally bound to
+    one watched workflow (`source_workflow_id`); NULL = any run. Loop-guarded (never re-fires for
+    runs that were themselves triggered by ON_RUN_FAILURE).
+- Migration `008_workflow_event_triggers.sql`: widened `automations.trigger_type` CHECK, added
+  `event_request_id`, `source_workflow_id`, `notify_webhook_url` + indexes; added `run_trigger`
+  enum values `ON_REQUEST`/`ON_RUN_FAILURE`; added `notifications.payload` (jsonb) + `link`.
+- Richer notifications: in-app failure notifications now carry a structured `payload` (runId,
+  projectId, workflowId, status) + a `/automations` deep `link`; automations can set an optional
+  `notify_webhook_url` that receives a `{event:'run_failed', ...}` JSON POST on failure
+  (fire-and-forget, 5s timeout, http(s) only).
+- `workflowService.fireWorkflowEvent()` injects the event context into the workflow's input vars
+  under `{{event.*}}` (type, projectId, requestId, sourceWorkflowId, runId, status, httpStatus,
+  method, url). Fired from request runs (`content.js` run routes: single-run + collection runner)
+  and from `reflectInAutomations` for failed workflow runs.
+- Frontend: `AutomationsView` modal now offers the two event triggers, a Watch-request /
+  Watch-workflow selector, and a notify webhook URL field; cards show the trigger type + watch
+  target + webhook. `Automation`/`Notification` types extended in `api.ts`.
+- Tests: backend `automationEvents.integration.test.cjs` (4 tests: create/validate new types,
+  ON_REQUEST fires, ON_RUN_FAILURE fires, richer notification + webhook delivery via a local
+  capture server). e2e `automations-events.spec.ts` (2 tests).
+- Verified matrix: backend jest **47/47**, `test:api` **29/29** (+4), `test:api:unit` **24/24**,
+  db tests **all pass**, frontend unit **42/42**, `tsc --noEmit` clean, e2e **21/21** (+2).
+- Housekeeping folded in: `ensureAdminDemoRows` is now called from `main()` in `seed-dev.js` —
+  a single `npm run seed:dev` restores the admin demo rows (pm=MANAGER, dev=VIEWER) too. Backend
+  restarted to load the event-trigger code (`term_1786129995092_9`, PID 17833, :3001).
+- NOTE on e2e ordering: `assertions-runner.spec.ts` asserts "Requests: 8" on the seeded "Mock API
+  Demo" collection, but `history.spec.ts` + `mock-server.spec.ts` create-and-leave a request in it,
+  so the full suite is only green when run on a freshly reseeded DB (reseed before a full e2e run).
+- NEXT BACKLOG ITEM: **#6 Export / import collections**.
 
 ## Current turn (completed, pushed as `f906755`)
 BACKLOG ITEM **#3 — Run history page** is DONE and on `origin/master` (`f906755`, pushed by the
@@ -90,6 +94,7 @@ changes → push → update session.md after push) for EVERY feature.
    DONE (`f906755`).
 4. **Mock server per project** — per-project mock API server (routes + in-memory state) managed from the app.
 5. **Workflow triggers & notifications** — more trigger types (on-request, on-run-failure) + richer notifications.
+   DONE (`c15149e`).
 6. **Export / import collections** — export collections as JSON (+ cURL/OpenAPI) and import back.
 7. **Share links for requests** — shareable public read-only links to a request with sample response.
 8. **Comments & collaboration** — inline comments on requests/collections + team mentions.
