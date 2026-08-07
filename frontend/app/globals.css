@@ -814,6 +814,21 @@ textarea {
   min-height: 0;
 }
 
+/* Scroll container for the in-app top-level views (automations / manage /
+   admin) rendered inside the main area. */
+.admin-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-view > .admin-main {
+  flex: none;
+  margin: 0 auto;
+}
+
 .tab-bar {
   display: flex;
   align-items: center;

@@ -16,6 +16,18 @@ test('create an environment, set variables, and run a request with {{var}}', asy
   await page.getByTestId('login-submit').click();
   await expect(page.getByTestId('sidebar')).toBeVisible();
 
+  // Idempotent runs: drop any "E2E Staging" environment left behind by a
+  // previous run so the create + strict-mode `env-E2E Staging` assertion below
+  // cannot resolve to multiple rows.
+  const wsRes = await page.request.get('/api/workspaces');
+  const workspaces = (await wsRes.json()).workspaces as Array<{ id: string; name: string }>;
+  const myWs = workspaces.find((w) => w.name === 'My Workspace')!;
+  const envs = (await (await page.request.get(`/api/workspaces/${myWs.id}/environments`)).json())
+    .environments as Array<{ id: string; name: string }>;
+  for (const env of envs.filter((e) => e.name === 'E2E Staging')) {
+    await page.request.delete(`/api/environments/${env.id}`);
+  }
+
   // Select the seeded workspace so the environments modal knows its role.
   await page.getByTestId('workspace-My Workspace').click();
   await expect(page.getByTestId('request-configurator')).toBeVisible();
