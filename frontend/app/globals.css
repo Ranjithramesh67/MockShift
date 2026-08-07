@@ -2433,6 +2433,42 @@ textarea {
   background: rgba(148, 163, 184, 0.03);
 }
 
+/* --- Run history view ------------------------------------------------ */
+.mono-cell {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-snapshots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.history-snapshot {
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.history-snapshot-body {
+  margin: 10px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
 .admin-user-cell {
   display: flex;
   align-items: center;

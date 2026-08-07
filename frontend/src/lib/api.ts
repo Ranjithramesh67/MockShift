@@ -318,12 +318,49 @@ export interface RunHistoryEntry {
   status: string;
   started_at: string;
   finished_at: string | null;
+  duration_ms: number | null;
   request_id: string | null;
   workflow_id: string | null;
   user_email: string | null;
   user_name: string | null;
   name: string | null;
+  method: string | null;
+  url: string | null;
 }
+
+export interface RunTestResult {
+  test_name: string;
+  passed: boolean;
+  assertions: unknown;
+  error: string | null;
+}
+
+export interface RunHistoryDetail {
+  id: string;
+  name: string | null;
+  trigger: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  request_id: string | null;
+  workflow_id: string | null;
+  request_snapshot: { method?: string; url?: string; headers?: Record<string, string>; body?: unknown } | null;
+  response_snapshot: {
+    status?: number;
+    statusText?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    bodyEncoding?: string;
+    durationMs?: number;
+  } | null;
+  test_results: RunTestResult[];
+}
+
+// Personal run history — scoped server-side to the current user only.
+export const runHistoryApi = {
+  list: (limit = 100) => apiFetch<{ runs: RunHistoryEntry[] }>(`/api/history?limit=${limit}`),
+  detail: (runId: string) => apiFetch<{ run: RunHistoryDetail }>(`/api/history/${runId}`),
+};
 
 export interface ProjectDetail {
   project: { id: string; name: string; workspace_id: string; workspace_name: string; organization_id: string };

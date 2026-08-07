@@ -12,6 +12,7 @@ const projectRoutes = require('./routes/projects');
 const workflowRoutes = require('./routes/workflows');
 const automationRoutes = require('./routes/automations').router;
 const notificationRoutes = require('./routes/notifications');
+const historyRoutes = require('./routes/history');
 const { query } = require('./db');
 const { runWorkflow, syncAllSchedules } = require('./workflowService');
 
@@ -64,6 +65,7 @@ function createApp() {
   app.use('/api', workflowRoutes);
   app.use('/api', automationRoutes);
   app.use('/api', notificationRoutes);
+  app.use('/api/history', historyRoutes);
 
   // 404 for unknown API routes.
   app.use('/api', (req, res) => {

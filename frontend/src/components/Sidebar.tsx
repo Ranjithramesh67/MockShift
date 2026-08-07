@@ -26,6 +26,7 @@ import {
   BoltIcon,
   ShieldIcon,
   UserIcon,
+  HistoryIcon,
   PlayIcon,
 } from './icons';
 
@@ -455,6 +456,16 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
           onClick={() => setView('automations')}
         >
           <BoltIcon size={17} />
+        </Link>
+        <Link
+          href="/history"
+          className="rail-button"
+          data-testid="rail-history"
+          title="Run history"
+          aria-label="Run history"
+          onClick={() => setView('history')}
+        >
+          <HistoryIcon size={17} />
         </Link>
         {canManage && (
           <Link

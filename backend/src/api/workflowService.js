@@ -39,11 +39,11 @@ const workflowRepository = {
 };
 
 const runStore = {
-  async create({ id, workflowId, trigger, status, startedAt }) {
+  async create({ id, workflowId, trigger, status, startedAt, userId = null }) {
     await query(
-      `INSERT INTO run_history (id, workflow_id, trigger, status, started_at)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [id, workflowId, trigger, status, startedAt || new Date().toISOString()]
+      `INSERT INTO run_history (id, workflow_id, trigger, status, started_at, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, workflowId, trigger, status, startedAt || new Date().toISOString(), userId]
     );
     return { id, workflowId, status };
   },
@@ -218,8 +218,8 @@ function getScheduler() {
   return scheduler;
 }
 
-async function runWorkflow({ workflowId, trigger = 'MANUAL', inputVars = {} }) {
-  return getEngine().start({ workflowId, inputVars, trigger });
+async function runWorkflow({ workflowId, trigger = 'MANUAL', inputVars = {}, userId = null }) {
+  return getEngine().start({ workflowId, inputVars, trigger, userId });
 }
 
 async function registerAutomation(automation) {

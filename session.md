@@ -3,6 +3,42 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
+## Current turn (in progress)
+BACKLOG ITEM **#3 — Run history page**, with the user's explicit privacy rule: a user must see
+ONLY THEIR OWN runs — never other users' or team-wide history.
+
+**Implemented so far (NOT yet committed/pushed):**
+- Backend `backend/src/api/routes/history.js` (mounted `app.use('/api/history', …)` in server.js):
+  - `GET /api/history` — list runs `WHERE rh.user_id = <current user>` (newest first, `limit`
+    param) with `duration_ms`, `name`, `method`/`url` (from `request_snapshot` so deleted
+    requests still resolve). No admin/team bypass by design.
+  - `GET /api/history/:runId` — detail (request_snapshot + response_snapshot + test_results),
+    `WHERE rh.id = $1 AND rh.user_id = $2` (404 for anyone else's run).
+- Threaded `userId` into MANUAL workflow runs so they appear in the user's own history:
+  `workflowService.js` `runStore.create` + `runWorkflow` accept `userId`, `workflowEngine.js`
+  `start` passes it through, `workflows.js` route passes `userId: req.user.id`. Automation /
+  scheduled runs keep `user_id NULL` (not shown in personal history).
+- Backend tests `backend/tests/history.integration.test.cjs` (2 tests): each user only sees their
+  own runs, cross-user detail = 404, unauth = 401. **Green**: `test:api` 22/22, `test:api:unit`
+  14/14, jest 47/47.
+- Frontend: `runHistoryApi` (list/detail) + `RunHistoryDetail`/extended `RunHistoryEntry` in
+  `api.ts`; `AppView` += `'history'` (NavStore) + `RouteViewSync` maps `/history`; new
+  `views/HistoryView.tsx` (list table + click-through detail modal with request/response
+  snapshots + assertions); `app/history/page.tsx`; rail "History" button for ALL users
+  (`Sidebar.tsx`, reuses pre-existing `HistoryIcon`); `.mono-cell`/`.history-*` styles in
+  globals.css. **tsc clean, frontend unit 37/37.**
+- e2e `frontend/e2e/history.spec.ts` (2 tests): boss creates+runs a uniquely-named request
+  (`history-e2e-request`, idempotent cleanup) → sees SUCCESS row with URL + opens detail modal
+  + snapshots; dev logs in → `history-empty` (isolation). Dev-test passes.
+
+**Blocked / in progress — e2e detail modal flake:** `history-detail-history-e2e-request` click
+opens the modal (previous `history-detail-modal` assertion passes) but the modal closes during
+the 5s `history-detail-name` wait (final snapshot shows no modal). Backend detail endpoint
+verified via curl (200 with full snapshots), so it is a frontend-side re-render/event issue, not
+the API. A throwaway debug spec `frontend/e2e/debug-history.spec.ts` (console/pageerror/response
+capture) was written to pin it down but the debug run was aborted — DELETE or re-purpose it before
+the final push. Remaining: fix the modal, verify matrix, commit + push, refresh this file.
+
 ## Current turn (completed, this session)
 PUSHED as `32bac39` (plus the earlier origin merges through `8a69536`).
 This session: pulled origin (parallel AI was strictly ahead), merged in-app views architecture +
