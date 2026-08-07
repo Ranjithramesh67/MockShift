@@ -3,38 +3,35 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
-## Current turn (in progress)
-NEXT BACKLOG ITEM — **#2 Environments UI** (visual editor for environments/variables; backend DB
-schema `environments` + `variables` already exists with RLS + `app.resolve_variables` cascade).
-IN PROGRESS — code written, NOT yet pushed. What's changed so far:
-1. Backend `backend/src/api/routes/environments.js` (new, mounted at `/api`, requires auth):
-   - `GET /api/workspaces/:wsId/environments` (+ `POST` create with `makeActive`,
-     `PATCH` `/api/environments/:id` rename/`isActive` with one-active-per-workspace,
-     `DELETE` cascades variables).
-   - `GET /api/environments/:id/variables` (secrets decrypted for owner) +
-     `POST` save variable (upsert `ON CONFLICT (environment_id,key)`), `DELETE` variable.
-   - Read guarded by `canReadWorkspace`, mutation by `canMutateWorkspace` (EDITOR/ADMIN).
-2. `backend/src/api/runner.js` — `resolveVariables(requestId, userId)` now looks up the request's
-   workspace ACTIVE environment (`activeEnvironmentIdForRequest`) and passes its id to
-   `app.resolve_variables($1,$2)` so `{{key}}` honors REQUEST > ENVIRONMENT > WORKSPACE > GLOBAL.
-3. `backend/src/api/db.js` — wrapped the RLS `set_config` calls in BEGIN/COMMIT (set_config with
-   `is_local=true` reverted before the query ran without a transaction, so encrypted secret
-   variables decrypted to NULL in the resolver).
-4. Frontend — `environmentApi` in `src/lib/api.ts`; `EnvironmentsModal.tsx` (env list + active radio
-   + rename/delete + create; variable rows key/value/secret with add/remove/save); "Env" button in
-   `Sidebar.tsx` Workspaces section (`data-testid="environments-open"`); styles in `globals.css`.
-5. Tests: `backend/tests/environments.integration.test.cjs` — **4/4 pass** (CRUD + role guard).
-   `frontend/e2e/environments.spec.ts` (new). `assertions-runner.spec.ts` got TS typing fixes.
-   `backend/package.json` `test:api` now globs `tests/*.integration.test.cjs`.
-6. e2e debugging so far (backend + dev server + mock upstream running):
-   - Modal needs an active workspace (role) before it can create envs → test clicks
-     `workspace-My Workspace` first; modal shows a hint when no workspace is selected.
-   - Backend lists variables `ORDER BY key` (alphabetical), so the e2e now asserts by
-     key/row lookup instead of nth() position.
-   - `test:api` was expanded to include the new integration spec.
-REMAINING: finish `environments.spec.ts` (re-open modal → masked secret round-trip → run
-`{{BASE_URL}}` request → `Status: 200`), then run full matrix (backend jest + test:api, db tests,
-frontend unit + `tsc --noEmit`, e2e) → commit + push → update `session.md` + push.
+## Current turn (completed, this session)
+This session: pulled origin (parallel AI was strictly ahead), merged in-app views architecture +
+the feature chain it shipped, then finished the remaining gaps and made the e2e suite green.
+
+**Merged from origin (now on `master`):**
+- In-app views architecture (user's requirement): single `AppShell` + `NavProvider`/`NavStore`
+  (`src/store/NavStore.tsx`) + `RouteViewSync` in the root layout; `/`, `/automations`, `/manage`,
+  `/admin` all render the same shell — rail clicks switch views in-app, no separate page jump.
+  Views extracted to `src/components/views/{Automations,Manage,Admin}View.tsx`.
+- Feature chain: assertions editor + collection runner (`222cd58`, migration
+  `006_request_assertions.sql`), workflow pass-through (`18b5794`), project-wise admin users
+  (`a5b12bb`), sidebar-nav fix (`6faed49`), environments (`8a69536`:
+  `backend/src/api/routes/environments.js`, `backend/src/api/db.js` session-var tx fix,
+  frontend `EnvironmentsModal.tsx`, `frontend/e2e/environments.spec.ts`).
+
+**My changes this session (ready to push):**
+- Added the missing `.admin-view` CSS in `globals.css` (flex:1 scroll container inside `.main-area`),
+  completing the in-app views wiring (`.admin-view` at globals.css after `.main-area`).
+- e2e suite made reliably green — the new specs depend on shared seed data + one boss account, so:
+  - `frontend/playwright.config.ts`: `fullyParallel: true` → `fullyParallel: false, workers: 1`
+    (parallel workers raced on the same backend DB: duplicate named environments, login contention).
+  - `frontend/e2e/environments.spec.ts`: idempotent — deletes any leftover "E2E Staging" via
+    `page.request` before creating it (strict-mode violation on `env-E2E Staging` after 2nd run).
+- Verified matrix **all green**: backend jest **47/47**, `test:api` **20/20**, `test:api:unit`
+  **14/14**, db tests pass, frontend unit **37/37** (fail 0), `tsc --noEmit` clean, e2e **16/16**
+  (env spec idempotency double-run verified without a DB reset).
+- Running services: backend restarted to load the environments route (`term_1786120583103_10`
+  PID 17246 :3001), frontend dev restarted (`term_1786120825958_11` PID 18320 :3000), mock
+  upstream PID 12617 :3999.
 
 ## Feature backlog (user-approved 2026-08-06: implement one by one, working-loop for each)
 The user answered "Which feature should I build next?" with: add everything below to the backlog,
@@ -42,8 +39,9 @@ then build each feature one by one, following the working rules (update session.
 changes → push → update session.md after push) for EVERY feature.
 1. **Response assertions / collection runner** — per-request assertions (status, JSON path,
    headers, response time) evaluated after each run; a "Run collection" runner that runs every
-   request in a collection and reports per-request pass/fail. (START HERE)
+   request in a collection and reports per-request pass/fail. DONE (`222cd58`).
 2. **Environments UI** — visual editor for environments/variables (backend-supported; no dedicated UI).
+   DONE (`8a69536` + `EnvironmentsModal.tsx`).
 3. **Run history page** — dedicated UI listing past runs with request/response snapshots, status, timing.
 4. **Mock server per project** — per-project mock API server (routes + in-memory state) managed from the app.
 5. **Workflow triggers & notifications** — more trigger types (on-request, on-run-failure) + richer notifications.
