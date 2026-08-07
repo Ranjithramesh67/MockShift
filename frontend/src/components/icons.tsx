@@ -364,6 +364,14 @@ export const LayersIcon = (p: IconProps) => (
   </svg>
 );
 
+export const ServerIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <rect x="3" y="4" width="18" height="7" rx="2" />
+    <rect x="3" y="13" width="18" height="7" rx="2" />
+    <path d="M7 7.5h.01M7 16.5h.01" />
+  </svg>
+);
+
 export const ZoomIcon = (p: IconProps) => (
   <svg {...svgProps(p)}>
     <circle cx="11" cy="11" r="7" />

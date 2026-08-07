@@ -14,6 +14,7 @@ import { TeamsModal } from './TeamsModal';
 import { AuthProviderModal } from './AuthProviderModal';
 import { CollectionRunnerModal } from './CollectionRunnerModal';
 import { EnvironmentsModal } from './EnvironmentsModal';
+import { MockServersModal } from './MockServersModal';
 import {
   WorkspaceIcon,
   TeamIcon,
@@ -28,6 +29,7 @@ import {
   UserIcon,
   HistoryIcon,
   PlayIcon,
+  ServerIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
@@ -95,13 +97,14 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
   );
 }
 
-function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection }: {
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection, onOpenMockServer }: {
   onOpenCreate: (kind: CreateKind, collectionId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
   onRequestAccess: (project: { id: string; name: string }) => void;
   onNavigate: () => void;
   onRunCollection: (collectionId: string, collectionName: string) => void;
+  onOpenMockServer: (project: { id: string; name: string }) => void;
 }) {
   const ws = useWorkspace();
   const { dispatch } = useApp();
@@ -153,6 +156,18 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
             ) : p.access_status === 'PENDING' ? (
               <span className="vis-badge pending-badge">PENDING</span>
             ) : null}
+            {p.can_access && (
+              <button
+                type="button"
+                className="icon-button tree-project-mock"
+                title={`Mock server for ${p.name}`}
+                aria-label={`Mock server for ${p.name}`}
+                data-testid={`mock-server-${p.name}`}
+                onClick={() => onOpenMockServer({ id: p.id, name: p.name })}
+              >
+                <ServerIcon size={12} />
+              </button>
+            )}
           </div>
           {!p.can_access && p.access_status !== 'PENDING' && (
             <button
@@ -370,6 +385,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const [environmentsOpen, setEnvironmentsOpen] = useState(false);
   const [runnerOpen, setRunnerOpen] = useState(false);
   const [runnerCollectionName, setRunnerCollectionName] = useState('');
+  const [mockProject, setMockProject] = useState<{ id: string; name: string } | null>(null);
   const [requestingProject, setRequestingProject] = useState<{ id: string; name: string } | null>(null);
   const [accessReason, setAccessReason] = useState('');
 
@@ -522,6 +538,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
                 onRequestAccess={(p) => setRequestingProject(p)}
                 onNavigate={goWorkspace}
                 onRunCollection={onRunCollection}
+                onOpenMockServer={(p) => setMockProject(p)}
               />
             ) : (
               !ws.loading && (
@@ -593,6 +610,14 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
       <TeamsModal open={teamsOpen} onClose={() => setTeamsOpen(false)} />
       <EnvironmentsModal open={environmentsOpen} onClose={() => setEnvironmentsOpen(false)} />
       <AuthProviderModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      {mockProject && (
+        <MockServersModal
+          open
+          projectId={mockProject.id}
+          projectName={mockProject.name}
+          onClose={() => setMockProject(null)}
+        />
+      )}
       <CollectionRunnerModal
         open={runnerOpen}
         running={ws.collectionRunRunning}
