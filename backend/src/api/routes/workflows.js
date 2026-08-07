@@ -150,7 +150,7 @@ router.post('/workflows/:workflowId/run', async (req, res, next) => {
     if (!(await canReadProject(req.user.id, wf.project_id))) {
       return res.status(403).json({ error: 'No access to this project' });
     }
-    const runId = await runWorkflow({ workflowId: wf.id, trigger: 'MANUAL' });
+    const runId = await runWorkflow({ workflowId: wf.id, trigger: 'MANUAL', userId: req.user.id });
     await logAudit({
       actorId: req.user.id,
       entityType: 'workflow',

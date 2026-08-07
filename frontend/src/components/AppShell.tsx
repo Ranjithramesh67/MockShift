@@ -17,6 +17,7 @@ import { ToastHost } from './ToastHost';
 import { AutomationsView } from './views/AutomationsView';
 import { ManageView } from './views/ManageView';
 import { AdminView } from './views/AdminView';
+import { HistoryView } from './views/HistoryView';
 
 function WorkspaceArea({ onOpenCurl }: { onOpenCurl: () => void }) {
   const { state, dispatch } = useApp();
@@ -92,6 +93,8 @@ export function AppShell() {
                 <AutomationsView />
               ) : view === 'manage' ? (
                 <ManageView />
+              ) : view === 'history' ? (
+                <HistoryView />
               ) : (
                 <AdminView />
               )}

@@ -83,7 +83,7 @@ class WorkflowEngine {
     });
   }
 
-  async start({ workflowId, inputVars = {}, trigger = 'MANUAL' }) {
+  async start({ workflowId, inputVars = {}, trigger = 'MANUAL', userId = null }) {
     const workflow = await this.workflowRepository.findById(workflowId);
     if (!workflow) {
       throw new Error(`Workflow not found: ${workflowId}`);
@@ -107,6 +107,7 @@ class WorkflowEngine {
       trigger,
       status: 'PENDING',
       startedAt: new Date().toISOString(),
+      userId,
     });
     const first = workflow.steps[0];
     await this.enqueueStep(workflow, 0, 0, state, first.delayMs || 0);
