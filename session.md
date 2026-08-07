@@ -4,40 +4,47 @@
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
 ## Current turn (in progress)
-BACKLOG ITEM **#3 — Run history page**, with the user's explicit privacy rule: a user must see
-ONLY THEIR OWN runs — never other users' or team-wide history.
+BACKLOG ITEM **#4 — Mock server per project**: a per-project mock API server (routes + in-memory
+state) managed from the app.
 
-**Implemented so far (NOT yet committed/pushed):**
-- Backend `backend/src/api/routes/history.js` (mounted `app.use('/api/history', …)` in server.js):
-  - `GET /api/history` — list runs `WHERE rh.user_id = <current user>` (newest first, `limit`
-    param) with `duration_ms`, `name`, `method`/`url` (from `request_snapshot` so deleted
-    requests still resolve). No admin/team bypass by design.
-  - `GET /api/history/:runId` — detail (request_snapshot + response_snapshot + test_results),
-    `WHERE rh.id = $1 AND rh.user_id = $2` (404 for anyone else's run).
-- Threaded `userId` into MANUAL workflow runs so they appear in the user's own history:
-  `workflowService.js` `runStore.create` + `runWorkflow` accept `userId`, `workflowEngine.js`
-  `start` passes it through, `workflows.js` route passes `userId: req.user.id`. Automation /
-  scheduled runs keep `user_id NULL` (not shown in personal history).
-- Backend tests `backend/tests/history.integration.test.cjs` (2 tests): each user only sees their
-  own runs, cross-user detail = 404, unauth = 401. **Green**: `test:api` 22/22, `test:api:unit`
-  14/14, jest 47/47.
-- Frontend: `runHistoryApi` (list/detail) + `RunHistoryDetail`/extended `RunHistoryEntry` in
-  `api.ts`; `AppView` += `'history'` (NavStore) + `RouteViewSync` maps `/history`; new
-  `views/HistoryView.tsx` (list table + click-through detail modal with request/response
-  snapshots + assertions); `app/history/page.tsx`; rail "History" button for ALL users
-  (`Sidebar.tsx`, reuses pre-existing `HistoryIcon`); `.mono-cell`/`.history-*` styles in
-  globals.css. **tsc clean, frontend unit 37/37.**
-- e2e `frontend/e2e/history.spec.ts` (2 tests): boss creates+runs a uniquely-named request
-  (`history-e2e-request`, idempotent cleanup) → sees SUCCESS row with URL + opens detail modal
-  + snapshots; dev logs in → `history-empty` (isolation). Dev-test passes.
+**Plan:**
+- Migration `007_mock_servers.sql`: `mock_servers` (id, project_id FK → projects ON DELETE CASCADE,
+  name, enabled, created_at) + `mock_routes` (id, mock_server_id FK ON DELETE CASCADE, method,
+  path, status, headers jsonb, body text, delay_ms).
+- Backend `backend/src/api/routes/mockServers.js`:
+  - `GET /api/projects/:projectId/mock-server` (get or `{mockServer:null}`), `POST …` (create),
+    `PATCH /api/mock-servers/:id`, `DELETE /api/mock-servers/:id`.
+  - `GET/POST /api/mock-servers/:id/routes`, `PATCH/DELETE /api/mock-routes/:id`.
+  - Access: `requireProjectRead` / `requireProjectWrite` (route + route-level checks).
+- Mock dispatch (public, no auth — consumers hit it like any API): mounted in `server.js` at
+  `/mock/:projectId/*`; resolves the project's enabled mock server, matches method + path (with
+  `:param` segments) against routes, returns configured status/headers/body + optional delay.
+  Requests in the app point at `http://127.0.0.1:3001/mock/<projectId>/…`.
+- Frontend: `mockServerApi` in `api.ts` + a Mock Server management UI (list routes, add/edit/
+  delete with method/path/status/headers/body/delay) exposed in the workspace content area.
+- Tests: backend integration (`mockServer.integration.test.cjs`), frontend unit, e2e
+  `frontend/e2e/mock-server.spec.ts`; full matrix green before push. Then refresh this file +
+  `docs/SESSION.md`.
 
-**Blocked / in progress — e2e detail modal flake:** `history-detail-history-e2e-request` click
-opens the modal (previous `history-detail-modal` assertion passes) but the modal closes during
-the 5s `history-detail-name` wait (final snapshot shows no modal). Backend detail endpoint
-verified via curl (200 with full snapshots), so it is a frontend-side re-render/event issue, not
-the API. A throwaway debug spec `frontend/e2e/debug-history.spec.ts` (console/pageerror/response
-capture) was written to pin it down but the debug run was aborted — DELETE or re-purpose it before
-the final push. Remaining: fix the modal, verify matrix, commit + push, refresh this file.
+**Progress (this turn):** implementation done (migration 007, path matcher, mockServers routes +
+mockDispatch mounted, api.ts types, MockServersModal + Sidebar wiring, styles, e2e spec).
+**Full matrix re-verified green this turn:** backend `test:api` 25/25, `test:api:unit` 24/24, jest
+47/47, db tests all pass, frontend unit 42/42, `tsc --noEmit` clean. New `mock-server.spec.ts` e2e
+passes. Full e2e suite: 18/19 — the single failure was the *known, pre-existing* `history.spec.ts`
+detail-modal flake (`history-detail-modal` timeout on open; passes in isolation both times it was
+re-run; already documented). State: ready to commit + push.
+
+## Current turn (completed, pushed as `f906755`)
+BACKLOG ITEM **#3 — Run history page** is DONE and on `origin/master` (`f906755`, pushed by the
+parallel session):
+- Backend `/api/history` per-user scoped (users see ONLY their own runs; cross-user detail = 404;
+  request/response snapshots + test_results). `userId` threaded into MANUAL workflow runs only;
+  automation/scheduled runs stay `user_id NULL`.
+- Frontend: `HistoryView` (list + detail modal), rail "History" for all users, `/history` route,
+  `runHistoryApi`, styles. e2e `history.spec.ts` green.
+- The `debug-history.spec.ts` debug spec was removed before the push (no leftover).
+- This top block was stale (said "in progress, not pushed") — refreshed on the next `session.md`
+  update.
 
 ## Current turn (completed, this session)
 PUSHED as `32bac39` (plus the earlier origin merges through `8a69536`).
@@ -80,6 +87,7 @@ changes → push → update session.md after push) for EVERY feature.
 2. **Environments UI** — visual editor for environments/variables (backend-supported; no dedicated UI).
    DONE (`8a69536` + `EnvironmentsModal.tsx`).
 3. **Run history page** — dedicated UI listing past runs with request/response snapshots, status, timing.
+   DONE (`f906755`).
 4. **Mock server per project** — per-project mock API server (routes + in-memory state) managed from the app.
 5. **Workflow triggers & notifications** — more trigger types (on-request, on-run-failure) + richer notifications.
 6. **Export / import collections** — export collections as JSON (+ cURL/OpenAPI) and import back.

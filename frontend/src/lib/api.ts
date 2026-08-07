@@ -493,6 +493,64 @@ export interface EnvironmentVariable {
   value?: string;
 }
 
+export interface MockServer {
+  id: string;
+  project_id: string;
+  name: string;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface MockRoute {
+  id: string;
+  mock_server_id: string;
+  method: string;
+  path: string;
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  delay_ms: number;
+  sort_order: number;
+}
+
+export interface MockRouteInput {
+  method?: string;
+  path?: string;
+  status?: number;
+  headers?: Record<string, string>;
+  body?: string;
+  delayMs?: number;
+}
+
+export const mockServerApi = {
+  get: (projectId: string) =>
+    apiFetch<{ mockServer: MockServer | null }>(`/api/projects/${projectId}/mock-server`),
+  create: (projectId: string, input: { name?: string; enabled?: boolean }) =>
+    apiFetch<{ mockServer: MockServer }>(`/api/projects/${projectId}/mock-server`, {
+      method: 'POST',
+      body: input,
+    }),
+  update: (serverId: string, patch: { name?: string; enabled?: boolean }) =>
+    apiFetch<{ mockServer: MockServer }>(`/api/mock-servers/${serverId}`, {
+      method: 'PATCH',
+      body: patch,
+    }),
+  remove: (serverId: string) => apiFetch(`/api/mock-servers/${serverId}`, { method: 'DELETE' }),
+  routes: (serverId: string) =>
+    apiFetch<{ routes: MockRoute[] }>(`/api/mock-servers/${serverId}/routes`),
+  createRoute: (serverId: string, input: MockRouteInput) =>
+    apiFetch<{ route: MockRoute }>(`/api/mock-servers/${serverId}/routes`, {
+      method: 'POST',
+      body: input,
+    }),
+  updateRoute: (routeId: string, input: MockRouteInput) =>
+    apiFetch<{ route: MockRoute }>(`/api/mock-routes/${routeId}`, {
+      method: 'PATCH',
+      body: input,
+    }),
+  deleteRoute: (routeId: string) => apiFetch(`/api/mock-routes/${routeId}`, { method: 'DELETE' }),
+};
+
 export const environmentApi = {
   list: (workspaceId: string) =>
     apiFetch<{ environments: Environment[] }>(`/api/workspaces/${workspaceId}/environments`),

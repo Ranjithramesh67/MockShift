@@ -13,6 +13,8 @@ const workflowRoutes = require('./routes/workflows');
 const automationRoutes = require('./routes/automations').router;
 const notificationRoutes = require('./routes/notifications');
 const historyRoutes = require('./routes/history');
+const mockServerRoutes = require('./routes/mockServers');
+const { mockDispatch } = require('./mockDispatch');
 const { query } = require('./db');
 const { runWorkflow, syncAllSchedules } = require('./workflowService');
 
@@ -66,6 +68,12 @@ function createApp() {
   app.use('/api', automationRoutes);
   app.use('/api', notificationRoutes);
   app.use('/api/history', historyRoutes);
+  app.use('/api', mockServerRoutes);
+
+  // Public per-project mock server: hit it like any external API.
+  // Registered before the /api 404 handler (different prefix) so requests to
+  // http://127.0.0.1:3001/mock/:projectId/... are served with no auth.
+  app.use('/mock/:projectId', mockDispatch);
 
   // 404 for unknown API routes.
   app.use('/api', (req, res) => {
