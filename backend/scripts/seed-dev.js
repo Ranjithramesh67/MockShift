@@ -251,6 +251,7 @@ async function main() {
       console.log(`[seed:dev] ${account.email} (${account.role}) ready`);
     }
     await ensureDemoCollection(client);
+    await ensureAdminDemoRows(client);
     await client.query('COMMIT');
     // eslint-disable-next-line no-console
     console.log('[seed:dev] done — sample data retained in the dev DB');

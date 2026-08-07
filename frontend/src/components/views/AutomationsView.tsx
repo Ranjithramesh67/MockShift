@@ -8,11 +8,27 @@ import {
   type Automation,
   type StoredWorkflow,
 } from '@/lib/api';
-import { BoltIcon, PlayIcon, TrashIcon, PlusIcon, CopyIcon, PlugIcon, ClockIcon } from '@/components/icons';
+import {
+  BoltIcon,
+  PlayIcon,
+  TrashIcon,
+  PlusIcon,
+  CopyIcon,
+  PlugIcon,
+  ClockIcon,
+  AlertIcon,
+  RequestIcon,
+} from '@/components/icons';
 
 interface ProjectOption {
   id: string;
   name: string;
+}
+
+interface RequestOption {
+  id: string;
+  name: string;
+  method: string;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -21,10 +37,26 @@ function fmtDate(iso: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
 }
 
+function triggerLabel(type: string): string {
+  switch (type) {
+    case 'SCHEDULE':
+      return 'Schedule (cron)';
+    case 'WEBHOOK':
+      return 'Webhook';
+    case 'ON_REQUEST':
+      return 'On request run';
+    case 'ON_RUN_FAILURE':
+      return 'On run failure';
+    default:
+      return type;
+  }
+}
+
 export function AutomationsView() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [workflowsByProject, setWorkflowsByProject] = useState<Record<string, StoredWorkflow[]>>({});
+  const [requestsByProject, setRequestsByProject] = useState<Record<string, RequestOption[]>>({});
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,8 +65,11 @@ export function AutomationsView() {
     name: '',
     projectId: '',
     workflowId: '',
-    triggerType: 'SCHEDULE' as 'SCHEDULE' | 'WEBHOOK',
+    triggerType: 'SCHEDULE' as Automation['triggerType'],
     scheduleCron: '0 8 * * *',
+    eventRequestId: '',
+    sourceWorkflowId: '',
+    notifyWebhookUrl: '',
     notifyOnFailure: true,
     enabled: true,
   });
@@ -54,6 +89,7 @@ export function AutomationsView() {
         const { workspaces } = await workspaceApi.list();
         const collected: ProjectOption[] = [];
         const flows: Record<string, StoredWorkflow[]> = {};
+        const reqs: Record<string, RequestOption[]> = {};
         for (const w of workspaces) {
           try {
             const tree = await workspaceApi.content(w.id);
@@ -66,6 +102,13 @@ export function AutomationsView() {
               } catch {
                 flows[p.id] = [];
               }
+              for (const c of tree.collections) {
+                if (c.project_id !== p.id) continue;
+                for (const r of tree.requests) {
+                  if (r.collection_id !== c.id) continue;
+                  (reqs[p.id] ??= []).push({ id: r.id, name: r.name, method: r.method });
+                }
+              }
             }
           } catch {
             // skip inaccessible workspace
@@ -73,6 +116,7 @@ export function AutomationsView() {
         }
         setProjects(collected);
         setWorkflowsByProject(flows);
+        setRequestsByProject(reqs);
       } catch {
         // workspaces list failed
       }
@@ -83,6 +127,11 @@ export function AutomationsView() {
   const projectWorkflows = useMemo(
     () => (form.projectId ? workflowsByProject[form.projectId] ?? [] : []),
     [form.projectId, workflowsByProject]
+  );
+
+  const projectRequests = useMemo(
+    () => (form.projectId ? requestsByProject[form.projectId] ?? [] : []),
+    [form.projectId, requestsByProject]
   );
 
   const create = async () => {
@@ -96,12 +145,15 @@ export function AutomationsView() {
         workflowId: form.workflowId,
         triggerType: form.triggerType,
         scheduleCron: form.triggerType === 'SCHEDULE' ? form.scheduleCron : undefined,
+        eventRequestId: form.triggerType === 'ON_REQUEST' ? form.eventRequestId || undefined : undefined,
+        sourceWorkflowId: form.triggerType === 'ON_RUN_FAILURE' ? form.sourceWorkflowId || undefined : undefined,
+        notifyWebhookUrl: form.notifyWebhookUrl.trim() || undefined,
         notifyOnFailure: form.notifyOnFailure,
         enabled: form.enabled,
       });
       setNotice('Automation created.');
       setCreateOpen(false);
-      setForm({ name: '', projectId: '', workflowId: '', triggerType: 'SCHEDULE', scheduleCron: '0 8 * * *', notifyOnFailure: true, enabled: true });
+      setForm({ name: '', projectId: '', workflowId: '', triggerType: 'SCHEDULE', scheduleCron: '0 8 * * *', eventRequestId: '', sourceWorkflowId: '', notifyWebhookUrl: '', notifyOnFailure: true, enabled: true });
       loadAutomations();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
@@ -170,7 +222,7 @@ export function AutomationsView() {
       <div className="admin-title-row">
         <div>
           <h1>Automations</h1>
-          <p className="admin-subtitle">Schedule workflow runs with cron or trigger them from a webhook.</p>
+          <p className="admin-subtitle">Schedule workflow runs with cron, trigger them from a webhook, or react to request runs and failures.</p>
         </div>
         <button type="button" className="primary-button" data-testid="new-automation" onClick={() => setCreateOpen(true)}>
           <PlusIcon size={14} /> New automation
@@ -189,7 +241,7 @@ export function AutomationsView() {
       )}
 
       <div className="automation-list" data-testid="automation-list">
-        {automations.length === 0 && <p className="hint">No automations yet. Create one to schedule or webhook-trigger a workflow.</p>}
+        {automations.length === 0 && <p className="hint">No automations yet. Create one to schedule or webhook-trigger a workflow, or react to request runs and failures.</p>}
         {automations.map((a) => (
           <div key={a.id} className="automation-card" data-testid={`automation-${a.name}`}>
             <div className="automation-card-head">
@@ -212,14 +264,41 @@ export function AutomationsView() {
                   <>
                     <ClockIcon size={13} /> Cron: <code>{a.scheduleCron}</code>
                   </>
-                ) : (
+                ) : a.triggerType === 'WEBHOOK' ? (
                   <>
                     <PlugIcon size={13} /> Webhook: <code>{a.webhookUrl}</code>
+                  </>
+                ) : a.triggerType === 'ON_REQUEST' ? (
+                  <>
+                    <RequestIcon size={13} /> On request run
+                    {a.eventRequestId ? (
+                      <>
+                        {' · '}request <code>{a.eventRequestId.slice(0, 8)}…</code>
+                      </>
+                    ) : (
+                      <> · any request</>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <AlertIcon size={13} /> On run failure
+                    {a.sourceWorkflowId ? (
+                      <>
+                        {' · '}workflow <code>{a.sourceWorkflowId.slice(0, 8)}…</code>
+                      </>
+                    ) : (
+                      <> · any run</>
+                    )}
                   </>
                 )}
               </div>
               <div className="automation-meta">
                 Notify on failure: <strong>{a.notifyOnFailure ? 'yes' : 'no'}</strong>
+                {a.notifyWebhookUrl && (
+                  <>
+                    {' · '}Webhook: <code>{a.notifyWebhookUrl}</code>
+                  </>
+                )}
                 {a.lastRunAt && (
                   <>
                     {' · '}Last run: {fmtDate(a.lastRunAt)} ({a.lastStatus ?? '—'})
@@ -307,10 +386,12 @@ export function AutomationsView() {
                     className="compact-select"
                     data-testid="automation-trigger"
                     value={form.triggerType}
-                    onChange={(e) => setForm({ ...form, triggerType: e.target.value as 'SCHEDULE' | 'WEBHOOK' })}
+                    onChange={(e) => setForm({ ...form, triggerType: e.target.value as Automation['triggerType'] })}
                   >
                     <option value="SCHEDULE">Schedule (cron)</option>
                     <option value="WEBHOOK">Webhook</option>
+                    <option value="ON_REQUEST">On request run</option>
+                    <option value="ON_RUN_FAILURE">On run failure</option>
                   </select>
                 </label>
                 {form.triggerType === 'SCHEDULE' && (
@@ -324,6 +405,52 @@ export function AutomationsView() {
                     />
                   </label>
                 )}
+                {form.triggerType === 'ON_REQUEST' && (
+                  <label className="field">
+                    <span className="field-label">Watch request</span>
+                    <select
+                      className="compact-select"
+                      data-testid="automation-event-request"
+                      value={form.eventRequestId}
+                      onChange={(e) => setForm({ ...form, eventRequestId: e.target.value })}
+                    >
+                      <option value="">Any request in this project</option>
+                      {projectRequests.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.method} {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {form.triggerType === 'ON_RUN_FAILURE' && (
+                  <label className="field">
+                    <span className="field-label">Watch workflow</span>
+                    <select
+                      className="compact-select"
+                      data-testid="automation-source-workflow"
+                      value={form.sourceWorkflowId}
+                      onChange={(e) => setForm({ ...form, sourceWorkflowId: e.target.value })}
+                    >
+                      <option value="">Any run in this project</option>
+                      {projectWorkflows.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className="field">
+                  <span className="field-label">Notify webhook URL (optional)</span>
+                  <input
+                    className="text-input"
+                    data-testid="automation-webhook-url"
+                    value={form.notifyWebhookUrl}
+                    onChange={(e) => setForm({ ...form, notifyWebhookUrl: e.target.value })}
+                    placeholder="https://hooks.example.com/notify"
+                  />
+                </label>
                 <label className="field">
                   <span className="field-label">Options</span>
                   <span className="checkbox-row">
