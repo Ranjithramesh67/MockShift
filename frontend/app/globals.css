@@ -3285,9 +3285,122 @@ textarea {
 .collection-run-error {
   display: inline-flex;
   align-items: center;
+   gap: 4px;
+   color: var(--err);
+   font-size: 12px;
+   flex-basis: 100%;
+   margin-left: 24px;
+}
+
+/* ------------------------------------------------------------------ Environments */
+.env-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  color: var(--err);
+}
+
+.env-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.env-row.active {
+  background: var(--bg-soft);
+}
+
+.env-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.env-active-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.env-active-dot.on {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(45, 205, 120, 0.2);
+}
+
+.env-count {
+  margin-left: auto;
+}
+
+.env-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.env-rename {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.env-rename .text-input {
+  flex: 1;
+}
+
+.env-create {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.env-create .text-input {
+  flex: 1;
+}
+
+.env-vars-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.env-vars-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 4px 6px;
+}
+
+.env-vars-table td {
+  padding: 4px 6px;
+}
+
+.env-vars-table .text-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
-  flex-basis: 100%;
-  margin-left: 24px;
+  color: var(--text);
+  white-space: nowrap;
 }

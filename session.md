@@ -3,6 +3,39 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
+## Current turn (in progress)
+NEXT BACKLOG ITEM — **#2 Environments UI** (visual editor for environments/variables; backend DB
+schema `environments` + `variables` already exists with RLS + `app.resolve_variables` cascade).
+IN PROGRESS — code written, NOT yet pushed. What's changed so far:
+1. Backend `backend/src/api/routes/environments.js` (new, mounted at `/api`, requires auth):
+   - `GET /api/workspaces/:wsId/environments` (+ `POST` create with `makeActive`,
+     `PATCH` `/api/environments/:id` rename/`isActive` with one-active-per-workspace,
+     `DELETE` cascades variables).
+   - `GET /api/environments/:id/variables` (secrets decrypted for owner) +
+     `POST` save variable (upsert `ON CONFLICT (environment_id,key)`), `DELETE` variable.
+   - Read guarded by `canReadWorkspace`, mutation by `canMutateWorkspace` (EDITOR/ADMIN).
+2. `backend/src/api/runner.js` — `resolveVariables(requestId, userId)` now looks up the request's
+   workspace ACTIVE environment (`activeEnvironmentIdForRequest`) and passes its id to
+   `app.resolve_variables($1,$2)` so `{{key}}` honors REQUEST > ENVIRONMENT > WORKSPACE > GLOBAL.
+3. `backend/src/api/db.js` — wrapped the RLS `set_config` calls in BEGIN/COMMIT (set_config with
+   `is_local=true` reverted before the query ran without a transaction, so encrypted secret
+   variables decrypted to NULL in the resolver).
+4. Frontend — `environmentApi` in `src/lib/api.ts`; `EnvironmentsModal.tsx` (env list + active radio
+   + rename/delete + create; variable rows key/value/secret with add/remove/save); "Env" button in
+   `Sidebar.tsx` Workspaces section (`data-testid="environments-open"`); styles in `globals.css`.
+5. Tests: `backend/tests/environments.integration.test.cjs` — **4/4 pass** (CRUD + role guard).
+   `frontend/e2e/environments.spec.ts` (new). `assertions-runner.spec.ts` got TS typing fixes.
+   `backend/package.json` `test:api` now globs `tests/*.integration.test.cjs`.
+6. e2e debugging so far (backend + dev server + mock upstream running):
+   - Modal needs an active workspace (role) before it can create envs → test clicks
+     `workspace-My Workspace` first; modal shows a hint when no workspace is selected.
+   - Backend lists variables `ORDER BY key` (alphabetical), so the e2e now asserts by
+     key/row lookup instead of nth() position.
+   - `test:api` was expanded to include the new integration spec.
+REMAINING: finish `environments.spec.ts` (re-open modal → masked secret round-trip → run
+`{{BASE_URL}}` request → `Status: 200`), then run full matrix (backend jest + test:api, db tests,
+frontend unit + `tsc --noEmit`, e2e) → commit + push → update `session.md` + push.
+
 ## Feature backlog (user-approved 2026-08-06: implement one by one, working-loop for each)
 The user answered "Which feature should I build next?" with: add everything below to the backlog,
 then build each feature one by one, following the working rules (update session.md first → make

@@ -19,13 +19,30 @@ function substitute(input, variables) {
 
 async function resolveVariables(requestId, userId) {
   const { rows } = await query(
-    `SELECT key, value FROM app.resolve_variables($1, NULL)`,
-    [requestId],
+    `SELECT key, value FROM app.resolve_variables($1, $2)`,
+    [requestId, await activeEnvironmentIdForRequest(requestId, userId)],
     { userId }
   );
   const vars = {};
   for (const r of rows) vars[r.key] = r.value;
   return vars;
+}
+
+// The workspace's ACTIVE environment (is_active=true), or NULL when none is set.
+async function activeEnvironmentIdForRequest(requestId, userId) {
+  const { rows } = await query(
+    `SELECT e.id
+       FROM environments e
+       JOIN workspaces w ON w.id = e.workspace_id
+       JOIN projects p  ON p.workspace_id = w.id
+       JOIN collections c ON c.project_id = p.id
+       JOIN api_requests ar ON ar.collection_id = c.id
+      WHERE ar.id = $1 AND e.is_active = true
+      LIMIT 1`,
+    [requestId],
+    { userId }
+  );
+  return rows[0]?.id ?? null;
 }
 
 async function loadRequest(requestId) {

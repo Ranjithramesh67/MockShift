@@ -20,9 +20,12 @@ test('adds a status assertion, sees it pass, and runs the collection', async ({ 
   // Start from a clean slate: clear any leftover assertions on "GET all posts"
   // from previous runs (the session cookie is shared with the browser).
   const wsRes = await page.request.get('/api/workspaces');
-  const myWs = (await wsRes.json()).workspaces.find((w) => w.name === 'My Workspace');
-  const content = await (await page.request.get(`/api/workspaces/${myWs.id}/content`)).json();
-  const req = content.requests.find((r) => r.name === 'GET all posts');
+  const workspaces = (await wsRes.json()).workspaces as Array<{ id: string; name: string }>;
+  const myWs = workspaces.find((w) => w.name === 'My Workspace')!;
+  const content = (await (await page.request.get(`/api/workspaces/${myWs.id}/content`)).json()) as {
+    requests: Array<{ id: string; name: string }>;
+  };
+  const req = content.requests.find((r) => r.name === 'GET all posts')!;
   await page.request.put(`/api/requests/${req.id}`, { data: { assertions: [] } });
 
   await page.getByTestId('workspace-My Workspace').click();

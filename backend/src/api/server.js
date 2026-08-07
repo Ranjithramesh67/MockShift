@@ -4,6 +4,7 @@ const express = require('express');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const workspaceRoutes = require('./routes/workspaces');
+const environmentRoutes = require('./routes/environments');
 const teamRoutes = require('./routes/teams');
 const contentRoutes = require('./routes/content');
 const manageRoutes = require('./routes/manage');
@@ -56,6 +57,7 @@ function createApp() {
   app.use('/api/admin', adminRoutes);
   app.use('/api/manage', manageRoutes);
   app.use('/api/workspaces', workspaceRoutes);
+  app.use('/api', environmentRoutes);
   app.use('/api/teams', teamRoutes);
   app.use('/api', contentRoutes);
   app.use('/api', projectRoutes);

@@ -440,3 +440,43 @@ export const notificationApi = {
   markRead: (notificationId: string) => apiFetch(`/api/notifications/${notificationId}/read`, { method: 'POST' }),
   readAll: () => apiFetch('/api/notifications/read-all', { method: 'POST' }),
 };
+
+// ------------------------------------------------------------- Environments
+export interface Environment {
+  id: string;
+  name: string;
+  is_active: boolean;
+  variable_count?: number;
+}
+
+export interface EnvironmentVariable {
+  id: string;
+  key: string;
+  is_secret: boolean;
+  value?: string;
+}
+
+export const environmentApi = {
+  list: (workspaceId: string) =>
+    apiFetch<{ environments: Environment[] }>(`/api/workspaces/${workspaceId}/environments`),
+  create: (workspaceId: string, name: string, makeActive = false) =>
+    apiFetch<{ environment: Environment }>(`/api/workspaces/${workspaceId}/environments`, {
+      method: 'POST',
+      body: { name, makeActive },
+    }),
+  update: (environmentId: string, patch: { name?: string; isActive?: boolean }) =>
+    apiFetch<{ environment: Environment }>(`/api/environments/${environmentId}`, {
+      method: 'PATCH',
+      body: patch,
+    }),
+  remove: (environmentId: string) => apiFetch(`/api/environments/${environmentId}`, { method: 'DELETE' }),
+  variables: (environmentId: string) =>
+    apiFetch<{ variables: EnvironmentVariable[] }>(`/api/environments/${environmentId}/variables`),
+  saveVariable: (environmentId: string, input: { key: string; value: string; isSecret: boolean }) =>
+    apiFetch<{ variable: EnvironmentVariable }>(`/api/environments/${environmentId}/variables`, {
+      method: 'POST',
+      body: input,
+    }),
+  deleteVariable: (environmentId: string, variableId: string) =>
+    apiFetch(`/api/environments/${environmentId}/variables/${variableId}`, { method: 'DELETE' }),
+};

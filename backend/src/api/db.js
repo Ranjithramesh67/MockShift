@@ -19,6 +19,10 @@ async function query(text, params = [], options = {}) {
   const client = await pool.connect();
   try {
     if (options.userId) {
+      // set_config(..., true) only persists within a transaction; without one
+      // the session vars revert before the actual query runs, which made
+      // encrypted (secret) variables decrypt to NULL in the resolver.
+      await client.query('BEGIN');
       await client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', options.userId]);
       await client.query('SELECT set_config($1, $2, true)', [
         'app.vault_key',
@@ -26,7 +30,17 @@ async function query(text, params = [], options = {}) {
       ]);
     }
     const result = await client.query(text, params);
+    if (options.userId) await client.query('COMMIT');
     return result;
+  } catch (err) {
+    if (options.userId) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+    }
+    throw err;
   } finally {
     client.release();
   }
