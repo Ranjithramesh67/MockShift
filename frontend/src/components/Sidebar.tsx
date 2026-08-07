@@ -13,6 +13,7 @@ import { SharingModal } from './SharingModal';
 import { TeamsModal } from './TeamsModal';
 import { AuthProviderModal } from './AuthProviderModal';
 import { CollectionRunnerModal } from './CollectionRunnerModal';
+import { EnvironmentsModal } from './EnvironmentsModal';
 import {
   WorkspaceIcon,
   TeamIcon,
@@ -365,6 +366,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const [teamsOpen, setTeamsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authCollectionId, setAuthCollectionId] = useState<string | null>(null);
+  const [environmentsOpen, setEnvironmentsOpen] = useState(false);
   const [runnerOpen, setRunnerOpen] = useState(false);
   const [runnerCollectionName, setRunnerCollectionName] = useState('');
   const [requestingProject, setRequestingProject] = useState<{ id: string; name: string } | null>(null);
@@ -486,6 +488,15 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
             <div className="sidebar-section">
               <div className="sidebar-section-head">
                 <h3>Workspaces</h3>
+                <button
+                  type="button"
+                  className="ghost-button small"
+                  title="Environments & variables"
+                  data-testid="environments-open"
+                  onClick={() => setEnvironmentsOpen(true)}
+                >
+                  Env
+                </button>
               </div>
               {ws.loading && <p className="hint">Loading…</p>}
               {ws.error && <p className="auth-error">{ws.error}</p>}
@@ -569,6 +580,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
       )}
       <SharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} />
       <TeamsModal open={teamsOpen} onClose={() => setTeamsOpen(false)} />
+      <EnvironmentsModal open={environmentsOpen} onClose={() => setEnvironmentsOpen(false)} />
       <AuthProviderModal open={authOpen} onClose={() => setAuthOpen(false)} />
       <CollectionRunnerModal
         open={runnerOpen}
