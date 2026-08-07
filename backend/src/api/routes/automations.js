@@ -39,6 +39,9 @@ function toApi(automation) {
     triggerType: automation.trigger_type,
     scheduleCron: automation.schedule_cron,
     webhookToken: automation.webhook_token,
+    eventRequestId: automation.event_request_id,
+    sourceWorkflowId: automation.source_workflow_id,
+    notifyWebhookUrl: automation.notify_webhook_url,
     inputVars: automation.input_vars,
     notifyOnFailure: automation.notify_on_failure,
     enabled: automation.enabled,
@@ -51,6 +54,28 @@ function toApi(automation) {
     projectName: automation.project_name,
     webhookUrl: automation.trigger_type === 'WEBHOOK' ? webhookUrl(automation.webhook_token) : null,
   };
+}
+
+const TRIGGER_TYPES = ['SCHEDULE', 'WEBHOOK', 'ON_REQUEST', 'ON_RUN_FAILURE'];
+
+async function requestInProject(requestId, projectId) {
+  if (!requestId) return true;
+  const { rows } = await query(
+    `SELECT 1 FROM api_requests ar
+       JOIN collections c ON c.id = ar.collection_id
+      WHERE ar.id = $1 AND c.project_id = $2`,
+    [requestId, projectId]
+  );
+  return rows.length > 0;
+}
+
+async function workflowInProject(workflowId, projectId) {
+  if (!workflowId) return true;
+  const { rows } = await query(
+    `SELECT 1 FROM workflow_chains WHERE id = $1 AND project_id = $2`,
+    [workflowId, projectId]
+  );
+  return rows.length > 0;
 }
 
 // ------------------------------------------------------------------ List
@@ -81,8 +106,10 @@ router.post('/automations', async (req, res, next) => {
     if (!name || !projectId || !workflowId) {
       return res.status(400).json({ error: 'name, projectId and workflowId are required' });
     }
-    if (!['SCHEDULE', 'WEBHOOK'].includes(triggerType)) {
-      return res.status(400).json({ error: 'triggerType must be SCHEDULE or WEBHOOK' });
+    if (!TRIGGER_TYPES.includes(triggerType)) {
+      return res.status(400).json({
+        error: 'triggerType must be SCHEDULE, WEBHOOK, ON_REQUEST or ON_RUN_FAILURE',
+      });
     }
     if (!(await canWriteProject(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
@@ -93,6 +120,17 @@ router.post('/automations', async (req, res, next) => {
     );
     if (wf.rows.length === 0) return res.status(404).json({ error: 'Workflow not found in this project' });
 
+    if (!(await requestInProject(b.eventRequestId, projectId))) {
+      return res.status(400).json({ error: 'Watched request is not in this project' });
+    }
+    if (!(await workflowInProject(b.sourceWorkflowId, projectId))) {
+      return res.status(400).json({ error: 'Watched workflow is not in this project' });
+    }
+    const notifyWebhookUrl = String(b.notifyWebhookUrl || '').trim() || null;
+    if (notifyWebhookUrl && !/^https?:\/\//i.test(notifyWebhookUrl)) {
+      return res.status(400).json({ error: 'notifyWebhookUrl must be an http(s) URL' });
+    }
+
     const scheduleCron = triggerType === 'SCHEDULE' ? b.scheduleCron : null;
     if (triggerType === 'SCHEDULE' && !scheduleCron) {
       return res.status(400).json({ error: 'scheduleCron is required for SCHEDULE automations' });
@@ -102,8 +140,9 @@ router.post('/automations', async (req, res, next) => {
     const { rows } = await query(
       `INSERT INTO automations
          (name, project_id, workflow_id, trigger_type, schedule_cron, webhook_token,
+          event_request_id, source_workflow_id, notify_webhook_url,
           input_vars, notify_on_failure, enabled, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         String(name).trim(),
@@ -112,6 +151,9 @@ router.post('/automations', async (req, res, next) => {
         triggerType,
         scheduleCron,
         webhookToken,
+        b.eventRequestId || null,
+        b.sourceWorkflowId || null,
+        notifyWebhookUrl,
         b.inputVars ? JSON.stringify(b.inputVars) : JSON.stringify({}),
         b.notifyOnFailure !== false,
         b.enabled !== false,
@@ -178,6 +220,28 @@ router.patch('/automations/:automationId', async (req, res, next) => {
     if (b.enabled !== undefined) {
       params.push(b.enabled === true);
       sets.push(`enabled = $${params.length}`);
+    }
+    if (b.eventRequestId !== undefined) {
+      if (!(await requestInProject(b.eventRequestId, automation.project_id))) {
+        return res.status(400).json({ error: 'Watched request is not in this project' });
+      }
+      params.push(b.eventRequestId || null);
+      sets.push(`event_request_id = $${params.length}`);
+    }
+    if (b.sourceWorkflowId !== undefined) {
+      if (!(await workflowInProject(b.sourceWorkflowId, automation.project_id))) {
+        return res.status(400).json({ error: 'Watched workflow is not in this project' });
+      }
+      params.push(b.sourceWorkflowId || null);
+      sets.push(`source_workflow_id = $${params.length}`);
+    }
+    if (b.notifyWebhookUrl !== undefined) {
+      const url = String(b.notifyWebhookUrl || '').trim() || null;
+      if (url && !/^https?:\/\//i.test(url)) {
+        return res.status(400).json({ error: 'notifyWebhookUrl must be an http(s) URL' });
+      }
+      params.push(url);
+      sets.push(`notify_webhook_url = $${params.length}`);
     }
     if (sets.length) {
       params.push(automation.id);

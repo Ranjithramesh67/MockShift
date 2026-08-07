@@ -5,6 +5,7 @@ const { query } = require('../db');
 const { requireAuth, roleAtLeast, getProjectAccess, canReadWorkspace } = require('../access');
 const { runRequest, runTokenRequest } = require('../runner');
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
+const { fireWorkflowEvent } = require('../workflowService');
 
 const router = Router();
 router.use(requireAuth);
@@ -27,6 +28,52 @@ async function projectOfCollection(collectionId) {
     [collectionId]
   );
   return rows[0]?.project_id || null;
+}
+
+async function projectOfRequest(requestId) {
+  const { rows } = await query(
+    `SELECT c.project_id FROM api_requests ar
+       JOIN collections c ON c.id = ar.collection_id
+      WHERE ar.id = $1`,
+    [requestId]
+  );
+  return rows[0]?.project_id || null;
+}
+
+// Fire event-driven automations after a request run: ON_REQUEST on any run,
+// ON_RUN_FAILURE when the run itself failed. Best-effort, never throws.
+async function fireRequestRunEvents(requestId, projectId, result) {
+  if (!projectId || !result) return;
+  try {
+    const context = {
+      runId: result.runId,
+      httpStatus: result.httpStatus,
+      method: result.requestSnapshot?.method,
+      url: result.requestSnapshot?.url,
+    };
+    await fireWorkflowEvent({
+      type: 'ON_REQUEST',
+      projectId,
+      requestId,
+      runId: result.runId,
+      status: result.runStatus,
+      context,
+    });
+    if (result.runStatus === 'FAILED') {
+      await fireWorkflowEvent({
+        type: 'ON_RUN_FAILURE',
+        projectId,
+        requestId,
+        runId: result.runId,
+        status: result.runStatus,
+        context,
+      });
+    }
+  } catch (err) {
+    // Best-effort; never break the run response.
+    // eslint-disable-next-line no-console
+    console.error('[content] fireRequestRunEvents failed:', err.message);
+  }
 }
 
 // True when the user can edit content inside a project: workspace editors
@@ -312,6 +359,8 @@ router.post('/requests/:requestId/run', async (req, res, next) => {  try {
     );
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
     const result = await runRequest(requestId, req.user.id);
+    const projectId = await projectOfRequest(requestId);
+    await fireRequestRunEvents(requestId, projectId, result);
     res.json(result);
   } catch (err) {
     next(err);
@@ -335,6 +384,7 @@ router.post('/collections/:collectionId/run', async (req, res, next) => {
     for (const r of rows) {
       try {
         const result = await runRequest(r.id, req.user.id);
+        await fireRequestRunEvents(r.id, projectId, result);
         results.push({
           requestId: r.id,
           name: r.name,

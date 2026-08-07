@@ -422,14 +422,19 @@ export const workflowApi = {
 };
 
 // --------------------------------------------------------------- Automations
+export type AutomationTriggerType = 'SCHEDULE' | 'WEBHOOK' | 'ON_REQUEST' | 'ON_RUN_FAILURE';
+
 export interface Automation {
   id: string;
   name: string;
   projectId: string;
   workflowId: string;
-  triggerType: 'SCHEDULE' | 'WEBHOOK';
+  triggerType: AutomationTriggerType;
   scheduleCron: string | null;
   webhookToken: string | null;
+  eventRequestId: string | null;
+  sourceWorkflowId: string | null;
+  notifyWebhookUrl: string | null;
   inputVars: Record<string, string>;
   notifyOnFailure: boolean;
   enabled: boolean;
@@ -443,19 +448,29 @@ export interface Automation {
   webhookUrl: string | null;
 }
 
+export type AutomationInput = {
+  name: string;
+  projectId: string;
+  workflowId: string;
+  triggerType: AutomationTriggerType;
+  scheduleCron?: string;
+  eventRequestId?: string;
+  sourceWorkflowId?: string;
+  notifyWebhookUrl?: string;
+  inputVars?: Record<string, string>;
+  notifyOnFailure?: boolean;
+  enabled?: boolean;
+};
+
+export type AutomationPatch = Partial<
+  Pick<Automation, 'name' | 'scheduleCron' | 'notifyOnFailure' | 'enabled' | 'eventRequestId' | 'sourceWorkflowId' | 'notifyWebhookUrl'>
+>;
+
 export const automationApi = {
   list: () => apiFetch<{ automations: Automation[] }>('/api/automations'),
-  create: (input: {
-    name: string;
-    projectId: string;
-    workflowId: string;
-    triggerType: 'SCHEDULE' | 'WEBHOOK';
-    scheduleCron?: string;
-    inputVars?: Record<string, string>;
-    notifyOnFailure?: boolean;
-    enabled?: boolean;
-  }) => apiFetch<{ automation: Automation }>('/api/automations', { method: 'POST', body: input }),
-  update: (automationId: string, patch: Partial<Pick<Automation, 'name' | 'scheduleCron' | 'notifyOnFailure' | 'enabled'>>) =>
+  create: (input: AutomationInput) =>
+    apiFetch<{ automation: Automation }>('/api/automations', { method: 'POST', body: input }),
+  update: (automationId: string, patch: AutomationPatch) =>
     apiFetch<{ automation: Automation }>(`/api/automations/${automationId}`, { method: 'PATCH', body: patch }),
   remove: (automationId: string) => apiFetch(`/api/automations/${automationId}`, { method: 'DELETE' }),
   runs: (automationId: string, limit = 50) => apiFetch<{ runs: RunHistoryEntry[] }>(`/api/automations/${automationId}/runs?limit=${limit}`),
@@ -469,6 +484,8 @@ export interface Notification {
   body: string | null;
   kind: 'info' | 'success' | 'error';
   read: boolean;
+  payload: Record<string, unknown> | null;
+  link: string | null;
   created_at: string;
 }
 
