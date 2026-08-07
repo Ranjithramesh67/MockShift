@@ -4,6 +4,7 @@
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
 ## Current turn (completed, this session)
+PUSHED as `32bac39` (plus the earlier origin merges through `8a69536`).
 This session: pulled origin (parallel AI was strictly ahead), merged in-app views architecture +
 the feature chain it shipped, then finished the remaining gaps and made the e2e suite green.
 
@@ -18,7 +19,7 @@ the feature chain it shipped, then finished the remaining gaps and made the e2e 
   `backend/src/api/routes/environments.js`, `backend/src/api/db.js` session-var tx fix,
   frontend `EnvironmentsModal.tsx`, `frontend/e2e/environments.spec.ts`).
 
-**My changes this session (ready to push):**
+**My changes this session (pushed in `32bac39`):**
 - Added the missing `.admin-view` CSS in `globals.css` (flex:1 scroll container inside `.main-area`),
   completing the in-app views wiring (`.admin-view` at globals.css after `.main-area`).
 - e2e suite made reliably green — the new specs depend on shared seed data + one boss account, so:
