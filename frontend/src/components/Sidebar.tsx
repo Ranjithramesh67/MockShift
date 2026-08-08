@@ -15,6 +15,7 @@ import { AuthProviderModal } from './AuthProviderModal';
 import { CollectionRunnerModal } from './CollectionRunnerModal';
 import { EnvironmentsModal } from './EnvironmentsModal';
 import { MockServersModal } from './MockServersModal';
+import { CollectionImportExportModal } from './CollectionImportExportModal';
 import {
   WorkspaceIcon,
   TeamIcon,
@@ -30,6 +31,7 @@ import {
   HistoryIcon,
   PlayIcon,
   ServerIcon,
+  ImportIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
@@ -97,7 +99,7 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
   );
 }
 
-function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection, onOpenMockServer }: {
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection, onOpenMockServer, onOpenImportExport }: {
   onOpenCreate: (kind: CreateKind, collectionId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
@@ -105,6 +107,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   onNavigate: () => void;
   onRunCollection: (collectionId: string, collectionName: string) => void;
   onOpenMockServer: (project: { id: string; name: string }) => void;
+  onOpenImportExport: () => void;
 }) {
   const ws = useWorkspace();
   const { dispatch } = useApp();
@@ -126,6 +129,16 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
     <div className="sidebar-section tree-section">
       <div className="sidebar-section-head">
         <h3>Collections</h3>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Import / export collections"
+          title="Import / export collections"
+          data-testid="open-import-export"
+          onClick={onOpenImportExport}
+        >
+          <ImportIcon size={14} />
+        </button>
         <button
           type="button"
           className="icon-button"
@@ -389,6 +402,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const [mockProject, setMockProject] = useState<{ id: string; name: string } | null>(null);
   const [requestingProject, setRequestingProject] = useState<{ id: string; name: string } | null>(null);
   const [accessReason, setAccessReason] = useState('');
+  const [importExportOpen, setImportExportOpen] = useState(false);
 
   const openCreate = (kind: CreateKind, collectionId?: string) => {
     setTargetCollectionId(collectionId ?? null);
@@ -557,6 +571,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
                 onNavigate={goWorkspace}
                 onRunCollection={onRunCollection}
                 onOpenMockServer={(p) => setMockProject(p)}
+                onOpenImportExport={() => setImportExportOpen(true)}
               />
             ) : (
               !ws.loading && (
@@ -646,6 +661,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
           ws.clearCollectionRun();
         }}
       />
+      <CollectionImportExportModal open={importExportOpen} onClose={() => setImportExportOpen(false)} />
     </aside>
   );
 }

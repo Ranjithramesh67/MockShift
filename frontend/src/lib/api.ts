@@ -244,6 +244,42 @@ export const contentApi = {
     ),
 };
 
+// --------------------------------------------------------- Collection export
+export interface ExportedCollectionRequest {
+  sourceId?: string;
+  name: string;
+  method: string;
+  url: string;
+  headers: Array<{ key: string; value: string; enabled: boolean }>;
+  queryParams: Array<{ key: string; value: string; enabled: boolean }>;
+  bodyType: string;
+  bodyJson: unknown;
+  bodyText: string | null;
+  apiType: ApiType;
+  formula: string;
+  assertions: Assertion[];
+}
+
+export interface ExportedCollection {
+  format: string;
+  version: number;
+  name: string;
+  requests: ExportedCollectionRequest[];
+  authProvider: AuthProvider | null;
+}
+
+export interface CollectionImportResult {
+  collection: { id: string; name: string; project_id: string };
+  requests: Array<{ id: string; name: string; method: string; url: string; api_type: ApiType }>;
+}
+
+export const collectionExportApi = {
+  export: (collectionId: string) =>
+    apiFetch<{ collection: ExportedCollection }>(`/api/collections/${collectionId}/export`),
+  import: (input: { projectId: string; name: string; collection: ExportedCollection }) =>
+    apiFetch<CollectionImportResult>('/api/collections/import', { method: 'POST', body: input }),
+};
+
 export const adminApi = {
   users: () => apiFetch<{ users: AdminUser[] }>('/api/admin/users'),
   patchUser: (userId: string, patch: { role?: UserRole; isActive?: boolean }) =>
