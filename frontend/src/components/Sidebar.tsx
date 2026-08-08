@@ -376,6 +376,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const { setView } = useNav();
   const router = useRouter();
   const [rail, setRail] = useState<RailTab>('apis');
+  const [collapsed, setCollapsed] = useState(false);
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
   const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
@@ -402,6 +403,8 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
     // RouteViewSync would snap the view back to the admin page.
     router.push('/');
   };
+
+  const railHidden = panelHidden || collapsed;
 
   const submitAccessRequest = async () => {
     if (!requestingProject) return;
@@ -437,7 +440,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   return (
-    <aside className={`sidebar ${panelHidden ? 'sidebar-rail-only' : ''}`} data-testid="sidebar">
+    <aside className={`sidebar ${railHidden ? 'sidebar-rail-only' : ''}`} data-testid="sidebar">
       <nav className="rail" aria-label="Sidebar navigation">
         <button
           type="button"
@@ -447,6 +450,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
           aria-label="APIs & collections"
           onClick={() => {
             setRail('apis');
+            setCollapsed(false);
             goWorkspace();
           }}
         >
@@ -458,7 +462,10 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
           data-testid="rail-teams"
           title="Teams"
           aria-label="Teams"
-          onClick={() => setRail('teams')}
+          onClick={() => {
+            setRail('teams');
+            setCollapsed(false);
+          }}
         >
           <TeamIcon size={17} />
         </button>
@@ -507,9 +514,20 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
             <UserIcon size={17} />
           </Link>
         )}
+        <div className="rail-spacer" />
+        <button
+          type="button"
+          className={`rail-button rail-toggle ${collapsed ? 'is-collapsed' : ''}`}
+          data-testid="sidebar-toggle"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => setCollapsed((v) => !v)}
+        >
+          <ChevronIcon size={15} />
+        </button>
       </nav>
 
-      <div className={`sidebar-panel ${panelHidden ? 'sidebar-panel-hidden' : ''}`}>
+      <div className={`sidebar-panel ${railHidden ? 'sidebar-panel-hidden' : ''}`}>
         {rail === 'apis' ? (
           <>
             <div className="sidebar-section">
