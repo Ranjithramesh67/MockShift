@@ -36,6 +36,15 @@ function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
+  const bellRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
 
   const load = () => {
     if (!user) return;
@@ -66,7 +75,7 @@ function NotificationBell() {
   };
 
   return (
-    <div className="bell-wrap">
+    <div className="bell-wrap" ref={bellRef}>
       <button
         type="button"
         className="ghost-button icon-only"
