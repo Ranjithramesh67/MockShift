@@ -3,6 +3,59 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
+## Current turn (in progress)
+NEXT BACKLOG ITEM — **#7 Share links for requests** (shareable public read-only links to a request
+with sample response).
+PLAN:
+1. Backend — new routes `backend/src/api/routes/shares.js` (mounted at `/api`):
+   - `POST /api/requests/:requestId/share` — create/return a share token (idempotent per request),
+     gated to users who can read the request; store token (uuid) in a `request_shares` table
+     (migration `009_request_shares.sql`: request_id, token unique, created_at, optionally created_by).
+   - `GET /api/shares/:token` — **public** (no auth) read-only snapshot of the request
+     (method/url/headers/query/body) + last successful run's response snapshot + status/duration,
+     redacting secrets (no auth provider credentials).
+   - `DELETE /api/shares/:token` — revoke (owner/admin).
+2. Frontend — `ShareLinksModal.tsx` (generate/copy/revoke link) opened from the request row /
+   configurator; `shareApi` in `api.ts`; render the public view on `app/s/:token/page.tsx`
+   (read-only request summary + response).
+3. Tests: backend integration `backend/tests/shares.integration.test.cjs` (create/re-read without
+   auth/redact/revoke + 404 for bad token), frontend unit for any pure helper, e2e
+   `frontend/e2e/share-links.spec.ts`.
+4. Full matrix (backend jest + test:api, db tests, frontend unit + `tsc --noEmit`, e2e) → commit +
+   push → update `session.md` + push.
+
+## Current turn (completed, pushed as `ac6cd52` on 2026-08-08)
+BACKLOG ITEM **#7 — Share links for requests** is DONE and on `origin/master`:
+- Migration `009_request_shares.sql` — `request_shares` table (request_id FK CASCADE,
+  unguessable uuid `token`, created_by, created_at) + index.
+- Backend `backend/src/api/routes/shares.js` (mounted at `/api` BEFORE the auth-gated routers so
+  the public read isn't intercepted by their router-level `requireAuth`):
+  - `POST /api/requests/:requestId/share` — idempotent (returns the existing link), EDITOR+
+    gated via `getProjectAccess`/`roleAtLeast`, audit-logged.
+  - `GET /api/shares/:token` — **public, no auth**. Loads the request + the latest run's
+    response snapshot from `run_history`; redacts sensitive header keys
+    (`authorization`, `cookie`, `set-cookie`, `x-api-key`, …) in both request kv-rows and
+    response headers.
+  - `DELETE /api/shares/:token` — revoke (owner or ADMIN or EDITOR+).
+- Frontend: `shareApi` in `api.ts` (`create`/`get`/`revoke`); `ShareLinksModal.tsx` (create,
+  copy, revoke; `share-url-input` / `share-copy-button` / `share-revoke-button` test ids);
+  "Share" button (`share-open-button`) in the `RequestConfigurator` bar + `ShareIcon`; public
+  read-only page `app/s/[token]/page.tsx` (renders outside AppShell so it needs no login;
+  request method/url/headers/params/body + latest response with status chip).
+- Tests: `backend/tests/shares.integration.test.cjs` (2: create/read-publicly-redacted/revoke +
+  non-editor denied). e2e `frontend/e2e/share-links.spec.ts` is self-contained (creates a
+  throwaway request → shares → opens public page in an anonymous context → revokes → deletes)
+  so it never pollutes shared seed data.
+- Verified matrix green: backend integration **35/35** (test:api incl. new shares spec), jest
+  **47/47**, api units **24/24**, `db/tests/run.sh` **all pass**, frontend unit **47/47**,
+  `tsc --noEmit` clean, **e2e 23/23** on a fresh `reset:db` + `seed:dev`.
+- Env notes: backend restarted to load the shares route (`term_1786220734805_18` PID 29387
+  :3001); DB reset during testing, re-seeded after. E2E full-suite still requires a freshly
+  reset+seeded DB (other specs leave requests in "Mock API Demo" — the "Requests: 8" assertion
+  in `assertions-runner.spec.ts` breaks otherwise).
+- NEXT BACKLOG ITEM: **#8 Comments & collaboration** (inline comments on requests/collections +
+  team mentions).
+
 ## Current turn (completed, pushed as `f496e7f` on 2026-08-08)
 User request: "okay mark the completed things as completed, and proceed with #6".
 - Housekeeping: marked backlog item **#4 Mock server per project** as DONE (verified existing code,
@@ -171,6 +224,7 @@ changes → push → update session.md after push) for EVERY feature.
 6. **Export / import collections** — export collections as JSON (+ cURL/OpenAPI) and import back.
    DONE (`f496e7f`).
 7. **Share links for requests** — shareable public read-only links to a request with sample response.
+   DONE (`009_request_shares` + `shares.js` + `ShareLinksModal.tsx` + `app/s/[token]/page.tsx`).
 8. **Comments & collaboration** — inline comments on requests/collections + team mentions.
 9. **Global search** — Cmd-K quick switcher across requests, collections, workflows and runs.
 
