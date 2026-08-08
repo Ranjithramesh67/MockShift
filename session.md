@@ -3,19 +3,15 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
-## Current turn (in progress — sidebar fully hidden on top-level pages)
-Fix applied (pending push): the workspace/collection **sidebar now collapses to just the icon
-rail** on `/automations` `/manage` `/admin` `/history`. The `.sidebar-panel-hidden` rule already hid
-the panel content (`display:none`), but the `.sidebar` `<aside>` kept its full 296px width, leaving a
-large empty column beside the rail. Now:
-- `frontend/src/components/Sidebar.tsx` — `<aside className={sidebar ...}>` gains
-  `sidebar-rail-only` when `panelHidden` is true.
+## Current turn (completed, pushed as `e0e811c` on 2026-08-08)
+The workspace/collection sidebar now **collapses to just the icon rail** on `/automations`
+`/manage` `/admin` `/history`:
+- `frontend/src/components/Sidebar.tsx` — the `<aside>` gains `sidebar-rail-only` when
+  `panelHidden` is true.
 - `frontend/app/globals.css` — `.sidebar-rail-only { width:48px; min-width:48px }` collapses the
-  shell to rail width, so the panel pages use the full remaining width.
-- No test run (user directive this turn: "Just fix that don't do any testing"). Dev server
-  recompiled clean (`✓ Compiled in 4.4s`, `GET /` and `/automations` 200).
-- Existing regression `frontend/e2e/nav-from-manage.spec.ts` still asserts the panel content is
-  hidden + rail stays + rail-apis returns to the editor (should remain green).
+  shell to rail width so panel pages use the full remaining width.
+- No tests run (user directive this turn: "Just fix that don't do any testing"). Dev server
+  recompiled clean; `GET /` + `/automations` 200. `nav-from-manage.spec.ts` remains the regression.
 
 ## Current turn (completed, pushed as `c15149e` on 2026-08-07)
 BACKLOG ITEM **#5 — Workflow triggers & notifications** is DONE and on `origin/master`:
