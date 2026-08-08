@@ -169,7 +169,7 @@ changes → push → update session.md after push) for EVERY feature.
 5. **Workflow triggers & notifications** — more trigger types (on-request, on-run-failure) + richer notifications.
    DONE (`c15149e`).
 6. **Export / import collections** — export collections as JSON (+ cURL/OpenAPI) and import back.
-   IN PROGRESS (this turn).
+   DONE (`f496e7f`).
 7. **Share links for requests** — shareable public read-only links to a request with sample response.
 8. **Comments & collaboration** — inline comments on requests/collections + team mentions.
 9. **Global search** — Cmd-K quick switcher across requests, collections, workflows and runs.
@@ -252,6 +252,14 @@ DONE — admin Users list is now **project-wise** (pushed as `a5b12bb`):
 ## Status (as of the last push)
 All planned features are implemented and pushed to `origin/master`:
 
+- **#6 Export / import collections** DONE (`f496e7f`): `GET /api/collections/:collectionId/export`
+  (JSON `api-hub-collection` v1 + cURL + OpenAPI 3.0) and `POST /api/collections/import`
+  (transactional, EDITOR+ gated, re-links auth providers via `sourceId`) in
+  `backend/src/api/routes/exports.js`; frontend `CollectionImportExportModal.tsx`
+  (Export/Import tabs) + `src/lib/collectionExport.js`, wired into `Sidebar.tsx`
+  (`open-import-export` button); backend + frontend unit tests and a self-contained e2e spec
+  (`collection-export-import.spec.ts`). Full matrix green: backend integration suites + jest 47 +
+  api units 24 + `db/tests/run.sh`, frontend jest 47 + `tsc --noEmit`, e2e **22/22**.
 - **Three polish items VERIFIED** (full e2e + unit + build + DB test matrix green):
   1. **Sidebar panel hidden on `/automations` `/manage` `/admin`** — `AppShell.tsx` passes
      `panelHidden={view !== 'workspace'}`; `.sidebar-panel-hidden` (`display:none`) hides the
