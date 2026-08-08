@@ -29,7 +29,9 @@ for (const p of PAGES) {
     await expect(page.getByTestId('url-input')).toBeVisible();
 
     await page.getByTestId(p.testId).click();
-    await expect(page).toHaveURL(new RegExp(p.url));
+    // First visit to a top-level route compiles the page in dev mode, so the
+    // URL can lag behind for a couple of seconds. Allow generous time.
+    await expect(page).toHaveURL(new RegExp(p.url), { timeout: 15000 });
     await expect(page.getByTestId(p.pageTestId)).toBeVisible();
 
     // Workspace panel (workspace chips + collections tree) must be hidden.

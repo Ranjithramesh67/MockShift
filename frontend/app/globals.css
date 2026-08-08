@@ -1888,6 +1888,42 @@ textarea {
   padding-right: 2px;
 }
 
+.modal-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.modal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.modal-tab:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.modal-tab.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.modal-tabs + .modal-form {
+  gap: 12px;
+}
+
 .modal-form {
   display: flex;
   flex-direction: column;
