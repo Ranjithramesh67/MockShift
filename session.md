@@ -96,4 +96,4 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
 
 ## Completed
 
-- S0 — restructure session.md + reset roadmap (docs only) — commit `<pending sha>`
+- S0 — restructure session.md + reset roadmap (docs only) — commit `edbe753`
