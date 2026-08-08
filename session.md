@@ -3,6 +3,39 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
+## Current turn (completed, pushed as `f496e7f` on 2026-08-08)
+User request: "okay mark the completed things as completed, and proceed with #6".
+- Housekeeping: marked backlog item **#4 Mock server per project** as DONE (verified existing code,
+  just wasn't flagged in the backlog).
+- **#6 Export / import collections** implemented and verified:
+  - Backend `backend/src/api/routes/exports.js` (mounted at `/api` in `server.js`):
+    `GET /api/collections/:collectionId/export` serializes a collection as `api-hub-collection`
+    v1 JSON (name, requests incl. method/url/headers/query_params/body/api_type/formula/
+    assertions, + optional auth provider); read-access gated.
+    `POST /api/collections/import` validates the payload, creates the collection + requests in a
+    transaction (EDITOR+ gated), re-links `auth_providers.token_request_id` via exported `sourceId`.
+  - Frontend: `src/lib/collectionExport.js` (parse/build JSON/curl/OpenAPI, `formatForDownload`),
+    `src/components/CollectionImportExportModal.tsx` (Export/Import tabs, file picker, target
+    project select), wired into `Sidebar.tsx` as the `open-import-export` button beside "New
+    collection", reloads the tree after import; `.modal-tabs`/`.modal-tab` in `globals.css`;
+    types + `collectionExportApi` in `src/lib/api.ts`.
+  - Tests: `backend/tests/exportImport.integration.test.cjs` (4 pass), `frontend/src/lib/__tests__/
+    collectionExport.test.cjs` (5 pass), `frontend/e2e/collection-export-import.spec.ts`.
+  - Full verification green: backend integration matrix (apiAuth 16, environments 4, exportImport 4,
+    history 2, mockServer 3, automationEvents 4) + jest 47 + api units 24 + `db/tests/run.sh`;
+    frontend jest 47 + `tsc --noEmit`; **full e2e suite 22/22 pass** on a freshly reseeded DB.
+- e2e hardening done while getting the suite green:
+  - `collection-export-import.spec.ts` is self-contained (creates a throwaway collection via API,
+    exports/imports it, deletes both at the end) so it never pollutes the shared seeded DB.
+  - `nav-from-manage.spec.ts` — raised the `toHaveURL` timeout to 15s for first-visit top-level
+    routes (Next.js dev-mode route compile makes the URL lag behind the rendered page).
+  - Full-suite requirements: mock upstream must be running (`backend/scripts/mock-upstream.js` on
+    :3999) — request-run specs (`assertions-runner`, `environments`, `history`, `large-response`)
+    assert `Status: 200` against it; and the DB must be reseeded before a full run (shared-DB
+    convention noted in session.md).
+- Added root `.gitignore` (node_modules, `.next`, `tsconfig.tsbuildinfo`, `test-results`,
+  `dump.rdb`, logs).
+
 ## Current turn (completed, pushed as `e06b819` on 2026-08-08)
 User request: "Remove automation, manage, admin from top bar and make the side bar collapsible."
 Done and on `origin/master`:
@@ -132,9 +165,11 @@ changes → push → update session.md after push) for EVERY feature.
 3. **Run history page** — dedicated UI listing past runs with request/response snapshots, status, timing.
    DONE (`f906755`).
 4. **Mock server per project** — per-project mock API server (routes + in-memory state) managed from the app.
+   DONE (was implemented but unflagged; `mockServers.js` + `MockServersModal.tsx` + `mock-server.spec.ts`).
 5. **Workflow triggers & notifications** — more trigger types (on-request, on-run-failure) + richer notifications.
    DONE (`c15149e`).
 6. **Export / import collections** — export collections as JSON (+ cURL/OpenAPI) and import back.
+   IN PROGRESS (this turn).
 7. **Share links for requests** — shareable public read-only links to a request with sample response.
 8. **Comments & collaboration** — inline comments on requests/collections + team mentions.
 9. **Global search** — Cmd-K quick switcher across requests, collections, workflows and runs.
