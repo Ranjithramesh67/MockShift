@@ -437,7 +437,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   return (
-    <aside className="sidebar" data-testid="sidebar">
+    <aside className={`sidebar ${panelHidden ? 'sidebar-rail-only' : ''}`} data-testid="sidebar">
       <nav className="rail" aria-label="Sidebar navigation">
         <button
           type="button"

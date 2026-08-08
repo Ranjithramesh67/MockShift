@@ -233,6 +233,18 @@ FEATURE 5 from the backlog. Two new automation trigger types + richer failure no
   Demo" collection, so `assertions-runner.spec.ts` ("Requests: 8") fails on the second run without
   a reseed (or manual cleanup of `history-e2e-request` / `mock-e2e-request`).
 
+### 5.10 Sidebar collapses to icon rail on top-level pages (this turn)
+Follow-up on the sidebar polish: the panel content was already hidden on `/automations` `/manage`
+`/admin` (`.sidebar-panel-hidden`), but the `.sidebar` `<aside>` kept its 296px width — leaving a
+large empty column next to the rail. Fix:
+- `frontend/src/components/Sidebar.tsx` — the `<aside>` gets `sidebar-rail-only` when
+  `panelHidden` is true.
+- `frontend/app/globals.css` — `.sidebar-rail-only { width:48px; min-width:48px }` collapses the
+  shell to the icon-rail width so the panel pages use the full remaining width.
+- No tests run this turn (user directive: "Just fix that don't do any testing"); the running dev
+  server recompiled clean and serves `/` + `/automations` (200). `nav-from-manage.spec.ts` remains
+  the regression for this behavior.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to

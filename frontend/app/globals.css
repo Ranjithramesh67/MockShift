@@ -326,6 +326,13 @@ textarea {
   display: none;
 }
 
+/* Collapse the sidebar shell to the icon-rail width so the panel pages
+   (automations/manage/admin/history) use the full remaining width. */
+.sidebar-rail-only {
+  width: 48px;
+  min-width: 48px;
+}
+
 .sidebar-section {
   padding: 4px 2px;
 }
