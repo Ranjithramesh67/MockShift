@@ -10,6 +10,7 @@ import { TabBar } from './TabBar';
 import { CodeGenModal } from './CodeGenModal';
 import { FormulaHelper } from './FormulaHelper';
 import { AssertionsEditor } from './AssertionsEditor';
+import { ShareLinksModal } from './ShareLinksModal';
 import {
   SendIcon,
   SaveIcon,
@@ -20,6 +21,7 @@ import {
   FormulaIcon,
   RequestIcon,
   CheckIcon,
+  ShareIcon,
 } from './icons';
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
@@ -80,6 +82,7 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
   const { state, dispatch } = useApp();
   const ws = useWorkspace();
   const [codegenOpen, setCodegenOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
   if (!request)
@@ -187,6 +190,10 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           <ImportIcon size={14} />
           Import
         </button>
+        <button type="button" className="ghost-button" data-testid="share-open-button" onClick={() => setShareOpen(true)} style={actionBtn}>
+          <ShareIcon size={14} />
+          Share
+        </button>
       </div>
 
       <TabBar
@@ -276,6 +283,14 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
         )}
       </div>
       {codegenOpen && <CodeGenModal request={request} onClose={() => setCodegenOpen(false)} />}
+      {shareOpen && (
+        <ShareLinksModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          requestId={request.id}
+          requestName={request.name}
+        />
+      )}
     </div>
   );
 }

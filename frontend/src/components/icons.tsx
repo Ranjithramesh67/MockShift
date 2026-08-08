@@ -123,6 +123,15 @@ export const CopyIcon = (p: IconProps) => (
   </svg>
 );
 
+export const ShareIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <path d="M8.6 13.5l6.8 4M8.6 10.5l6.8-4" />
+  </svg>
+);
+
 export const LayoutIcon = (p: IconProps) => (
   <svg {...svgProps(p)}>
     <rect x="3" y="3" width="18" height="18" rx="2" />
