@@ -3,9 +3,9 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
-## Current turn (in progress — verify + push: remove top-bar nav links + collapsible sidebar)
+## Current turn (completed, pushed as `e06b819` on 2026-08-08)
 User request: "Remove automation, manage, admin from top bar and make the side bar collapsible."
-Implementation is already in the working tree (clean, part of the squashed snapshot `3529b78`):
+Done and on `origin/master`:
 - `frontend/src/components/TopBar.tsx` — the `automations-link` / `manage-link` / `admin-link`
   top-bar buttons are gone; nav to those views stays on the sidebar icon rail
   (`rail-automations` / `rail-manage` / `rail-admin`). Unused `Link` / `useNav` / `BoltIcon` /
@@ -20,10 +20,10 @@ Implementation is already in the working tree (clean, part of the squashed snaps
 - `frontend/app/globals.css` — `.rail-toggle` chevron rotation (points right when collapsed,
   left when expanded), `.rail-spacer` (flex:1), reuse of `.sidebar-rail-only` /
   `.sidebar-panel-hidden` for the collapsed state.
-Remaining this turn: install frontend deps (`node_modules` missing after the env reset — only
-backend deps are committed), confirm the dev server recompiles clean, commit + push, then refresh
-this file.
-- No tests (previous turns' directive), just confirm the dev server recompiles clean.
+- Verified: `tsc --noEmit` clean; dev server recompiled clean; `GET /` `/automations` `/manage`
+  `/admin` `/history` `/login` all 200. No tests run (previous turns' directive).
+- NOTE: this turn's code was already in the tree (the repo history was squashed to a single
+  commit `3529b78`), so the push here carried the `session.md` update that marks it complete.
 
 ## Current turn (completed, pushed as `326607c` on 2026-08-08)
 Notification bell now closes on outside click:
