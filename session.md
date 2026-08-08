@@ -3,18 +3,26 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
-## Current turn (in progress — remove top-bar nav links + collapsible sidebar)
+## Current turn (in progress — verify + push: remove top-bar nav links + collapsible sidebar)
 User request: "Remove automation, manage, admin from top bar and make the side bar collapsible."
-Plan (pending):
-- `frontend/src/components/TopBar.tsx` — remove the `automations-link` / `manage-link` /
-  `admin-link` buttons (and now-unused `Link`, `useNav`, `BoltIcon`, `ShieldIcon`, `UserIcon`
-  imports). Navigation to those views stays available via the sidebar icon rail
-  (`rail-automations` / `rail-manage` / `rail-admin`), which existing e2e specs already use.
-- `frontend/src/components/Sidebar.tsx` — add a user toggle that collapses the workspace/teams
-  panel to just the icon rail (a `collapsed` state merged with the existing `panelHidden` prop,
-  so the panel pages still force rail-only). Add a rail collapse/expand button.
-- `frontend/app/globals.css` — styles for the collapse button; reuse `.sidebar-rail-only` /
+Implementation is already in the working tree (clean, part of the squashed snapshot `3529b78`):
+- `frontend/src/components/TopBar.tsx` — the `automations-link` / `manage-link` / `admin-link`
+  top-bar buttons are gone; nav to those views stays on the sidebar icon rail
+  (`rail-automations` / `rail-manage` / `rail-admin`). Unused `Link` / `useNav` / `BoltIcon` /
+  `ShieldIcon` / `UserIcon` imports were dropped from the file.
+- `frontend/src/components/Sidebar.tsx` — user toggle implemented: a `collapsed` state merged
+  with the existing `panelHidden` prop via `railHidden = panelHidden || collapsed` (so the panel
+  pages still force rail-only). A rail collapse/expand button (`rail-toggle`,
+  `data-testid="sidebar-toggle"`) sits at the bottom of the rail (pushed down by `.rail-spacer`);
+  when collapsed the panel is hidden (`.sidebar-panel-hidden`) and the shell shrinks to rail
+  width (`.sidebar-rail-only`). Clicking `rail-apis` / `rail-teams` auto-expands and returns to
+  the workspace view.
+- `frontend/app/globals.css` — `.rail-toggle` chevron rotation (points right when collapsed,
+  left when expanded), `.rail-spacer` (flex:1), reuse of `.sidebar-rail-only` /
   `.sidebar-panel-hidden` for the collapsed state.
+Remaining this turn: install frontend deps (`node_modules` missing after the env reset — only
+backend deps are committed), confirm the dev server recompiles clean, commit + push, then refresh
+this file.
 - No tests (previous turns' directive), just confirm the dev server recompiles clean.
 
 ## Current turn (completed, pushed as `326607c` on 2026-08-08)
