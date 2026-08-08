@@ -3599,3 +3599,135 @@ textarea {
   resize: vertical;
 }
 
+/* ==========================================================================
+   Share links (modal + public page)
+   ========================================================================== */
+.share-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.share-url-row .text-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.ghost-button.danger {
+  color: var(--err, #f85149);
+  border-color: rgba(248, 81, 73, 0.35);
+}
+
+.ghost-button.danger:hover:not(:disabled) {
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.share-public-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #0a0d0a);
+  color: var(--fg, #e6edf3);
+}
+
+.share-public-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+}
+
+.share-brand {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.share-public-main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 28px 16px;
+}
+
+.share-card {
+  width: 100%;
+  max-width: 760px;
+  background: var(--bg-panel, #11161a);
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+  border-radius: var(--r-lg, 12px);
+  padding: 24px;
+  align-self: flex-start;
+}
+
+.share-card h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.share-card h3 {
+  margin: 20px 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted, #8b949e);
+}
+
+.share-method-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.method-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.method-get { background: rgba(31, 111, 235, 0.15); color: #58a6ff; }
+.method-post { background: rgba(46, 160, 67, 0.15); color: #3fb950; }
+.method-put { background: rgba(158, 106, 3, 0.15); color: #d29922; }
+.method-patch { background: rgba(137, 87, 229, 0.15); color: #a371f7; }
+.method-delete { background: rgba(218, 54, 51, 0.15); color: #f85149; }
+.method-head, .method-options { background: rgba(107, 118, 132, 0.15); color: #8b949e; }
+
+.share-url {
+  background: var(--bg-panel-2, #161b22);
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+  border-radius: var(--r-md, 8px);
+  padding: 10px 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+.share-pre {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-panel-2, #161b22);
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+  border-radius: var(--r-md, 8px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.share-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.status-chip.pass { background: rgba(63, 185, 80, 0.12); color: var(--ok, #3fb950); }
+.status-chip.fail { background: rgba(248, 81, 73, 0.12); color: var(--err, #f85149); }

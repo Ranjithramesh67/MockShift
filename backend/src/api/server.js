@@ -15,6 +15,7 @@ const notificationRoutes = require('./routes/notifications');
 const historyRoutes = require('./routes/history');
 const mockServerRoutes = require('./routes/mockServers');
 const exportRoutes = require('./routes/exports');
+const shareRoutes = require('./routes/shares');
 const { mockDispatch } = require('./mockDispatch');
 const { query } = require('./db');
 const { runWorkflow, syncAllSchedules } = require('./workflowService');
@@ -58,6 +59,7 @@ function createApp() {
   });
 
   app.use('/api/auth', authRoutes);
+  app.use('/api', shareRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/manage', manageRoutes);
   app.use('/api/workspaces', workspaceRoutes);

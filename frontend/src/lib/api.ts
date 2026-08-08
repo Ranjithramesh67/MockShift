@@ -628,3 +628,39 @@ export const environmentApi = {
   deleteVariable: (environmentId: string, variableId: string) =>
     apiFetch(`/api/environments/${environmentId}/variables/${variableId}`, { method: 'DELETE' }),
 };
+
+// ------------------------------------------------------------- Share links
+export interface SharedRequestView {
+  token: string;
+  createdAt: string;
+  request: {
+    id: string;
+    name: string;
+    method: string;
+    url: string;
+    headers: Array<{ key: string; value: string; enabled: boolean }>;
+    queryParams: Array<{ key: string; value: string; enabled: boolean }>;
+    bodyType: string;
+    bodyJson: unknown;
+    bodyText: string | null;
+    apiType: string;
+  };
+  lastRun: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: string;
+    bodyEncoding: string;
+    durationMs: number;
+    startedAt: string;
+  } | null;
+}
+
+export const shareApi = {
+  create: (requestId: string) =>
+    apiFetch<{ share: { token: string; createdAt: string } }>(`/api/requests/${requestId}/share`, {
+      method: 'POST',
+    }),
+  get: (token: string) => apiFetch<{ share: SharedRequestView }>(`/api/shares/${token}`),
+  revoke: (token: string) => apiFetch<{ ok: true }>(`/api/shares/${token}`, { method: 'DELETE' }),
+};
