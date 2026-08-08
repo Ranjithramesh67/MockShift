@@ -3,6 +3,20 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
+## Current turn (in progress — remove top-bar nav links + collapsible sidebar)
+User request: "Remove automation, manage, admin from top bar and make the side bar collapsible."
+Plan (pending):
+- `frontend/src/components/TopBar.tsx` — remove the `automations-link` / `manage-link` /
+  `admin-link` buttons (and now-unused `Link`, `useNav`, `BoltIcon`, `ShieldIcon`, `UserIcon`
+  imports). Navigation to those views stays available via the sidebar icon rail
+  (`rail-automations` / `rail-manage` / `rail-admin`), which existing e2e specs already use.
+- `frontend/src/components/Sidebar.tsx` — add a user toggle that collapses the workspace/teams
+  panel to just the icon rail (a `collapsed` state merged with the existing `panelHidden` prop,
+  so the panel pages still force rail-only). Add a rail collapse/expand button.
+- `frontend/app/globals.css` — styles for the collapse button; reuse `.sidebar-rail-only` /
+  `.sidebar-panel-hidden` for the collapsed state.
+- No tests (previous turns' directive), just confirm the dev server recompiles clean.
+
 ## Current turn (completed, pushed as `326607c` on 2026-08-08)
 Notification bell now closes on outside click:
 - `frontend/src/components/TopBar.tsx` — `NotificationBell` gained `bellRef` + a `document

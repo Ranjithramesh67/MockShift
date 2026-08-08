@@ -254,6 +254,7 @@ textarea {
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   overflow: hidden;
+  transition: width var(--speed) var(--ease), min-width var(--speed) var(--ease);
 }
 
 /* ---- Icon rail (top-level navigation) ------------------------------------ */
@@ -306,6 +307,20 @@ textarea {
   height: 1px;
   background: var(--border);
   margin: 4px 0;
+}
+
+/* Push the collapse/expand toggle to the bottom of the icon rail. */
+.rail-spacer {
+  flex: 1;
+}
+
+.rail-toggle svg {
+  transition: transform var(--speed) var(--ease);
+}
+
+/* Rail points right when collapsed (click to expand the panel). */
+.rail-toggle:not(.is-collapsed) svg {
+  transform: rotate(180deg);
 }
 
 /* ---- Sidebar context panel ----------------------------------------------- */

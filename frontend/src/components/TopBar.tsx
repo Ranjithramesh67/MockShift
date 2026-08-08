@@ -1,11 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useApp } from '@/store/AppStore';
-import { useNav } from '@/store/NavStore';
 import type { ViewMode } from '@/lib/types';
 import { notificationApi, type Notification } from '@/lib/api';
 import {
@@ -13,15 +11,12 @@ import {
   LayoutIcon,
   ResponsePaneIcon,
   RequestPaneIcon,
-  ShieldIcon,
   SplitIcon,
   LogoutIcon,
   XIcon,
   BellIcon,
   ChevronIcon,
   CheckIcon,
-  BoltIcon,
-  UserIcon,
 } from './icons';
 
 const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string; icon: typeof LayoutIcon }> = [
@@ -126,7 +121,6 @@ function NotificationBell() {
 export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
   const { user, logout } = useAuth();
   const { state, dispatch } = useApp();
-  const { setView } = useNav();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewsOpen, setViewsOpen] = useState(false);
@@ -207,40 +201,6 @@ export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
         </button>
         <NotificationBell />
         <div className="user-menu">
-          <Link
-            href="/automations"
-            className="ghost-button"
-            data-testid="automations-link"
-            onClick={() => setView('automations')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
-            <BoltIcon size={14} />
-            Automations
-          </Link>
-          {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
-            <Link
-              href="/manage"
-              className="ghost-button"
-              data-testid="manage-link"
-              onClick={() => setView('manage')}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <ShieldIcon size={14} />
-              Manage
-            </Link>
-          )}
-          {user?.role === 'ADMIN' && (
-            <Link
-              href="/admin"
-              className="ghost-button"
-              data-testid="admin-link"
-              onClick={() => setView('admin')}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <UserIcon size={14} />
-              Admin
-            </Link>
-          )}
           <button
             type="button"
             className="user-chip"
