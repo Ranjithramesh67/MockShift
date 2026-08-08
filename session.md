@@ -3,14 +3,12 @@
 > Canonical, detailed session log: **`docs/SESSION.md`** (maintained by the working AI sessions).
 > This root `session.md` is the working-agreement + short status snapshot. Read it every session.
 
-## Current turn (in progress — notification bell closes on outside click)
-User request: "When I click on notification and then click somewhere outside it needs to close the
-notification floating window right?" — checked and it did NOT: `NotificationBell` in
-`frontend/src/components/TopBar.tsx` had no click-outside handler (only the views-menu did), so the
-bell dropdown stayed open until the bell was clicked again. Fix applied (pending push):
-- Added `bellRef` + a `document mousedown` listener that closes the dropdown when the click lands
-  outside `.bell-wrap` (same pattern as the views-menu). Dev server recompiled clean.
-- No test run (consistent with the previous turn's no-testing directive).
+## Current turn (completed, pushed as `326607c` on 2026-08-08)
+Notification bell now closes on outside click:
+- `frontend/src/components/TopBar.tsx` — `NotificationBell` gained `bellRef` + a `document
+  mousedown` listener that closes the dropdown when the click is outside `.bell-wrap` (same pattern
+  as the views-menu, which already did this).
+- No test run; dev server recompiled clean.
 
 ## Current turn (completed, pushed as `e0e811c` on 2026-08-08)
 The workspace/collection sidebar now **collapses to just the icon rail** on `/automations`
