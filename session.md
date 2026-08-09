@@ -8,12 +8,22 @@ Last updated: 2026-08-08
 ## Current
 
 Step: S1 — credential redactor module
-Status: not started
-Resume point: read S1 prompt in chat; post plan (files, schema, test plan), wait for GO.
+Status: plan posted; implementation deferred (user driving next API work directly)
 
 ## Plan for current step (as approved)
 
-- (empty — S1 prompt not yet pasted)
+- `backend/src/api/redact.js` — `redactSnapshot(snapshot, options)` pure module, never mutates input.
+  Handles url (query string), request headers, request body, response headers, response body;
+  JSON / form / multipart / XML-SOAP / raw text bodies. Rules in order: (1) exact secretValues
+  match, (2) key-name pattern `authorization|cookie|set-cookie|token|secret|password|passwd|
+  api[-_]?key|client[-_]?secret|assertion|signature|sig` (case-insensitive, any depth),
+  (3) JWT-shaped + `Bearer <token>` heuristics. Marker `«redacted»`, key preserved.
+  options `{ secretValues, extraKeyPatterns, marker }`.
+- `backend/src/api/__tests__/redact.test.cjs` — node:test unit tests: query-string token,
+  OAuth2 JSON body, Set-Cookie header, SOAP wsse:Password element, secret mid-sentence in
+  plain-text body, deeply nested JSON, byte-identical when no secrets, idempotent, input not
+  mutated. Runs via `npm run test:api:unit` (+ jest matrix untouched).
+- No route/UI wiring (S2), no schema.
 
 ## Test status
 
