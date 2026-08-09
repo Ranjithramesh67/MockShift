@@ -7,8 +7,8 @@ Last updated: 2026-08-08
 
 ## Current
 
-Step: S1 — credential redactor module
-Status: DONE — pushed as `60fe8b6` (redactSnapshot module + 17 unit tests; no wiring yet)
+Step: S2 — wire the redactor into share links, run history, and every export path
+Status: DONE — pushed as `90b88a7` (redactor wired into shares, history, exports, workflow/automation runs)
 
 ## Plan for current step (as approved)
 
@@ -27,8 +27,10 @@ Status: DONE — pushed as `60fe8b6` (redactSnapshot module + 17 unit tests; no 
 
 ## Test status
 
-backend jest: 47/47 · test:api: 35/35 · api units: 41/41 · db run.sh: all pass · frontend unit: 47/47 ·
-tsc --noEmit: clean · e2e: not run (S1 is a pure module, no wiring — S2 will add routes + e2e)
+backend jest: 47/47 · test:api: 35/35 · api units: 45/45 · db run.sh: all pass · frontend unit: 47/47 ·
+tsc --noEmit: clean · e2e: 22/23 on fresh DB (only the known pre-existing `history.spec.ts`
+detail-modal flake failed; it passes in isolation) — full suite needs a freshly `reset:db`+`seed:dev`
+DB because specs leave requests in "Mock API Demo" (breaks `Requests: 8` in assertions-runner).
 
 ## Decisions (durable)
 
@@ -106,6 +108,14 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
 
 ## Completed
 
+- S2 — redactor wired everywhere (pushed as `90b88a7`): `shares.js` (public share → full response
+  snapshot + stored request url/headers/query_params/body_json/body_text through the redactor, not
+  the old header-only allowlist), `history.js` (detail snapshots + run-list url redacted),
+  `workflows.js` + `automations.js` (run lists), `exports.js` (serialized collection requests).
+  `redact.js` gained `redactRequestRecord` / `redactKvArray` / `redactJsonValue`; base64 response
+  bodies are skipped. `shares.integration.test.cjs` updated to the `«redacted»` marker; 4 new unit
+  tests (api units now 45). Verified live: query `?token=` and `Authorization: Bearer …` both
+  redacted in `/api/history/:runId`.
 - S1 — credential redactor `backend/src/api/redact.js` (`redactSnapshot()`, pure, never mutates input),
   committed + pushed as `60fe8b6`. Handles url (query string + userinfo), request/response headers,
   and bodies: JSON / form-urlencoded / multipart / XML-SOAP / raw text. Rules in order: exact
@@ -113,6 +123,5 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
   api[-_]?key|client[-_]?secret|assertion|signature|sig`, case-insensitive, any depth), JWT-shape +
   `Bearer`/`Basic`/… auth-scheme heuristics. Marker `«redacted»`, key preserved. Options
   `{ secretValues, extraKeyPatterns, marker }`. 17 node:test tests in
-  `backend/src/api/__tests__/redact.test.cjs` (run via `npm run test:api:unit`). NOT yet wired into
-  shares/history/exports — that is S2.
+  `backend/src/api/__tests__/redact.test.cjs` (run via `npm run test:api:unit`).
 - S0 — restructure session.md + reset roadmap (docs only) — commit `edbe753`
