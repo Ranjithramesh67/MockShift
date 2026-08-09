@@ -155,7 +155,7 @@ test('create, read publicly (redacted), and revoke a share link', async () => {
   assert.ok(read.json.share.request.url.includes('/share-check'));
   // Sensitive header value redacted on the public view.
   const authHeader = read.json.share.request.headers.find((h) => h.key === 'Authorization');
-  assert.equal(authHeader.value, '••••••••');
+  assert.equal(authHeader.value, '\u00abredacted\u00bb');
   const demoHeader = read.json.share.request.headers.find((h) => h.key === 'X-Demo');
   assert.equal(demoHeader.value, 'hello');
   // Last run response present.

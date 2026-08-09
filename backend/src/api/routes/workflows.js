@@ -9,6 +9,7 @@ const {
 } = require('../access');
 const { runWorkflow } = require('../workflowService');
 const { logAudit } = require('../audit');
+const { redactSnapshot } = require('../redact');
 
 const router = Router();
 router.use(requireAuth);
@@ -179,7 +180,13 @@ router.get('/workflows/:workflowId/runs', async (req, res, next) => {
       [wf.id, limit],
       { userId: req.user.id }
     );
-    res.json({ runs: rows });
+    res.json({
+      runs: rows.map((r) => ({
+        ...r,
+        request_snapshot: r.request_snapshot ? redactSnapshot(r.request_snapshot, {}) : null,
+        response_snapshot: r.response_snapshot ? redactSnapshot(r.response_snapshot, {}) : null,
+      })),
+    });
   } catch (err) {
     next(err);
   }

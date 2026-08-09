@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { query, pool } = require('../db');
 const { requireAuth, getProjectAccess, roleAtLeast } = require('../access');
 const { logAudit } = require('../audit');
+const { redactRequestRecord } = require('../redact');
 
 const router = Router();
 router.use(requireAuth);
@@ -59,20 +60,23 @@ async function serializeCollection(collectionId) {
     format: EXPORT_FORMAT,
     version: EXPORT_VERSION,
     name: collection.name,
-    requests: requests.map((r) => ({
-      sourceId: r.id,
-      name: r.name,
-      method: r.method,
-      url: r.url,
-      headers: r.headers || [],
-      queryParams: r.query_params || [],
-      bodyType: r.body_type,
-      bodyJson: r.body_json ?? null,
-      bodyText: r.body_text ?? null,
-      apiType: r.api_type,
-      formula: r.formula || '',
-      assertions: r.assertions || [],
-    })),
+    requests: requests.map((r) => {
+      const safe = redactRequestRecord(r, {});
+      return {
+        sourceId: safe.id,
+        name: safe.name,
+        method: safe.method,
+        url: safe.url,
+        headers: safe.headers || [],
+        queryParams: safe.query_params || [],
+        bodyType: safe.body_type,
+        bodyJson: safe.body_json ?? null,
+        bodyText: safe.body_text ?? null,
+        apiType: safe.api_type,
+        formula: safe.formula || '',
+        assertions: safe.assertions || [],
+      };
+    }),
     authProvider: authRow
       ? {
           authType: authRow.auth_type || 'NONE',

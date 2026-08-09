@@ -10,6 +10,7 @@ const {
   newWebhookToken,
 } = require('../workflowService');
 const { logAudit } = require('../audit');
+const { redactSnapshot } = require('../redact');
 
 const router = Router();
 router.use(requireAuth);
@@ -305,7 +306,13 @@ router.get('/automations/:automationId/runs', async (req, res, next) => {
          FROM run_history WHERE workflow_id = $1 ORDER BY started_at DESC LIMIT $2`,
       [automation.workflow_id, limit]
     );
-    res.json({ runs: rows });
+    res.json({
+      runs: rows.map((r) => ({
+        ...r,
+        request_snapshot: r.request_snapshot ? redactSnapshot(r.request_snapshot, {}) : null,
+        response_snapshot: r.response_snapshot ? redactSnapshot(r.response_snapshot, {}) : null,
+      })),
+    });
   } catch (err) {
     next(err);
   }

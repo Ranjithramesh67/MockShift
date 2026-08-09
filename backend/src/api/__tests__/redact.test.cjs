@@ -4,7 +4,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   redactSnapshot,
+  redactRequestRecord,
   redactHeaders,
+  redactKvArray,
+  redactJsonValue,
   redactBody,
   redactUrl,
   DEFAULT_MARKER,
@@ -178,4 +181,63 @@ test('custom marker and extra key patterns are honoured', () => {
     extraKeyPatterns: ['phone'],
   });
   assert.equal(out.headers['x-phone-number'], '[SECRET]');
+});
+
+test('redactKvArray redacts sensitive header/query entries by key and value', () => {
+  const kvs = [
+    { key: 'Authorization', value: 'Bearer tok.ey.sig', enabled: true },
+    { key: 'X-Debug', value: 'hello', enabled: true },
+    { key: 'api_key', value: 'sk-live-123', enabled: true },
+    { key: 'page', value: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc', enabled: true },
+  ];
+  const out = redactKvArray(kvs, [], [], M);
+  assert.equal(out[0].value, M);
+  assert.equal(out[1].value, 'hello');
+  assert.equal(out[2].value, M);
+  assert.equal(out[3].value, M);
+  assert.equal(out[0].enabled, true);
+});
+
+test('redactJsonValue walks parsed JSON objects and arrays', () => {
+  const value = { nested: [{ password: 'p1' }, { ok: 1 }], token: 'abc' };
+  const out = redactJsonValue(value, [], [], M);
+  assert.equal(out.nested[0].password, M);
+  assert.equal(out.nested[1].ok, 1);
+  assert.equal(out.token, M);
+});
+
+test('redactRequestRecord redacts url, headers, query_params, body_json, body_text', () => {
+  const record = {
+    id: 'r-1',
+    name: 'Auth',
+    method: 'POST',
+    url: 'https://x.io/token?access_token=abc123',
+    headers: [{ key: 'authorization', value: 'Bearer tok.ey.sig', enabled: true }],
+    query_params: [{ key: 'limit', value: '10', enabled: true }],
+    body_json: { client_secret: 'ss', grant_type: 'client_credentials' },
+    body_text: 'password=hunter2',
+    api_type: 'AUTH',
+  };
+  const out = redactRequestRecord(record, {});
+  assert.ok(!out.url.includes('abc123'));
+  assert.equal(out.headers[0].value, M);
+  assert.equal(out.query_params[0].value, '10');
+  assert.equal(out.body_json.client_secret, M);
+  assert.equal(out.body_json.grant_type, 'client_credentials');
+  assert.ok(!out.body_text.includes('hunter2'));
+  assert.equal(out.name, 'Auth');
+  assert.equal(out.api_type, 'AUTH');
+  assert.deepEqual(record.headers[0], { key: 'authorization', value: 'Bearer tok.ey.sig', enabled: true });
+});
+
+test('redactSnapshot skips base64 response bodies', () => {
+  const snap = {
+    status: 200,
+    headers: { 'set-cookie': 'sid=abc' },
+    body: 'iVBORw0KGgoAAAANSUhEUgAAAA==',
+    bodyEncoding: 'base64',
+  };
+  const out = redactSnapshot(snap, {});
+  assert.equal(out.headers['set-cookie'], M);
+  assert.equal(out.body, 'iVBORw0KGgoAAAANSUhEUgAAAA==');
 });

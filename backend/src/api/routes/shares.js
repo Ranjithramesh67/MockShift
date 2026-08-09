@@ -8,38 +8,7 @@ const { logAudit } = require('../audit');
 
 const router = Router();
 
-// Header keys whose values are credentials and must never leak on a public
-// share (both request-side and response-side).
-const SENSITIVE_HEADERS = new Set([
-  'authorization',
-  'proxy-authorization',
-  'cookie',
-  'set-cookie',
-  'x-api-key',
-  'x-auth-token',
-  'x-auth',
-  'x-access-token',
-  'apikey',
-  'api-key',
-]);
-
-function redactHeaders(headers) {
-  if (!headers || typeof headers !== 'object') return {};
-  const out = {};
-  for (const [key, value] of Object.entries(headers)) {
-    out[key] = SENSITIVE_HEADERS.has(key.toLowerCase()) ? '••••••••' : value;
-  }
-  return out;
-}
-
-function redactKvArray(kvs) {
-  if (!Array.isArray(kvs)) return [];
-  return kvs.map((kv) => {
-    if (!kv || typeof kv !== 'object') return kv;
-    const { key, value, enabled } = kv;
-    return { key, value: SENSITIVE_HEADERS.has(String(key).toLowerCase()) ? '••••••••' : value, enabled };
-  });
-}
+const { redactSnapshot, redactRequestRecord, DEFAULT_MARKER } = require('../redact');
 
 async function canEditProject(userId, projectId) {
   const access = await getProjectAccess(userId, projectId);
@@ -124,33 +93,41 @@ router.get('/shares/:token', async (req, res, next) => {
     const lastRun = runs[0] || null;
     let lastRunPayload = null;
     if (lastRun && lastRun.response_snapshot) {
-      const snap = lastRun.response_snapshot;
-      lastRunPayload = {
-        status: snap.status,
-        statusText: snap.statusText,
-        headers: redactHeaders(snap.headers),
-        body: snap.body,
-        bodyEncoding: snap.bodyEncoding || 'utf8',
-        durationMs: snap.durationMs,
-        startedAt: lastRun.started_at,
-      };
+      lastRunPayload = redactSnapshot(lastRun.response_snapshot, {});
     }
+    if (lastRunPayload) lastRunPayload.startedAt = lastRun.started_at;
+
+    const safeRequest = redactRequestRecord(
+      {
+        id: share.request_id,
+        name: share.name,
+        method: share.method,
+        url: share.url,
+        headers: share.headers,
+        query_params: share.query_params || [],
+        body_type: share.body_type,
+        body_json: share.body_json ?? null,
+        body_text: share.body_text ?? null,
+        api_type: share.api_type,
+      },
+      {}
+    );
 
     res.json({
       share: {
         token,
         createdAt: share.created_at,
         request: {
-          id: share.request_id,
-          name: share.name,
-          method: share.method,
-          url: share.url,
-          headers: redactKvArray(share.headers),
-          queryParams: share.query_params || [],
-          bodyType: share.body_type,
-          bodyJson: share.body_json ?? null,
-          bodyText: share.body_text ?? null,
-          apiType: share.api_type,
+          id: safeRequest.id,
+          name: safeRequest.name,
+          method: safeRequest.method,
+          url: safeRequest.url,
+          headers: safeRequest.headers || [],
+          queryParams: safeRequest.query_params || [],
+          bodyType: safeRequest.body_type,
+          bodyJson: safeRequest.body_json ?? null,
+          bodyText: safeRequest.body_text ?? null,
+          apiType: safeRequest.api_type,
         },
         lastRun: lastRunPayload,
       },
