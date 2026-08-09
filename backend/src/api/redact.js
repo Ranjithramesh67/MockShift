@@ -257,6 +257,51 @@ function redactHeaders(headers, secretValues, patterns, marker) {
   return out;
 }
 
+// KV-array form as stored on api_requests (headers / query_params):
+//   [{ key, value, enabled }, ...]
+function redactKvArray(kvs, secretValues, patterns, marker) {
+  if (!Array.isArray(kvs)) return kvs;
+  return kvs.map((kv) => {
+    if (!kv || typeof kv !== 'object') return kv;
+    const { key, value, enabled } = kv;
+    const redacted =
+      matchesKeyName(String(key ?? ''), patterns) || looksLikeSecret(value, secretValues);
+    return redacted ? { ...kv, value: marker } : kv;
+  });
+}
+
+// JSON value (already parsed) at any depth — used for request body_json.
+function redactJsonValue(value, secretValues, patterns, marker) {
+  return redactJson(value, secretValues, patterns, marker);
+}
+
+/**
+ * Redact a stored request row (shape: { url, headers, query_params, body_json,
+ * body_text }) without touching other fields. Returns a NEW object.
+ */
+function redactRequestRecord(record, options = {}) {
+  if (!record || typeof record !== 'object') return record;
+  const secretValues = (Array.isArray(options.secretValues) ? options.secretValues : []).filter(
+    (s) => typeof s === 'string'
+  );
+  const patterns = toPatterns(options.extraKeyPatterns);
+  const marker = typeof options.marker === 'string' && options.marker !== '' ? options.marker : DEFAULT_MARKER;
+
+  const out = { ...record };
+  if (typeof out.url === 'string') out.url = redactUrl(out.url, secretValues, patterns, marker);
+  if (Array.isArray(out.headers)) out.headers = redactKvArray(out.headers, secretValues, patterns, marker);
+  if (Array.isArray(out.query_params)) {
+    out.query_params = redactKvArray(out.query_params, secretValues, patterns, marker);
+  }
+  if (out.body_json !== undefined && out.body_json !== null) {
+    out.body_json = redactJsonValue(out.body_json, secretValues, patterns, marker);
+  }
+  if (typeof out.body_text === 'string' && out.body_text !== '') {
+    out.body_text = redactBody(out.body_text, secretValues, patterns, marker);
+  }
+  return out;
+}
+
 // ----------------------------------------------------------------- snapshot
 
 /**
@@ -284,7 +329,7 @@ function redactSnapshot(snapshot, options = {}) {
   if (out.headers && typeof out.headers === 'object') {
     out.headers = redactHeaders(out.headers, secretValues, patterns, marker);
   }
-  if (typeof out.body === 'string') {
+  if (typeof out.body === 'string' && out.bodyEncoding !== 'base64') {
     out.body = redactBody(out.body, secretValues, patterns, marker);
   }
   return out;
@@ -292,7 +337,10 @@ function redactSnapshot(snapshot, options = {}) {
 
 module.exports = {
   redactSnapshot,
+  redactRequestRecord,
   redactHeaders,
+  redactKvArray,
+  redactJsonValue,
   redactBody,
   redactUrl,
   DEFAULT_MARKER,

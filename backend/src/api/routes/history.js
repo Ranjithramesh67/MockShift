@@ -3,6 +3,7 @@
 const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth } = require('../access');
+const { redactSnapshot, redactUrl, DEFAULT_MARKER } = require('../redact');
 
 const router = Router();
 router.use(requireAuth);
@@ -28,7 +29,9 @@ router.get('/', async (req, res, next) => {
         LIMIT $2`,
       [req.user.id, limit]
     );
-    res.json({ runs: rows });
+    res.json({
+      runs: rows.map((r) => ({ ...r, url: redactUrl(r.url, [], [], DEFAULT_MARKER) })),
+    });
   } catch (err) {
     next(err);
   }
@@ -65,8 +68,8 @@ router.get('/:runId', async (req, res, next) => {
         finished_at: run.finished_at,
         request_id: run.request_id,
         workflow_id: run.workflow_id,
-        request_snapshot: run.request_snapshot,
-        response_snapshot: run.response_snapshot,
+        request_snapshot: run.request_snapshot ? redactSnapshot(run.request_snapshot, {}) : null,
+        response_snapshot: run.response_snapshot ? redactSnapshot(run.response_snapshot, {}) : null,
         test_results: tests,
       },
     });
