@@ -8,7 +8,7 @@ Last updated: 2026-08-08
 ## Current
 
 Step: S1 — credential redactor module
-Status: plan posted; implementation deferred (user driving next API work directly)
+Status: DONE — pushed as `60fe8b6` (redactSnapshot module + 17 unit tests; no wiring yet)
 
 ## Plan for current step (as approved)
 
@@ -27,8 +27,8 @@ Status: plan posted; implementation deferred (user driving next API work directl
 
 ## Test status
 
-backend jest: __/47 · test:api: __/35 · api units: __/24 · db run.sh: __ · frontend unit: __/47 ·
-tsc --noEmit: __ · e2e: __/23
+backend jest: 47/47 · test:api: 35/35 · api units: 41/41 · db run.sh: all pass · frontend unit: 47/47 ·
+tsc --noEmit: clean · e2e: not run (S1 is a pure module, no wiring — S2 will add routes + e2e)
 
 ## Decisions (durable)
 
@@ -106,4 +106,13 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
 
 ## Completed
 
+- S1 — credential redactor `backend/src/api/redact.js` (`redactSnapshot()`, pure, never mutates input),
+  committed + pushed as `60fe8b6`. Handles url (query string + userinfo), request/response headers,
+  and bodies: JSON / form-urlencoded / multipart / XML-SOAP / raw text. Rules in order: exact
+  `secretValues`, key-name pattern (`authorization|cookie|set-cookie|token|secret|password|passwd|
+  api[-_]?key|client[-_]?secret|assertion|signature|sig`, case-insensitive, any depth), JWT-shape +
+  `Bearer`/`Basic`/… auth-scheme heuristics. Marker `«redacted»`, key preserved. Options
+  `{ secretValues, extraKeyPatterns, marker }`. 17 node:test tests in
+  `backend/src/api/__tests__/redact.test.cjs` (run via `npm run test:api:unit`). NOT yet wired into
+  shares/history/exports — that is S2.
 - S0 — restructure session.md + reset roadmap (docs only) — commit `edbe753`
