@@ -1,29 +1,31 @@
 # MockShift — Session State
 
-Last updated: 2026-08-08
+Last updated: 2026-08-09
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
 
 ## Current
 
-Step: S2 — wire the redactor into share links, run history, and every export path
-Status: DONE — pushed as `90b88a7` (redactor wired into shares, history, exports, workflow/automation runs)
+Step: S3 — run-history retention + purge
+Status: plan recorded below; implementation deferred (fresh AI will start it on GO)
 
 ## Plan for current step (as approved)
 
-- `backend/src/api/redact.js` — `redactSnapshot(snapshot, options)` pure module, never mutates input.
-  Handles url (query string), request headers, request body, response headers, response body;
-  JSON / form / multipart / XML-SOAP / raw text bodies. Rules in order: (1) exact secretValues
-  match, (2) key-name pattern `authorization|cookie|set-cookie|token|secret|password|passwd|
-  api[-_]?key|client[-_]?secret|assertion|signature|sig` (case-insensitive, any depth),
-  (3) JWT-shaped + `Bearer <token>` heuristics. Marker `«redacted»`, key preserved.
-  options `{ secretValues, extraKeyPatterns, marker }`.
-- `backend/src/api/__tests__/redact.test.cjs` — node:test unit tests: query-string token,
-  OAuth2 JSON body, Set-Cookie header, SOAP wsse:Password element, secret mid-sentence in
-  plain-text body, deeply nested JSON, byte-identical when no secrets, idempotent, input not
-  mutated. Runs via `npm run test:api:unit` (+ jest matrix untouched).
-- No route/UI wiring (S2), no schema.
+- **Setting** — `run_history_retention_days` as a workspace-level setting (default 90, min 7,
+  ADMIN-only to change). New migration **010** + RLS consistent with existing tables (use the
+  `app.*` helpers + session-scoped user/vault key).
+- **Purge job** — scheduled, reusing `workflowScheduler.js`. On expiry, delete the snapshot
+  payloads but keep the aggregate row (timestamp, user, request, status, duration, assertion
+  results) so trend/audit data survives. Do NOT delete the run record itself.
+- **Audit** — every purge writes to `audit_logs`: workspace, rows affected, cut-off date.
+- **Batching** — batch the deletes; a purge must not lock the table for a large workspace.
+- **UI** — surface the setting in the Manage view with a plain-language note on exactly what is
+  removed.
+- **Acceptance** — a run older than the window loses payloads but stays visible as a historical
+  result; purge is audit-logged; workspace changed 90→30 purges correctly on the next tick;
+  unit-test the cut-off boundary.
+- **When done** — update `session.md` and stop; say explicitly "this closes P0".
 
 ## Test status
 
