@@ -4,6 +4,7 @@ npm-debug.log*
 
 # Build output
 frontend/.next/
+frontend/.next-prod/
 frontend/out/
 frontend/tsconfig.tsbuildinfo
 backend/coverage/

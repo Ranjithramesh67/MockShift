@@ -14,22 +14,26 @@ const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: 
   { id: 'AUTH', label: 'Auth / Token', hint: 'Token endpoint used by a folder auth provider', icon: KeyIcon },
 ];
 
-export type CreateKind = 'workspace' | 'collection' | 'request';
+export type CreateKind = 'workspace' | 'collection' | 'request' | 'folder';
 
 export function CreateModal({
   kind,
   defaultApiType = 'REST',
   collectionId,
+  parentFolderId,
+  renameTarget,
   onClose,
 }: {
   kind: CreateKind;
   defaultApiType?: ApiType;
   collectionId?: string;
+  parentFolderId?: string;
+  renameTarget?: { folderId: string; name: string } | null;
   onClose: () => void;
 }) {
   const ws = useWorkspace();
   const { organizations } = useAuth();
-  const [name, setName] = useState('');
+  const [name, setName] = useState(renameTarget?.name ?? '');
   const [method, setMethod] = useState('GET');
   const [url, setUrl] = useState('');
   const [apiType, setApiType] = useState<ApiType>(defaultApiType);
@@ -38,8 +42,15 @@ export function CreateModal({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const title =
-    kind === 'workspace' ? 'New workspace' : kind === 'collection' ? 'New collection' : 'New API request';
+  const title = renameTarget
+    ? 'Rename folder'
+    : kind === 'workspace'
+    ? 'New workspace'
+    : kind === 'collection'
+    ? 'New collection'
+    : kind === 'folder'
+    ? 'New folder'
+    : 'New API request';
 
   const canCreateWorkspace = organizations.some((o) => o.role === 'ADMIN');
 
@@ -52,10 +63,22 @@ export function CreateModal({
     }
     setBusy(true);
     try {
-      if (kind === 'workspace') {
+      if (renameTarget) {
+        await ws.renameFolder(renameTarget.folderId, name.trim());
+      } else if (kind === 'workspace') {
         await ws.createWorkspace(name.trim(), visibility);
       } else if (kind === 'collection') {
         await ws.createCollection(name.trim());
+      } else if (kind === 'folder') {
+        if (!collectionId) {
+          setError('A collection is required to create a folder');
+          return;
+        }
+        await ws.createFolder({
+          collectionId,
+          parentId: parentFolderId ?? null,
+          name: name.trim(),
+        });
       } else {
         if (!url.trim()) {
           setError('URL is required');
@@ -65,7 +88,7 @@ export function CreateModal({
           const collection = ws.tree?.collections.find((c) => c.id === collectionId);
           await ws.selectCollection(collectionId, collection?.name ?? '');
         }
-        await ws.createRequest({ name: name.trim(), method, url: url.trim(), apiType });
+        await ws.createRequest({ name: name.trim(), method, url: url.trim(), apiType, folderId: parentFolderId ?? null });
       }
       onClose();
     } catch (err) {
@@ -76,7 +99,13 @@ export function CreateModal({
   };
 
   const testId =
-    kind === 'workspace' ? 'new-workspace-modal' : kind === 'collection' ? 'new-collection-modal' : 'new-api-modal';
+    kind === 'workspace'
+      ? 'new-workspace-modal'
+      : kind === 'collection'
+      ? 'new-collection-modal'
+      : kind === 'folder'
+      ? 'new-folder-modal'
+      : 'new-api-modal';
 
   return (
     <Modal title={title} onClose={onClose} testId={testId}>
@@ -92,7 +121,7 @@ export function CreateModal({
           </p>
         )}
         <label className="auth-field">
-          <span>{kind === 'request' ? 'Name' : 'Name'}</span>
+          <span>Name</span>
           <input
             type="text"
             autoFocus
@@ -148,7 +177,7 @@ export function CreateModal({
           </>
         )}
 
-        {kind === 'workspace' && (
+        {kind === 'workspace' && !renameTarget && (
           <>
             <label className="auth-field">
               <span>Organization</span>
@@ -184,7 +213,7 @@ export function CreateModal({
             disabled={busy || (kind === 'workspace' && !canCreateWorkspace)}
             data-testid="create-submit"
           >
-            {busy ? 'Creating…' : 'Create'}
+            {busy ? 'Saving…' : renameTarget ? 'Rename' : 'Create'}
           </button>
         </div>
       </form>
