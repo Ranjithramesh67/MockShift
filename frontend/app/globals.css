@@ -613,6 +613,134 @@ textarea {
   padding-left: 4px;
 }
 
+.tree-folder {
+  position: relative;
+}
+
+.tree-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tree-folder-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+
+.tree-folder-name:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.tree-folder-name .chevron {
+  flex-shrink: 0;
+  display: inline-flex;
+  color: var(--text-faint);
+  transition: transform 0.16s var(--ease);
+}
+
+.tree-folder-name .chevron.open {
+  transform: rotate(90deg);
+}
+
+.tree-folder-name .folder-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.tree-folder-name .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.tree-folder-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.14s var(--ease);
+}
+
+.tree-folder:hover .tree-folder-actions,
+.tree-folder:focus-within .tree-folder-actions {
+  opacity: 1;
+}
+
+.tree-folder-actions .icon-button {
+  padding: 4px;
+}
+
+.tree-folder-children {
+  border-left: 1px solid var(--border-soft);
+  margin-left: 16px;
+  padding-left: 4px;
+}
+
+.folder-chevron-spacer {
+  width: 0;
+}
+
+.tree-folder-name .chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tree-folder-name .folder-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.move-destination-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.move-destination {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  transition: background var(--speed) var(--ease);
+}
+
+.move-destination:hover {
+  background: var(--bg-hover);
+}
+
+.move-destination svg {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
 /* ---- Workspace chips ------------------------------------------------------- */
 .workspace-chips {
   display: flex;

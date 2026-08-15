@@ -136,7 +136,12 @@ interface WorkspaceState {
 
   createWorkspace: (name: string, visibility?: Workspace['visibility']) => Promise<void>;
   createCollection: (name: string) => Promise<void>;
-  createRequest: (input: { name: string; method: string; url: string; apiType: ApiType }) => Promise<void>;
+  createRequest: (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => Promise<void>;
+  createFolder: (input: { collectionId: string; parentId?: string | null; name: string }) => Promise<void>;
+  renameFolder: (folderId: string, name: string) => Promise<void>;
+  moveFolder: (folderId: string, parentId: string | null) => Promise<void>;
+  moveRequest: (requestId: string, folderId: string | null) => Promise<void>;
+  deleteFolder: (folderId: string) => Promise<void>;
 
   deleteRequest: (requestId: string) => Promise<void>;
   deleteCollection: (collectionId: string) => Promise<void>;
@@ -290,7 +295,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     await selectCollection(collection.id, collection.name);
   }, [tree, selectCollection]);
 
-  const createRequest = useCallback(async (input: { name: string; method: string; url: string; apiType: ApiType }) => {
+  const createRequest = useCallback(async (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => {
     if (!activeCollectionId) return;
     const { request } = await contentApi.createRequest({ collectionId: activeCollectionId, ...input });
     if (tree) {
@@ -298,6 +303,67 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
     await selectRequest(request.id);
   }, [activeCollectionId, tree, selectRequest]);
+
+  const createFolder = useCallback(async (input: { collectionId: string; parentId?: string | null; name: string }) => {
+    const { folder } = await contentApi.createFolder(input);
+    if (tree) {
+      setTree({ ...tree, folders: [...tree.folders, folder] });
+    }
+  }, [tree]);
+
+  const renameFolder = useCallback(async (folderId: string, name: string) => {
+    const { folder } = await contentApi.updateFolder(folderId, { name });
+    if (tree) {
+      setTree({
+        ...tree,
+        folders: tree.folders.map((f) => (f.id === folderId ? { ...f, name: folder.name } : f)),
+      });
+    }
+  }, [tree]);
+
+  const moveFolder = useCallback(async (folderId: string, parentId: string | null) => {
+    const { folder } = await contentApi.updateFolder(folderId, { parentId });
+    if (tree) {
+      setTree({
+        ...tree,
+        folders: tree.folders.map((f) => (f.id === folderId ? { ...f, parent_id: folder.parent_id } : f)),
+      });
+    }
+  }, [tree]);
+
+  const moveRequest = useCallback(async (requestId: string, folderId: string | null) => {
+    await contentApi.updateRequest(requestId, { folderId });
+    if (tree) {
+      setTree({
+        ...tree,
+        requests: tree.requests.map((r) => (r.id === requestId ? { ...r, folder_id: folderId } : r)),
+      });
+    }
+  }, [tree]);
+
+  const deleteFolder = useCallback(async (folderId: string) => {
+    await contentApi.deleteFolder(folderId);
+    if (tree) {
+      // The backend cascades: deleting a folder removes it and all of its
+      // descendants; requests in that subtree fall back to the collection root.
+      const removed = new Set([folderId]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const f of tree.folders) {
+          if (f.parent_id && removed.has(f.parent_id) && !removed.has(f.id)) {
+            removed.add(f.id);
+            grew = true;
+          }
+        }
+      }
+      setTree({
+        ...tree,
+        folders: tree.folders.filter((f) => !removed.has(f.id)),
+        requests: tree.requests.map((r) => (r.folder_id && removed.has(r.folder_id) ? { ...r, folder_id: null } : r)),
+      });
+    }
+  }, [tree]);
 
   const deleteRequest = useCallback(async (requestId: string) => {
     await contentApi.deleteRequest(requestId);
@@ -425,6 +491,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       createWorkspace,
       createCollection,
       createRequest,
+      createFolder,
+      renameFolder,
+      moveFolder,
+      moveRequest,
+      deleteFolder,
       deleteRequest,
       deleteCollection,
       deleteWorkspace,
@@ -444,6 +515,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runCollection, clearCollectionRun,
       createWorkspace, createCollection, createRequest,
+      createFolder, renameFolder, moveFolder, moveRequest, deleteFolder,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
       loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree, inviteToTeam, shareWorkspace, unshareWorkspace,
     ]
