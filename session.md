@@ -7,42 +7,31 @@ Last updated: 2026-08-15
 
 ## Current
 
-Step: S3 — run-history retention + purge
-Status: IN PROGRESS (GO given 2026-08-09 "start with s3") — implementation started by this session.
+Step: collection folders (Postman-style nested folders + Aiven Postgres) — COMPLETE.
+Status: DONE — pushed as `b61a2c6` to master. Remaining: frontend unit tests, e2e suite, and
+backend `api:unit` tests are still not re-run after the folders change (deferred this turn by the
+user — "ignore testing part"). `next build` re-verified this turn: clean.
 
-## Completed this turn (2026-08-15)
+## Completed (this feature)
 
-- **Sidebar drag-resize (pushed as `d28659a`)** — UI-only: the collections sidepane now has a
-  draggable handle on its right edge (`.sidebar-resizer`) so it can be widened/narrowed
-  (240–560px). Width persists to `localStorage["apihub.sidebarWidth"]` and is restored on reload.
-  Dragging uses pointer events + `body.is-col-dragging` (col-resize cursor, width transition
-  disabled mid-drag). Verified via a throwaway Playwright spec (drag → width grows → persists on
-  reload → collapse still collapses to 48px rail); typecheck, `next build`, and the 47 frontend
-  unit tests all pass. Postgres + Redis were installed in this env to run the stack.
+- **Aiven cloud Postgres** — backend reads a gitignored `backend/.env` `DATABASE_URL` (+
+  `sslmode=require`, CA via `db/ca.pem`); local PG* env vars still take precedence for tests/tooling.
+  Migrations 001–011 applied on Aiven; DB seeded with demo accounts + "Mock API Demo".
+- **Migration 011** — `folders` table (collection_id, parent_id for nesting, cascade deletes) +
+  `api_requests.folder_id` (SET NULL on delete so requests resurface at collection root) + RLS.
+- **Backend** — folders CRUD (`POST/PUT/DELETE /api/folders[/:folderId]`, includes parent-cycle
+  guard), requests gain `folder_id` on create/update, workspace content tree returns `folders[]`.
+- **Frontend** — Sidebar renders nested folders; create/rename/delete folder UI (CreateModal +
+  MoveModal); per-request edit/rename/delete stays in place. `WorkspaceStore`/`lib/api.ts` extended.
 
-## Plan for current step (as approved)
-
-- **Setting** — `run_history_retention_days` as a workspace-level setting (default 90, min 7,
-  ADMIN-only to change). New migration **010** + RLS consistent with existing tables (use the
-  `app.*` helpers + session-scoped user/vault key).
-- **Purge job** — scheduled, reusing `workflowScheduler.js`. On expiry, delete the snapshot
-  payloads but keep the aggregate row (timestamp, user, request, status, duration, assertion
-  results) so trend/audit data survives. Do NOT delete the run record itself.
-- **Audit** — every purge writes to `audit_logs`: workspace, rows affected, cut-off date.
-- **Batching** — batch the deletes; a purge must not lock the table for a large workspace.
-- **UI** — surface the setting in the Manage view with a plain-language note on exactly what is
-  removed.
-- **Acceptance** — a run older than the window loses payloads but stays visible as a historical
-  result; purge is audit-logged; workspace changed 90→30 purges correctly on the next tick;
-  unit-test the cut-off boundary.
-- **When done** — update `session.md` and stop; say explicitly "this closes P0".
-
-## Test status
+## Test status (as of last full run, pre-folders)
 
 backend jest: 47/47 · test:api: 35/35 · api units: 45/45 · db run.sh: all pass · frontend unit: 47/47 ·
 tsc --noEmit: clean · e2e: 22/23 on fresh DB (only the known pre-existing `history.spec.ts`
 detail-modal flake failed; it passes in isolation) — full suite needs a freshly `reset:db`+`seed:dev`
 DB because specs leave requests in "Mock API Demo" (breaks `Requests: 8` in assertions-runner).
+Folders work added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collection_folders.sql`
+— not yet counted into the numbers above; **re-run jest/test:api/api:unit/e2e after folders.**
 
 ## Decisions (durable)
 
@@ -93,11 +82,15 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
 - PostgreSQL 15 (`apihub`), Redis (BullMQ, snapshots disabled). Backend env for dev/tests:
   `AUTH_SECRET=dev-secret VAULT_KEY=test-vault-key-do-not-use-in-prod PGHOST=127.0.0.1 PGPORT=5432
   PGUSER=postgres PGPASSWORD=postgres PGDATABASE=apihub`.
+- **Production DB is Aiven cloud Postgres** — a gitignored `backend/.env` holds
+  `DATABASE_URL=postgres://…?...sslmode=require`; CA trust store is `db/ca.pem` (gitignored via
+  `*.pem`). `db.js` prefers explicit PG* env vars over `DATABASE_URL`, so tests/psql still hit the
+  local DB.
 - Seed demo accounts + "Mock API Demo" collection: `cd backend && npm run seed:dev`. Login:
   boss1785867669@test.io/bosspass123 (ADMIN) · pm1785867669@test.io/pmpass1234 (MANAGER) ·
   dev1785867669@test.io/devpass123 (EDITOR).
 - **Migrations are not auto-applied** — after `seed:dev`, apply yours manually via psql;
-  `db/tests/run.sh` applies all of them. Use the next free migration number (010 next) and record
+  `db/tests/run.sh` applies all of them. Use the next free migration number (012 next) and record
   it here.
 - **Restart the backend after adding/changing routes** — a stale process serves old handlers.
 - **Full e2e run needs a freshly reset + seeded DB and mock upstream on :3999** — other specs
@@ -120,6 +113,12 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
 
 ## Completed
 
+- **Collection folders feature (pushed as `b61a2c6`)** — Postman-style nested folders on Aiven:
+  migration 011 (`folders` + `api_requests.folder_id` + RLS), backend folders CRUD + request-move
+  + folder-aware tree, frontend nested sidebar tree + create/rename/delete UI + per-request
+  edit/rename/delete, Aiven Postgres wired via gitignored `backend/.env` (`DATABASE_URL` +
+  `db/ca.pem`), seeded demo data. New coverage: `backend/tests/folders.integration.test.cjs` +
+  `db/tests/04_collection_folders.sql`.
 - S2 — redactor wired everywhere (pushed as `90b88a7`): `shares.js` (public share → full response
   snapshot + stored request url/headers/query_params/body_json/body_text through the redactor, not
   the old header-only allowlist), `history.js` (detail snapshots + run-list url redacted),

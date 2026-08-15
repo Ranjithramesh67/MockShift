@@ -245,6 +245,30 @@ large empty column next to the rail. Fix:
   server recompiled clean and serves `/` + `/automations` (200). `nav-from-manage.spec.ts` remains
   the regression for this behavior.
 
+### 5.11 Collection folders + Aiven Postgres (pushed as `b61a2c6`)
+
+Postman-style nested folders inside collections, running against **Aiven cloud Postgres**.
+
+- **DB**: gitignored `backend/.env` supplies `DATABASE_URL=…?sslmode=require`; `db.js` reads it and
+  uses `db/ca.pem` (gitignored) as the SSL trust store, unless explicit `PG*` vars are set (tests/
+  psql stay on local Postgres). Migrations 001–011 applied on Aiven; DB seeded with demo accounts +
+  "Mock API Demo".
+- **Migration `db/migrations/011_folders.sql`**: `folders (id, collection_id, name, parent_id, …)`
+  with cascade deletes (deleting a folder removes nested sub-folders), `api_requests.folder_id`
+  FK (SET NULL on delete → requests resurface at collection root), RLS consistent with the
+  `app.*` helpers. (`011_collection_folders.sql` on the earlier feature branch was superseded by
+  this final shape.)
+- **Backend** (`backend/src/api/routes/content.js`): `POST /folders`, `PUT /folders/:folderId`
+  (rename or re-parent, with self/descendant cycle guard), `DELETE /folders/:folderId`;
+  `POST /requests` / `PUT /requests/:requestId` accept `folder_id`; the workspace content tree
+  (`GET /workspaces/:workspaceId/content`) now returns `folders[]` alongside collections/requests.
+- **Frontend**: `Sidebar.tsx` renders nested folders in the tree; `CreateModal.tsx` gains folder
+  creation (and re-parent via `MoveModal.tsx`); `WorkspaceStore.tsx` + `lib/api.ts` carry
+  folders/`folder_id`; per-request edit/rename/delete unchanged.
+- **Tests added**: `backend/tests/folders.integration.test.cjs`, `db/tests/04_collection_folders.sql`.
+- `next build` re-verified clean (2026-08-15). Frontend unit / e2e / backend `api:unit` not yet
+  re-run against the folders change — see root `session.md` test-status note.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
