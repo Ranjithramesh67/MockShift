@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
@@ -35,6 +35,11 @@ import {
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
+
+const SIDEBAR_MIN_WIDTH = 240;
+const SIDEBAR_MAX_WIDTH = 560;
+const SIDEBAR_DEFAULT_WIDTH = 296;
+const SIDEBAR_WIDTH_KEY = 'apihub.sidebarWidth';
 
 function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: CreateKind) => void; onNavigate: () => void }) {
   const ws = useWorkspace();
@@ -403,6 +408,36 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const [requestingProject, setRequestingProject] = useState<{ id: string; name: string } | null>(null);
   const [accessReason, setAccessReason] = useState('');
   const [importExportOpen, setImportExportOpen] = useState(false);
+  const [width, setWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
+    const saved = window.localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    const parsed = saved ? parseInt(saved, 10) : NaN;
+    return Number.isFinite(parsed)
+      ? Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, parsed))
+      : SIDEBAR_DEFAULT_WIDTH;
+  });
+  const widthRef = useRef(width);
+  widthRef.current = width;
+
+  const onResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = widthRef.current;
+    const move = (ev: PointerEvent) => {
+      setWidth(
+        Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, startWidth + (ev.clientX - startX)))
+      );
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      document.body.classList.remove('is-col-dragging');
+      window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(widthRef.current));
+    };
+    document.body.classList.add('is-col-dragging');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }, []);
 
   const openCreate = (kind: CreateKind, collectionId?: string) => {
     setTargetCollectionId(collectionId ?? null);
@@ -454,7 +489,11 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   return (
-    <aside className={`sidebar ${railHidden ? 'sidebar-rail-only' : ''}`} data-testid="sidebar">
+    <aside
+      className={`sidebar ${railHidden ? 'sidebar-rail-only' : ''}`}
+      data-testid="sidebar"
+      style={railHidden ? undefined : { width }}
+    >
       <nav className="rail" aria-label="Sidebar navigation">
         <button
           type="button"
@@ -662,6 +701,16 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         }}
       />
       <CollectionImportExportModal open={importExportOpen} onClose={() => setImportExportOpen(false)} />
+      {!railHidden && (
+        <div
+          className="sidebar-resizer"
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          title="Drag to resize"
+          onPointerDown={onResizeStart}
+        />
+      )}
     </aside>
   );
 }

@@ -85,6 +85,11 @@ body.is-dragging {
   cursor: row-resize;
 }
 
+body.is-col-dragging {
+  user-select: none;
+  cursor: col-resize;
+}
+
 ::selection {
   background: rgba(124, 242, 156, 0.28);
   color: #fff;
@@ -346,6 +351,44 @@ textarea {
 .sidebar-rail-only {
   width: 48px;
   min-width: 48px;
+}
+
+/* Disable the width transition while the user is dragging the resize handle
+   so the panel tracks the pointer without lag. */
+body.is-col-dragging .sidebar {
+  transition: none;
+}
+
+/* Draggable handle on the right edge of the sidebar. */
+.sidebar-resizer {
+  flex-shrink: 0;
+  width: 6px;
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: background var(--speed) var(--ease);
+}
+
+.sidebar-resizer::after {
+  content: '';
+  width: 3px;
+  height: 36px;
+  border-radius: 4px;
+  background: var(--border-strong);
+  transition: background var(--speed) var(--ease);
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background: var(--bg-panel-2);
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:active::after {
+  background: var(--accent);
 }
 
 .sidebar-section {
