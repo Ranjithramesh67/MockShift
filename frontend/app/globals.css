@@ -2269,6 +2269,46 @@ body.is-col-dragging .sidebar {
   background: var(--accent-soft);
 }
 
+/* ---- Create-mode toggle (fill form vs paste cURL) ------------------------ */
+.create-mode-toggle {
+  display: inline-flex;
+  gap: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.create-mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+
+.create-mode-option svg {
+  width: 13px;
+  height: 13px;
+}
+
+.create-mode-option:hover {
+  color: var(--text);
+}
+
+.create-mode-option.selected {
+  background: var(--bg-hover);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
 /* ==========================================================================
    Invite / share rows
    ========================================================================== */

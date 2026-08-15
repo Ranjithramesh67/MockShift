@@ -7,10 +7,8 @@ Last updated: 2026-08-15
 
 ## Current
 
-Step: collection folders (Postman-style nested folders + Aiven Postgres) — COMPLETE.
-Status: DONE — pushed as `b61a2c6` to master. Remaining: frontend unit tests, e2e suite, and
-backend `api:unit` tests are still not re-run after the folders change (deferred this turn by the
-user — "ignore testing part"). `next build` re-verified this turn: clean.
+Step: New API request modal — paste-cURL import (this turn, uncommitted).
+Status: IMPLEMENTED + verified live against Aiven DB (create+update round-trip), NOT yet committed/pushed.
 
 ## Completed (this feature)
 
@@ -23,6 +21,12 @@ user — "ignore testing part"). `next build` re-verified this turn: clean.
   guard), requests gain `folder_id` on create/update, workspace content tree returns `folders[]`.
 - **Frontend** — Sidebar renders nested folders; create/rename/delete folder UI (CreateModal +
   MoveModal); per-request edit/rename/delete stays in place. `WorkspaceStore`/`lib/api.ts` extended.
+- **New API request modal now imports cURL** — `CreateModal` request mode has a **Fill form /
+  Paste cURL** toggle. In cURL mode: paste a `curl …` command, it is parsed by `lib/curl.js`
+  `parseCurl` into method, url, headers, query params, body; Name is optional and auto-derived
+  (`METHOD host`). Creates the request then applies the structured fields via `updateRequest`.
+  Verified live: POST orders curl → method/url/headers/queryParams/bodyType/bodyJson persisted on
+  Aiven DB; `next build` + `tsc --noEmit` clean.
 
 ## Test status (as of last full run, pre-folders)
 
