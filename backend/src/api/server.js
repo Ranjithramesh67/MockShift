@@ -119,4 +119,7 @@ if (require.main === module) {
       console.log(`[api] synced ${n} scheduled automations`);
     });
   }, 2000);
+  // Run-history retention purge (interval-based, first tick shortly after boot).
+  const { startRetentionScheduler } = require('./retention');
+  startRetentionScheduler();
 }

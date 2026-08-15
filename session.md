@@ -8,7 +8,7 @@ Last updated: 2026-08-09
 ## Current
 
 Step: S3 — run-history retention + purge
-Status: plan recorded below; implementation deferred (fresh AI will start it on GO)
+Status: IN PROGRESS (GO given 2026-08-09 "start with s3") — implementation started by this session.
 
 ## Plan for current step (as approved)
 

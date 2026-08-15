@@ -3,6 +3,8 @@
 const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth, getWorkspaceRole, roleAtLeast } = require('../access');
+const { getRetentionDays, MIN_RETENTION_DAYS } = require('../retention');
+const { logAudit } = require('../audit');
 
 const router = Router();
 router.use(requireAuth);
@@ -135,6 +137,52 @@ router.delete('/:workspaceId', async (req, res, next) => {
     }
     await query(`DELETE FROM workspaces WHERE id = $1`, [workspaceId]);
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------------ Workspace settings (run-history retention)
+router.get('/:workspaceId/settings', async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    const role = await getWorkspaceRole(req.user.id, workspaceId);
+    if (!role) return res.status(404).json({ error: 'Workspace not found' });
+
+    const days = await getRetentionDays(workspaceId);
+    res.json({ settings: { run_history_retention_days: days } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/:workspaceId/settings', async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    const role = await getWorkspaceRole(req.user.id, workspaceId);
+    if (!roleAtLeast(role, 'ADMIN')) return res.status(403).json({ error: 'Workspace admin required' });
+
+    const days = Number(req.body?.runHistoryRetentionDays);
+    if (!Number.isInteger(days) || days < MIN_RETENTION_DAYS) {
+      return res.status(400).json({ error: `runHistoryRetentionDays must be an integer >= ${MIN_RETENTION_DAYS}` });
+    }
+
+    await query(
+      `INSERT INTO workspace_settings (workspace_id, run_history_retention_days, updated_by, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (workspace_id)
+       DO UPDATE SET run_history_retention_days = EXCLUDED.run_history_retention_days,
+                     updated_by = EXCLUDED.updated_by, updated_at = now()`,
+      [workspaceId, days, req.user.id]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'workspace',
+      entityId: workspaceId,
+      action: 'run_history_retention_set',
+      detail: { run_history_retention_days: days },
+    });
+    res.json({ settings: { run_history_retention_days: days } });
   } catch (err) {
     next(err);
   }

@@ -1624,6 +1624,18 @@ textarea {
   cursor: not-allowed;
 }
 
+.retention-input {
+  width: 90px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel-2);
+  color: var(--fg-1);
+}
+.retention-input:disabled {
+  opacity: 0.6;
+}
+
 .ghost-button {
   background: var(--bg-panel-2);
   border: 1px solid var(--border);
