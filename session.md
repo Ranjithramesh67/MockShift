@@ -7,10 +7,28 @@ Last updated: 2026-08-15
 
 ## Current
 
-Step: New API request modal — paste-cURL import.
-Status: DONE — committed + pushed as `3c80031` to master.
+Step: Postman-style request editing (remove create toggle, cURL auto-detect,
+dirty-state dot, request tabs, test-cURL-without-saving).
+Status: IN PROGRESS — M1 done (pushed); awaiting approval for M2.
+
+Plan (micro tasks, see `instructions.md`):
+M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
+M2 URL-field cURL auto-parse in existing request editor
+M3 Dirty-state tracking in WorkspaceStore
+M4 Dirty dot indicator in editor
+M5 Backend ephemeral run endpoint (POST /api/runs)
+M6 Send uses working copy
+M7 Tabs for opened requests
+M8 Test cURL without saving (scratchpad)
+M9 Docs + wrap-up
 
 ## Completed (this feature)
+
+- **M1 (pushed)** — removed the Fill form / Paste cURL toggle from `CreateModal`;
+  the URL field now auto-detects a `curl …` command via `parseCurl` and fills
+  method + URL live; structured headers/params/body applied on create. Name is
+  optional with `METHOD host` fallback. Removed `.create-mode-*` CSS. `tsc
+  --noEmit` + `next build` clean; running live on :3000.
 
 - **Aiven cloud Postgres** — backend reads a gitignored `backend/.env` `DATABASE_URL` (+
   `sslmode=require`, CA via `db/ca.pem`); local PG* env vars still take precedence for tests/tooling.
