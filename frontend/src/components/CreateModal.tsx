@@ -4,8 +4,10 @@ import React, { useState } from 'react';
 import type { ApiType } from '@/lib/types';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
+import { contentApi } from '@/lib/api';
+import { parseCurl } from '@/lib/curl';
 import { Modal } from './Modal';
-import { RestIcon, SoapIcon, GraphqlIcon, KeyIcon } from './icons';
+import { RestIcon, SoapIcon, GraphqlIcon, KeyIcon, ImportIcon } from './icons';
 
 const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: typeof RestIcon }> = [
   { id: 'REST', label: 'REST', hint: 'Standard JSON/HTTP API', icon: RestIcon },
@@ -15,6 +17,13 @@ const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: 
 ];
 
 export type CreateKind = 'workspace' | 'collection' | 'request' | 'folder';
+
+function deriveRequestName(parsed: { method: string; url: string }): string {
+  const clean = parsed.url.replace(/^https?:\/\//i, '').split(/[/?#]/)[0];
+  const base = clean || parsed.url || 'request';
+  const host = base.split('/')[0];
+  return `${parsed.method} ${host}`;
+}
 
 export function CreateModal({
   kind,
@@ -34,6 +43,8 @@ export function CreateModal({
   const [name, setName] = useState('');
   const [method, setMethod] = useState('GET');
   const [url, setUrl] = useState('');
+  const [curlText, setCurlText] = useState('');
+  const [inputMode, setInputMode] = useState<'form' | 'curl'>('form');
   const [apiType, setApiType] = useState<ApiType>(defaultApiType);
   const [visibility, setVisibility] = useState<'PRIVATE' | 'PUBLIC'>('PRIVATE');
   const [organizationId, setOrganizationId] = useState(organizations[0]?.id ?? '');
@@ -54,7 +65,7 @@ export function CreateModal({
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!name.trim()) {
+    if (!name.trim() && !(kind === 'request' && inputMode === 'curl')) {
       setError('Name is required');
       return;
     }
@@ -78,7 +89,18 @@ export function CreateModal({
           parentId: folderId ?? null,
         });
       } else {
-        if (!url.trim()) {
+        let parsedRequest = null;
+        if (inputMode === 'curl') {
+          parsedRequest = parseCurl(curlText);
+          if (!parsedRequest.url) {
+            setError('Could not find a URL in that cURL command.');
+            return;
+          }
+          if (!name.trim()) {
+            setName(deriveRequestName(parsedRequest));
+          }
+        }
+        if (inputMode === 'form' && !url.trim()) {
           setError('URL is required');
           return;
         }
@@ -86,7 +108,28 @@ export function CreateModal({
           const collection = ws.tree?.collections.find((c) => c.id === collectionId);
           await ws.selectCollection(collectionId, collection?.name ?? '');
         }
-        await ws.createRequest({ name: name.trim(), method, url: url.trim(), apiType, folderId: folderId ?? null });
+        if (inputMode === 'curl' && parsedRequest) {
+          const { request } = await contentApi.createRequest({
+            collectionId: collectionId ?? ws.activeCollectionId!,
+            name: name.trim() || deriveRequestName(parsedRequest),
+            method: parsedRequest.method,
+            url: parsedRequest.url,
+            apiType,
+            folderId: folderId ?? null,
+          });
+          await contentApi.updateRequest(request.id, {
+            headers: parsedRequest.headers,
+            queryParams: parsedRequest.queryParams,
+            bodyType: parsedRequest.bodyType,
+            bodyJson: parsedRequest.bodyJson ?? parsedRequest.bodyText ?? null,
+            bodyText: parsedRequest.bodyText ?? null,
+            contentType: parsedRequest.contentType,
+          });
+          await ws.reloadTree();
+          await ws.selectRequest(request.id);
+        } else {
+          await ws.createRequest({ name: name.trim(), method, url: url.trim(), apiType, folderId: folderId ?? null });
+        }
       }
       onClose();
     } catch (err) {
@@ -126,12 +169,34 @@ export function CreateModal({
             data-testid="create-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            required
+            required={!(kind === 'request' && inputMode === 'curl')}
           />
         </label>
 
         {kind === 'request' && (
           <>
+            <div className="auth-field">
+              <span>Import</span>
+              <div className="create-mode-toggle" data-testid="create-mode-toggle">
+                <button
+                  type="button"
+                  className={`create-mode-option ${inputMode === 'form' ? 'selected' : ''}`}
+                  data-testid="create-mode-form"
+                  onClick={() => setInputMode('form')}
+                >
+                  Fill form
+                </button>
+                <button
+                  type="button"
+                  className={`create-mode-option ${inputMode === 'curl' ? 'selected' : ''}`}
+                  data-testid="create-mode-curl"
+                  onClick={() => setInputMode('curl')}
+                >
+                  <ImportIcon size={13} />
+                  Paste cURL
+                </button>
+              </div>
+            </div>
             <div className="auth-field">
               <span>Type</span>
               <div className="api-type-options" data-testid="create-api-type">
@@ -152,26 +217,46 @@ export function CreateModal({
                 ))}
               </div>
             </div>
-            <div className="auth-field">
-              <span>Method</span>
-              <select data-testid="create-method" value={method} onChange={(e) => setMethod(e.target.value)}>
-                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className="auth-field">
-              <span>URL</span>
-              <input
-                type="text"
-                data-testid="create-url"
-                value={url}
-                placeholder="https://api.example.com/path"
-                onChange={(e) => setUrl(e.target.value)}
-              />
-            </label>
+            {inputMode === 'curl' ? (
+              <label className="auth-field">
+                <span>cURL command</span>
+                <textarea
+                  className="curl-input"
+                  rows={7}
+                  spellCheck={false}
+                  data-testid="create-curl-input"
+                  placeholder={'curl -X POST \'https://api.example.com/orders\' \\\n  -H \'Content-Type: application/json\' \\\n  -H \'Authorization: Bearer token123\' \\\n  --data-raw \'{"sku": "A1"}\''}
+                  value={curlText}
+                  onChange={(e) => {
+                    setCurlText(e.target.value);
+                    setError('');
+                  }}
+                />
+              </label>
+            ) : (
+              <>
+                <div className="auth-field">
+                  <span>Method</span>
+                  <select data-testid="create-method" value={method} onChange={(e) => setMethod(e.target.value)}>
+                    {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <label className="auth-field">
+                  <span>URL</span>
+                  <input
+                    type="text"
+                    data-testid="create-url"
+                    value={url}
+                    placeholder="https://api.example.com/path"
+                    onChange={(e) => setUrl(e.target.value)}
+                  />
+                </label>
+              </>
+            )}
           </>
         )}
 

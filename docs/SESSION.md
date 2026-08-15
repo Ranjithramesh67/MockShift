@@ -269,6 +269,18 @@ Postman-style nested folders inside collections, running against **Aiven cloud P
 - `next build` re-verified clean (2026-08-15). Frontend unit / e2e / backend `api:unit` not yet
   re-run against the folders change — see root `session.md` test-status note.
 
+### 5.12 New API request modal — paste cURL directly (this turn, uncommitted)
+
+The **New API request** modal (`frontend/src/components/CreateModal.tsx`) gained a **Fill form /
+Paste cURL** toggle. In cURL mode the URL field is not required — the user pastes a `curl …`
+command and it is structured by the existing `lib/curl.js` `parseCurl` into method, URL, query
+params, headers, and body (JSON/form/multipart/raw auto-detected). The request is created via
+`POST /api/requests` then the structured fields are applied with `PUT /api/requests/:id`
+(mirroring the TopBar `CurlModal` import flow). Name is optional and auto-derived as
+`METHOD host`. Verified live against the Aiven DB (POST orders curl → all fields round-trip);
+`tsc --noEmit` + `next build` clean. New testids: `create-mode-toggle`, `create-mode-form`,
+`create-mode-curl`, `create-curl-input`.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
