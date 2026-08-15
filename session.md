@@ -9,11 +9,11 @@ Last updated: 2026-08-15
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: IN PROGRESS — M1 done (pushed); awaiting approval for M2.
+Status: PAUSED at M1 (user declined M2). M1 pushed. Resumable.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
-M2 URL-field cURL auto-parse in existing request editor
+M2 URL-field cURL auto-parse in existing request editor — DECLINED by user (stop)
 M3 Dirty-state tracking in WorkspaceStore
 M4 Dirty dot indicator in editor
 M5 Backend ephemeral run endpoint (POST /api/runs)
@@ -21,6 +21,9 @@ M6 Send uses working copy
 M7 Tabs for opened requests
 M8 Test cURL without saving (scratchpad)
 M9 Docs + wrap-up
+
+Resume rule: to continue, the next agent should confirm with the user which of
+M2–M9 to execute next (M2 was explicitly declined this turn).
 
 ## Completed (this feature)
 
