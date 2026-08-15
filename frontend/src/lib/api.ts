@@ -51,6 +51,13 @@ export interface Team {
   myRole: UserRole;
 }
 
+export interface Folder {
+  id: string;
+  name: string;
+  collection_id: string;
+  parent_id: string | null;
+}
+
 export interface ContentTree {
   workspaceId: string;
   projects: Array<{
@@ -60,6 +67,7 @@ export interface ContentTree {
     access_status: 'PENDING' | 'APPROVED' | 'DENIED' | null;
   }>;
   collections: Array<{ id: string; name: string; project_id: string; has_auth: string | null }>;
+  folders: Folder[];
   requests: Array<{
     id: string;
     name: string;
@@ -67,6 +75,7 @@ export interface ContentTree {
     url: string;
     api_type: ApiType;
     collection_id: string;
+    folder_id: string | null;
   }>;
 }
 
@@ -230,13 +239,13 @@ export const contentApi = {
     apiFetch<{ collection: { id: string; name: string; project_id: string } }>('/api/collections', { method: 'POST', body: { projectId, name } }),
   deleteCollection: (collectionId: string) =>
     apiFetch(`/api/collections/${collectionId}`, { method: 'DELETE' }),
-  createRequest: (input: { collectionId: string; name: string; method: string; url: string; apiType: ApiType }) =>
-    apiFetch<{ request: { id: string; name: string; method: string; url: string; api_type: ApiType; collection_id: string } }>('/api/requests', { method: 'POST', body: input }),
+  createRequest: (input: { collectionId: string; name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) =>
+    apiFetch<{ request: { id: string; name: string; method: string; url: string; api_type: ApiType; collection_id: string; folder_id: string | null } }>('/api/requests', { method: 'POST', body: input }),
   deleteRequest: (requestId: string) =>
     apiFetch(`/api/requests/${requestId}`, { method: 'DELETE' }),
   getRequest: (requestId: string) => apiFetch<{ request: RequestDetail }>(`/api/requests/${requestId}`),
   updateRequest: (requestId: string, patch: Record<string, unknown>) =>
-    apiFetch<{ request: { id: string } }>(`/api/requests/${requestId}`, { method: 'PUT', body: patch }),
+    apiFetch<{ request: { id: string; name: string } }>(`/api/requests/${requestId}`, { method: 'PUT', body: patch }),
   runRequest: (requestId: string) => apiFetch<RunResult>(`/api/requests/${requestId}/run`, { method: 'POST' }),
   runCollection: (collectionId: string) =>
     apiFetch<CollectionRunResult>(`/api/collections/${collectionId}/run`, { method: 'POST' }),
@@ -249,6 +258,14 @@ export const contentApi = {
       `/api/collections/${collectionId}/auth-provider/test`,
       { method: 'POST' }
     ),
+};
+
+export const folderApi = {
+  create: (input: { collectionId: string; name: string; parentId?: string | null }) =>
+    apiFetch<{ folder: Folder }>('/api/folders', { method: 'POST', body: input }),
+  update: (folderId: string, patch: { name?: string; parentId?: string | null }) =>
+    apiFetch<{ folder: Folder }>(`/api/folders/${folderId}`, { method: 'PUT', body: patch }),
+  remove: (folderId: string) => apiFetch<{ ok: true }>(`/api/folders/${folderId}`, { method: 'DELETE' }),
 };
 
 // --------------------------------------------------------- Collection export

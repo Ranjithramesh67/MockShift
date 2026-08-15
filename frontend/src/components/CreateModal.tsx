@@ -14,17 +14,19 @@ const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: 
   { id: 'AUTH', label: 'Auth / Token', hint: 'Token endpoint used by a folder auth provider', icon: KeyIcon },
 ];
 
-export type CreateKind = 'workspace' | 'collection' | 'request';
+export type CreateKind = 'workspace' | 'collection' | 'request' | 'folder';
 
 export function CreateModal({
   kind,
   defaultApiType = 'REST',
   collectionId,
+  folderId,
   onClose,
 }: {
   kind: CreateKind;
   defaultApiType?: ApiType;
   collectionId?: string;
+  folderId?: string;
   onClose: () => void;
 }) {
   const ws = useWorkspace();
@@ -39,7 +41,13 @@ export function CreateModal({
   const [busy, setBusy] = useState(false);
 
   const title =
-    kind === 'workspace' ? 'New workspace' : kind === 'collection' ? 'New collection' : 'New API request';
+    kind === 'workspace'
+      ? 'New workspace'
+      : kind === 'collection'
+        ? 'New collection'
+        : kind === 'folder'
+          ? 'New folder'
+          : 'New API request';
 
   const canCreateWorkspace = organizations.some((o) => o.role === 'ADMIN');
 
@@ -56,6 +64,19 @@ export function CreateModal({
         await ws.createWorkspace(name.trim(), visibility);
       } else if (kind === 'collection') {
         await ws.createCollection(name.trim());
+      } else if (kind === 'folder') {
+        const targetCollectionId = collectionId ?? ws.activeCollectionId;
+        if (!targetCollectionId) {
+          setError('Select a collection first');
+          return;
+        }
+        const collection = ws.tree?.collections.find((c) => c.id === targetCollectionId);
+        await ws.selectCollection(targetCollectionId, collection?.name ?? '');
+        await ws.createFolder({
+          name: name.trim(),
+          collectionId: targetCollectionId,
+          parentId: folderId ?? null,
+        });
       } else {
         if (!url.trim()) {
           setError('URL is required');
@@ -65,7 +86,7 @@ export function CreateModal({
           const collection = ws.tree?.collections.find((c) => c.id === collectionId);
           await ws.selectCollection(collectionId, collection?.name ?? '');
         }
-        await ws.createRequest({ name: name.trim(), method, url: url.trim(), apiType });
+        await ws.createRequest({ name: name.trim(), method, url: url.trim(), apiType, folderId: folderId ?? null });
       }
       onClose();
     } catch (err) {
@@ -76,7 +97,13 @@ export function CreateModal({
   };
 
   const testId =
-    kind === 'workspace' ? 'new-workspace-modal' : kind === 'collection' ? 'new-collection-modal' : 'new-api-modal';
+    kind === 'workspace'
+      ? 'new-workspace-modal'
+      : kind === 'collection'
+        ? 'new-collection-modal'
+        : kind === 'folder'
+          ? 'new-folder-modal'
+          : 'new-api-modal';
 
   return (
     <Modal title={title} onClose={onClose} testId={testId}>
