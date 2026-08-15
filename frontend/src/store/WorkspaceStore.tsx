@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import {
   contentApi,
+  folderApi,
   teamApi,
   workspaceApi,
   type ApiType,
@@ -17,6 +18,7 @@ import {
   type AuthProvider,
   type CollectionRunResult,
   type ContentTree,
+  type Folder,
   type RunResult,
   type Team,
   type TeamMember,
@@ -136,7 +138,11 @@ interface WorkspaceState {
 
   createWorkspace: (name: string, visibility?: Workspace['visibility']) => Promise<void>;
   createCollection: (name: string) => Promise<void>;
-  createRequest: (input: { name: string; method: string; url: string; apiType: ApiType }) => Promise<void>;
+  createRequest: (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => Promise<void>;
+  createFolder: (input: { name: string; collectionId: string; parentId?: string | null }) => Promise<void>;
+  renameFolder: (folderId: string, name: string) => Promise<void>;
+  deleteFolder: (folderId: string) => Promise<void>;
+  renameRequest: (requestId: string, name: string) => Promise<void>;
 
   deleteRequest: (requestId: string) => Promise<void>;
   deleteCollection: (collectionId: string) => Promise<void>;
@@ -290,7 +296,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     await selectCollection(collection.id, collection.name);
   }, [tree, selectCollection]);
 
-  const createRequest = useCallback(async (input: { name: string; method: string; url: string; apiType: ApiType }) => {
+  const createRequest = useCallback(async (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => {
     if (!activeCollectionId) return;
     const { request } = await contentApi.createRequest({ collectionId: activeCollectionId, ...input });
     if (tree) {
@@ -298,6 +304,73 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
     await selectRequest(request.id);
   }, [activeCollectionId, tree, selectRequest]);
+
+  const createFolder = useCallback(async (input: { name: string; collectionId: string; parentId?: string | null }) => {
+    const { folder } = await folderApi.create(input);
+    if (tree) {
+      setTree({ ...tree, folders: [...tree.folders, folder] });
+    }
+  }, [tree]);
+
+  const renameFolder = useCallback(async (folderId: string, name: string) => {
+    const { folder } = await folderApi.update(folderId, { name });
+    if (tree) {
+      setTree({
+        ...tree,
+        folders: tree.folders.map((f) => (f.id === folderId ? { ...f, name: folder.name } : f)),
+      });
+    }
+  }, [tree]);
+
+  const deleteFolder = useCallback(async (folderId: string) => {
+    const target = tree?.folders.find((f) => f.id === folderId);
+    await folderApi.remove(folderId);
+    if (tree) {
+      // Cascade: drop the folder and every descendant; requests inside it
+      // resurface at the collection root (folder_id -> null).
+      const removed = new Set<string>([folderId]);
+      const removedIds = new Set<string>(tree.folders.map((f) => f.id));
+      const findDescendants = (parentId: string) => {
+        for (const f of tree.folders) {
+          if (f.parent_id === parentId && removedIds.has(f.id) && !removed.has(f.id)) {
+            removed.add(f.id);
+            findDescendants(f.id);
+          }
+        }
+      };
+      findDescendants(folderId);
+      const collectionId = target?.collection_id ?? null;
+      setTree({
+        ...tree,
+        folders: tree.folders.filter((f) => !removed.has(f.id)),
+        requests: tree.requests.map((r) =>
+          removed.has(r.folder_id as string) ? { ...r, folder_id: null } : r
+        ),
+      });
+      if (collectionId) {
+        // Un-select if the active request lived inside the deleted folder.
+        const activeInFolder =
+          tree.requests.some((r) => r.id === activeRequest?.id && removed.has(r.folder_id as string));
+        if (activeInFolder) {
+          setActiveRequest(null);
+          setLastRun(null);
+        }
+      }
+    }
+  }, [tree, activeRequest]);
+
+  const renameRequest = useCallback(async (requestId: string, name: string) => {
+    const { request } = await contentApi.updateRequest(requestId, { name });
+    if (activeRequest?.id === requestId) {
+      setActiveRequest((prev) => (prev ? { ...prev, name } : prev));
+    }
+    if (tree) {
+      setTree({
+        ...tree,
+        requests: tree.requests.map((r) => (r.id === requestId ? { ...r, name: request.name ?? name } : r)),
+      });
+    }
+  }, [tree, activeRequest]);
 
   const deleteRequest = useCallback(async (requestId: string) => {
     await contentApi.deleteRequest(requestId);
@@ -321,6 +394,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setTree({
         ...tree,
         collections: tree.collections.filter((c) => c.id !== collectionId),
+        folders: tree.folders.filter((f) => f.collection_id !== collectionId),
         requests: tree.requests.filter((r) => r.collection_id !== collectionId),
       });
     }
@@ -425,6 +499,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       createWorkspace,
       createCollection,
       createRequest,
+      createFolder,
+      renameFolder,
+      deleteFolder,
+      renameRequest,
       deleteRequest,
       deleteCollection,
       deleteWorkspace,
@@ -444,6 +522,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runCollection, clearCollectionRun,
       createWorkspace, createCollection, createRequest,
+      createFolder, renameFolder, deleteFolder, renameRequest,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
       loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree, inviteToTeam, shareWorkspace, unshareWorkspace,
     ]

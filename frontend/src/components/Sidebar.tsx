@@ -32,6 +32,10 @@ import {
   PlayIcon,
   ServerIcon,
   ImportIcon,
+  FolderIcon,
+  PencilIcon,
+  DotsIcon,
+  RequestIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
@@ -105,7 +109,7 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
 }
 
 function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection, onOpenMockServer, onOpenImportExport }: {
-  onOpenCreate: (kind: CreateKind, collectionId?: string) => void;
+  onOpenCreate: (kind: CreateKind, collectionId?: string, folderId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
   onRequestAccess: (project: { id: string; name: string }) => void;
@@ -117,8 +121,11 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   const ws = useWorkspace();
   const { dispatch } = useApp();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [renaming, setRenaming] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [menuFor, setMenuFor] = useState<string | null>(null);
 
-  const toggleCollection = (id: string) => {
+  const toggle = (id: string) => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
@@ -128,7 +135,248 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
     onNavigate();
   };
 
+  const startRename = (kind: 'request' | 'folder', id: string, name: string) => {
+    setMenuFor(null);
+    setRenaming({ kind, id });
+    setRenameValue(name);
+  };
+
+  const commitRename = async () => {
+    if (!renaming) return;
+    const name = renameValue.trim();
+    setRenaming(null);
+    if (!name) return;
+    try {
+      if (renaming.kind === 'request') {
+        await ws.renameRequest(renaming.id, name);
+      } else {
+        await ws.renameFolder(renaming.id, name);
+      }
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Rename failed' });
+    }
+  };
+
+  const deleteRequest = (id: string, name: string) => {
+    if (window.confirm(`Delete request "${name}"?`)) {
+      ws.deleteRequest(id).catch((err) =>
+        alert(err instanceof Error ? err.message : 'Failed to delete request')
+      );
+    }
+  };
+
+  const deleteFolder = (id: string, name: string) => {
+    if (
+      window.confirm(
+        `Delete folder "${name}" and its contents? Requests inside will be moved back to the collection root.`
+      )
+    ) {
+      ws.deleteFolder(id).catch((err) =>
+        alert(err instanceof Error ? err.message : 'Failed to delete folder')
+      );
+    }
+  };
+
   if (!ws.tree) return null;
+
+  const tree = ws.tree;
+
+  const renderRequest = (r: (typeof tree.requests)[number], collectionId: string) => {
+    const isActive = ws.activeRequest?.id === r.id;
+    const isRenaming = renaming?.kind === 'request' && renaming.id === r.id;
+    return (
+      <li
+        key={r.id}
+        className="sidebar-row"
+        data-testid={`sidebar-row-${r.name}`}
+      >
+        {isRenaming ? (
+          <input
+            type="text"
+            className="tree-rename-input"
+            autoFocus
+            defaultValue={r.name}
+            data-testid={`rename-input-${r.name}`}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename();
+              if (e.key === 'Escape') setRenaming(null);
+            }}
+            onBlur={commitRename}
+          />
+        ) : (
+          <button
+            type="button"
+            className={`sidebar-item sidebar-item-indent ${isActive ? 'active' : ''}`}
+            data-testid={`sidebar-request-${r.name}`}
+            onClick={() => onSelectRequest(r.id)}
+          >
+            <span className={`method-badge method-${r.method}`}>{r.method}</span>
+            <span className="sidebar-item-name">{r.name}</span>
+            {r.api_type !== 'REST' && (
+              <span className="vis-badge api-type-badge">{r.api_type}</span>
+            )}
+          </button>
+        )}
+        <div className="sidebar-row-actions">
+          <button
+            type="button"
+            className="icon-button"
+            title="Request options"
+            aria-label={`Options for ${r.name}`}
+            data-testid={`request-options-${r.name}`}
+            onClick={() => setMenuFor(menuFor === r.id ? null : r.id)}
+          >
+            <DotsIcon size={13} />
+          </button>
+        </div>
+        {menuFor === r.id && (
+          <>
+            <div className="tree-menu-backdrop" onClick={() => setMenuFor(null)} />
+            <div className="tree-menu" data-testid={`request-menu-${r.name}`}>
+              <button
+                type="button"
+                data-testid={`request-edit-${r.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  onSelectRequest(r.id);
+                }}
+              >
+                <RequestIcon size={13} />
+                Edit
+              </button>
+              <button
+                type="button"
+                data-testid={`request-rename-${r.name}`}
+                onClick={() => startRename('request', r.id, r.name)}
+              >
+                <PencilIcon size={13} />
+                Rename
+              </button>
+              <button
+                type="button"
+                className="danger"
+                data-testid={`request-delete-${r.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  deleteRequest(r.id, r.name);
+                }}
+              >
+                <TrashIcon size={13} />
+                Delete
+              </button>
+            </div>
+          </>
+        )}
+      </li>
+    );
+  };
+
+  const renderFolder = (folder: (typeof tree.folders)[number], collectionId: string) => {
+    const isCollapsed = !!collapsed[folder.id];
+    const isRenaming = renaming?.kind === 'folder' && renaming.id === folder.id;
+    const subFolders = tree.folders.filter(
+      (f) => f.collection_id === collectionId && f.parent_id === folder.id
+    );
+    const requests = tree.requests.filter(
+      (r) => r.collection_id === collectionId && r.folder_id === folder.id
+    );
+    const hasChildren = subFolders.length > 0 || requests.length > 0;
+    return (
+      <div key={folder.id} className="tree-folder">
+        <div className="tree-folder-row">
+          {isRenaming ? (
+            <input
+              type="text"
+              className="tree-rename-input"
+              autoFocus
+              defaultValue={folder.name}
+              data-testid={`rename-folder-input-${folder.name}`}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+              onBlur={commitRename}
+            />
+          ) : (
+            <button
+              type="button"
+              className="tree-folder-name"
+              data-testid={`folder-${folder.name}`}
+              onClick={() => toggle(folder.id)}
+            >
+              <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
+                <ChevronIcon size={11} />
+              </span>
+              <span className="tree-folder-icon">
+                <FolderIcon size={13} />
+              </span>
+              <span className="name">{folder.name}</span>
+              {!isCollapsed && hasChildren && <span className="folder-count">{requests.length}</span>}
+            </button>
+          )}
+          <div className="tree-folder-actions">
+            <button
+              type="button"
+              className="icon-button"
+              title="New API request"
+              aria-label={`New request in ${folder.name}`}
+              data-testid={`new-request-folder-${folder.name}`}
+              onClick={() => onOpenCreate('request', collectionId, folder.id)}
+            >
+              <PlusIcon size={12} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="New sub-folder"
+              aria-label={`New sub-folder in ${folder.name}`}
+              data-testid={`new-subfolder-${folder.name}`}
+              onClick={() => onOpenCreate('folder', collectionId, folder.id)}
+            >
+              <FolderIcon size={12} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="Rename folder"
+              aria-label={`Rename folder ${folder.name}`}
+              data-testid={`rename-folder-${folder.name}`}
+              onClick={() => startRename('folder', folder.id, folder.name)}
+            >
+              <PencilIcon size={12} />
+            </button>
+            <button
+              type="button"
+              className="icon-button danger"
+              title="Delete folder"
+              aria-label={`Delete folder ${folder.name}`}
+              data-testid={`delete-folder-${folder.name}`}
+              onClick={() => deleteFolder(folder.id, folder.name)}
+            >
+              <TrashIcon size={12} />
+            </button>
+          </div>
+        </div>
+        {!isCollapsed && (
+          <div className="tree-folder-children">
+            {subFolders.map((f) => renderFolder(f, collectionId))}
+            {requests.length > 0 && (
+              <ul className="sidebar-list">
+                {requests.map((r) => renderRequest(r, collectionId))}
+              </ul>
+            )}
+            {!hasChildren && (
+              <p className="hint" style={{ padding: '4px 8px 6px 30px' }}>
+                Empty folder.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="sidebar-section tree-section">
@@ -164,7 +412,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
           Share
         </button>
       </div>
-      {ws.tree.projects.map((p) => (
+      {tree.projects.map((p) => (
         <div key={p.id} className="tree-project">
           <div className="tree-project-name">
             <CollectionIcon size={12} />
@@ -199,11 +447,16 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
               Request access
             </button>
           )}
-          {ws.tree!.collections
+          {tree.collections
             .filter((c) => c.project_id === p.id)
             .map((c) => {
               const isCollapsed = !!collapsed[c.id];
-              const requests = ws.tree!.requests.filter((r) => r.collection_id === c.id);
+              const rootFolders = tree.folders.filter(
+                (f) => f.collection_id === c.id && !f.parent_id
+              );
+              const rootRequests = tree.requests.filter(
+                (r) => r.collection_id === c.id && !r.folder_id
+              );
               return (
                 <div key={c.id} className="tree-collection">
                   <div className="tree-collection-row">
@@ -212,7 +465,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                       className={`tree-collection-name ${ws.activeCollectionId === c.id ? 'active' : ''}`}
                       data-testid={`collection-${c.name}`}
                       onClick={() => {
-                        toggleCollection(c.id);
+                        toggle(c.id);
                         ws.selectCollection(c.id, c.name).catch(() => undefined);
                         onNavigate();
                       }}
@@ -224,6 +477,16 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                       {c.has_auth && <span className="vis-badge auth-badge">AUTH</span>}
                     </button>
                     <div className="tree-collection-actions">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        title="New folder"
+                        aria-label={`New folder in ${c.name}`}
+                        data-testid={`new-folder-${c.name}`}
+                        onClick={() => onOpenCreate('folder', c.id)}
+                      >
+                        <FolderIcon size={13} />
+                      </button>
                       <button
                         type="button"
                         className="icon-button"
@@ -272,45 +535,17 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                       </button>
                     </div>
                   </div>
-                  {!isCollapsed && requests.length > 0 && (
+                  {!isCollapsed && (rootFolders.length > 0 || rootRequests.length > 0) && (
                     <div className="tree-collection-children">
-                      <ul className="sidebar-list">
-                        {requests.map((r) => (
-                          <li key={r.id} className="sidebar-row">
-                            <button
-                              type="button"
-                              className={`sidebar-item sidebar-item-indent ${ws.activeRequest?.id === r.id ? 'active' : ''}`}
-                              data-testid={`sidebar-request-${r.name}`}
-                              onClick={() => onSelectRequest(r.id)}
-                            >
-                              <span className={`method-badge method-${r.method}`}>{r.method}</span>
-                              <span className="sidebar-item-name">{r.name}</span>
-                              {r.api_type !== 'REST' && (
-                                <span className="vis-badge api-type-badge">{r.api_type}</span>
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-button danger"
-                              title="Delete request"
-                              aria-label={`Delete request ${r.name}`}
-                              data-testid={`delete-request-${r.name}`}
-                              onClick={() => {
-                                if (window.confirm(`Delete request "${r.name}"?`)) {
-                                  ws.deleteRequest(r.id).catch((err) =>
-                                    alert(err instanceof Error ? err.message : 'Failed to delete request')
-                                  );
-                                }
-                              }}
-                            >
-                              <TrashIcon size={13} />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+                      {rootFolders.map((f) => renderFolder(f, c.id))}
+                      {rootRequests.length > 0 && (
+                        <ul className="sidebar-list">
+                          {rootRequests.map((r) => renderRequest(r, c.id))}
+                        </ul>
+                      )}
                     </div>
                   )}
-                  {!isCollapsed && requests.length === 0 && (
+                  {!isCollapsed && rootFolders.length === 0 && rootRequests.length === 0 && (
                     <p className="hint" style={{ padding: '4px 8px 6px 30px' }}>
                       No requests yet.
                     </p>
@@ -320,7 +555,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
             })}
         </div>
       ))}
-      {ws.tree.collections.length === 0 && <p className="hint">No collections yet.</p>}
+      {tree.collections.length === 0 && <p className="hint">No collections yet.</p>}
     </div>
   );
 }
@@ -397,6 +632,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
   const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
+  const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -439,8 +675,9 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
     window.addEventListener('pointerup', up);
   }, []);
 
-  const openCreate = (kind: CreateKind, collectionId?: string) => {
+  const openCreate = (kind: CreateKind, collectionId?: string, folderId?: string) => {
     setTargetCollectionId(collectionId ?? null);
+    setTargetFolderId(folderId ?? null);
     setCreateKind(kind);
   };
 
@@ -639,6 +876,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         <CreateModal
           kind={createKind}
           collectionId={targetCollectionId ?? undefined}
+          folderId={targetFolderId ?? undefined}
           onClose={() => setCreateKind(null)}
         />
       )}
