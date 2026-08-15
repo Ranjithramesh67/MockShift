@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import {
   manageApi,
+  workspaceApi,
   type ManageOverview,
   type ManageProject,
   type ManageTeam,
@@ -13,9 +14,10 @@ import {
   type RunHistoryEntry,
   type AdminUser,
   type ProjectDetail,
+  type Workspace,
 } from '@/lib/api';
 
-type TabId = 'overview' | 'requests' | 'users' | 'projects' | 'teams' | 'audit' | 'history';
+type TabId = 'overview' | 'requests' | 'users' | 'projects' | 'teams' | 'audit' | 'history' | 'settings';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'overview', label: 'Overview' },
@@ -25,6 +27,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'teams', label: 'Teams' },
   { id: 'audit', label: 'Audit log' },
   { id: 'history', label: 'History' },
+  { id: 'settings', label: 'Settings' },
 ];
 
 function fmtDate(iso: string | null | undefined): string {
@@ -48,6 +51,9 @@ export function ManageView() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [runs, setRuns] = useState<RunHistoryEntry[]>([]);
   const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [retentionDays, setRetentionDays] = useState<Record<string, number>>({});
+  const [savingRetention, setSavingRetention] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const canAdmin = user?.role === 'ADMIN';
@@ -60,6 +66,41 @@ export function ManageView() {
   const loadLogs = () => manageApi.auditLogs(100).then((r) => setLogs(r.logs)).catch(() => undefined);
   const loadHistory = () => manageApi.history(100).then((r) => setRuns(r.runs)).catch(() => undefined);
 
+  const loadSettings = async () => {
+    try {
+      const { workspaces: ws } = await workspaceApi.list();
+      setWorkspaces(ws);
+      const days: Record<string, number> = {};
+      for (const w of ws) {
+        try {
+          const { settings } = await workspaceApi.settings(w.id);
+          days[w.id] = settings.run_history_retention_days;
+        } catch {
+          days[w.id] = 90;
+        }
+      }
+      setRetentionDays(days);
+    } catch {
+      setWorkspaces([]);
+    }
+  };
+
+  const saveRetention = async (workspaceId: string) => {
+    setError('');
+    setNotice('');
+    setSavingRetention(true);
+    try {
+      const { settings } = await workspaceApi.updateSettings(workspaceId, retentionDays[workspaceId]);
+      setRetentionDays((prev) => ({ ...prev, [workspaceId]: settings.run_history_retention_days }));
+      setNotice('Run history retention updated.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update retention');
+      loadSettings();
+    } finally {
+      setSavingRetention(false);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
     loadOverview();
@@ -69,6 +110,7 @@ export function ManageView() {
     loadRequests();
     loadLogs();
     loadHistory();
+    loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -536,6 +578,77 @@ export function ManageView() {
             )}
           </tbody>
         </table>
+      )}
+
+      {tab === 'settings' && (
+        <div data-testid="manage-settings-section">
+          <h2 className="manage-section-title">Run history retention</h2>
+          <p className="hint">
+            The retention purge removes old request/response <strong>snapshots</strong> (URL, headers and body
+            payloads) once a run is older than the workspace retention window. The run itself is kept — timestamp,
+            user, trigger, status, duration and assertion results stay visible in run history and the audit log. Runs
+            inside the window are never touched. Only workspace admins can change a workspace setting.
+          </p>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Workspace</th>
+                <th>Retention (days)</th>
+                <th>Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {workspaces.map((w) => {
+                const isAdmin = w.role === 'ADMIN';
+                const days = retentionDays[w.id];
+                return (
+                  <tr key={w.id}>
+                    <td className="admin-user-name">
+                      {w.name}
+                      <span className="hint"> · {isAdmin ? 'admin' : 'read-only'}</span>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min={7}
+                        step={1}
+                        disabled={!isAdmin || savingRetention}
+                        aria-label={`Retention days for ${w.name}`}
+                        value={days ?? ''}
+                        onChange={(e) =>
+                          setRetentionDays((prev) => ({ ...prev, [w.id]: Number(e.target.value) }))
+                        }
+                        className="retention-input"
+                      />
+                    </td>
+                    <td>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          className="primary-button"
+                          disabled={savingRetention || !Number.isInteger(days) || days < 7}
+                          data-testid={`save-retention-${w.id}`}
+                          onClick={() => saveRetention(w.id)}
+                        >
+                          Save
+                        </button>
+                      ) : (
+                        <span className="hint">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {workspaces.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="hint">
+                    No workspaces available.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </main>
   );
