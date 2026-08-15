@@ -7,8 +7,8 @@ Last updated: 2026-08-15
 
 ## Current
 
-Step: New API request modal — paste-cURL import (this turn, uncommitted).
-Status: IMPLEMENTED + verified live against Aiven DB (create+update round-trip), NOT yet committed/pushed.
+Step: New API request modal — paste-cURL import.
+Status: DONE — committed + pushed as `3c80031` to master.
 
 ## Completed (this feature)
 
