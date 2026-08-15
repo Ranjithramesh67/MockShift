@@ -1,6 +1,6 @@
 # MockShift — Session State
 
-Last updated: 2026-08-09
+Last updated: 2026-08-15
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
@@ -9,6 +9,16 @@ Last updated: 2026-08-09
 
 Step: S3 — run-history retention + purge
 Status: IN PROGRESS (GO given 2026-08-09 "start with s3") — implementation started by this session.
+
+## Completed this turn (2026-08-15)
+
+- **Sidebar drag-resize (pushed as `d28659a`)** — UI-only: the collections sidepane now has a
+  draggable handle on its right edge (`.sidebar-resizer`) so it can be widened/narrowed
+  (240–560px). Width persists to `localStorage["apihub.sidebarWidth"]` and is restored on reload.
+  Dragging uses pointer events + `body.is-col-dragging` (col-resize cursor, width transition
+  disabled mid-drag). Verified via a throwaway Playwright spec (drag → width grows → persists on
+  reload → collapse still collapses to 48px rail); typecheck, `next build`, and the 47 frontend
+  unit tests all pass. Postgres + Redis were installed in this env to run the stack.
 
 ## Plan for current step (as approved)
 
