@@ -119,7 +119,7 @@ unless testing is explicitly waived.
 | # | Micro task | Status |
 |---|------------|--------|
 | M1 | CreateModal auto-detect cURL | done (pushed `e80c29c`) |
-| M2 | URL-field cURL auto-parse | declined by user (stop) |
+| M2 | URL-field cURL auto-parse | done (this turn) |
 | M3 | Dirty-state tracking | pending |
 | M4 | Dirty dot indicator | pending |
 | M5 | Backend ephemeral run endpoint | pending |
@@ -127,7 +127,3 @@ unless testing is explicitly waived.
 | M7 | Tabs for opened requests | pending |
 | M8 | Test cURL without saving | pending |
 | M9 | Docs + wrap-up | pending |
-
-> Session paused after M1 on 2026-08-15: the user declined M2, so the remaining
-> items (M2–M9) are not started. Ask the user which to execute next before
-> writing any code. `session.md` carries the same resume rule.
