@@ -9,23 +9,7 @@ Last updated: 2026-08-16
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: IN PROGRESS — M1–M6 done; M7 (tabs) in progress.
-
-M7 plan (in progress):
-- Store: openRequestIds[] + activeRequestId + requestCopies{} (working copy per
-  open request) + baselines{} (per-request saved baseline). selectRequest opens
-  (dedupe) or activates an already-open request WITHOUT refetching so unsaved
-  edits survive switching; close removes the tab and activates a neighbour.
-- Pure helpers in `frontend/src/lib/tabs.js` (openTab/closeTab) + node:test unit
-  file `frontend/src/lib/__tests__/tabs.test.cjs`.
-- UI: new `RequestTabs` component above RequestConfigurator (name + method +
-  dirty dot + close ×; confirm before closing a dirty tab). Wired in AppShell.
-- Cleanup on delete: deleteRequest / deleteFolder / deleteCollection /
-  selectWorkspace / selectCollection close the affected tabs.
-- New e2e spec `frontend/e2e/request-tabs.spec.ts` (fresh user, two requests:
-  open both, edit first (dirty dot on tab), switch to second and back → working
-  copy preserved, close dirty tab confirms, close active activates neighbour).
-- Verify: tsc --noEmit + new unit test + new e2e spec only (full suite deferred).
+Status: IN PROGRESS — M1–M7 done; M8 (test cURL without saving) next.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
@@ -35,11 +19,26 @@ M3 Dirty-state tracking in WorkspaceStore — DONE (pushed `cb2451c`)
 M4 Dirty dot indicator in editor — DONE (pushed `2ad35d2`)
 M5 Backend ephemeral run endpoint (POST /api/runs) — DONE (pushed `d9c80b4`)
 M6 Send uses working copy — DONE (pushed this turn)
-M7 Tabs for opened requests — NEXT
-M8 Test cURL without saving (scratchpad)
+M7 Tabs for opened requests — DONE (pushed `183d7ab`)
+M8 Test cURL without saving (scratchpad) — NEXT
 M9 Docs + wrap-up
 
 ## Completed (this feature)
+
+- **M7 — tabs for opened requests** (pushed `183d7ab`). `WorkspaceStore` gained
+  `openRequestIds[]` + `activeRequestId` + `requestCopies{}` (a working copy per
+  open request) + `baselines{}` (per-request saved baseline). `selectRequest`
+  now opens a request once (dedupe) or activates an already-open tab WITHOUT
+  refetching, so unsaved edits survive switching; `closeRequestTab` removes the
+  tab and activates a neighbour (right, else left); `isTabDirty` exposes
+  per-tab dirty state. Deletes/selection clear affected tabs. Pure helpers in
+  `frontend/src/lib/tabs.js` (`openTab`/`closeTab`) + `tabs.test.cjs` (6 tests).
+  New `RequestTabs` component (method badge + name + dirty dot + close ×,
+  confirm before closing a dirty tab) rendered above the editor in `AppShell`,
+  styled in `globals.css`. New e2e `frontend/e2e/request-tabs.spec.ts` (2 tests)
+  and scoped `dirty-dot`/`send-working-copy` specs to the Save-button dot since
+  tabs now carry their own dots. Verified: tsc clean, `next build` green, new
+  unit 6/6, new e2e 2/2, affected specs 2/2.
 
 - **M6 — Send uses the working copy** (pushed this turn). `runActiveRequest`
   now runs the **working copy**: when `isDirty` it calls the new
