@@ -283,11 +283,33 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeRequest, tree]);
 
+  const isDirty = useMemo(
+    () => (activeRequest ? !dirtySnapshotsEqual(dirtySnapshot(activeRequest), savedBaseline) : false),
+    [activeRequest, savedBaseline]
+  );
+
   const runActiveRequest = useCallback(async () => {
     if (!activeRequest) return;
-    const result = await contentApi.runRequest(activeRequest.id);
+    let result: RunResult;
+    if (isDirty) {
+      result = await contentApi.runEphemeral({
+        method: activeRequest.method,
+        url: activeRequest.url,
+        headers: activeRequest.headers,
+        queryParams: activeRequest.queryParams,
+        bodyType: activeRequest.bodyType,
+        bodyJson: activeRequest.bodyJson,
+        formula: activeRequest.formula,
+        assertions: activeRequest.assertions,
+        apiType: activeRequest.apiType,
+        collectionId: activeCollectionId,
+        persistHistory: false,
+      });
+    } else {
+      result = await contentApi.runRequest(activeRequest.id);
+    }
     setLastRun(result);
-  }, [activeRequest]);
+  }, [activeRequest, isDirty, activeCollectionId]);
 
   const runCollection = useCallback(async (collectionId: string) => {
     setCollectionRunRunning(true);
@@ -496,11 +518,6 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const unshareWorkspace = useCallback(async (workspaceId: string, teamId: string) => {
     await workspaceApi.unshare(workspaceId, teamId);
   }, []);
-
-  const isDirty = useMemo(
-    () => (activeRequest ? !dirtySnapshotsEqual(dirtySnapshot(activeRequest), savedBaseline) : false),
-    [activeRequest, savedBaseline]
-  );
 
   const value = useMemo<WorkspaceState>(
     () => ({

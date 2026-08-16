@@ -10,9 +10,13 @@ test('unsaved-changes dot appears on edit and clears on save', async ({ page }) 
   const email = await signupFreshUser(page);
 
   const wsRes = await page.request.get('/api/workspaces');
-  const ws = (await wsRes.json()).workspaces.find((w) => w.name === 'My Workspace');
+  const ws = (await wsRes.json()).workspaces.find(
+    (w: { id: string; name: string }) => w.name === 'My Workspace'
+  );
   const content = await (await page.request.get(`/api/workspaces/${ws.id}/content`)).json();
-  const projectId = content.projects.find((p) => p.name === 'Default Project').id;
+  const projectId = content.projects.find(
+    (p: { id: string; name: string }) => p.name === 'Default Project'
+  ).id;
   const colRes = await page.request.post('/api/collections', {
     data: { projectId, name: 'Dirty Dot Col' },
   });
