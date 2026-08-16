@@ -112,6 +112,62 @@ unless testing is explicitly waived.
 - Commit + push each micro task to `master` as it completes; final commit
   records the full feature.
 
+### M10 — Drag-and-drop move: request into any folder/sub-folder
+
+- In the sidebar tree, drag a **request** row and drop it onto any folder
+  (nested or not) to move it there; drop on the collection root (or empty
+  space in the collection body) moves it back to the root (`folder_id` null).
+- Backend move already exists: `PUT /api/requests/:id` accepts `folderId`
+  (same-collection check) — reuse it.
+- Store: add `moveRequest(requestId, folderId)` that calls the API and updates
+  the local `tree.requests` row (new `folder_id`).
+- Keep the tree hierarchy in sync after a move (no refetch needed).
+- e2e spec: drag request folder A → folder B (nested) and back to root.
+
+### M11 — Duplicate request / folder / sub-folder via Ctrl+C
+
+- Backend:
+  - `POST /api/requests/:requestId/duplicate` — full deep copy of the request
+    (method, url, headers, queryParams, bodyType/bodyJson/bodyText, apiType,
+    formula, assertions) into the **same collection + folder**, name kept
+    identical to the source (no suffix) — user asked "same copy ... with same
+    name". Returns the new request row.
+  - `POST /api/folders/:folderId/duplicate` — deep copy of the folder AND its
+    entire subtree (sub-folders + requests), same names, same collection.
+    Returns the created folder row(s) + requests so the tree can update.
+  - Write-access checks mirror the existing folder/request routes.
+- Frontend:
+  - Clicking a request/folder row selects it (highlight). `Ctrl+C` / `Cmd+C`
+    on a selected row duplicates it via the store action. Folder copies bring
+    their whole contents.
+  - Also add a **Duplicate** item to the existing row context menus
+    (request menu + folder actions) as the clickable fallback.
+  - Store: `duplicateRequest(requestId)`, `duplicateFolder(folderId)` — call
+    the API then merge the returned rows into `tree`.
+- e2e spec: select + Ctrl+C duplicates a request; folder duplicate copies its
+  sub-folders + requests.
+
+### M12 — Rename focused tree item with F2 shortcut
+
+- F2 (and Cmd/Ctrl+R is NOT used — conflicts with browser refresh; use only
+  F2) on a selected/focused request or folder row starts the existing inline
+  rename (`startRename`). The focused row is the last clicked one.
+- Reuses the current rename input + `commitRename` flow (Enter commits,
+  Escape cancels).
+- e2e spec: select request, press F2, type new name, Enter → name updated.
+
+### M13 — Drag-and-drop move: folder between nested folders
+
+- Drag a **folder** row and drop it onto another folder to re-parent it
+  (nested move); drop on the collection root moves it to root (`parent_id`
+  null).
+- Backend move already exists: `PUT /api/folders/:id` accepts `parentId` with
+  the cycle guard — reuse it.
+- Store: add `moveFolder(folderId, parentId)` that calls the API and updates
+  the local `tree.folders` row.
+- e2e spec: drag folder A into nested folder B; drag it back to the collection
+  root.
+
 ---
 
 ## Status
@@ -128,3 +184,7 @@ unless testing is explicitly waived.
 | M7 | Tabs for opened requests | done (pushed `183d7ab`) |
 | M8 | Test cURL without saving | done (pushed `75143f7`) |
 | M9 | Docs + wrap-up | done (pushed `2d3ee16`) |
+| M10 | Drag-and-drop move: request into folder/sub-folder | pending |
+| M11 | Duplicate request/folder via Ctrl+C | pending |
+| M12 | Rename focused item via F2 | pending |
+| M13 | Drag-and-drop move: folder between nested folders | pending |
