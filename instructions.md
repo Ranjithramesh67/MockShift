@@ -168,6 +168,47 @@ unless testing is explicitly waived.
 - e2e spec: drag folder A into nested folder B; drag it back to the collection
   root.
 
+### M14 — Rework M8 scratchpad: full-width editor pane + save location picker
+
+User decisions (2026-08-16):
+- "Test cURL" opens a **full-width editor pane** in the main area (like the
+  request tab) — NOT a modal. It has a method select + URL input (paste a curl
+  → auto-parse), tabs Params/Headers/Body/Formula/Tests, explicit
+  **Send** (ephemeral, nothing saved) / **Save** / **Close** controls, and the
+  response shown in a split pane below.
+- **Save** opens a picker that **asks for a request name** (required, editable —
+  do not silently auto-derive) and lists **all collections in the current
+  workspace** with **nested folders** as an indented tree. Cannot save into a
+  folder belonging to a different collection (backend enforces a 400). On
+  confirm: `contentApi.createRequest({collectionId, name, method, url, apiType,
+  folderId})` then `contentApi.updateRequest(id, patch)` with headers /
+  queryParams / bodyType / bodyJson/bodyText / formula / assertions, then
+  `reloadTree()` + `selectRequest(id)`.
+
+Steps:
+1. Shared constants: `frontend/src/lib/requestForm.ts` (METHODS, API_TYPES,
+   METHOD_COLORS, BODY_KIND_OPTIONS, bodyKindOf, bodyTypeForKind, BodyKind) —
+   refactor `RequestConfigurator` to import them. — DONE (committed)
+2. `WorkspaceStore.runScratchpad` accepts `formula` + `assertions` (passes them
+   through to `contentApi.runEphemeral`); add `clearScratchpadRun`. — DONE (committed)
+3. `ScratchpadWorkspace.tsx` full-width editor pane with local draft state
+   (method, url, headers, queryParams, bodyKind/bodyJson, formula, assertions),
+   tab bar, Send → `ws.runScratchpad(...)`, Save → open picker, Close.
+4. `ScratchpadSaveModal.tsx` location picker (name + collection/folder tree).
+5. `AppShell.tsx`: render `<ScratchpadWorkspace>` full-width when open; close on
+   sidebar request selection; remove `ScratchpadModal`.
+6. CSS in globals.css for the scratchpad header/bar + picker tree.
+7. Rewrite `frontend/e2e/scratchpad.spec.ts` for the new UI (editor tabs, send,
+   save-to-location incl. nested folder).
+8. Verify: `npx tsc --noEmit`, `npm test`, Playwright (scratchpad + regression
+   request-tabs/nav-normal/request-duplicate/folder-drag-move/rename-f2); update
+   docs; commit + push.
+
+Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
+`scratchpad-send`, `scratchpad-save`, `scratchpad-close`, tab prefix
+`scratchpad-`, `scratchpad-save-name`, `scratchpad-save-confirm`,
+`scratchpad-save-cancel`.
+
 ---
 
 ## Status
@@ -188,3 +229,4 @@ unless testing is explicitly waived.
 | M11 | Duplicate request/folder via Ctrl+C | done (pushed `c7ac1f3`) |
 | M12 | Rename focused item via F2 | done (this turn) |
 | M13 | Drag-and-drop move: folder between nested folders | done (this turn) |
+| M14 | Rework scratchpad: full-width editor + save location picker | in progress |
