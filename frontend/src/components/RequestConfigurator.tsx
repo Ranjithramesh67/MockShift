@@ -226,6 +226,16 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
         </button>
         <button type="button" className="ghost-button" data-testid="save-request-button" onClick={onSave} style={actionBtn}>
           <SaveIcon size={14} />
+          {ws.isDirty && (
+            <span
+              className="unsaved-dot"
+              data-testid="unsaved-dot"
+              title="You have unsaved changes"
+              aria-label="You have unsaved changes"
+            >
+              •
+            </span>
+          )}
           Save
         </button>
         <button type="button" className="ghost-button" data-testid="codegen-open-button" onClick={onExportCode} style={actionBtn}>
