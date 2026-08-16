@@ -9,14 +9,18 @@ Last updated: 2026-08-15
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: IN PROGRESS — M1, M2 done; Ctrl+Enter shortcut added (this turn);
-awaiting approval for M3.
+Status: IN PROGRESS — M1, M2 done; Ctrl+Enter done; M3 in progress this turn.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
 M2 URL-field cURL auto-parse in existing request editor — DONE
-+ Extra (this turn): Ctrl+Enter (Cmd+Enter) triggers Send in the request editor
-M3 Dirty-state tracking in WorkspaceStore
++ Extra: Ctrl+Enter (Cmd+Enter) triggers Send in the request editor — DONE
+M3 Dirty-state tracking in WorkspaceStore — THIS TURN
+   - `savedBaseline` snapshot captured in `selectRequest` / after `saveActiveRequest`
+   - `isDirty` = deep-compare of working copy vs baseline
+     (method, url, headers, queryParams, bodyType, bodyJson, formula, assertions)
+   - Clear dirty on `saveActiveRequest` success and on `selectRequest`
+   - Expose `isDirty` on the store/context
 M4 Dirty dot indicator in editor
 M5 Backend ephemeral run endpoint (POST /api/runs)
 M6 Send uses working copy
