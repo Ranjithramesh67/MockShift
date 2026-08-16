@@ -11,7 +11,7 @@ Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
 Status: COMPLETE — M1–M9 all done; feature shipped.
 
-M9 DONE (pushed this turn):
+M9 DONE (pushed `2d3ee16`):
 - Docs + wrap-up: `session.md` Current + Plan + Completed updated,
   `instructions.md` status table finalised (M9 → done), `docs/SESSION.md` gained
   a dated §5 narrative entry. Final commit records the full feature set. Docs
@@ -27,11 +27,11 @@ M5 Backend ephemeral run endpoint (POST /api/runs) — DONE (pushed `d9c80b4`)
 M6 Send uses working copy — DONE (pushed this turn)
 M7 Tabs for opened requests — DONE (pushed `183d7ab`)
 M8 Test cURL without saving (scratchpad) — DONE (pushed `75143f7`)
-M9 Docs + wrap-up — DONE (pushed this turn)
+M9 Docs + wrap-up — DONE (pushed `2d3ee16`)
 
 ## Completed (this feature)
 
-- **M9 — docs + wrap-up** (pushed this turn). Final micro task. Updated
+- **M9 — docs + wrap-up** (pushed `2d3ee16`). Final micro task. Updated
   `session.md` (Current status → COMPLETE; M9 marked DONE in the plan and this
   completed log), `instructions.md` (M9 status-table row → done), and
   `docs/SESSION.md` (dated §5 narrative entry). Docs only — no source, test,
