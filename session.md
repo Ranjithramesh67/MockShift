@@ -7,15 +7,9 @@ Last updated: 2026-08-16
 
 ## Current
 
-Step: Postman-style request editing (remove create toggle, cURL auto-detect,
-dirty-state dot, request tabs, test-cURL-without-saving).
-Status: COMPLETE — M1–M9 all done; feature shipped.
-
-M9 DONE (pushed `2d3ee16`):
-- Docs + wrap-up: `session.md` Current + Plan + Completed updated,
-  `instructions.md` status table finalised (M9 → done), `docs/SESSION.md` gained
-  a dated §5 narrative entry. Final commit records the full feature set. Docs
-  only — no source, test, or DB changes.
+Step: Sidebar tree interactions (drag-and-drop move, Ctrl+C duplicate,
+F2 rename, nested-folder drag move).
+Status: PLANNED — M10–M13 defined in `instructions.md`, awaiting GO.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
@@ -28,6 +22,10 @@ M6 Send uses working copy — DONE (pushed this turn)
 M7 Tabs for opened requests — DONE (pushed `183d7ab`)
 M8 Test cURL without saving (scratchpad) — DONE (pushed `75143f7`)
 M9 Docs + wrap-up — DONE (pushed `2d3ee16`)
+M10 Drag-and-drop move: request into any folder/subfolder — pending
+M11 Duplicate request/folder/subfolder via Ctrl+C — pending
+M12 Rename focused tree item via F2 shortcut — pending
+M13 Drag-and-drop move: folder between nested folders — pending
 
 ## Completed (this feature)
 
