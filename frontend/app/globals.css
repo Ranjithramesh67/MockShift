@@ -1887,6 +1887,14 @@ body.is-col-dragging .sidebar {
   border-radius: 6px;
 }
 
+.unsaved-dot {
+  color: var(--warn);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  margin-right: 2px;
+}
+
 .icon-button {
   display: inline-flex;
   align-items: center;
