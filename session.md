@@ -9,7 +9,18 @@ Last updated: 2026-08-16
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: IN PROGRESS — M1–M7 done; M8 (test cURL without saving) next.
+Status: IN PROGRESS — M1–M8 done; M9 (docs + wrap-up) next.
+
+M8 DONE (pushed `75143f7`):
+- `ScratchpadModal` opened from new TopBar "Test cURL" button: paste a curl
+  command -> live structured preview (method/url/headers/query params/body),
+  **Send** runs via `POST /api/runs` (persistHistory:false), closes the modal
+  and switches to side-by-side so the response shows in ResponsePane. No
+  request row is created anywhere.
+- Pure helper `src/lib/scratchpad.js` + node:test `__tests__/scratchpad.test.cjs`
+  (3/3 pass). `WorkspaceStore.runScratchpad` typed action (sets `lastRun`).
+- e2e `frontend/e2e/scratchpad.spec.ts` 2/2 pass (run-without-saving + rejects
+  non-curl input). tsc --noEmit clean. Full suite + `next build` left to user.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
@@ -20,7 +31,7 @@ M4 Dirty dot indicator in editor — DONE (pushed `2ad35d2`)
 M5 Backend ephemeral run endpoint (POST /api/runs) — DONE (pushed `d9c80b4`)
 M6 Send uses working copy — DONE (pushed this turn)
 M7 Tabs for opened requests — DONE (pushed `183d7ab`)
-M8 Test cURL without saving (scratchpad) — NEXT
+M8 Test cURL without saving (scratchpad) — DONE (pushed `75143f7`)
 M9 Docs + wrap-up
 
 ## Completed (this feature)

@@ -370,6 +370,30 @@ dot + close-confirm; neighbour activation). `dirty-dot.spec.ts` and
 carry their own dots. Verified: `tsc --noEmit` clean, `next build` green, new
 unit 6/6, new e2e 2/2, affected e2e 2/2.
 
+### 5.18 M8 — Test cURL without saving (scratchpad) (pushed 75143f7)
+
+Postman-style scratchpad: run a pasted cURL command immediately without saving
+anything. New TopBar "Test cURL" button (`topbar-test-curl`) opens
+`ScratchpadModal`. Pasting a curl command into the textarea (`scratchpad-input`)
+produces a live structured preview (`scratchpad-preview`: method badge + URL,
+headers, query params, and body groups) via the existing M1 `parseCurl` /
+`isCurlCommand`. **Send** (`scratchpad-send`) maps the parse output to the
+ephemeral run input through the pure helper `frontend/src/lib/scratchpad.js`
+(`scratchpadRequest`: `apiType:'REST'`, `persistHistory` absent, `collectionId`
+null), then `WorkspaceStore.runScratchpad` calls `contentApi.runEphemeral`
+(`POST /api/runs`) — no request row and no `run_history` row are created, the
+stored request is untouched. On success the modal closes, view switches to
+side-by-side, ResponsePane shows the result, and a toast says "Scratchpad
+request executed (nothing saved)." Non-curl input shows a "Paste a curl command"
+hint and Send reports "Could not find a URL". Unit tests
+`frontend/src/lib/__tests__/scratchpad.test.cjs` (3 node:test cases) cover the
+ephemeral shape mapping. e2e `frontend/e2e/scratchpad.spec.ts` (2 tests): fresh
+user pastes `curl -X POST .../posts` → preview shows POST + URL + "Headers (1)"
+→ Send → ResponsePane shows `"title": "scratch"` + 201 and the collection still
+has 0 requests; and the non-curl rejection path. Verified: `tsc --noEmit`
+clean, new unit 3/3, new e2e 2/2. Full suite + `next build` deferred to the
+final M9 wrap-up per user instruction.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
