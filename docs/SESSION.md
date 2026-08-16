@@ -74,6 +74,18 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.19 M9 — Docs + wrap-up (pushed this turn)
+
+Final micro task of the "Postman-style request editing" feature set — the
+feature is **fully shipped** (M1–M9 all done). M9 wrapped up the runbook docs
+and made the final commit; no source, test, or DB changes:
+- `session.md` — Current status → **COMPLETE (M1–M9 done)**; M9 DONE block in
+  Current; M9 marked DONE in the Plan (micro tasks) list and added to the
+  "Completed (this feature)" log.
+- `instructions.md` — M9 status-table row → done.
+- This log — dated narrative entry added (newest first).
+- Final commit records the full feature set.
+
 ### 5.1 Pre-request Formula feature (completed, committed in 472cdf4 as partial)
 Already committed before this session's remaining work:
 - `db/migrations/004_request_formula.sql` — formula column on `api_requests`.

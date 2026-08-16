@@ -127,4 +127,4 @@ unless testing is explicitly waived.
 | M6 | Send uses working copy | done (pushed `6dd891e`) |
 | M7 | Tabs for opened requests | done (pushed `183d7ab`) |
 | M8 | Test cURL without saving | done (pushed `75143f7`) |
-| M9 | Docs + wrap-up | pending |
+| M9 | Docs + wrap-up | done (pushed this turn) |
