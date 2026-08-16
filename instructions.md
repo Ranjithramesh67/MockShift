@@ -125,6 +125,6 @@ unless testing is explicitly waived.
 | M4 | Dirty dot indicator | done (pushed `2ad35d2`) |
 | M5 | Backend ephemeral run endpoint | done (pushed `d9c80b4`) |
 | M6 | Send uses working copy | done (pushed `6dd891e`) |
-| M7 | Tabs for opened requests | pending |
+| M7 | Tabs for opened requests | done (pushed `183d7ab`) |
 | M8 | Test cURL without saving | pending |
 | M9 | Docs + wrap-up | pending |

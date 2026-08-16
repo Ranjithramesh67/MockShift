@@ -351,6 +351,25 @@ dot stays, stored URL still `/posts/1`. Also typed the implicit-any callbacks
 in `dirty-dot.spec.ts`. Verified: `tsc --noEmit` clean, `next build` green,
 47/47 frontend unit tests, dirty-dot/curl-import/assertions-runner e2e pass.
 
+### 5.17 M7 — Tabs for opened requests (pushed 183d7ab)
+
+Browser-style tab strip of every open request. `WorkspaceStore` gained
+`openRequestIds[]` + `activeRequestId` + `requestCopies{}` (a working copy per
+open request, so unsaved edits survive tab switches) + `baselines{}`
+(per-request saved baseline). `selectRequest` opens a request once (dedupe) or
+activates an already-open tab without refetching; `closeRequestTab` removes the
+tab and activates a neighbour (right, else left); `isTabDirty` exposes per-tab
+dirty state; delete/select flows close affected tabs. Pure helpers
+`frontend/src/lib/tabs.js` (`openTab`/`closeTab`) with `tabs.test.cjs` (6
+node:test cases). New `RequestTabs` component (method badge + name + dirty dot +
+close ×, `window.confirm` when closing a dirty tab) rendered above the editor
+in `AppShell`, styled in `globals.css`. New e2e
+`frontend/e2e/request-tabs.spec.ts` (2 tests: working-copy preservation + dirty
+dot + close-confirm; neighbour activation). `dirty-dot.spec.ts` and
+`send-working-copy.spec.ts` were scoped to the Save-button dot because tabs now
+carry their own dots. Verified: `tsc --noEmit` clean, `next build` green, new
+unit 6/6, new e2e 2/2, affected e2e 2/2.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
