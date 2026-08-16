@@ -110,6 +110,27 @@ export function toServerPatch(r: ApiRequest): Record<string, unknown> {
   return patch;
 }
 
+const DIRTY_FIELDS = [
+  'method',
+  'url',
+  'headers',
+  'queryParams',
+  'bodyType',
+  'bodyJson',
+  'formula',
+  'assertions',
+] as const;
+
+function dirtySnapshot(r: ApiRequest): unknown[] {
+  return DIRTY_FIELDS.map((k) => r[k]);
+}
+
+function dirtySnapshotsEqual(a: unknown[] | null, b: unknown[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.length !== b.length) return false;
+  return a.every((v, i) => JSON.stringify(v) === JSON.stringify(b[i]));
+}
+
 interface WorkspaceState {
   loading: boolean;
   error: string | null;
@@ -122,6 +143,7 @@ interface WorkspaceState {
   activeCollectionName: string;
   authProvider: AuthProvider | null;
   activeRequest: ApiRequest | null;
+  isDirty: boolean;
   lastRun: RunResult | null;
   collectionRun: CollectionRunResult | null;
   collectionRunRunning: boolean;
@@ -174,6 +196,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [activeCollectionName, setActiveCollectionName] = useState('');
   const [authProvider, setAuthProvider] = useState<AuthProvider | null>(null);
   const [activeRequest, setActiveRequest] = useState<ApiRequest | null>(null);
+  const [savedBaseline, setSavedBaseline] = useState<unknown[] | null>(null);
   const [lastRun, setLastRun] = useState<RunResult | null>(null);
   const [collectionRun, setCollectionRun] = useState<CollectionRunResult | null>(null);
   const [collectionRunRunning, setCollectionRunRunning] = useState(false);
@@ -240,7 +263,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const selectRequest = useCallback(async (requestId: string) => {
     setError(null);
     const { request } = await contentApi.getRequest(requestId);
-    setActiveRequest(toEditorRequest(request));
+    const editorRequest = toEditorRequest(request);
+    setActiveRequest(editorRequest);
+    setSavedBaseline(dirtySnapshot(editorRequest));
     setLastRun(null);
   }, []);
 
@@ -251,6 +276,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const saveActiveRequest = useCallback(async () => {
     if (!activeRequest) return;
     await contentApi.updateRequest(activeRequest.id, toServerPatch(activeRequest));
+    setSavedBaseline(dirtySnapshot(activeRequest));
     if (tree) {
       const t = { ...tree, requests: tree.requests.map((r) => (r.id === activeRequest.id ? { ...r, name: activeRequest.name, method: activeRequest.method, url: activeRequest.url, api_type: activeRequest.apiType } : r)) };
       setTree(t);
@@ -471,6 +497,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     await workspaceApi.unshare(workspaceId, teamId);
   }, []);
 
+  const isDirty = useMemo(
+    () => (activeRequest ? !dirtySnapshotsEqual(dirtySnapshot(activeRequest), savedBaseline) : false),
+    [activeRequest, savedBaseline]
+  );
+
   const value = useMemo<WorkspaceState>(
     () => ({
       loading,
@@ -484,6 +515,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       activeCollectionName,
       authProvider,
       activeRequest,
+      isDirty,
       lastRun,
       collectionRun,
       collectionRunRunning,
@@ -517,7 +549,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       loading, error, workspaces, teams, activeWorkspaceId, activeWorkspaceRole, tree,
-      activeCollectionId, activeCollectionName, authProvider, activeRequest, lastRun,
+      activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
       collectionRun, collectionRunRunning,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runCollection, clearCollectionRun,
