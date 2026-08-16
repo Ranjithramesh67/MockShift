@@ -9,23 +9,44 @@ Last updated: 2026-08-16
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: IN PROGRESS — M1, M2 done; Ctrl+Enter done; M3 done (pushed
-`cb2451c`); awaiting approval for M4.
+Status: IN PROGRESS — M1–M3 done; M4 + M5 done this turn (pushed `2ad35d2`,
+`d9c80b4`); awaiting approval for M6.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
 M2 URL-field cURL auto-parse in existing request editor — DONE
 + Extra: Ctrl+Enter (Cmd+Enter) triggers Send in the request editor — DONE
 M3 Dirty-state tracking in WorkspaceStore — DONE (pushed `cb2451c`)
-M4 Dirty dot indicator in editor — NEXT
-M5 Backend ephemeral run endpoint (POST /api/runs)
-M6 Send uses working copy
+M4 Dirty dot indicator in editor — DONE (pushed `2ad35d2`)
+M5 Backend ephemeral run endpoint (POST /api/runs) — DONE (pushed `d9c80b4`)
+M6 Send uses working copy — NEXT
 M7 Tabs for opened requests
 M8 Test cURL without saving (scratchpad)
 M9 Docs + wrap-up
 
 ## Completed (this feature)
 
+- **M5 — ephemeral run endpoint `POST /api/runs`** (pushed `d9c80b4`).
+  `runner.js` refactored: the fetch pipeline is extracted into
+  `executePipeline` (variable substitution → formula → folder auth provider →
+  HTTP call → assertions → optional history), shared by `runRequest` (stored)
+  and the new `runInMemoryRequest` (in-memory shape, no stored row).
+  `resolveVariables`/`activeEnvironmentId` generalized to key off a
+  `collectionId`. The route takes method/url/headers/queryParams/bodyType/
+  bodyJson/formula/assertions + optional `collectionId` (env vars + auth
+  provider, read-access checked) + `persistHistory`; run_history is written
+  only when `persistHistory` is true (request_id NULL via the nullable FK —
+  history read path already LEFT JOINs, verified). Live smoke on the running
+  backend (SUCCESS + persisted + no-persist), new integration test file
+  `backend/tests/ephemeralRuns.integration.test.cjs` (5 tests), backend jest
+  47/47, API units 49/49, existing integration suites all green.
+- **M4 — dirty dot indicator** (pushed `2ad35d2`). When `isDirty` is true the
+  Save button shows a `data-testid="unsaved-dot"` `•` (color `--warn`) with
+  title/aria-label "You have unsaved changes"; cleared on save. New e2e spec
+  `frontend/e2e/dirty-dot.spec.ts` (self-contained: fresh user + own request)
+  verifies no dot on load → dot on edit → dot gone after save. `tsc --noEmit`
+  clean, `next build` green, 47/47 frontend unit tests, curl-import + nav-normal
+  e2e still pass.
 - **M3 — dirty-state tracking in `WorkspaceStore`** (pushed `cb2451c`). Store
   now holds a `savedBaseline` snapshot of the dirty-relevant fields
   (method, url, headers, queryParams, bodyType, bodyJson, formula, assertions),
@@ -61,14 +82,13 @@ M9 Docs + wrap-up
   Verified live: POST orders curl → method/url/headers/queryParams/bodyType/bodyJson persisted on
   Aiven DB; `next build` + `tsc --noEmit` clean.
 
-## Test status (as of last full run, pre-folders)
+## Test status (2026-08-16, local PG+Redis, after folders + M1–M5)
 
-backend jest: 47/47 · test:api: 35/35 · api units: 45/45 · db run.sh: all pass · frontend unit: 47/47 ·
-tsc --noEmit: clean · e2e: 22/23 on fresh DB (only the known pre-existing `history.spec.ts`
-detail-modal flake failed; it passes in isolation) — full suite needs a freshly `reset:db`+`seed:dev`
-DB because specs leave requests in "Mock API Demo" (breaks `Requests: 8` in assertions-runner).
-Folders work added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collection_folders.sql`
-— not yet counted into the numbers above; **re-run jest/test:api/api:unit/e2e after folders.**
+backend jest: 47/47 · test:api: 40/40 (35 + new ephemeralRuns 5) · api units: 49/49 ·
+db run.sh: all pass · frontend unit: 47/47 · tsc --noEmit: clean · next build: green ·
+e2e (spot): dirty-dot, curl-import, nav-normal all pass (full suite needs a freshly
+`reset:db`+`seed:dev` DB because specs leave requests in "Mock API Demo").
+Folders added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collection_folders.sql`.
 
 ## Decisions (durable)
 
@@ -87,9 +107,9 @@ Folders work added `backend/tests/folders.integration.test.cjs` + `db/tests/04_c
 - 2026-08-16 turn: this session had no `backend/.env` (Aiven creds) and no local
   Postgres/Redis, so I installed local postgresql 15 + redis and re-applied
   migrations + `seed:dev` on the local `apihub` DB to run the app (mock upstream
-  :3999, backend :3001, frontend :3000 all up). A stray empty root
-  `package-lock.json` (artifact of a failed root `npm install`) is left
-  untracked in the working tree.
+  :3999, backend :3001, frontend :3000 all up). Installed Playwright chromium
+  browser + `install-deps` for e2e. A stray empty root `package-lock.json`
+  (artifact of a failed root `npm install`) is left untracked in the working tree.
 - `frontend/tsconfig.tsbuildinfo` shows as modified in `git status` (build artifact; leave it).
 - Old top-of-file "Current turn (in progress)" block for #7 was stale (that item shipped in
   `ac6cd52`) — removed in S0.

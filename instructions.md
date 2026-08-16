@@ -122,8 +122,8 @@ unless testing is explicitly waived.
 | M2 | URL-field cURL auto-parse | done (pushed `e61cc82`) |
 | EXT | Ctrl+Enter sends request | done (this turn) |
 | M3 | Dirty-state tracking | done (pushed `cb2451c`) |
-| M4 | Dirty dot indicator | pending |
-| M5 | Backend ephemeral run endpoint | pending |
+| M4 | Dirty dot indicator | done (pushed `2ad35d2`) |
+| M5 | Backend ephemeral run endpoint | done (pushed `d9c80b4`) |
 | M6 | Send uses working copy | pending |
 | M7 | Tabs for opened requests | pending |
 | M8 | Test cURL without saving | pending |
