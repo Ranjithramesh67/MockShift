@@ -171,10 +171,13 @@ interface WorkspaceState {
     bodyType?: string;
     bodyJson?: unknown;
     bodyText?: string | null;
+    formula?: string;
+    assertions?: Assertion[];
     apiType?: ApiType;
   }) => Promise<void>;
   runCollection: (collectionId: string) => Promise<CollectionRunResult>;
   clearCollectionRun: () => void;
+  clearScratchpadRun: () => void;
 
   createWorkspace: (name: string, visibility?: Workspace['visibility']) => Promise<void>;
   createCollection: (name: string) => Promise<void>;
@@ -437,6 +440,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       bodyType?: string;
       bodyJson?: unknown;
       bodyText?: string | null;
+      formula?: string;
+      assertions?: Assertion[];
       apiType?: ApiType;
     }) => {
       setError(null);
@@ -450,6 +455,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     },
     [activeCollectionId]
   );
+
+  const clearScratchpadRun = useCallback(() => {
+    setLastRun(null);
+  }, []);
 
   const runCollection = useCallback(async (collectionId: string) => {
     setCollectionRunRunning(true);
@@ -745,6 +754,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       runScratchpad,
       runCollection,
       clearCollectionRun,
+      clearScratchpadRun,
       createWorkspace,
       createCollection,
       createRequest,
@@ -775,7 +785,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       openRequestIds, activeRequestId, requestCopies,
       activateRequestTab, closeRequestTab, isTabDirty,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
-      saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun,
+      saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun, clearScratchpadRun,
       createWorkspace, createCollection, createRequest,
       createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, moveFolder, duplicateRequest, duplicateFolder,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,

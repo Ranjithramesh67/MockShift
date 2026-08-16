@@ -7,9 +7,61 @@ Last updated: 2026-08-16
 
 ## Current
 
-Step: Sidebar tree interactions (drag-and-drop move, Ctrl+C duplicate,
-F2 rename, nested-folder drag move).
-Status: COMPLETE — M10–M13 all done (parallel agents), pushed.
+Step: Rework M8 scratchpad — replace the modal with a full-width editor
+pane + a Save location picker (name + collection + nested folder).
+Status: IN PROGRESS — plan confirmed with user; some refactor committed,
+editor pane + picker still to build.
+
+USER DECISIONS (2026-08-16):
+- "Test cURL" opens a **full-width editor pane** in the main area (method
+  select + URL input + Params/Headers/Body/Formula/Tests tabs + Send/Save/
+  Close + response split below) — NOT a modal. Reads like the request tab.
+- Save must **ask for a request name** in the picker (not silently auto-derive).
+- Save picker lists **all collections in the current workspace** with
+  **nested folders** shown as an indented tree; can't target a folder of a
+  different collection (backend enforces 400).
+- Send stays ephemeral (POST /api/runs, persistHistory false) — nothing saved.
+
+PROGRESS (committed on `master`):
+- Created `frontend/src/lib/requestForm.ts` (shared METHODS, API_TYPES,
+  METHOD_COLORS, BODY_KIND_OPTIONS, bodyKindOf, bodyTypeForKind + BodyKind).
+- Refactored `RequestConfigurator.tsx` to import the constants from it (local
+  copies removed).
+- Extended `WorkspaceStore.runScratchpad` to accept `formula` + `assertions`
+  (passed through to `contentApi.runEphemeral`); added `clearScratchpadRun`.
+
+STILL TODO (next session):
+1. `ScratchpadWorkspace.tsx` full-width pane (data-testids: `scratchpad-workspace`,
+   `scratchpad-method`, `scratchpad-url`, `scratchpad-send`, `scratchpad-save`,
+   `scratchpad-close`, tab prefix `scratchpad`, response reuse `ResponsePane`).
+   Paste curl into URL → auto-parse (reuse `parseCurl`); local draft state
+   (no WS store wiring needed); Send → `ws.runScratchpad(...)`; Save → open picker.
+2. `ScratchpadSaveModal.tsx` location picker (`scratchpad-save-name`,
+   `scratchpad-save-location`, `scratchpad-save-confirm`): name field +
+   recursive tree of `ws.tree.collections`/`folders`; on confirm do
+   `contentApi.createRequest({collectionId,name,method,url,apiType,folderId})`
+   then `contentApi.updateRequest(id, toServerPatchLike)` (headers, queryParams,
+   bodyType, bodyJson/bodyText, formula, assertions), then `ws.reloadTree()` +
+   `ws.selectRequest(id)`.
+3. AppShell wiring: replace `ScratchpadModal` with full-width
+   `<ScratchpadWorkspace>` in the main area when open; close on sidebar request
+   selection (watch `activeRequestId` change or pass an onClose from Sidebar
+   `onSelectRequest`).
+4. Remove `ScratchpadModal.tsx` + `.scratchpad-preview` CSS (keep `curl-input`).
+5. CSS in globals.css for `.scratchpad-workspace` header/bar and picker tree.
+6. Rewrite `frontend/e2e/scratchpad.spec.ts` for the new UI: open editor, type
+   method/url, send → response shown + no request created; save → picker asks
+   name, pick collection + nested folder → request appears at that folder.
+7. Verify: `npx tsc --noEmit`, `npm test`, Playwright (scratchpad + regression
+   request-tabs/nav-normal); update `session.md` + `instructions.md` (M14 rows);
+   commit + push.
+
+SERVICES STILL RUNNING: mock upstream :3999, backend :3001
+(term_1786896470085_11), frontend :3000 (term_1786894968458_9); preview
+https://3000-cd39fa5d440bb155.monkeycode-ai.live. Demo logins
+`boss1785867669@test.io`/`bosspass123` (ADMIN), `pm1785867669@test.io`/`pmpass1234`,
+`dev1785867669@test.io`/`devpass123`. Live `next build` is NOT safe while the
+dev server is up (shared `.next`) — use tsc + Playwright + `npm test` instead.
 
 M13 DONE (this turn, alongside M12):
 - Backend: reuses existing `PUT /api/folders/:id` with `parentId` (cycle guard
@@ -52,6 +104,7 @@ M10 Drag-and-drop move: request into any folder/subfolder — DONE (pushed `c7ac
 M11 Duplicate request/folder/subfolder via Ctrl+C — DONE (pushed `c7ac1f3`)
 M12 Rename focused tree item via F2 shortcut — DONE (this turn)
 M13 Drag-and-drop move: folder between nested folders — DONE (this turn)
+M14 Rework scratchpad: full-width editor pane + save location picker — IN PROGRESS
 
 ## Completed (this feature)
 
