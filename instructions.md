@@ -126,5 +126,5 @@ unless testing is explicitly waived.
 | M5 | Backend ephemeral run endpoint | done (pushed `d9c80b4`) |
 | M6 | Send uses working copy | done (pushed `6dd891e`) |
 | M7 | Tabs for opened requests | done (pushed `183d7ab`) |
-| M8 | Test cURL without saving | pending |
+| M8 | Test cURL without saving | done (pushed `75143f7`) |
 | M9 | Docs + wrap-up | pending |
