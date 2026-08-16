@@ -184,6 +184,7 @@ interface WorkspaceState {
   deleteFolder: (folderId: string) => Promise<void>;
   renameRequest: (requestId: string, name: string) => Promise<void>;
   moveRequest: (requestId: string, folderId: string | null) => Promise<void>;
+  moveFolder: (folderId: string, parentId: string | null) => Promise<void>;
   duplicateRequest: (requestId: string) => Promise<void>;
   duplicateFolder: (folderId: string) => Promise<void>;
 
@@ -570,6 +571,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tree]);
 
+  const moveFolder = useCallback(async (folderId: string, parentId: string | null) => {
+    await folderApi.update(folderId, { parentId });
+    if (tree) {
+      setTree({
+        ...tree,
+        folders: tree.folders.map((f) => (f.id === folderId ? { ...f, parent_id: parentId } : f)),
+      });
+    }
+  }, [tree]);
+
   const duplicateRequest = useCallback(async (requestId: string) => {
     const { request } = await contentApi.duplicateRequest(requestId);
     if (tree) {
@@ -742,6 +753,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       deleteFolder,
       renameRequest,
       moveRequest,
+      moveFolder,
       duplicateRequest,
       duplicateFolder,
       deleteRequest,
@@ -765,7 +777,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun,
       createWorkspace, createCollection, createRequest,
-      createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, duplicateRequest, duplicateFolder,
+      createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, moveFolder, duplicateRequest, duplicateFolder,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
       loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree, inviteToTeam, shareWorkspace, unshareWorkspace,
     ]

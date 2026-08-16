@@ -9,9 +9,26 @@ Last updated: 2026-08-16
 
 Step: Sidebar tree interactions (drag-and-drop move, Ctrl+C duplicate,
 F2 rename, nested-folder drag move).
-Status: IN PROGRESS — M10 (request drag-move) + M11 (Ctrl+C duplicate) done; M12, M13 pending.
+Status: COMPLETE — M10–M13 all done (parallel agents), pushed.
 
-M11 DONE (this turn, alongside M10):
+M13 DONE (this turn, alongside M12):
+- Backend: reuses existing `PUT /api/folders/:id` with `parentId` (cycle guard
+  already enforced on the backend).
+- Frontend: `WorkspaceStore.moveFolder(folderId, parentId)` (calls
+  `folderApi.update`, patches `tree.folders` locally); `Sidebar.handleDragStart`
+  generalized to `'request'|'folder'`; folder rows `draggable={!isRenaming}`;
+  `handleDrop` folder path with cycle guard (folder into itself/descendant or
+  root-when-already-root disallowed → toast `Cannot move a folder into itself or
+  its subfolder`, else `Moved "NAME"`); `.tree-folder-row { cursor: grab }`.
+  New e2e `folder-drag-move.spec.ts`.
+
+M12 DONE (this turn, alongside M13):
+- New hook `useTreeRenameShortcut({ selectedRow, tree, onStartRename })`
+  (capture-mode F2 keydown, ignores INPUT/TEXTAREA/contentEditable).
+- Wired into `CollectionsTree` in `Sidebar.tsx` (one call after `startRename`).
+- New e2e `rename-f2.spec.ts`.
+
+M11 DONE (earlier turn, alongside M10):
 - Backend `POST /api/requests/:id/duplicate` (deep copy same collection+folder,
   same name) + `POST /api/folders/:id/duplicate` (deep-copies the folder and its
   whole subtree, re-parents copies to NEW copied ids) in `content.js`.
@@ -31,10 +48,10 @@ M6 Send uses working copy — DONE (pushed this turn)
 M7 Tabs for opened requests — DONE (pushed `183d7ab`)
 M8 Test cURL without saving (scratchpad) — DONE (pushed `75143f7`)
 M9 Docs + wrap-up — DONE (pushed `2d3ee16`)
-M10 Drag-and-drop move: request into any folder/subfolder — DONE (this turn)
-M11 Duplicate request/folder/subfolder via Ctrl+C — DONE (this turn)
-M12 Rename focused tree item via F2 shortcut — pending
-M13 Drag-and-drop move: folder between nested folders — pending
+M10 Drag-and-drop move: request into any folder/subfolder — DONE (pushed `c7ac1f3`)
+M11 Duplicate request/folder/subfolder via Ctrl+C — DONE (pushed `c7ac1f3`)
+M12 Rename focused tree item via F2 shortcut — DONE (this turn)
+M13 Drag-and-drop move: folder between nested folders — DONE (this turn)
 
 ## Completed (this feature)
 
