@@ -3,7 +3,7 @@
 const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth, roleAtLeast, getProjectAccess, canReadWorkspace } = require('../access');
-const { runRequest, runTokenRequest } = require('../runner');
+const { runRequest, runInMemoryRequest, runTokenRequest } = require('../runner');
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
 const { fireWorkflowEvent } = require('../workflowService');
 
@@ -498,6 +498,24 @@ router.post('/requests/:requestId/run', async (req, res, next) => {  try {
     const result = await runRequest(requestId, req.user.id);
     const projectId = await projectOfRequest(requestId);
     await fireRequestRunEvents(requestId, projectId, result);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------ Ephemeral runs
+router.post('/runs', async (req, res, next) => {
+  try {
+    const { collectionId } = req.body || {};
+    if (collectionId) {
+      const projectId = await projectOfCollection(collectionId);
+      if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+      if (!(await canReadProjectContent(req.user.id, projectId))) {
+        return res.status(403).json({ error: 'No access to this collection' });
+      }
+    }
+    const result = await runInMemoryRequest(req.body || {}, req.user.id);
     res.json(result);
   } catch (err) {
     next(err);
