@@ -9,7 +9,16 @@ Last updated: 2026-08-16
 
 Step: Sidebar tree interactions (drag-and-drop move, Ctrl+C duplicate,
 F2 rename, nested-folder drag move).
-Status: PLANNED — M10–M13 defined in `instructions.md`, awaiting GO.
+Status: IN PROGRESS — M10 (request drag-move) + M11 (Ctrl+C duplicate) done; M12, M13 pending.
+
+M11 DONE (this turn, alongside M10):
+- Backend `POST /api/requests/:id/duplicate` (deep copy same collection+folder,
+  same name) + `POST /api/folders/:id/duplicate` (deep-copies the folder and its
+  whole subtree, re-parents copies to NEW copied ids) in `content.js`.
+- Frontend: `contentApi.duplicateRequest`/`duplicateFolder`; store
+  `moveRequest`/`duplicateRequest`/`duplicateFolder`; sidebar Duplicate items in
+  request menu + folder actions + Ctrl/Cmd+C on a selected row (ignored while
+  typing). New e2e `request-drag-move.spec.ts` + `request-duplicate.spec.ts`.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
@@ -22,8 +31,8 @@ M6 Send uses working copy — DONE (pushed this turn)
 M7 Tabs for opened requests — DONE (pushed `183d7ab`)
 M8 Test cURL without saving (scratchpad) — DONE (pushed `75143f7`)
 M9 Docs + wrap-up — DONE (pushed `2d3ee16`)
-M10 Drag-and-drop move: request into any folder/subfolder — pending
-M11 Duplicate request/folder/subfolder via Ctrl+C — pending
+M10 Drag-and-drop move: request into any folder/subfolder — DONE (this turn)
+M11 Duplicate request/folder/subfolder via Ctrl+C — DONE (this turn)
 M12 Rename focused tree item via F2 shortcut — pending
 M13 Drag-and-drop move: folder between nested folders — pending
 

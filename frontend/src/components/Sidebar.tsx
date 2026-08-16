@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
@@ -36,6 +36,7 @@ import {
   PencilIcon,
   DotsIcon,
   RequestIcon,
+  CopyIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
@@ -124,6 +125,38 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   const [renaming, setRenaming] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [selectedRow, setSelectedRow] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
+
+  // M11: Ctrl/Cmd+C duplicates the currently selected request or folder.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!selectedRow) return;
+      if (!(e.ctrlKey || e.metaKey) || (e.key !== 'c' && e.key !== 'C')) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      e.preventDefault();
+      const row =
+        ws.tree?.requests.find((r) => r.id === selectedRow.id) ??
+        ws.tree?.folders.find((f) => f.id === selectedRow.id);
+      const name = row?.name;
+      const action =
+        selectedRow.kind === 'request'
+          ? ws.duplicateRequest(selectedRow.id)
+          : ws.duplicateFolder(selectedRow.id);
+      action
+        .then(() => {
+          if (name) dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${name}"` });
+        })
+        .catch((err) => {
+          dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' });
+        });
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [selectedRow, ws, dispatch]);
 
   const toggle = (id: string) => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -181,14 +214,61 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
 
   const tree = ws.tree;
 
+  // M10: native HTML5 drag-and-drop — request rows are the drag source; folder
+  // rows and collection roots are drop targets.
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify({ kind: 'request', id }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, target: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget(target);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    const related = e.relatedTarget as Node | null;
+    if (related && e.currentTarget.contains(related)) return;
+    setDropTarget(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, folderId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTarget(null);
+    try {
+      const payload = JSON.parse(e.dataTransfer.getData('text/plain')) as { kind?: string; id?: string };
+      if (!payload || payload.kind !== 'request' || typeof payload.id !== 'string') return;
+      const moved = tree.requests.find((r) => r.id === payload.id);
+      ws.moveRequest(payload.id, folderId)
+        .then(() => {
+          dispatch({
+            type: 'SHOW_TOAST',
+            kind: 'success',
+            message: moved ? `Moved "${moved.name}"` : 'Request moved',
+          });
+        })
+        .catch((err) => {
+          dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Move failed' });
+        });
+    } catch {
+      // ignore malformed drag payload
+    }
+  };
+
   const renderRequest = (r: (typeof tree.requests)[number], collectionId: string) => {
     const isActive = ws.activeRequest?.id === r.id;
     const isRenaming = renaming?.kind === 'request' && renaming.id === r.id;
+    const isSelected = selectedRow?.kind === 'request' && selectedRow.id === r.id;
     return (
       <li
         key={r.id}
-        className="sidebar-row"
+        className={`sidebar-row ${isSelected ? 'selected' : ''}`}
         data-testid={`sidebar-row-${r.name}`}
+        draggable={!isRenaming}
+        onDragStart={(e) => handleDragStart(e, r.id)}
       >
         {isRenaming ? (
           <input
@@ -209,7 +289,10 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
             type="button"
             className={`sidebar-item sidebar-item-indent ${isActive ? 'active' : ''}`}
             data-testid={`sidebar-request-${r.name}`}
-            onClick={() => onSelectRequest(r.id)}
+            onClick={() => {
+              setSelectedRow({ kind: 'request', id: r.id });
+              onSelectRequest(r.id);
+            }}
           >
             <span className={`method-badge method-${r.method}`}>{r.method}</span>
             <span className="sidebar-item-name">{r.name}</span>
@@ -255,6 +338,23 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
               </button>
               <button
                 type="button"
+                data-testid={`request-duplicate-${r.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  ws.duplicateRequest(r.id)
+                    .then(() =>
+                      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${r.name}"` })
+                    )
+                    .catch((err) =>
+                      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
+                    );
+                }}
+              >
+                <CopyIcon size={13} />
+                Duplicate
+              </button>
+              <button
+                type="button"
                 className="danger"
                 data-testid={`request-delete-${r.name}`}
                 onClick={() => {
@@ -282,9 +382,16 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
       (r) => r.collection_id === collectionId && r.folder_id === folder.id
     );
     const hasChildren = subFolders.length > 0 || requests.length > 0;
+    const isSelected = selectedRow?.kind === 'folder' && selectedRow.id === folder.id;
+    const isDropTarget = dropTarget === `folder:${folder.id}`;
     return (
       <div key={folder.id} className="tree-folder">
-        <div className="tree-folder-row">
+        <div
+          className={`tree-folder-row ${isSelected ? 'selected' : ''} ${isDropTarget ? 'tree-drop-target' : ''}`}
+          onDragOver={(e) => handleDragOver(e, `folder:${folder.id}`)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, folder.id)}
+        >
           {isRenaming ? (
             <input
               type="text"
@@ -304,7 +411,10 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
               type="button"
               className="tree-folder-name"
               data-testid={`folder-${folder.name}`}
-              onClick={() => toggle(folder.id)}
+              onClick={() => {
+                setSelectedRow({ kind: 'folder', id: folder.id });
+                toggle(folder.id);
+              }}
             >
               <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
                 <ChevronIcon size={11} />
@@ -349,6 +459,24 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
             </button>
             <button
               type="button"
+              className="icon-button"
+              title="Duplicate folder"
+              aria-label={`Duplicate folder ${folder.name}`}
+              data-testid={`duplicate-folder-${folder.name}`}
+              onClick={() => {
+                ws.duplicateFolder(folder.id)
+                  .then(() =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${folder.name}"` })
+                  )
+                  .catch((err) =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
+                  );
+              }}
+            >
+              <CopyIcon size={12} />
+            </button>
+            <button
+              type="button"
               className="icon-button danger"
               title="Delete folder"
               aria-label={`Delete folder ${folder.name}`}
@@ -360,7 +488,12 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
           </div>
         </div>
         {!isCollapsed && (
-          <div className="tree-folder-children">
+          <div
+            className={`tree-folder-children ${isDropTarget ? 'tree-drop-target' : ''}`}
+            onDragOver={(e) => handleDragOver(e, `folder:${folder.id}`)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, folder.id)}
+          >
             {subFolders.map((f) => renderFolder(f, collectionId))}
             {requests.length > 0 && (
               <ul className="sidebar-list">
@@ -459,7 +592,12 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
               );
               return (
                 <div key={c.id} className="tree-collection">
-                  <div className="tree-collection-row">
+                  <div
+                    className={`tree-collection-row ${dropTarget === `collection:${c.id}` ? 'tree-drop-target' : ''}`}
+                    onDragOver={(e) => handleDragOver(e, `collection:${c.id}`)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, null)}
+                  >
                     <button
                       type="button"
                       className={`tree-collection-name ${ws.activeCollectionId === c.id ? 'active' : ''}`}
@@ -536,7 +674,12 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                     </div>
                   </div>
                   {!isCollapsed && (rootFolders.length > 0 || rootRequests.length > 0) && (
-                    <div className="tree-collection-children">
+                    <div
+                      className={`tree-collection-children ${dropTarget === `children:${c.id}` ? 'tree-drop-target' : ''}`}
+                      onDragOver={(e) => handleDragOver(e, `children:${c.id}`)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, null)}
+                    >
                       {rootFolders.map((f) => renderFolder(f, c.id))}
                       {rootRequests.length > 0 && (
                         <ul className="sidebar-list">

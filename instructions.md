@@ -184,7 +184,7 @@ unless testing is explicitly waived.
 | M7 | Tabs for opened requests | done (pushed `183d7ab`) |
 | M8 | Test cURL without saving | done (pushed `75143f7`) |
 | M9 | Docs + wrap-up | done (pushed `2d3ee16`) |
-| M10 | Drag-and-drop move: request into folder/sub-folder | pending |
-| M11 | Duplicate request/folder via Ctrl+C | pending |
+| M10 | Drag-and-drop move: request into folder/sub-folder | done (this turn) |
+| M11 | Duplicate request/folder via Ctrl+C | done (this turn) |
 | M12 | Rename focused item via F2 | pending |
 | M13 | Drag-and-drop move: folder between nested folders | pending |
