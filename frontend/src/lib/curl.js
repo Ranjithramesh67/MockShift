@@ -111,6 +111,17 @@ function tokenizeCurl(input) {
   return tokens.filter((t) => t !== '\\');
 }
 
+/**
+ * True when the input looks like a cURL command (leading `curl` token) rather
+ * than a plain URL.
+ *
+ * @param {string} input
+ * @returns {boolean}
+ */
+function isCurlCommand(input) {
+  return /^\s*(?:curl|curl\.exe)\b/i.test(String(input || '').trim());
+}
+
 function parseHeader(raw) {
   const colon = raw.indexOf(':');
   if (colon <= 0) {
@@ -370,4 +381,4 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
-module.exports = { tokenizeCurl, parseCurl, generateCurl, shellQuote };
+module.exports = { tokenizeCurl, isCurlCommand, parseCurl, generateCurl, shellQuote };

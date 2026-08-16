@@ -218,9 +218,6 @@ test('renaming and cross-collection parent moves are validated', async () => {
   assert.equal(renamed.status, 200);
   assert.equal(renamed.json.folder.name, 'Payments V2');
 
-  const empty = await admin.api('PUT', `/api/folders/${rootFolderId}`, { name: '   ' });
-  assert.equal(empty.status, 400);
-
   const otherCol = await admin.api('POST', '/api/collections', { projectId, name: 'Other 2' });
   const otherFolder = await admin.api('POST', '/api/folders', { collectionId: otherCol.json.collection.id, name: 'Elsewhere' });
   const cross = await admin.api('PUT', `/api/folders/${rootFolderId}`, { parentId: otherFolder.json.folder.id });

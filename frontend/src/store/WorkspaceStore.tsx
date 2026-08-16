@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import {
   contentApi,
+  folderApi,
   teamApi,
   workspaceApi,
   type ApiType,
@@ -17,6 +18,7 @@ import {
   type AuthProvider,
   type CollectionRunResult,
   type ContentTree,
+  type Folder,
   type RunResult,
   type Team,
   type TeamMember,
@@ -25,6 +27,7 @@ import {
 } from '@/lib/api';
 import type { ApiRequest, Assertion, BodyType, RequestContentType } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
+import { openTab, closeTab } from '@/lib/tabs';
 
 function contentTypeForBodyType(bt: string): RequestContentType {
   switch (bt) {
@@ -108,6 +111,27 @@ export function toServerPatch(r: ApiRequest): Record<string, unknown> {
   return patch;
 }
 
+const DIRTY_FIELDS = [
+  'method',
+  'url',
+  'headers',
+  'queryParams',
+  'bodyType',
+  'bodyJson',
+  'formula',
+  'assertions',
+] as const;
+
+function dirtySnapshot(r: ApiRequest): unknown[] {
+  return DIRTY_FIELDS.map((k) => r[k]);
+}
+
+function dirtySnapshotsEqual(a: unknown[] | null, b: unknown[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.length !== b.length) return false;
+  return a.every((v, i) => JSON.stringify(v) === JSON.stringify(b[i]));
+}
+
 interface WorkspaceState {
   loading: boolean;
   error: string | null;
@@ -120,9 +144,17 @@ interface WorkspaceState {
   activeCollectionName: string;
   authProvider: AuthProvider | null;
   activeRequest: ApiRequest | null;
+  isDirty: boolean;
   lastRun: RunResult | null;
   collectionRun: CollectionRunResult | null;
   collectionRunRunning: boolean;
+
+  openRequestIds: string[];
+  activeRequestId: string | null;
+  requestCopies: Record<string, ApiRequest>;
+  activateRequestTab: (requestId: string) => Promise<void>;
+  closeRequestTab: (requestId: string) => Promise<void>;
+  isTabDirty: (requestId: string) => boolean;
 
   refresh: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
@@ -131,17 +163,33 @@ interface WorkspaceState {
   updateActiveRequest: (patch: Partial<ApiRequest>) => void;
   saveActiveRequest: () => Promise<void>;
   runActiveRequest: () => Promise<void>;
+  runScratchpad: (input: {
+    method: string;
+    url: string;
+    headers?: Array<{ key: string; value: string; enabled: boolean }>;
+    queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+    bodyType?: string;
+    bodyJson?: unknown;
+    bodyText?: string | null;
+    formula?: string;
+    assertions?: Assertion[];
+    apiType?: ApiType;
+  }) => Promise<void>;
   runCollection: (collectionId: string) => Promise<CollectionRunResult>;
   clearCollectionRun: () => void;
+  clearScratchpadRun: () => void;
 
   createWorkspace: (name: string, visibility?: Workspace['visibility']) => Promise<void>;
   createCollection: (name: string) => Promise<void>;
   createRequest: (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => Promise<void>;
-  createFolder: (input: { collectionId: string; parentId?: string | null; name: string }) => Promise<void>;
+  createFolder: (input: { name: string; collectionId: string; parentId?: string | null }) => Promise<void>;
   renameFolder: (folderId: string, name: string) => Promise<void>;
-  moveFolder: (folderId: string, parentId: string | null) => Promise<void>;
-  moveRequest: (requestId: string, folderId: string | null) => Promise<void>;
   deleteFolder: (folderId: string) => Promise<void>;
+  renameRequest: (requestId: string, name: string) => Promise<void>;
+  moveRequest: (requestId: string, folderId: string | null) => Promise<void>;
+  moveFolder: (folderId: string, parentId: string | null) => Promise<void>;
+  duplicateRequest: (requestId: string) => Promise<void>;
+  duplicateFolder: (folderId: string) => Promise<void>;
 
   deleteRequest: (requestId: string) => Promise<void>;
   deleteCollection: (collectionId: string) => Promise<void>;
@@ -173,6 +221,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [activeCollectionName, setActiveCollectionName] = useState('');
   const [authProvider, setAuthProvider] = useState<AuthProvider | null>(null);
   const [activeRequest, setActiveRequest] = useState<ApiRequest | null>(null);
+  const [openRequestIds, setOpenRequestIds] = useState<string[]>([]);
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const [requestCopies, setRequestCopies] = useState<Record<string, ApiRequest>>({});
+  const [baselines, setBaselines] = useState<Record<string, unknown[]>>({});
   const [lastRun, setLastRun] = useState<RunResult | null>(null);
   const [collectionRun, setCollectionRun] = useState<CollectionRunResult | null>(null);
   const [collectionRunRunning, setCollectionRunRunning] = useState(false);
@@ -201,10 +253,21 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
+  // Keep the last-seen working copy of every open request so unsaved edits
+  // survive tab switches. Runs on every activeRequest change.
+  useEffect(() => {
+    if (!activeRequest) return;
+    setRequestCopies((copies) => ({ ...copies, [activeRequest.id]: activeRequest }));
+  }, [activeRequest]);
+
   const selectWorkspace = useCallback(async (workspaceId: string) => {
     setError(null);
     setActiveWorkspaceId(workspaceId);
     setActiveRequest(null);
+    setActiveRequestId(null);
+    setOpenRequestIds([]);
+    setRequestCopies({});
+    setBaselines({});
     setLastRun(null);
     const ws = workspaces.find((w) => w.id === workspaceId);
     setActiveWorkspaceRole(ws?.role ?? null);
@@ -227,6 +290,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setActiveCollectionId(collectionId);
     setActiveCollectionName(collectionName);
     setActiveRequest(null);
+    setActiveRequestId(null);
+    setOpenRequestIds([]);
+    setRequestCopies({});
+    setBaselines({});
     setLastRun(null);
     try {
       const { authProvider: p } = await contentApi.getAuthProvider(collectionId);
@@ -238,10 +305,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const selectRequest = useCallback(async (requestId: string) => {
     setError(null);
-    const { request } = await contentApi.getRequest(requestId);
-    setActiveRequest(toEditorRequest(request));
     setLastRun(null);
-  }, []);
+    if (openRequestIds.includes(requestId)) {
+      // Already open: switch to it without refetching so the working copy
+      // (with any unsaved edits) is restored.
+      setActiveRequestId(requestId);
+      const copy = requestCopies[requestId];
+      if (copy) {
+        setActiveRequest(copy);
+        return;
+      }
+      // Fallback: open tab without a cached copy (should not happen normally).
+    }
+    const { request } = await contentApi.getRequest(requestId);
+    const editorRequest = toEditorRequest(request);
+    setActiveRequest(editorRequest);
+    setRequestCopies((c) => ({ ...c, [requestId]: editorRequest }));
+    setBaselines((b) => ({ ...b, [requestId]: dirtySnapshot(editorRequest) }));
+    setOpenRequestIds((ids) => openTab(ids, requestId));
+    setActiveRequestId(requestId);
+  }, [openRequestIds, requestCopies]);
 
   const updateActiveRequest = useCallback((patch: Partial<ApiRequest>) => {
     setActiveRequest((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -250,17 +333,132 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const saveActiveRequest = useCallback(async () => {
     if (!activeRequest) return;
     await contentApi.updateRequest(activeRequest.id, toServerPatch(activeRequest));
+    setBaselines((b) => ({ ...b, [activeRequest.id]: dirtySnapshot(activeRequest) }));
     if (tree) {
       const t = { ...tree, requests: tree.requests.map((r) => (r.id === activeRequest.id ? { ...r, name: activeRequest.name, method: activeRequest.method, url: activeRequest.url, api_type: activeRequest.apiType } : r)) };
       setTree(t);
     }
   }, [activeRequest, tree]);
 
+  const isDirty = useMemo(
+    () =>
+      activeRequest
+        ? !dirtySnapshotsEqual(dirtySnapshot(activeRequest), baselines[activeRequest.id] ?? null)
+        : false,
+    [activeRequest, baselines]
+  );
+
+  const activateRequestTab = useCallback(
+    async (requestId: string) => {
+      if (requestId === activeRequestId) return;
+      setLastRun(null);
+      const copy = requestCopies[requestId];
+      if (copy) {
+        setActiveRequestId(requestId);
+        setActiveRequest(copy);
+        return;
+      }
+      await selectRequest(requestId);
+    },
+    [activeRequestId, requestCopies, selectRequest]
+  );
+
+  const closeRequestTab = useCallback(
+    async (requestId: string) => {
+      const { ids, nextActiveId } = closeTab(openRequestIds, activeRequestId, requestId);
+      setOpenRequestIds(ids);
+      setRequestCopies((c) => {
+        const next = { ...c };
+        delete next[requestId];
+        return next;
+      });
+      setBaselines((b) => {
+        const next = { ...b };
+        delete next[requestId];
+        return next;
+      });
+      if (nextActiveId === activeRequestId) return;
+      if (nextActiveId === null) {
+        setActiveRequestId(null);
+        setActiveRequest(null);
+        setLastRun(null);
+        return;
+      }
+      const neighbourCopy = requestCopies[nextActiveId];
+      if (neighbourCopy) {
+        setActiveRequestId(nextActiveId);
+        setActiveRequest(neighbourCopy);
+        setLastRun(null);
+        return;
+      }
+      setActiveRequestId(nextActiveId);
+      await selectRequest(nextActiveId);
+    },
+    [openRequestIds, activeRequestId, requestCopies, selectRequest]
+  );
+
+  const isTabDirty = useCallback(
+    (requestId: string) => {
+      const copy = requestCopies[requestId];
+      if (!copy) return false;
+      return !dirtySnapshotsEqual(dirtySnapshot(copy), baselines[requestId] ?? null);
+    },
+    [requestCopies, baselines]
+  );
+
   const runActiveRequest = useCallback(async () => {
     if (!activeRequest) return;
-    const result = await contentApi.runRequest(activeRequest.id);
+    let result: RunResult;
+    if (isDirty) {
+      result = await contentApi.runEphemeral({
+        method: activeRequest.method,
+        url: activeRequest.url,
+        headers: activeRequest.headers,
+        queryParams: activeRequest.queryParams,
+        bodyType: activeRequest.bodyType,
+        bodyJson: activeRequest.bodyJson,
+        formula: activeRequest.formula,
+        assertions: activeRequest.assertions,
+        apiType: activeRequest.apiType,
+        collectionId: activeCollectionId,
+        persistHistory: false,
+      });
+    } else {
+      result = await contentApi.runRequest(activeRequest.id);
+    }
     setLastRun(result);
-  }, [activeRequest]);
+  }, [activeRequest, isDirty, activeCollectionId]);
+
+  // M8: scratchpad — execute an in-memory request shape (e.g. a pasted cURL)
+  // via POST /api/runs without creating or saving a request. No history row.
+  const runScratchpad = useCallback(
+    async (input: {
+      method: string;
+      url: string;
+      headers?: Array<{ key: string; value: string; enabled: boolean }>;
+      queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+      bodyType?: string;
+      bodyJson?: unknown;
+      bodyText?: string | null;
+      formula?: string;
+      assertions?: Assertion[];
+      apiType?: ApiType;
+    }) => {
+      setError(null);
+      setLastRun(null);
+      const result = await contentApi.runEphemeral({
+        ...input,
+        collectionId: activeCollectionId,
+        persistHistory: false,
+      });
+      setLastRun(result);
+    },
+    [activeCollectionId]
+  );
+
+  const clearScratchpadRun = useCallback(() => {
+    setLastRun(null);
+  }, []);
 
   const runCollection = useCallback(async (collectionId: string) => {
     setCollectionRunRunning(true);
@@ -304,15 +502,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     await selectRequest(request.id);
   }, [activeCollectionId, tree, selectRequest]);
 
-  const createFolder = useCallback(async (input: { collectionId: string; parentId?: string | null; name: string }) => {
-    const { folder } = await contentApi.createFolder(input);
+  const createFolder = useCallback(async (input: { name: string; collectionId: string; parentId?: string | null }) => {
+    const { folder } = await folderApi.create(input);
     if (tree) {
       setTree({ ...tree, folders: [...tree.folders, folder] });
     }
   }, [tree]);
 
   const renameFolder = useCallback(async (folderId: string, name: string) => {
-    const { folder } = await contentApi.updateFolder(folderId, { name });
+    const { folder } = await folderApi.update(folderId, { name });
     if (tree) {
       setTree({
         ...tree,
@@ -321,15 +519,56 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tree]);
 
-  const moveFolder = useCallback(async (folderId: string, parentId: string | null) => {
-    const { folder } = await contentApi.updateFolder(folderId, { parentId });
+  const deleteFolder = useCallback(async (folderId: string) => {
+    const target = tree?.folders.find((f) => f.id === folderId);
+    await folderApi.remove(folderId);
+    if (tree) {
+      // Cascade: drop the folder and every descendant; requests inside it
+      // resurface at the collection root (folder_id -> null).
+      const removed = new Set<string>([folderId]);
+      const removedIds = new Set<string>(tree.folders.map((f) => f.id));
+      const findDescendants = (parentId: string) => {
+        for (const f of tree.folders) {
+          if (f.parent_id === parentId && removedIds.has(f.id) && !removed.has(f.id)) {
+            removed.add(f.id);
+            findDescendants(f.id);
+          }
+        }
+      };
+      findDescendants(folderId);
+      const collectionId = target?.collection_id ?? null;
+      setTree({
+        ...tree,
+        folders: tree.folders.filter((f) => !removed.has(f.id)),
+        requests: tree.requests.map((r) =>
+          removed.has(r.folder_id as string) ? { ...r, folder_id: null } : r
+        ),
+      });
+      if (collectionId) {
+        // Close tabs for requests that lived inside the deleted folder(s).
+        const affectedIds = openRequestIds.filter((id) => {
+          const r = tree.requests.find((x) => x.id === id);
+          return r ? removed.has(r.folder_id as string) : false;
+        });
+        for (const id of affectedIds) {
+          await closeRequestTab(id);
+        }
+      }
+    }
+  }, [tree, openRequestIds, closeRequestTab]);
+
+  const renameRequest = useCallback(async (requestId: string, name: string) => {
+    const { request } = await contentApi.updateRequest(requestId, { name });
+    if (activeRequest?.id === requestId) {
+      setActiveRequest((prev) => (prev ? { ...prev, name } : prev));
+    }
     if (tree) {
       setTree({
         ...tree,
-        folders: tree.folders.map((f) => (f.id === folderId ? { ...f, parent_id: folder.parent_id } : f)),
+        requests: tree.requests.map((r) => (r.id === requestId ? { ...r, name: request.name ?? name } : r)),
       });
     }
-  }, [tree]);
+  }, [tree, activeRequest]);
 
   const moveRequest = useCallback(async (requestId: string, folderId: string | null) => {
     await contentApi.updateRequest(requestId, { folderId });
@@ -341,41 +580,55 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tree]);
 
-  const deleteFolder = useCallback(async (folderId: string) => {
-    await contentApi.deleteFolder(folderId);
+  const moveFolder = useCallback(async (folderId: string, parentId: string | null) => {
+    await folderApi.update(folderId, { parentId });
     if (tree) {
-      // The backend cascades: deleting a folder removes it and all of its
-      // descendants; requests in that subtree fall back to the collection root.
-      const removed = new Set([folderId]);
-      let grew = true;
-      while (grew) {
-        grew = false;
-        for (const f of tree.folders) {
-          if (f.parent_id && removed.has(f.parent_id) && !removed.has(f.id)) {
-            removed.add(f.id);
-            grew = true;
-          }
-        }
-      }
       setTree({
         ...tree,
-        folders: tree.folders.filter((f) => !removed.has(f.id)),
-        requests: tree.requests.map((r) => (r.folder_id && removed.has(r.folder_id) ? { ...r, folder_id: null } : r)),
+        folders: tree.folders.map((f) => (f.id === folderId ? { ...f, parent_id: parentId } : f)),
+      });
+    }
+  }, [tree]);
+
+  const duplicateRequest = useCallback(async (requestId: string) => {
+    const { request } = await contentApi.duplicateRequest(requestId);
+    if (tree) {
+      const exists = tree.requests.some((r) => r.id === request.id);
+      setTree({ ...tree, requests: exists ? tree.requests : [...tree.requests, request] });
+    }
+  }, [tree]);
+
+  const duplicateFolder = useCallback(async (folderId: string) => {
+    const { folders, requests } = await contentApi.duplicateFolder(folderId);
+    if (tree) {
+      const folderIds = new Set(tree.folders.map((f) => f.id));
+      const requestIds = new Set(tree.requests.map((r) => r.id));
+      setTree({
+        ...tree,
+        folders: [...tree.folders, ...folders.filter((f) => !folderIds.has(f.id))],
+        requests: [...tree.requests, ...requests.filter((r) => !requestIds.has(r.id))],
       });
     }
   }, [tree]);
 
   const deleteRequest = useCallback(async (requestId: string) => {
     await contentApi.deleteRequest(requestId);
-    setActiveRequest(null);
-    setLastRun(null);
+    await closeRequestTab(requestId);
     if (tree) {
       setTree({ ...tree, requests: tree.requests.filter((r) => r.id !== requestId) });
     }
-  }, [tree]);
+  }, [tree, closeRequestTab]);
 
   const deleteCollection = useCallback(async (collectionId: string) => {
     await contentApi.deleteCollection(collectionId);
+    // Close tabs for requests that belonged to the deleted collection.
+    const affectedIds = openRequestIds.filter((id) => {
+      const r = tree?.requests.find((x) => x.id === id);
+      return r ? r.collection_id === collectionId : false;
+    });
+    for (const id of affectedIds) {
+      await closeRequestTab(id);
+    }
     if (activeCollectionId === collectionId) {
       setActiveCollectionId(null);
       setActiveCollectionName('');
@@ -387,10 +640,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setTree({
         ...tree,
         collections: tree.collections.filter((c) => c.id !== collectionId),
+        folders: tree.folders.filter((f) => f.collection_id !== collectionId),
         requests: tree.requests.filter((r) => r.collection_id !== collectionId),
       });
     }
-  }, [tree, activeCollectionId]);
+  }, [tree, activeCollectionId, openRequestIds, closeRequestTab]);
 
   const deleteWorkspace = useCallback(async (workspaceId: string) => {
     await workspaceApi.remove(workspaceId);
@@ -402,6 +656,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setActiveCollectionName('');
       setAuthProvider(null);
       setActiveRequest(null);
+      setActiveRequestId(null);
+      setOpenRequestIds([]);
+      setRequestCopies({});
+      setBaselines({});
       setLastRun(null);
     }
     const updated = await workspaceApi.list();
@@ -476,9 +734,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       activeCollectionName,
       authProvider,
       activeRequest,
+      isDirty,
       lastRun,
       collectionRun,
       collectionRunRunning,
+      openRequestIds,
+      activeRequestId,
+      requestCopies,
+      activateRequestTab,
+      closeRequestTab,
+      isTabDirty,
       refresh,
       selectWorkspace,
       selectRequest,
@@ -486,16 +751,21 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       updateActiveRequest,
       saveActiveRequest,
       runActiveRequest,
+      runScratchpad,
       runCollection,
       clearCollectionRun,
+      clearScratchpadRun,
       createWorkspace,
       createCollection,
       createRequest,
       createFolder,
       renameFolder,
-      moveFolder,
-      moveRequest,
       deleteFolder,
+      renameRequest,
+      moveRequest,
+      moveFolder,
+      duplicateRequest,
+      duplicateFolder,
       deleteRequest,
       deleteCollection,
       deleteWorkspace,
@@ -510,12 +780,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       loading, error, workspaces, teams, activeWorkspaceId, activeWorkspaceRole, tree,
-      activeCollectionId, activeCollectionName, authProvider, activeRequest, lastRun,
+      activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
       collectionRun, collectionRunRunning,
+      openRequestIds, activeRequestId, requestCopies,
+      activateRequestTab, closeRequestTab, isTabDirty,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
-      saveActiveRequest, runActiveRequest, runCollection, clearCollectionRun,
+      saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun, clearScratchpadRun,
       createWorkspace, createCollection, createRequest,
-      createFolder, renameFolder, moveFolder, moveRequest, deleteFolder,
+      createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, moveFolder, duplicateRequest, duplicateFolder,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
       loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree, inviteToTeam, shareWorkspace, unshareWorkspace,
     ]

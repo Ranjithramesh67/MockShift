@@ -85,6 +85,11 @@ body.is-dragging {
   cursor: row-resize;
 }
 
+body.is-col-dragging {
+  user-select: none;
+  cursor: col-resize;
+}
+
 ::selection {
   background: rgba(124, 242, 156, 0.28);
   color: #fff;
@@ -346,6 +351,44 @@ textarea {
 .sidebar-rail-only {
   width: 48px;
   min-width: 48px;
+}
+
+/* Disable the width transition while the user is dragging the resize handle
+   so the panel tracks the pointer without lag. */
+body.is-col-dragging .sidebar {
+  transition: none;
+}
+
+/* Draggable handle on the right edge of the sidebar. */
+.sidebar-resizer {
+  flex-shrink: 0;
+  width: 6px;
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: background var(--speed) var(--ease);
+}
+
+.sidebar-resizer::after {
+  content: '';
+  width: 3px;
+  height: 36px;
+  border-radius: 4px;
+  background: var(--border-strong);
+  transition: background var(--speed) var(--ease);
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background: var(--bg-panel-2);
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:active::after {
+  background: var(--accent);
 }
 
 .sidebar-section {
@@ -613,6 +656,7 @@ textarea {
   padding-left: 4px;
 }
 
+/* ---- Nested folders ------------------------------------------------------- */
 .tree-folder {
   position: relative;
 }
@@ -624,6 +668,11 @@ textarea {
   min-width: 0;
 }
 
+/* M13: draggable affordance for folder rows (re-parent via drag-and-drop). */
+.tree-folder-row {
+  cursor: grab;
+}
+
 .tree-folder-name {
   display: flex;
   align-items: center;
@@ -632,18 +681,17 @@ textarea {
   min-width: 0;
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: var(--text);
   padding: 6px 8px;
   border-radius: var(--r-md);
   cursor: pointer;
   text-align: left;
   font-size: 13px;
-  transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+  transition: background var(--speed) var(--ease);
 }
 
 .tree-folder-name:hover {
   background: var(--bg-hover);
-  color: var(--text);
 }
 
 .tree-folder-name .chevron {
@@ -653,29 +701,43 @@ textarea {
   transition: transform 0.16s var(--ease);
 }
 
+.tree-folder-name .chevron svg {
+  width: 11px;
+  height: 11px;
+}
+
 .tree-folder-name .chevron.open {
   transform: rotate(90deg);
 }
 
-.tree-folder-name .folder-icon {
+.tree-folder-icon {
   flex-shrink: 0;
   display: inline-flex;
   color: var(--text-faint);
 }
 
-.tree-folder-name .name {
+.tree-folder-name span.name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+}
+
+.tree-folder-name .folder-count {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-faint);
+  background: var(--bg-hover);
+  border-radius: 8px;
+  padding: 0 6px;
+  line-height: 16px;
 }
 
 .tree-folder-actions {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
   opacity: 0;
   transition: opacity 0.14s var(--ease);
 }
@@ -695,50 +757,97 @@ textarea {
   padding-left: 4px;
 }
 
-.folder-chevron-spacer {
-  width: 0;
+/* M10: highlight a valid drag-and-drop target for request rows. */
+.tree-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
 }
 
-.tree-folder-name .chevron svg {
-  width: 12px;
-  height: 12px;
+/* M11: highlight the row selected for Ctrl/Cmd+C duplication. */
+.tree-folder-row.selected .tree-folder-name,
+.sidebar-row.selected .sidebar-item {
+  background: var(--accent-soft);
 }
 
-.tree-folder-name .folder-icon svg {
-  width: 13px;
-  height: 13px;
+/* ---- Inline rename --------------------------------------------------------- */
+.tree-rename-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 5px 7px;
+  outline: none;
 }
 
-.move-destination-list {
+/* ---- Request row options ---------------------------------------------------- */
+.sidebar-row-actions {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sidebar-row .sidebar-row-actions .icon-button {
+  padding: 4px;
+}
+
+.tree-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+}
+
+.tree-menu {
+  position: absolute;
+  right: 6px;
+  top: calc(100% - 4px);
+  z-index: 50;
+  min-width: 150px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  padding: 4px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-height: 320px;
-  overflow-y: auto;
+  gap: 1px;
 }
 
-.move-destination {
+.tree-menu button {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  width: 100%;
   background: transparent;
   border: none;
   color: var(--text);
-  padding: 7px 10px;
-  border-radius: var(--r-md);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 7px 8px;
+  border-radius: 7px;
   cursor: pointer;
   text-align: left;
-  font-size: 13px;
-  transition: background var(--speed) var(--ease);
 }
 
-.move-destination:hover {
+.tree-menu button svg {
+  flex-shrink: 0;
+}
+
+.tree-menu button:hover {
   background: var(--bg-hover);
 }
 
-.move-destination svg {
-  flex-shrink: 0;
-  color: var(--text-faint);
+.tree-menu button.danger {
+  color: var(--err);
+}
+
+.tree-menu button.danger:hover {
+  background: rgba(248, 81, 73, 0.12);
 }
 
 /* ---- Workspace chips ------------------------------------------------------- */
@@ -1019,6 +1128,91 @@ textarea {
 .tab svg {
   width: 14px;
   height: 14px;
+}
+
+/* Request tab strip (M7): browser-style tabs above the editor. */
+.request-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  overflow-x: auto;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px 0;
+  flex-shrink: 0;
+}
+
+.request-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 220px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: color var(--speed) var(--ease), background var(--speed) var(--ease),
+    border-color var(--speed) var(--ease);
+}
+
+.request-tab:hover {
+  background: var(--bg-hover);
+}
+
+.request-tab.active {
+  background: var(--bg);
+  border-color: var(--border-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.request-tab-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 6px 4px 6px 10px;
+}
+
+.request-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  margin: 4px 4px 0 0;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.request-tab-close:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.request-tab-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* ==========================================================================
@@ -1797,6 +1991,14 @@ textarea {
   border-radius: 6px;
 }
 
+.unsaved-dot {
+  color: var(--warn);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  margin-right: 2px;
+}
+
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -2124,6 +2326,100 @@ textarea {
   margin: 8px 0;
   resize: vertical;
   transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+}
+
+/* ---- Scratchpad (M8): structured preview of a pasted cURL ------------------- */
+.scratchpad-preview {
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scratchpad-preview-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scratchpad-preview-url {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scratchpad-preview-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.scratchpad-preview-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.scratchpad-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.scratchpad-preview-list li {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+
+.scratchpad-preview-list li strong {
+  color: var(--text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scratchpad-preview-list .kv-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scratchpad-preview-more {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.scratchpad-preview-body {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ==========================================================================

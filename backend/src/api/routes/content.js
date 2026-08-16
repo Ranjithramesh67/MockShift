@@ -1,9 +1,9 @@
 'use strict';
 
 const { Router } = require('express');
-const { query } = require('../db');
+const { query, pool } = require('../db');
 const { requireAuth, roleAtLeast, getProjectAccess, canReadWorkspace } = require('../access');
-const { runRequest, runTokenRequest } = require('../runner');
+const { runRequest, runInMemoryRequest, runTokenRequest } = require('../runner');
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
 const { fireWorkflowEvent } = require('../workflowService');
 
@@ -40,38 +40,19 @@ async function projectOfRequest(requestId) {
   return rows[0]?.project_id || null;
 }
 
-async function projectOfFolder(folderId) {
-  const { rows } = await query(
-    `SELECT c.project_id FROM collection_folders cf
-       JOIN collections c ON c.id = cf.collection_id
-      WHERE cf.id = $1`,
-    [folderId]
-  );
-  return rows[0]?.project_id || null;
-}
-
 async function collectionOfFolder(folderId) {
-  const { rows } = await query(
-    `SELECT collection_id FROM collection_folders WHERE id = $1`,
-    [folderId]
-  );
+  const { rows } = await query(`SELECT collection_id FROM folders WHERE id = $1`, [folderId]);
   return rows[0]?.collection_id || null;
 }
 
-// True when `folderId` is a descendant of `ancestorId` (used to reject moving
-// a folder under one of its own children, which would create a cycle).
-async function folderIsDescendant(folderId, ancestorId) {
+async function projectOfFolder(folderId) {
   const { rows } = await query(
-    `WITH RECURSIVE descendants AS (
-       SELECT id, parent_id FROM collection_folders WHERE id = $1
-       UNION ALL
-       SELECT cf.id, cf.parent_id FROM collection_folders cf
-         JOIN descendants d ON cf.parent_id = d.id
-     )
-     SELECT 1 FROM descendants WHERE id = $2 LIMIT 1`,
-    [ancestorId, folderId]
+    `SELECT c.project_id FROM folders f
+       JOIN collections c ON c.id = f.collection_id
+      WHERE f.id = $1`,
+    [folderId]
   );
-  return rows.length > 0;
+  return rows[0]?.project_id || null;
 }
 
 // Fire event-driven automations after a request run: ON_REQUEST on any run,
@@ -188,9 +169,9 @@ router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
       const collectionIds = collections.map((c) => c.id);
       if (collectionIds.length) {
         folders = (await query(
-          `SELECT id, collection_id, parent_id, name
-             FROM collection_folders WHERE collection_id = ANY($1::uuid[])
-             ORDER BY position, name`,
+          `SELECT id, name, collection_id, parent_id
+             FROM folders WHERE collection_id = ANY($1::uuid[])
+            ORDER BY name`,
           [collectionIds]
         )).rows;
         requests = (await query(
@@ -226,27 +207,24 @@ router.post('/collections', async (req, res, next) => {
 // ---------------------------------------------------------------- Folders
 router.post('/folders', async (req, res, next) => {
   try {
-    const { collectionId, parentId, name } = req.body || {};
-    if (!collectionId || !name) {
-      return res.status(400).json({ error: 'collectionId and name are required' });
-    }
+    const { collectionId, name, parentId } = req.body || {};
+    if (!collectionId || !name) return res.status(400).json({ error: 'collectionId and name are required' });
     const projectId = await projectOfCollection(collectionId);
     if (!projectId) return res.status(404).json({ error: 'Collection not found' });
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
     if (parentId) {
-      const parentCollectionId = await collectionOfFolder(parentId);
-      if (!parentCollectionId) return res.status(404).json({ error: 'Parent folder not found' });
-      if (parentCollectionId !== collectionId) {
+      const parentCollection = await collectionOfFolder(parentId);
+      if (parentCollection !== collectionId) {
         return res.status(400).json({ error: 'Parent folder must belong to the same collection' });
       }
     }
     const { rows } = await query(
-      `INSERT INTO collection_folders (collection_id, parent_id, name)
+      `INSERT INTO folders (collection_id, name, parent_id)
        VALUES ($1, $2, $3)
-       RETURNING id, collection_id, parent_id, name`,
-      [collectionId, parentId || null, String(name).trim()]
+       RETURNING id, name, collection_id, parent_id`,
+      [collectionId, String(name).trim(), parentId || null]
     );
     res.status(201).json({ folder: rows[0] });
   } catch (err) {
@@ -258,11 +236,11 @@ router.put('/folders/:folderId', async (req, res, next) => {
   try {
     const { folderId } = req.params;
     const existing = await query(
-      `SELECT collection_id FROM collection_folders WHERE id = $1`,
+      `SELECT collection_id FROM folders WHERE id = $1`,
       [folderId]
     );
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
-    const projectId = await projectOfCollection(existing.rows[0].collection_id);
+    const projectId = await projectOfFolder(folderId);
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
@@ -271,32 +249,39 @@ router.put('/folders/:folderId', async (req, res, next) => {
     const sets = [];
     const params = [folderId];
     if (b.name !== undefined) {
-      if (!b.name || !String(b.name).trim()) {
-        return res.status(400).json({ error: 'name cannot be empty' });
-      }
       params.push(String(b.name).trim());
       sets.push(`name = $${params.length}`);
     }
     if (b.parentId !== undefined) {
       const newParentId = b.parentId || null;
-      if (newParentId !== null) {
-        const parentCollectionId = await collectionOfFolder(newParentId);
-        if (!parentCollectionId) return res.status(404).json({ error: 'Parent folder not found' });
-        if (parentCollectionId !== existing.rows[0].collection_id) {
+      if (newParentId === folderId) {
+        return res.status(400).json({ error: 'A folder cannot be its own parent' });
+      }
+      if (newParentId) {
+        const parentCollection = await collectionOfFolder(newParentId);
+        if (parentCollection !== existing.rows[0].collection_id) {
           return res.status(400).json({ error: 'Parent folder must belong to the same collection' });
         }
-        if (newParentId === folderId || (await folderIsDescendant(newParentId, folderId))) {
-          return res.status(400).json({ error: 'A folder cannot be moved inside itself' });
+        // Cycle guard: walk ancestors of the new parent.
+        let cursor = newParentId;
+        let guard = 0;
+        while (cursor && guard < 1000) {
+          if (cursor === folderId) {
+            return res.status(400).json({ error: 'Cannot move a folder inside itself or its descendants' });
+          }
+          const parent = await query(`SELECT parent_id FROM folders WHERE id = $1`, [cursor]);
+          cursor = parent.rows[0]?.parent_id || null;
+          guard += 1;
         }
       }
       params.push(newParentId);
       sets.push(`parent_id = $${params.length}`);
     }
     if (sets.length) {
-      await query(`UPDATE collection_folders SET ${sets.join(', ')} WHERE id = $1`, params);
+      await query(`UPDATE folders SET ${sets.join(', ')} WHERE id = $1`, params);
     }
     const fresh = await query(
-      `SELECT id, collection_id, parent_id, name FROM collection_folders WHERE id = $1`,
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE id = $1`,
       [folderId]
     );
     res.json({ folder: fresh.rows[0] });
@@ -308,52 +293,145 @@ router.put('/folders/:folderId', async (req, res, next) => {
 router.delete('/folders/:folderId', async (req, res, next) => {
   try {
     const { folderId } = req.params;
-    const existing = await query(
-      `SELECT collection_id FROM collection_folders WHERE id = $1`,
-      [folderId]
-    );
+    const existing = await query(`SELECT id FROM folders WHERE id = $1`, [folderId]);
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
-    const projectId = await projectOfCollection(existing.rows[0].collection_id);
+    const projectId = await projectOfFolder(folderId);
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
-    // ON DELETE CASCADE removes the folder's descendants; api_requests.folder_id
-    // is ON DELETE SET NULL so requests fall back to the collection root.
-    await query(`DELETE FROM collection_folders WHERE id = $1`, [folderId]);
+    // ON DELETE CASCADE removes nested sub-folders; requests in the folder
+    // are un-folder'd (folder_id SET NULL) so nothing is lost.
+    await query(`DELETE FROM folders WHERE id = $1`, [folderId]);
     res.json({ ok: true });
   } catch (err) {
     next(err);
   }
 });
 
+// Deep-copy a folder and its whole subtree (nested folders + requests),
+// re-parenting the copies to the NEW copied folder ids.
+router.post('/folders/:folderId/duplicate', async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const { folderId } = req.params;
+    const { rows: sourceRows } = await query(
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE id = $1`,
+      [folderId]
+    );
+    const source = sourceRows[0];
+    if (!source) return res.status(404).json({ error: 'Folder not found' });
+    const projectId = await projectOfFolder(folderId);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+
+    // Collect the whole subtree from the folders table (self-reference).
+    const { rows: allFolders } = await query(
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE collection_id = $1`,
+      [source.collection_id]
+    );
+    const byParent = new Map();
+    for (const f of allFolders) {
+      const key = f.parent_id || null;
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(f);
+    }
+    const subtree = [];
+    const seen = new Set([source.id]);
+    const queue = [source];
+    while (queue.length) {
+      const current = queue.shift();
+      subtree.push(current);
+      for (const child of byParent.get(current.id) || []) {
+        if (seen.has(child.id)) continue;
+        seen.add(child.id);
+        queue.push(child);
+      }
+    }
+
+    await client.query('BEGIN');
+    const idMap = new Map();
+    const createdFolders = [];
+    for (const folder of subtree) {
+      const newParentId = folder.id === source.id ? source.parent_id : idMap.get(folder.parent_id) || null;
+      const { rows } = await client.query(
+        `INSERT INTO folders (collection_id, name, parent_id)
+         VALUES ($1, $2, $3)
+         RETURNING id, name, collection_id, parent_id`,
+        [folder.collection_id, folder.name, newParentId]
+      );
+      idMap.set(folder.id, rows[0].id);
+      createdFolders.push(rows[0]);
+    }
+
+    const { rows: folderRequests } = await client.query(
+      `SELECT id, collection_id, name, method, url, headers, query_params, body_type, body_json,
+              body_text, api_type, formula, assertions, folder_id
+         FROM api_requests WHERE folder_id = ANY($1::uuid[])`,
+      [[...seen]]
+    );
+    const createdRequests = [];
+    for (const r of folderRequests) {
+      const { rows } = await client.query(
+        `INSERT INTO api_requests
+           (collection_id, name, method, url, api_type, headers, query_params, body_type,
+            body_json, body_text, formula, assertions, folder_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING id, name, method, url, api_type, collection_id, folder_id`,
+        [
+          r.collection_id,
+          r.name,
+          r.method,
+          r.url,
+          r.api_type,
+          JSON.stringify(r.headers || []),
+          JSON.stringify(r.query_params || []),
+          r.body_type,
+          r.body_json,
+          r.body_text,
+          r.formula,
+          JSON.stringify(r.assertions || []),
+          idMap.get(r.folder_id) || null,
+        ]
+      );
+      createdRequests.push(rows[0]);
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ folders: createdFolders, requests: createdRequests });
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // ---------------------------------------------------------------- Requests
 router.post('/requests', async (req, res, next) => {
   try {
-    const { collectionId, folderId, name, method, url, apiType } = req.body || {};
+    const { collectionId, name, method, url, apiType, folderId } = req.body || {};
     if (!collectionId || !name) return res.status(400).json({ error: 'collectionId and name are required' });
     const projectId = await projectOfCollection(collectionId);
     if (!projectId) return res.status(404).json({ error: 'Collection not found' });
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
-    let resolvedFolderId = null;
-    if (folderId) {
-      const folderCollectionId = await collectionOfFolder(folderId);
-      if (!folderCollectionId) return res.status(404).json({ error: 'Folder not found' });
-      if (folderCollectionId !== collectionId) {
-        return res.status(400).json({ error: 'Folder must belong to the same collection' });
-      }
-      resolvedFolderId = folderId;
+    if (folderId && (await collectionOfFolder(folderId)) !== collectionId) {
+      return res.status(400).json({ error: 'Folder must belong to the same collection as the request' });
     }
 
     const { rows } = await query(
       `INSERT INTO api_requests
-         (collection_id, folder_id, name, method, url, api_type, headers, query_params, body_type, assertions)
+         (collection_id, name, method, url, api_type, headers, query_params, body_type, assertions, folder_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id, name, method, url, api_type, collection_id, folder_id`,
       [
         collectionId,
-        resolvedFolderId,
         String(name).trim(),
         HTTP_METHODS.includes(method) ? method : 'GET',
         url || '',
@@ -362,6 +440,7 @@ router.post('/requests', async (req, res, next) => {
         JSON.stringify([]),
         'NONE',
         JSON.stringify([]),
+        folderId || null,
       ]
     );
     res.status(201).json({ request: rows[0] });
@@ -374,7 +453,7 @@ router.get('/requests/:requestId', async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
-              api_type, collection_id, formula, assertions, folder_id
+              api_type, collection_id, folder_id, formula, assertions
          FROM api_requests WHERE id = $1`,
       [req.params.requestId]
     );
@@ -432,6 +511,12 @@ router.put('/requests/:requestId', async (req, res, next) => {
     }
 
     const b = req.body || {};
+    if (b.folderId !== undefined) {
+      const folderId = b.folderId || null;
+      if (folderId && (await collectionOfFolder(folderId)) !== existing.rows[0].collection_id) {
+        return res.status(400).json({ error: 'Folder must belong to the same collection as the request' });
+      }
+    }
     const fields = {
       name: b.name,
       method: b.method,
@@ -444,17 +529,8 @@ router.put('/requests/:requestId', async (req, res, next) => {
       body_text: b.bodyText,
       formula: b.formula,
       assertions: b.assertions,
+      folder_id: b.folderId === undefined ? undefined : b.folderId || null,
     };
-    if (b.folderId !== undefined) {
-      if (b.folderId) {
-        const folderCollectionId = await collectionOfFolder(b.folderId);
-        if (!folderCollectionId) return res.status(404).json({ error: 'Folder not found' });
-        if (folderCollectionId !== existing.rows[0].collection_id) {
-          return res.status(400).json({ error: 'Folder must belong to the same collection' });
-        }
-      }
-      fields.folder_id = b.folderId || null;
-    }
     const sets = [];
     const params = [requestId];
     for (const [col, value] of Object.entries(fields)) {
@@ -501,6 +577,51 @@ router.delete('/requests/:requestId', async (req, res, next) => {
   }
 });
 
+// Duplicate a request inside the same collection/folder, preserving all
+// editor state verbatim (same name, no suffix).
+router.post('/requests/:requestId/duplicate', async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const { rows } = await query(
+      `SELECT id, collection_id, name, method, url, headers, query_params, body_type, body_json,
+              body_text, api_type, formula, assertions, folder_id
+         FROM api_requests WHERE id = $1`,
+      [requestId]
+    );
+    const source = rows[0];
+    if (!source) return res.status(404).json({ error: 'Request not found' });
+    const projectId = await projectOfCollection(source.collection_id);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    const { rows: created } = await query(
+      `INSERT INTO api_requests
+         (collection_id, name, method, url, api_type, headers, query_params, body_type,
+          body_json, body_text, formula, assertions, folder_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       RETURNING id, name, method, url, api_type, collection_id, folder_id`,
+      [
+        source.collection_id,
+        source.name,
+        source.method,
+        source.url,
+        source.api_type,
+        JSON.stringify(source.headers || []),
+        JSON.stringify(source.query_params || []),
+        source.body_type,
+        source.body_json,
+        source.body_text,
+        source.formula,
+        JSON.stringify(source.assertions || []),
+        source.folder_id,
+      ]
+    );
+    res.status(201).json({ request: created[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.delete('/collections/:collectionId', async (req, res, next) => {
   try {
     const { collectionId } = req.params;
@@ -526,6 +647,24 @@ router.post('/requests/:requestId/run', async (req, res, next) => {  try {
     const result = await runRequest(requestId, req.user.id);
     const projectId = await projectOfRequest(requestId);
     await fireRequestRunEvents(requestId, projectId, result);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------ Ephemeral runs
+router.post('/runs', async (req, res, next) => {
+  try {
+    const { collectionId } = req.body || {};
+    if (collectionId) {
+      const projectId = await projectOfCollection(collectionId);
+      if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+      if (!(await canReadProjectContent(req.user.id, projectId))) {
+        return res.status(403).json({ error: 'No access to this collection' });
+      }
+    }
+    const result = await runInMemoryRequest(req.body || {}, req.user.id);
     res.json(result);
   } catch (err) {
     next(err);

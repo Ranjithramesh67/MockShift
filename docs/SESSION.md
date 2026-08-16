@@ -74,6 +74,47 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.20 M12 + M13 — F2 rename shortcut + folder drag-move (pushed this turn)
+
+Parallel-agent micro tasks completing the "Sidebar tree interactions" feature
+set (M10–M13 all done, pushed with M10+M11 in `c7ac1f3`):
+
+**M12 — F2 inline rename for the selected sidebar item**
+- New `frontend/src/components/useTreeRenameShortcut.ts`: capture-mode F2
+  keydown; ignores `INPUT`/`TEXTAREA`/`contentEditable` targets; calls
+  `onStartRename(kind, id, name)` for the selected row.
+- Wired into `CollectionsTree` in `Sidebar.tsx` (single call after
+  `startRename`, deps `selectedRow` + `ws.tree` + `startRename`).
+- New e2e `rename-f2.spec.ts` (rename request, rename folder, F2 ignored while
+  typing in the URL input).
+
+**M13 — drag-and-drop move of folders between nested folders**
+- Reuses existing `PUT /api/folders/:id` with `parentId` (backend cycle guard
+  already present). New store action `WorkspaceStore.moveFolder(folderId,
+  parentId)` patches `tree.folders` locally.
+- `Sidebar.handleDragStart` generalized to carry `kind: 'request'|'folder'`;
+  folder rows are now `draggable={!isRenaming}`; `handleDrop` gained a folder
+  path with a client-side cycle guard (folder into itself/descendant/root-when-
+  already-root → `Cannot move a folder into itself or its subfolder` toast).
+- `.tree-folder-row { cursor: grab }` affordance.
+- New e2e `folder-drag-move.spec.ts`.
+
+Verification: frontend `node --test` 56/56; `tsc --noEmit` clean; new e2e
+4/4 + regressions (nav-normal, request-tabs, request-drag-move,
+request-duplicate) all green. Backend untouched. Docs updated and committed.
+
+### 5.19 M9 — Docs + wrap-up (pushed 2d3ee16)
+
+Final micro task of the "Postman-style request editing" feature set — the
+feature is **fully shipped** (M1–M9 all done). M9 wrapped up the runbook docs
+and made the final commit; no source, test, or DB changes:
+- `session.md` — Current status → **COMPLETE (M1–M9 done)**; M9 DONE block in
+  Current; M9 marked DONE in the Plan (micro tasks) list and added to the
+  "Completed (this feature)" log.
+- `instructions.md` — M9 status-table row → done.
+- This log — dated narrative entry added (newest first).
+- Final commit records the full feature set.
+
 ### 5.1 Pre-request Formula feature (completed, committed in 472cdf4 as partial)
 Already committed before this session's remaining work:
 - `db/migrations/004_request_formula.sql` — formula column on `api_requests`.
@@ -245,6 +286,155 @@ large empty column next to the rail. Fix:
   server recompiled clean and serves `/` + `/automations` (200). `nav-from-manage.spec.ts` remains
   the regression for this behavior.
 
+### 5.11 Collection folders + Aiven Postgres (pushed as `b61a2c6`)
+
+Postman-style nested folders inside collections, running against **Aiven cloud Postgres**.
+
+- **DB**: gitignored `backend/.env` supplies `DATABASE_URL=…?sslmode=require`; `db.js` reads it and
+  uses `db/ca.pem` (gitignored) as the SSL trust store, unless explicit `PG*` vars are set (tests/
+  psql stay on local Postgres). Migrations 001–011 applied on Aiven; DB seeded with demo accounts +
+  "Mock API Demo".
+- **Migration `db/migrations/011_folders.sql`**: `folders (id, collection_id, name, parent_id, …)`
+  with cascade deletes (deleting a folder removes nested sub-folders), `api_requests.folder_id`
+  FK (SET NULL on delete → requests resurface at collection root), RLS consistent with the
+  `app.*` helpers. (`011_collection_folders.sql` on the earlier feature branch was superseded by
+  this final shape.)
+- **Backend** (`backend/src/api/routes/content.js`): `POST /folders`, `PUT /folders/:folderId`
+  (rename or re-parent, with self/descendant cycle guard), `DELETE /folders/:folderId`;
+  `POST /requests` / `PUT /requests/:requestId` accept `folder_id`; the workspace content tree
+  (`GET /workspaces/:workspaceId/content`) now returns `folders[]` alongside collections/requests.
+- **Frontend**: `Sidebar.tsx` renders nested folders in the tree; `CreateModal.tsx` gains folder
+  creation (re-parenting via drag-drop); `WorkspaceStore.tsx` + `lib/api.ts` carry
+  folders/`folder_id`; per-request edit/rename/delete unchanged.
+- **Tests added**: `backend/tests/folders.integration.test.cjs`, `db/tests/04_collection_folders.sql`.
+- `next build` re-verified clean (2026-08-15). Frontend unit / e2e / backend `api:unit` not yet
+  re-run against the folders change — see root `session.md` test-status note.
+
+### 5.12 New API request modal — paste cURL directly (this turn, uncommitted)
+
+The **New API request** modal (`frontend/src/components/CreateModal.tsx`) gained a **Fill form /
+Paste cURL** toggle. In cURL mode the URL field is not required — the user pastes a `curl …`
+command and it is structured by the existing `lib/curl.js` `parseCurl` into method, URL, query
+params, headers, and body (JSON/form/multipart/raw auto-detected). The request is created via
+`POST /api/requests` then the structured fields are applied with `PUT /api/requests/:id`
+(mirroring the TopBar `CurlModal` import flow). Name is optional and auto-derived as
+`METHOD host`. Verified live against the Aiven DB (POST orders curl → all fields round-trip);
+`tsc --noEmit` + `next build` clean. New testids: `create-mode-toggle`, `create-mode-form`,
+`create-mode-curl`, `create-curl-input`.
+
+### 5.13 Postman-style request editing — M1/M2 + Ctrl+Enter (pushed e80c29c, e61cc82, 1f79920)
+
+Started the user-approved "Postman-style request editing" feature set
+(`instructions.md` micro tasks M1–M9). This covers M1, M2 and an extra shortcut:
+
+- **M1** — `CreateModal` cURL auto-detect (pushed `e80c29c`): removed the
+  Fill-form / Paste-cURL toggle (`.create-mode-*` CSS dropped). The URL field now
+  auto-detects a pasted `curl …` via `isCurlCommand` + `parseCurl` (shared
+  `frontend/src/lib/curl.js`), populating method + URL live; structured
+  headers/params/body are applied on create. Name stays optional with the
+  `METHOD host` fallback. Testids preserved: `new-api-modal`, `create-name`,
+  `create-method`, `create-url`, `create-submit`.
+- **M2** — URL-field cURL auto-parse in the existing editor (pushed `e61cc82`):
+  `RequestConfigurator.tsx` `onUrlChange` detects `curl …` pasted into
+  `url-input`, runs `parseCurl`, and applies method, URL, headers, queryParams,
+  bodyType/bodyJson to the working request via `updateActiveRequest`, with a
+  "cURL parsed into the request." toast.
+- **Extra** — Ctrl/Cmd+Enter anywhere in the editor triggers Send
+  (`runActiveRequest`); Send button label reads "Send (Ctrl+Enter)" (pushed in
+  `1f79920`, a Rules-of-Hooks fix moving the listener above the early return).
+
+### 5.14 M3 — dirty-state tracking in WorkspaceStore (pushed cb2451c)
+
+`frontend/src/store/WorkspaceStore.tsx` now stores a `savedBaseline` snapshot of
+the dirty-relevant request fields (method, url, headers, queryParams, bodyType,
+bodyJson, formula, assertions), captured in `selectRequest` and after
+`saveActiveRequest` succeeds. `isDirty` is derived by deep-comparing the working
+copy against the baseline and is exposed on the store/context (feeds M4).
+Cleared on save success and on select. Verified: `tsc --noEmit` clean,
+`next build` green, 47/47 frontend unit tests.
+
+### 5.15 M4 + M5 — dirty dot indicator + ephemeral run endpoint (pushed 2ad35d2, d9c80b4)
+
+- **M4** (pushed `2ad35d2`): when `isDirty` is true the editor's Save button
+  shows a `data-testid="unsaved-dot"` `•` (colour `--warn`) with
+  title/aria-label "You have unsaved changes"; it clears on save. CSS
+  `.unsaved-dot` in `frontend/app/globals.css`. New self-contained e2e spec
+  `frontend/e2e/dirty-dot.spec.ts` (fresh user + own request): no dot on load →
+  dot on edit → dot gone after save. tsc/build clean, 47/47 units,
+  curl-import + nav-normal e2e still pass.
+- **M5** (pushed `d9c80b4`): new authenticated `POST /api/runs` executing an
+  in-memory request shape (method, url, headers, queryParams, bodyType,
+  bodyJson, formula, assertions) with optional `collectionId` (env-var
+  resolution + folder auth provider, read-access enforced) and optional
+  `persistHistory`. `backend/src/api/runner.js` refactored: the fetch pipeline
+  was extracted into `executePipeline` (vars → formula → auth provider → HTTP →
+  assertions → history), shared by `runRequest` (stored) and the new
+  `runInMemoryRequest`; `resolveVariables`/`activeEnvironmentId` were
+  generalized to key off a `collectionId`. `run_history` is only written when
+  `persistHistory` is true (`request_id` NULL — the migration-005 nullable FK
+  allows it; history read path already LEFT JOINs, verified). New integration
+  test file `backend/tests/ephemeralRuns.integration.test.cjs` (5 tests);
+  backend jest 47/47, API units 49/49, existing integration suites green;
+  live smoke on the running backend.
+
+### 5.16 M6 — Send uses the working copy (pushed 6dd891e)
+
+`WorkspaceStore.runActiveRequest` now runs the **working copy**: when `isDirty`
+it calls the new `contentApi.runEphemeral` (`POST /api/runs`, added in
+`frontend/src/lib/api.ts`) with the current editor state + `activeCollectionId`
+and `persistHistory: false` — unsaved edits take effect immediately, no
+`run_history` row is written, and the stored request is untouched. When the
+request is clean it keeps `POST /requests/:id/run` so run_history stays linked
+to the request exactly as before. New e2e spec `frontend/e2e/send-working-copy.
+spec.ts`: clean send → response `/posts/1` + one history row; edit URL to
+`/posts/2` → dirty send executes `/posts/2`, history count unchanged, unsaved
+dot stays, stored URL still `/posts/1`. Also typed the implicit-any callbacks
+in `dirty-dot.spec.ts`. Verified: `tsc --noEmit` clean, `next build` green,
+47/47 frontend unit tests, dirty-dot/curl-import/assertions-runner e2e pass.
+
+### 5.17 M7 — Tabs for opened requests (pushed 183d7ab)
+
+Browser-style tab strip of every open request. `WorkspaceStore` gained
+`openRequestIds[]` + `activeRequestId` + `requestCopies{}` (a working copy per
+open request, so unsaved edits survive tab switches) + `baselines{}`
+(per-request saved baseline). `selectRequest` opens a request once (dedupe) or
+activates an already-open tab without refetching; `closeRequestTab` removes the
+tab and activates a neighbour (right, else left); `isTabDirty` exposes per-tab
+dirty state; delete/select flows close affected tabs. Pure helpers
+`frontend/src/lib/tabs.js` (`openTab`/`closeTab`) with `tabs.test.cjs` (6
+node:test cases). New `RequestTabs` component (method badge + name + dirty dot +
+close ×, `window.confirm` when closing a dirty tab) rendered above the editor
+in `AppShell`, styled in `globals.css`. New e2e
+`frontend/e2e/request-tabs.spec.ts` (2 tests: working-copy preservation + dirty
+dot + close-confirm; neighbour activation). `dirty-dot.spec.ts` and
+`send-working-copy.spec.ts` were scoped to the Save-button dot because tabs now
+carry their own dots. Verified: `tsc --noEmit` clean, `next build` green, new
+unit 6/6, new e2e 2/2, affected e2e 2/2.
+
+### 5.18 M8 — Test cURL without saving (scratchpad) (pushed 75143f7)
+
+Postman-style scratchpad: run a pasted cURL command immediately without saving
+anything. New TopBar "Test cURL" button (`topbar-test-curl`) opens
+`ScratchpadModal`. Pasting a curl command into the textarea (`scratchpad-input`)
+produces a live structured preview (`scratchpad-preview`: method badge + URL,
+headers, query params, and body groups) via the existing M1 `parseCurl` /
+`isCurlCommand`. **Send** (`scratchpad-send`) maps the parse output to the
+ephemeral run input through the pure helper `frontend/src/lib/scratchpad.js`
+(`scratchpadRequest`: `apiType:'REST'`, `persistHistory` absent, `collectionId`
+null), then `WorkspaceStore.runScratchpad` calls `contentApi.runEphemeral`
+(`POST /api/runs`) — no request row and no `run_history` row are created, the
+stored request is untouched. On success the modal closes, view switches to
+side-by-side, ResponsePane shows the result, and a toast says "Scratchpad
+request executed (nothing saved)." Non-curl input shows a "Paste a curl command"
+hint and Send reports "Could not find a URL". Unit tests
+`frontend/src/lib/__tests__/scratchpad.test.cjs` (3 node:test cases) cover the
+ephemeral shape mapping. e2e `frontend/e2e/scratchpad.spec.ts` (2 tests): fresh
+user pastes `curl -X POST .../posts` → preview shows POST + URL + "Headers (1)"
+→ Send → ResponsePane shows `"title": "scratch"` + 201 and the collection still
+has 0 requests; and the non-curl rejection path. Verified: `tsc --noEmit`
+clean, new unit 3/3, new e2e 2/2. Full suite + `next build` deferred to the
+final M9 wrap-up per user instruction.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
@@ -266,21 +456,16 @@ large empty column next to the rail. Fix:
 
 ## 7. Current uncommitted changes
 
+All M1–M6 code + docs are committed and pushed on `master` (HEAD `6dd891e`).
+Remaining working-tree noise:
+
 ```
-M backend/src/engine/requestDispatcher.js        (passInputs injection option)
-M backend/src/workflow/workflowEngine.js          (friendly step/stepRequest/stepResponse vars)
-M backend/tests/workflowChaining.integration.test.js (passInputs test)
-M frontend/src/components/WorkflowBuilder.tsx     (pass-data-from-previous-step UI)
-M frontend/src/lib/workflowValidation.js           (+ sanitizeLabel, passInputs validation)
-M frontend/src/lib/types.ts                        (StepPassInput type)
-M frontend/src/lib/__tests__/workflowValidation.test.cjs (6 new tests)
-M frontend/app/globals.css                         (.pass-refs/.pass-form/.pass-list styles)
-?? frontend/e2e/workflow-pass-inputs.spec.ts       (3 new e2e tests)
+M  frontend/tsconfig.tsbuildinfo      (build artifact; left by convention)
+?? package-lock.json                  (stray empty root lockfile from a failed root `npm install`)
 ```
 
 The response-pane prettify/preview/PDF feature and all prior session work are
-already committed and pushed on `master` (HEAD `22f4e17` + this session's
-commit).
+already committed and pushed on `master`.
 
 ## 8. Known issues / notes for the next agent
 
