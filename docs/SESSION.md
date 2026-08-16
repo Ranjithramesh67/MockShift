@@ -336,6 +336,21 @@ Cleared on save success and on select. Verified: `tsc --noEmit` clean,
   backend jest 47/47, API units 49/49, existing integration suites green;
   live smoke on the running backend.
 
+### 5.16 M6 — Send uses the working copy (pushed 6dd891e)
+
+`WorkspaceStore.runActiveRequest` now runs the **working copy**: when `isDirty`
+it calls the new `contentApi.runEphemeral` (`POST /api/runs`, added in
+`frontend/src/lib/api.ts`) with the current editor state + `activeCollectionId`
+and `persistHistory: false` — unsaved edits take effect immediately, no
+`run_history` row is written, and the stored request is untouched. When the
+request is clean it keeps `POST /requests/:id/run` so run_history stays linked
+to the request exactly as before. New e2e spec `frontend/e2e/send-working-copy.
+spec.ts`: clean send → response `/posts/1` + one history row; edit URL to
+`/posts/2` → dirty send executes `/posts/2`, history count unchanged, unsaved
+dot stays, stored URL still `/posts/1`. Also typed the implicit-any callbacks
+in `dirty-dot.spec.ts`. Verified: `tsc --noEmit` clean, `next build` green,
+47/47 frontend unit tests, dirty-dot/curl-import/assertions-runner e2e pass.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
@@ -357,7 +372,7 @@ Cleared on save success and on select. Verified: `tsc --noEmit` clean,
 
 ## 7. Current uncommitted changes
 
-All M1–M5 code + docs are committed and pushed on `master` (HEAD `655755b`).
+All M1–M6 code + docs are committed and pushed on `master` (HEAD `6dd891e`).
 Remaining working-tree noise:
 
 ```
