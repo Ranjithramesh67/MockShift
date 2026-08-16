@@ -44,11 +44,12 @@ test('unsaved-changes dot appears on edit and clears on save', async ({ page }) 
   // Clean on load.
   await expect(page.getByTestId('unsaved-dot')).toHaveCount(0);
 
-  // Editing the URL marks the working copy dirty.
+  // Editing the URL marks the working copy dirty. The dot appears on the Save
+  // button (M4) and on the request's tab (M7) — scope to the Save button.
   await page.getByTestId('url-input').fill(`http://127.0.0.1:3999/posts/1?ref=${requestId}`);
-  const dot = page.getByTestId('unsaved-dot');
-  await expect(dot).toBeVisible();
-  await expect(dot).toHaveAttribute('title', 'You have unsaved changes');
+  const saveDot = page.getByTestId('save-request-button').locator('.unsaved-dot');
+  await expect(saveDot).toBeVisible();
+  await expect(saveDot).toHaveAttribute('title', 'You have unsaved changes');
 
   // Saving clears the dirty flag.
   await page.getByTestId('save-request-button').click();

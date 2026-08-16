@@ -1111,6 +1111,91 @@ body.is-col-dragging .sidebar {
   height: 14px;
 }
 
+/* Request tab strip (M7): browser-style tabs above the editor. */
+.request-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  overflow-x: auto;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px 0;
+  flex-shrink: 0;
+}
+
+.request-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 220px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: color var(--speed) var(--ease), background var(--speed) var(--ease),
+    border-color var(--speed) var(--ease);
+}
+
+.request-tab:hover {
+  background: var(--bg-hover);
+}
+
+.request-tab.active {
+  background: var(--bg);
+  border-color: var(--border-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.request-tab-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 6px 4px 6px 10px;
+}
+
+.request-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  margin: 4px 4px 0 0;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.request-tab-close:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.request-tab-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* ==========================================================================
    Split pane
    ========================================================================== */

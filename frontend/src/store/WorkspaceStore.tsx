@@ -27,6 +27,7 @@ import {
 } from '@/lib/api';
 import type { ApiRequest, Assertion, BodyType, RequestContentType } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
+import { openTab, closeTab } from '@/lib/tabs';
 
 function contentTypeForBodyType(bt: string): RequestContentType {
   switch (bt) {
@@ -148,6 +149,13 @@ interface WorkspaceState {
   collectionRun: CollectionRunResult | null;
   collectionRunRunning: boolean;
 
+  openRequestIds: string[];
+  activeRequestId: string | null;
+  requestCopies: Record<string, ApiRequest>;
+  activateRequestTab: (requestId: string) => Promise<void>;
+  closeRequestTab: (requestId: string) => Promise<void>;
+  isTabDirty: (requestId: string) => boolean;
+
   refresh: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
   selectRequest: (requestId: string) => Promise<void>;
@@ -196,7 +204,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [activeCollectionName, setActiveCollectionName] = useState('');
   const [authProvider, setAuthProvider] = useState<AuthProvider | null>(null);
   const [activeRequest, setActiveRequest] = useState<ApiRequest | null>(null);
-  const [savedBaseline, setSavedBaseline] = useState<unknown[] | null>(null);
+  const [openRequestIds, setOpenRequestIds] = useState<string[]>([]);
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const [requestCopies, setRequestCopies] = useState<Record<string, ApiRequest>>({});
+  const [baselines, setBaselines] = useState<Record<string, unknown[]>>({});
   const [lastRun, setLastRun] = useState<RunResult | null>(null);
   const [collectionRun, setCollectionRun] = useState<CollectionRunResult | null>(null);
   const [collectionRunRunning, setCollectionRunRunning] = useState(false);
@@ -225,10 +236,21 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
+  // Keep the last-seen working copy of every open request so unsaved edits
+  // survive tab switches. Runs on every activeRequest change.
+  useEffect(() => {
+    if (!activeRequest) return;
+    setRequestCopies((copies) => ({ ...copies, [activeRequest.id]: activeRequest }));
+  }, [activeRequest]);
+
   const selectWorkspace = useCallback(async (workspaceId: string) => {
     setError(null);
     setActiveWorkspaceId(workspaceId);
     setActiveRequest(null);
+    setActiveRequestId(null);
+    setOpenRequestIds([]);
+    setRequestCopies({});
+    setBaselines({});
     setLastRun(null);
     const ws = workspaces.find((w) => w.id === workspaceId);
     setActiveWorkspaceRole(ws?.role ?? null);
@@ -251,6 +273,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setActiveCollectionId(collectionId);
     setActiveCollectionName(collectionName);
     setActiveRequest(null);
+    setActiveRequestId(null);
+    setOpenRequestIds([]);
+    setRequestCopies({});
+    setBaselines({});
     setLastRun(null);
     try {
       const { authProvider: p } = await contentApi.getAuthProvider(collectionId);
@@ -262,12 +288,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const selectRequest = useCallback(async (requestId: string) => {
     setError(null);
+    setLastRun(null);
+    if (openRequestIds.includes(requestId)) {
+      // Already open: switch to it without refetching so the working copy
+      // (with any unsaved edits) is restored.
+      setActiveRequestId(requestId);
+      const copy = requestCopies[requestId];
+      if (copy) {
+        setActiveRequest(copy);
+        return;
+      }
+      // Fallback: open tab without a cached copy (should not happen normally).
+    }
     const { request } = await contentApi.getRequest(requestId);
     const editorRequest = toEditorRequest(request);
     setActiveRequest(editorRequest);
-    setSavedBaseline(dirtySnapshot(editorRequest));
-    setLastRun(null);
-  }, []);
+    setRequestCopies((c) => ({ ...c, [requestId]: editorRequest }));
+    setBaselines((b) => ({ ...b, [requestId]: dirtySnapshot(editorRequest) }));
+    setOpenRequestIds((ids) => openTab(ids, requestId));
+    setActiveRequestId(requestId);
+  }, [openRequestIds, requestCopies]);
 
   const updateActiveRequest = useCallback((patch: Partial<ApiRequest>) => {
     setActiveRequest((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -276,7 +316,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const saveActiveRequest = useCallback(async () => {
     if (!activeRequest) return;
     await contentApi.updateRequest(activeRequest.id, toServerPatch(activeRequest));
-    setSavedBaseline(dirtySnapshot(activeRequest));
+    setBaselines((b) => ({ ...b, [activeRequest.id]: dirtySnapshot(activeRequest) }));
     if (tree) {
       const t = { ...tree, requests: tree.requests.map((r) => (r.id === activeRequest.id ? { ...r, name: activeRequest.name, method: activeRequest.method, url: activeRequest.url, api_type: activeRequest.apiType } : r)) };
       setTree(t);
@@ -284,8 +324,69 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [activeRequest, tree]);
 
   const isDirty = useMemo(
-    () => (activeRequest ? !dirtySnapshotsEqual(dirtySnapshot(activeRequest), savedBaseline) : false),
-    [activeRequest, savedBaseline]
+    () =>
+      activeRequest
+        ? !dirtySnapshotsEqual(dirtySnapshot(activeRequest), baselines[activeRequest.id] ?? null)
+        : false,
+    [activeRequest, baselines]
+  );
+
+  const activateRequestTab = useCallback(
+    async (requestId: string) => {
+      if (requestId === activeRequestId) return;
+      setLastRun(null);
+      const copy = requestCopies[requestId];
+      if (copy) {
+        setActiveRequestId(requestId);
+        setActiveRequest(copy);
+        return;
+      }
+      await selectRequest(requestId);
+    },
+    [activeRequestId, requestCopies, selectRequest]
+  );
+
+  const closeRequestTab = useCallback(
+    async (requestId: string) => {
+      const { ids, nextActiveId } = closeTab(openRequestIds, activeRequestId, requestId);
+      setOpenRequestIds(ids);
+      setRequestCopies((c) => {
+        const next = { ...c };
+        delete next[requestId];
+        return next;
+      });
+      setBaselines((b) => {
+        const next = { ...b };
+        delete next[requestId];
+        return next;
+      });
+      if (nextActiveId === activeRequestId) return;
+      if (nextActiveId === null) {
+        setActiveRequestId(null);
+        setActiveRequest(null);
+        setLastRun(null);
+        return;
+      }
+      const neighbourCopy = requestCopies[nextActiveId];
+      if (neighbourCopy) {
+        setActiveRequestId(nextActiveId);
+        setActiveRequest(neighbourCopy);
+        setLastRun(null);
+        return;
+      }
+      setActiveRequestId(nextActiveId);
+      await selectRequest(nextActiveId);
+    },
+    [openRequestIds, activeRequestId, requestCopies, selectRequest]
+  );
+
+  const isTabDirty = useCallback(
+    (requestId: string) => {
+      const copy = requestCopies[requestId];
+      if (!copy) return false;
+      return !dirtySnapshotsEqual(dirtySnapshot(copy), baselines[requestId] ?? null);
+    },
+    [requestCopies, baselines]
   );
 
   const runActiveRequest = useCallback(async () => {
@@ -396,16 +497,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         ),
       });
       if (collectionId) {
-        // Un-select if the active request lived inside the deleted folder.
-        const activeInFolder =
-          tree.requests.some((r) => r.id === activeRequest?.id && removed.has(r.folder_id as string));
-        if (activeInFolder) {
-          setActiveRequest(null);
-          setLastRun(null);
+        // Close tabs for requests that lived inside the deleted folder(s).
+        const affectedIds = openRequestIds.filter((id) => {
+          const r = tree.requests.find((x) => x.id === id);
+          return r ? removed.has(r.folder_id as string) : false;
+        });
+        for (const id of affectedIds) {
+          await closeRequestTab(id);
         }
       }
     }
-  }, [tree, activeRequest]);
+  }, [tree, openRequestIds, closeRequestTab]);
 
   const renameRequest = useCallback(async (requestId: string, name: string) => {
     const { request } = await contentApi.updateRequest(requestId, { name });
@@ -422,15 +524,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const deleteRequest = useCallback(async (requestId: string) => {
     await contentApi.deleteRequest(requestId);
-    setActiveRequest(null);
-    setLastRun(null);
+    await closeRequestTab(requestId);
     if (tree) {
       setTree({ ...tree, requests: tree.requests.filter((r) => r.id !== requestId) });
     }
-  }, [tree]);
+  }, [tree, closeRequestTab]);
 
   const deleteCollection = useCallback(async (collectionId: string) => {
     await contentApi.deleteCollection(collectionId);
+    // Close tabs for requests that belonged to the deleted collection.
+    const affectedIds = openRequestIds.filter((id) => {
+      const r = tree?.requests.find((x) => x.id === id);
+      return r ? r.collection_id === collectionId : false;
+    });
+    for (const id of affectedIds) {
+      await closeRequestTab(id);
+    }
     if (activeCollectionId === collectionId) {
       setActiveCollectionId(null);
       setActiveCollectionName('');
@@ -446,7 +555,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         requests: tree.requests.filter((r) => r.collection_id !== collectionId),
       });
     }
-  }, [tree, activeCollectionId]);
+  }, [tree, activeCollectionId, openRequestIds, closeRequestTab]);
 
   const deleteWorkspace = useCallback(async (workspaceId: string) => {
     await workspaceApi.remove(workspaceId);
@@ -458,6 +567,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setActiveCollectionName('');
       setAuthProvider(null);
       setActiveRequest(null);
+      setActiveRequestId(null);
+      setOpenRequestIds([]);
+      setRequestCopies({});
+      setBaselines({});
       setLastRun(null);
     }
     const updated = await workspaceApi.list();
@@ -536,6 +649,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       lastRun,
       collectionRun,
       collectionRunRunning,
+      openRequestIds,
+      activeRequestId,
+      requestCopies,
+      activateRequestTab,
+      closeRequestTab,
+      isTabDirty,
       refresh,
       selectWorkspace,
       selectRequest,
@@ -568,6 +687,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       loading, error, workspaces, teams, activeWorkspaceId, activeWorkspaceRole, tree,
       activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
       collectionRun, collectionRunRunning,
+      openRequestIds, activeRequestId, requestCopies,
+      activateRequestTab, closeRequestTab, isTabDirty,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runCollection, clearCollectionRun,
       createWorkspace, createCollection, createRequest,
