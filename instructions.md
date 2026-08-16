@@ -119,7 +119,8 @@ unless testing is explicitly waived.
 | # | Micro task | Status |
 |---|------------|--------|
 | M1 | CreateModal auto-detect cURL | done (pushed `e80c29c`) |
-| M2 | URL-field cURL auto-parse | done (this turn) |
+| M2 | URL-field cURL auto-parse | done (pushed `e61cc82`) |
+| EXT | Ctrl+Enter sends request | done (this turn) |
 | M3 | Dirty-state tracking | pending |
 | M4 | Dirty dot indicator | pending |
 | M5 | Backend ephemeral run endpoint | pending |
