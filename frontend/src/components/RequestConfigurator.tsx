@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ApiRequest, ApiType, BodyType, HttpMethod, RequestContentType } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
@@ -141,6 +141,17 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
     }
   };
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        void onSend();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [request]);
+
   const onSave = async () => {
     try {
       await ws.saveActiveRequest();
@@ -196,7 +207,7 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
             </option>
           ))}
         </select>
-        <button type="button" className="primary-button" data-testid="send-button" onClick={onSend} style={actionBtn}>
+        <button type="button" className="primary-button" data-testid="send-button" onClick={onSend} title="Send (Ctrl+Enter)" style={actionBtn}>
           <SendIcon size={14} />
           Send
         </button>
