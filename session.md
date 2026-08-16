@@ -1,6 +1,6 @@
 # MockShift — Session State
 
-Last updated: 2026-08-15
+Last updated: 2026-08-16
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
@@ -9,19 +9,15 @@ Last updated: 2026-08-15
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: IN PROGRESS — M1, M2 done; Ctrl+Enter done; M3 in progress this turn.
+Status: IN PROGRESS — M1, M2 done; Ctrl+Enter done; M3 done (pushed
+`cb2451c`); awaiting approval for M4.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
 M2 URL-field cURL auto-parse in existing request editor — DONE
 + Extra: Ctrl+Enter (Cmd+Enter) triggers Send in the request editor — DONE
-M3 Dirty-state tracking in WorkspaceStore — THIS TURN
-   - `savedBaseline` snapshot captured in `selectRequest` / after `saveActiveRequest`
-   - `isDirty` = deep-compare of working copy vs baseline
-     (method, url, headers, queryParams, bodyType, bodyJson, formula, assertions)
-   - Clear dirty on `saveActiveRequest` success and on `selectRequest`
-   - Expose `isDirty` on the store/context
-M4 Dirty dot indicator in editor
+M3 Dirty-state tracking in WorkspaceStore — DONE (pushed `cb2451c`)
+M4 Dirty dot indicator in editor — NEXT
 M5 Backend ephemeral run endpoint (POST /api/runs)
 M6 Send uses working copy
 M7 Tabs for opened requests
@@ -30,6 +26,13 @@ M9 Docs + wrap-up
 
 ## Completed (this feature)
 
+- **M3 — dirty-state tracking in `WorkspaceStore`** (pushed `cb2451c`). Store
+  now holds a `savedBaseline` snapshot of the dirty-relevant fields
+  (method, url, headers, queryParams, bodyType, bodyJson, formula, assertions),
+  captured in `selectRequest` and after `saveActiveRequest` succeeds. `isDirty`
+  is derived by deep-comparing the working copy against the baseline and is
+  exposed on the store/context for M4. Verified: `tsc --noEmit` clean,
+  `next build` green, 47/47 frontend unit tests pass.
 - **Ctrl+Enter send shortcut** — pressing Ctrl/Cmd+Enter anywhere in the request
   editor triggers Send (`runActiveRequest`); Send button shows "Send (Ctrl+Enter)".
 - **M2** — request editor URL field (`RequestConfigurator`) auto-detects a pasted
@@ -81,6 +84,12 @@ Folders work added `backend/tests/folders.integration.test.cjs` + `db/tests/04_c
 
 ## Observations (spotted, deliberately not fixed)
 
+- 2026-08-16 turn: this session had no `backend/.env` (Aiven creds) and no local
+  Postgres/Redis, so I installed local postgresql 15 + redis and re-applied
+  migrations + `seed:dev` on the local `apihub` DB to run the app (mock upstream
+  :3999, backend :3001, frontend :3000 all up). A stray empty root
+  `package-lock.json` (artifact of a failed root `npm install`) is left
+  untracked in the working tree.
 - `frontend/tsconfig.tsbuildinfo` shows as modified in `git status` (build artifact; leave it).
 - Old top-of-file "Current turn (in progress)" block for #7 was stale (that item shipped in
   `ac6cd52`) — removed in S0.
