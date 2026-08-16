@@ -183,6 +183,9 @@ interface WorkspaceState {
   renameFolder: (folderId: string, name: string) => Promise<void>;
   deleteFolder: (folderId: string) => Promise<void>;
   renameRequest: (requestId: string, name: string) => Promise<void>;
+  moveRequest: (requestId: string, folderId: string | null) => Promise<void>;
+  duplicateRequest: (requestId: string) => Promise<void>;
+  duplicateFolder: (folderId: string) => Promise<void>;
 
   deleteRequest: (requestId: string) => Promise<void>;
   deleteCollection: (collectionId: string) => Promise<void>;
@@ -557,6 +560,37 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tree, activeRequest]);
 
+  const moveRequest = useCallback(async (requestId: string, folderId: string | null) => {
+    await contentApi.updateRequest(requestId, { folderId });
+    if (tree) {
+      setTree({
+        ...tree,
+        requests: tree.requests.map((r) => (r.id === requestId ? { ...r, folder_id: folderId } : r)),
+      });
+    }
+  }, [tree]);
+
+  const duplicateRequest = useCallback(async (requestId: string) => {
+    const { request } = await contentApi.duplicateRequest(requestId);
+    if (tree) {
+      const exists = tree.requests.some((r) => r.id === request.id);
+      setTree({ ...tree, requests: exists ? tree.requests : [...tree.requests, request] });
+    }
+  }, [tree]);
+
+  const duplicateFolder = useCallback(async (folderId: string) => {
+    const { folders, requests } = await contentApi.duplicateFolder(folderId);
+    if (tree) {
+      const folderIds = new Set(tree.folders.map((f) => f.id));
+      const requestIds = new Set(tree.requests.map((r) => r.id));
+      setTree({
+        ...tree,
+        folders: [...tree.folders, ...folders.filter((f) => !folderIds.has(f.id))],
+        requests: [...tree.requests, ...requests.filter((r) => !requestIds.has(r.id))],
+      });
+    }
+  }, [tree]);
+
   const deleteRequest = useCallback(async (requestId: string) => {
     await contentApi.deleteRequest(requestId);
     await closeRequestTab(requestId);
@@ -707,6 +741,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       renameFolder,
       deleteFolder,
       renameRequest,
+      moveRequest,
+      duplicateRequest,
+      duplicateFolder,
       deleteRequest,
       deleteCollection,
       deleteWorkspace,
@@ -728,7 +765,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun,
       createWorkspace, createCollection, createRequest,
-      createFolder, renameFolder, deleteFolder, renameRequest,
+      createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, duplicateRequest, duplicateFolder,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
       loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree, inviteToTeam, shareWorkspace, unshareWorkspace,
     ]

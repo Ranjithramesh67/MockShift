@@ -246,6 +246,10 @@ export const contentApi = {
   getRequest: (requestId: string) => apiFetch<{ request: RequestDetail }>(`/api/requests/${requestId}`),
   updateRequest: (requestId: string, patch: Record<string, unknown>) =>
     apiFetch<{ request: { id: string; name: string } }>(`/api/requests/${requestId}`, { method: 'PUT', body: patch }),
+  duplicateRequest: (requestId: string) =>
+    apiFetch<{ request: { id: string; name: string; method: string; url: string; api_type: ApiType; collection_id: string; folder_id: string | null } }>(`/api/requests/${requestId}/duplicate`, { method: 'POST' }),
+  duplicateFolder: (folderId: string) =>
+    apiFetch<{ folders: Folder[]; requests: Array<{ id: string; name: string; method: string; url: string; api_type: ApiType; collection_id: string; folder_id: string | null }> }>(`/api/folders/${folderId}/duplicate`, { method: 'POST' }),
   runRequest: (requestId: string) => apiFetch<RunResult>(`/api/requests/${requestId}/run`, { method: 'POST' }),
   runEphemeral: (input: {
     method: string;

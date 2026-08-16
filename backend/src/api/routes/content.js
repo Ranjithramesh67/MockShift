@@ -1,7 +1,7 @@
 'use strict';
 
 const { Router } = require('express');
-const { query } = require('../db');
+const { query, pool } = require('../db');
 const { requireAuth, roleAtLeast, getProjectAccess, canReadWorkspace } = require('../access');
 const { runRequest, runInMemoryRequest, runTokenRequest } = require('../runner');
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
@@ -308,6 +308,109 @@ router.delete('/folders/:folderId', async (req, res, next) => {
   }
 });
 
+// Deep-copy a folder and its whole subtree (nested folders + requests),
+// re-parenting the copies to the NEW copied folder ids.
+router.post('/folders/:folderId/duplicate', async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const { folderId } = req.params;
+    const { rows: sourceRows } = await query(
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE id = $1`,
+      [folderId]
+    );
+    const source = sourceRows[0];
+    if (!source) return res.status(404).json({ error: 'Folder not found' });
+    const projectId = await projectOfFolder(folderId);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+
+    // Collect the whole subtree from the folders table (self-reference).
+    const { rows: allFolders } = await query(
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE collection_id = $1`,
+      [source.collection_id]
+    );
+    const byParent = new Map();
+    for (const f of allFolders) {
+      const key = f.parent_id || null;
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(f);
+    }
+    const subtree = [];
+    const seen = new Set([source.id]);
+    const queue = [source];
+    while (queue.length) {
+      const current = queue.shift();
+      subtree.push(current);
+      for (const child of byParent.get(current.id) || []) {
+        if (seen.has(child.id)) continue;
+        seen.add(child.id);
+        queue.push(child);
+      }
+    }
+
+    await client.query('BEGIN');
+    const idMap = new Map();
+    const createdFolders = [];
+    for (const folder of subtree) {
+      const newParentId = folder.id === source.id ? source.parent_id : idMap.get(folder.parent_id) || null;
+      const { rows } = await client.query(
+        `INSERT INTO folders (collection_id, name, parent_id)
+         VALUES ($1, $2, $3)
+         RETURNING id, name, collection_id, parent_id`,
+        [folder.collection_id, folder.name, newParentId]
+      );
+      idMap.set(folder.id, rows[0].id);
+      createdFolders.push(rows[0]);
+    }
+
+    const { rows: folderRequests } = await client.query(
+      `SELECT id, collection_id, name, method, url, headers, query_params, body_type, body_json,
+              body_text, api_type, formula, assertions, folder_id
+         FROM api_requests WHERE folder_id = ANY($1::uuid[])`,
+      [[...seen]]
+    );
+    const createdRequests = [];
+    for (const r of folderRequests) {
+      const { rows } = await client.query(
+        `INSERT INTO api_requests
+           (collection_id, name, method, url, api_type, headers, query_params, body_type,
+            body_json, body_text, formula, assertions, folder_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING id, name, method, url, api_type, collection_id, folder_id`,
+        [
+          r.collection_id,
+          r.name,
+          r.method,
+          r.url,
+          r.api_type,
+          JSON.stringify(r.headers || []),
+          JSON.stringify(r.query_params || []),
+          r.body_type,
+          r.body_json,
+          r.body_text,
+          r.formula,
+          JSON.stringify(r.assertions || []),
+          idMap.get(r.folder_id) || null,
+        ]
+      );
+      createdRequests.push(rows[0]);
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ folders: createdFolders, requests: createdRequests });
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // ---------------------------------------------------------------- Requests
 router.post('/requests', async (req, res, next) => {
   try {
@@ -468,6 +571,51 @@ router.delete('/requests/:requestId', async (req, res, next) => {
     }
     await query(`DELETE FROM api_requests WHERE id = $1`, [requestId]);
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Duplicate a request inside the same collection/folder, preserving all
+// editor state verbatim (same name, no suffix).
+router.post('/requests/:requestId/duplicate', async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const { rows } = await query(
+      `SELECT id, collection_id, name, method, url, headers, query_params, body_type, body_json,
+              body_text, api_type, formula, assertions, folder_id
+         FROM api_requests WHERE id = $1`,
+      [requestId]
+    );
+    const source = rows[0];
+    if (!source) return res.status(404).json({ error: 'Request not found' });
+    const projectId = await projectOfCollection(source.collection_id);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    const { rows: created } = await query(
+      `INSERT INTO api_requests
+         (collection_id, name, method, url, api_type, headers, query_params, body_type,
+          body_json, body_text, formula, assertions, folder_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       RETURNING id, name, method, url, api_type, collection_id, folder_id`,
+      [
+        source.collection_id,
+        source.name,
+        source.method,
+        source.url,
+        source.api_type,
+        JSON.stringify(source.headers || []),
+        JSON.stringify(source.query_params || []),
+        source.body_type,
+        source.body_json,
+        source.body_text,
+        source.formula,
+        JSON.stringify(source.assertions || []),
+        source.folder_id,
+      ]
+    );
+    res.status(201).json({ request: created[0] });
   } catch (err) {
     next(err);
   }
