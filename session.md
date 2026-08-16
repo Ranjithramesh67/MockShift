@@ -9,7 +9,23 @@ Last updated: 2026-08-16
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: IN PROGRESS — M1–M6 done; awaiting approval for M7.
+Status: IN PROGRESS — M1–M6 done; M7 (tabs) in progress.
+
+M7 plan (in progress):
+- Store: openRequestIds[] + activeRequestId + requestCopies{} (working copy per
+  open request) + baselines{} (per-request saved baseline). selectRequest opens
+  (dedupe) or activates an already-open request WITHOUT refetching so unsaved
+  edits survive switching; close removes the tab and activates a neighbour.
+- Pure helpers in `frontend/src/lib/tabs.js` (openTab/closeTab) + node:test unit
+  file `frontend/src/lib/__tests__/tabs.test.cjs`.
+- UI: new `RequestTabs` component above RequestConfigurator (name + method +
+  dirty dot + close ×; confirm before closing a dirty tab). Wired in AppShell.
+- Cleanup on delete: deleteRequest / deleteFolder / deleteCollection /
+  selectWorkspace / selectCollection close the affected tabs.
+- New e2e spec `frontend/e2e/request-tabs.spec.ts` (fresh user, two requests:
+  open both, edit first (dirty dot on tab), switch to second and back → working
+  copy preserved, close dirty tab confirms, close active activates neighbour).
+- Verify: tsc --noEmit + new unit test + new e2e spec only (full suite deferred).
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE

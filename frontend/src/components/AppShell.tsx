@@ -10,6 +10,7 @@ import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { SplitPane } from './SplitPane';
 import { RequestConfigurator } from './RequestConfigurator';
+import { RequestTabs } from './RequestTabs';
 import { ResponsePane } from './ResponsePane';
 import { WorkflowBuilder } from './WorkflowBuilder';
 import { CurlModal } from './CurlModal';
@@ -33,23 +34,26 @@ function WorkspaceArea({ onOpenCurl }: { onOpenCurl: () => void }) {
         testIdPrefix="main"
       />
       {state.activeTab === 'request' ? (
-        state.viewMode === 'request' ? (
-          <RequestConfigurator onOpenCurl={onOpenCurl} />
-        ) : state.viewMode === 'response' ? (
-          <ResponsePane />
-        ) : state.viewMode === 'side' ? (
-          <SplitPane
-            orientation="horizontal"
-            top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
-            bottom={<ResponsePane />}
-          />
-        ) : (
-          <SplitPane
-            orientation="vertical"
-            top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
-            bottom={<ResponsePane />}
-          />
-        )
+        <>
+          <RequestTabs />
+          {state.viewMode === 'request' ? (
+            <RequestConfigurator onOpenCurl={onOpenCurl} />
+          ) : state.viewMode === 'response' ? (
+            <ResponsePane />
+          ) : state.viewMode === 'side' ? (
+            <SplitPane
+              orientation="horizontal"
+              top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
+              bottom={<ResponsePane />}
+            />
+          ) : (
+            <SplitPane
+              orientation="vertical"
+              top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
+              bottom={<ResponsePane />}
+            />
+          )}
+        </>
       ) : (
         <div className="workflow-area">
           <WorkflowBuilder />

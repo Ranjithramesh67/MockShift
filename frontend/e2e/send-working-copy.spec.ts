@@ -45,6 +45,9 @@ test('Send executes the working copy when dirty and persists history when clean'
   };
 
   const responseBody = page.locator('.response-pane .cm-content');
+  // Dirty state shows a dot on the Save button (M4) and on the request tab
+  // (M7); scope strict assertions to the Save button.
+  const saveDot = page.getByTestId('save-request-button').locator('.unsaved-dot');
 
   // Clean send: stored request run -> history row written and linked.
   const before = await historyCount();
@@ -55,10 +58,10 @@ test('Send executes the working copy when dirty and persists history when clean'
 
   // Dirty send: working copy executed (posts/2), no history written, still unsaved.
   await page.getByTestId('url-input').fill('http://127.0.0.1:3999/posts/2');
-  await expect(page.getByTestId('unsaved-dot')).toBeVisible();
+  await expect(saveDot).toBeVisible();
   await page.getByTestId('send-button').click();
   await expect(responseBody).toContainText('"id": 2');
-  await expect(page.getByTestId('unsaved-dot')).toBeVisible();
+  await expect(saveDot).toBeVisible();
   expect(await historyCount()).toBe(before + 1);
 
   // The stored request is untouched: only the working copy was run.
