@@ -4,8 +4,8 @@
 SELECT set_config('app.vault_key', 'test-vault-key-do-not-use-in-prod', false);
 
 TRUNCATE test_results, run_history, workflow_chains, variables, environments,
-         api_requests, collections, projects, workspace_members, workspaces,
-         organization_members, organizations, team_members, teams, users
+         api_requests, folders, collections, projects, workspace_members,
+         workspaces, organization_members, organizations, team_members, teams, users
   RESTART IDENTITY CASCADE;
 
 -- Users ---------------------------------------------------------------------

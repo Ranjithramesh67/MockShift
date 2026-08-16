@@ -29,6 +29,9 @@ ALTER TABLE api_requests
 
 CREATE INDEX api_requests_folder_idx ON api_requests (folder_id);
 
+-- ---------------------------------------------------------------- Grants
+GRANT SELECT, INSERT, UPDATE, DELETE ON folders TO app_user;
+
 -- ------------------------------------------------------- RLS policies
 ALTER TABLE folders ENABLE ROW LEVEL SECURITY;
 

@@ -453,7 +453,7 @@ router.get('/requests/:requestId', async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
-              api_type, collection_id, formula, assertions
+              api_type, collection_id, folder_id, formula, assertions
          FROM api_requests WHERE id = $1`,
       [req.params.requestId]
     );
@@ -484,6 +484,7 @@ router.get('/requests/:requestId', async (req, res, next) => {
         bodyText: request.body_text,
         apiType: request.api_type,
         collectionId: request.collection_id,
+        folderId: request.folder_id ?? null,
         formula: request.formula || '',
         assertions: request.assertions || [],
         workspaceId: ws,
@@ -548,7 +549,7 @@ router.put('/requests/:requestId', async (req, res, next) => {
       await query(`UPDATE api_requests SET ${sets.join(', ')} WHERE id = $1`, params);
     }
     const fresh = await query(
-      `SELECT id, name, method, url, api_type, collection_id FROM api_requests WHERE id = $1`,
+      `SELECT id, name, method, url, api_type, collection_id, folder_id FROM api_requests WHERE id = $1`,
       [requestId]
     );
     res.json({ request: fresh.rows[0] });

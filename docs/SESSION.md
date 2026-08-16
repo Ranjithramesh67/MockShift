@@ -304,7 +304,7 @@ Postman-style nested folders inside collections, running against **Aiven cloud P
   `POST /requests` / `PUT /requests/:requestId` accept `folder_id`; the workspace content tree
   (`GET /workspaces/:workspaceId/content`) now returns `folders[]` alongside collections/requests.
 - **Frontend**: `Sidebar.tsx` renders nested folders in the tree; `CreateModal.tsx` gains folder
-  creation (and re-parent via `MoveModal.tsx`); `WorkspaceStore.tsx` + `lib/api.ts` carry
+  creation (re-parenting via drag-drop); `WorkspaceStore.tsx` + `lib/api.ts` carry
   folders/`folder_id`; per-request edit/rename/delete unchanged.
 - **Tests added**: `backend/tests/folders.integration.test.cjs`, `db/tests/04_collection_folders.sql`.
 - `next build` re-verified clean (2026-08-15). Frontend unit / e2e / backend `api:unit` not yet
