@@ -63,6 +63,8 @@ export function CreateModal({
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    // A cURL command in the URL field is auto-detected and used as the full
+    // request source instead of a bare URL.
     const curlParsed = isCurlCommand(url) ? parseCurl(url) : null;
     const finalName = name.trim() || (curlParsed?.url ? deriveRequestName(curlParsed) : '');
     if (!finalName && kind !== 'request') {
@@ -131,6 +133,7 @@ export function CreateModal({
   const onUrlChange = (value: string) => {
     setUrl(value);
     setError('');
+    // Live-preview the HTTP method while typing a curl command.
     if (isCurlCommand(value)) {
       const parsed = parseCurl(value);
       if (parsed.url) {

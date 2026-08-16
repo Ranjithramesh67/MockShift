@@ -86,6 +86,28 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
   const [shareOpen, setShareOpen] = useState(false);
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
+
+  // Ctrl+Enter / Cmd+Enter sends the active request. This effect lives above the
+  // early return so the hook is always called the same number of times on every
+  // render (React Rules of Hooks) whether or not a request is selected.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        void ws
+          .runActiveRequest()
+          .then(() => dispatch({ type: 'SHOW_TOAST', kind: 'info', message: 'Request executed.' }))
+          .catch((err) =>
+            dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Run failed' })
+          );
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // ws / dispatch are stable context references; re-register on each render's request is unnecessary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ws, dispatch]);
+
   if (!request)
     return (
       <div className="panel-empty" data-testid="request-configurator">
@@ -97,6 +119,8 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
   const update = (patch: Partial<ApiRequest>) => ws.updateActiveRequest(patch);
 
   const onUrlChange = (value: string) => {
+    // Pasting a curl command into the URL field overwrites the whole request
+    // with the parsed method, headers, query params and body.
     if (isCurlCommand(value)) {
       const parsed = parseCurl(value);
       if (parsed.url) {
@@ -140,17 +164,6 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
       dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Run failed' });
     }
   };
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        void onSend();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [request]);
 
   const onSave = async () => {
     try {
