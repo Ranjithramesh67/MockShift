@@ -163,6 +163,16 @@ interface WorkspaceState {
   updateActiveRequest: (patch: Partial<ApiRequest>) => void;
   saveActiveRequest: () => Promise<void>;
   runActiveRequest: () => Promise<void>;
+  runScratchpad: (input: {
+    method: string;
+    url: string;
+    headers?: Array<{ key: string; value: string; enabled: boolean }>;
+    queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+    bodyType?: string;
+    bodyJson?: unknown;
+    bodyText?: string | null;
+    apiType?: ApiType;
+  }) => Promise<void>;
   runCollection: (collectionId: string) => Promise<CollectionRunResult>;
   clearCollectionRun: () => void;
 
@@ -411,6 +421,31 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
     setLastRun(result);
   }, [activeRequest, isDirty, activeCollectionId]);
+
+  // M8: scratchpad — execute an in-memory request shape (e.g. a pasted cURL)
+  // via POST /api/runs without creating or saving a request. No history row.
+  const runScratchpad = useCallback(
+    async (input: {
+      method: string;
+      url: string;
+      headers?: Array<{ key: string; value: string; enabled: boolean }>;
+      queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+      bodyType?: string;
+      bodyJson?: unknown;
+      bodyText?: string | null;
+      apiType?: ApiType;
+    }) => {
+      setError(null);
+      setLastRun(null);
+      const result = await contentApi.runEphemeral({
+        ...input,
+        collectionId: activeCollectionId,
+        persistHistory: false,
+      });
+      setLastRun(result);
+    },
+    [activeCollectionId]
+  );
 
   const runCollection = useCallback(async (collectionId: string) => {
     setCollectionRunRunning(true);
@@ -662,6 +697,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       updateActiveRequest,
       saveActiveRequest,
       runActiveRequest,
+      runScratchpad,
       runCollection,
       clearCollectionRun,
       createWorkspace,
@@ -690,7 +726,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       openRequestIds, activeRequestId, requestCopies,
       activateRequestTab, closeRequestTab, isTabDirty,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
-      saveActiveRequest, runActiveRequest, runCollection, clearCollectionRun,
+      saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun,
       createWorkspace, createCollection, createRequest,
       createFolder, renameFolder, deleteFolder, renameRequest,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,

@@ -17,6 +17,7 @@ import {
   BellIcon,
   ChevronIcon,
   CheckIcon,
+  PlayIcon,
 } from './icons';
 
 const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string; icon: typeof LayoutIcon }> = [
@@ -118,7 +119,7 @@ function NotificationBell() {
   );
 }
 
-export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
+export function TopBar({ onOpenCurl, onOpenScratchpad }: { onOpenCurl: () => void; onOpenScratchpad: () => void }) {
   const { user, logout } = useAuth();
   const { state, dispatch } = useApp();
   const router = useRouter();
@@ -198,6 +199,16 @@ export function TopBar({ onOpenCurl }: { onOpenCurl: () => void }) {
         >
           <ImportIcon size={14} />
           Import cURL
+        </button>
+        <button
+          type="button"
+          className="ghost-button"
+          data-testid="topbar-test-curl"
+          onClick={onOpenScratchpad}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <PlayIcon size={14} />
+          Test cURL
         </button>
         <NotificationBell />
         <div className="user-menu">

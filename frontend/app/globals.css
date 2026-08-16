@@ -2309,6 +2309,100 @@ body.is-col-dragging .sidebar {
   transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
 }
 
+/* ---- Scratchpad (M8): structured preview of a pasted cURL ------------------- */
+.scratchpad-preview {
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scratchpad-preview-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scratchpad-preview-url {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scratchpad-preview-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.scratchpad-preview-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.scratchpad-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.scratchpad-preview-list li {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+
+.scratchpad-preview-list li strong {
+  color: var(--text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scratchpad-preview-list .kv-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scratchpad-preview-more {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.scratchpad-preview-body {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ==========================================================================
    API type picker
    ========================================================================== */
