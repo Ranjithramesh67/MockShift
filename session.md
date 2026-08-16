@@ -9,8 +9,7 @@ Last updated: 2026-08-16
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: IN PROGRESS — M1–M3 done; M4 + M5 done this turn (pushed `2ad35d2`,
-`d9c80b4`); awaiting approval for M6.
+Status: IN PROGRESS — M1–M6 done; awaiting approval for M7.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
@@ -19,13 +18,24 @@ M2 URL-field cURL auto-parse in existing request editor — DONE
 M3 Dirty-state tracking in WorkspaceStore — DONE (pushed `cb2451c`)
 M4 Dirty dot indicator in editor — DONE (pushed `2ad35d2`)
 M5 Backend ephemeral run endpoint (POST /api/runs) — DONE (pushed `d9c80b4`)
-M6 Send uses working copy — NEXT
-M7 Tabs for opened requests
+M6 Send uses working copy — DONE (pushed this turn)
+M7 Tabs for opened requests — NEXT
 M8 Test cURL without saving (scratchpad)
 M9 Docs + wrap-up
 
 ## Completed (this feature)
 
+- **M6 — Send uses the working copy** (pushed this turn). `runActiveRequest`
+  now runs the **working copy**: when `isDirty` it calls the new
+  `contentApi.runEphemeral` (`POST /api/runs`) with the current editor state +
+  `collectionId` and `persistHistory: false` (scratch run, no history row, the
+  stored request untouched); when clean it keeps `POST /requests/:id/run` so
+  run_history stays linked to the request as before. New e2e
+  `frontend/e2e/send-working-copy.spec.ts`: clean send → response +1 history
+  row; dirty send → `/posts/2` executed (working copy), no history, dot stays,
+  stored URL still `/posts/1`. Fixed implicit-any types in
+  `dirty-dot.spec.ts`. `tsc --noEmit` clean, `next build` green, 47/47 frontend
+  unit tests.
 - **M5 — ephemeral run endpoint `POST /api/runs`** (pushed `d9c80b4`).
   `runner.js` refactored: the fetch pipeline is extracted into
   `executePipeline` (variable substitution → formula → folder auth provider →

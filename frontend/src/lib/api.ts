@@ -247,6 +247,20 @@ export const contentApi = {
   updateRequest: (requestId: string, patch: Record<string, unknown>) =>
     apiFetch<{ request: { id: string; name: string } }>(`/api/requests/${requestId}`, { method: 'PUT', body: patch }),
   runRequest: (requestId: string) => apiFetch<RunResult>(`/api/requests/${requestId}/run`, { method: 'POST' }),
+  runEphemeral: (input: {
+    method: string;
+    url: string;
+    headers?: Array<{ key: string; value: string; enabled: boolean }>;
+    queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+    bodyType?: string;
+    bodyJson?: unknown;
+    bodyText?: string | null;
+    formula?: string;
+    assertions?: Assertion[];
+    apiType?: ApiType;
+    collectionId?: string | null;
+    persistHistory?: boolean;
+  }) => apiFetch<RunResult>('/api/runs', { method: 'POST', body: input }),
   runCollection: (collectionId: string) =>
     apiFetch<CollectionRunResult>(`/api/collections/${collectionId}/run`, { method: 'POST' }),
   getAuthProvider: (collectionId: string) =>
