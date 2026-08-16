@@ -49,6 +49,14 @@ export const CollectionIcon = (p: IconProps) => (
   </svg>
 );
 
+export const MoveIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M4 12h13" />
+    <path d="m13 8 4 4-4 4" />
+    <path d="M4 7h5M4 17h5" />
+  </svg>
+);
+
 export const RequestIcon = (p: IconProps) => (
   <svg {...svgProps(p)}>
     <path d="M9 18V6l10 6-10 6z" fill="currentColor" fillOpacity="0.15" />

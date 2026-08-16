@@ -42,8 +42,15 @@ async function serializeCollection(collectionId) {
 
   const { rows: requests } = await query(
     `SELECT id, name, method, url, headers, query_params, body_type, body_json,
-            body_text, api_type, formula, assertions
+            body_text, api_type, formula, assertions, folder_id
        FROM api_requests
+      WHERE collection_id = $1
+      ORDER BY name`,
+    [collectionId]
+  );
+
+  const { rows: folderRows } = await query(
+    `SELECT id, parent_id, name FROM folders
       WHERE collection_id = $1
       ORDER BY name`,
     [collectionId]
@@ -60,10 +67,16 @@ async function serializeCollection(collectionId) {
     format: EXPORT_FORMAT,
     version: EXPORT_VERSION,
     name: collection.name,
+    folders: folderRows.map((f) => ({
+      sourceId: f.id,
+      parentSourceId: f.parent_id,
+      name: f.name,
+    })),
     requests: requests.map((r) => {
       const safe = redactRequestRecord(r, {});
       return {
         sourceId: safe.id,
+        folderSourceId: safe.folder_id || null,
         name: safe.name,
         method: safe.method,
         url: safe.url,
@@ -159,6 +172,7 @@ function validateRequest(input, index) {
   return {
     value: {
       sourceId: typeof input.sourceId === 'string' ? input.sourceId : null,
+      folderSourceId: typeof input.folderSourceId === 'string' ? input.folderSourceId : null,
       name,
       method,
       url,
@@ -172,6 +186,18 @@ function validateRequest(input, index) {
       assertions: cleanAssertions(input.assertions),
     },
   };
+}
+
+function cleanFolders(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((f) => f && typeof f === 'object')
+    .map((f) => ({
+      sourceId: typeof f.sourceId === 'string' ? f.sourceId : null,
+      parentSourceId: typeof f.parentSourceId === 'string' ? f.parentSourceId : null,
+      name: cleanString(f.name, 500) ?? '',
+    }))
+    .filter((f) => f.sourceId && f.name);
 }
 
 router.post('/collections/import', async (req, res, next) => {
@@ -195,6 +221,41 @@ router.post('/collections/import', async (req, res, next) => {
       validated.push(parsed.value);
     }
 
+    // Validate the folder tree up-front (pure JS, before opening the
+    // transaction): every parent must be a known folder and the graph must be
+    // acyclic. `orderedFolders` is a parent-before-child topological order.
+    const folders = cleanFolders(collection.folders);
+    const folderSourceIds = new Set(folders.map((f) => f.sourceId));
+    for (const f of folders) {
+      if (f.parentSourceId && !folderSourceIds.has(f.parentSourceId)) {
+        return res.status(400).json({
+          error: `Folder "${f.name}" references a missing parent folder`,
+        });
+      }
+    }
+    const orderedFolders = [];
+    {
+      const seen = new Set();
+      let remaining = folders.slice();
+      while (remaining.length) {
+        const progressed = [];
+        const deferred = [];
+        for (const f of remaining) {
+          if (!f.parentSourceId || seen.has(f.parentSourceId)) {
+            seen.add(f.sourceId);
+            orderedFolders.push(f);
+            progressed.push(f.sourceId);
+          } else {
+            deferred.push(f);
+          }
+        }
+        if (!progressed.length) {
+          return res.status(400).json({ error: 'Folder tree contains a cycle' });
+        }
+        remaining = deferred;
+      }
+    }
+
     await client.query('BEGIN');
     const { rows: colRows } = await client.query(
       `INSERT INTO collections (project_id, name) VALUES ($1, $2) RETURNING id, name, project_id`,
@@ -202,17 +263,31 @@ router.post('/collections/import', async (req, res, next) => {
     );
     const newCollection = colRows[0];
 
+    // Create folders in parent-before-child order so requests can reference them.
+    const folderIdMap = new Map();
+    for (const f of orderedFolders) {
+      const { rows: folderRows } = await client.query(
+        `INSERT INTO folders (collection_id, parent_id, name)
+         VALUES ($1, $2, $3)
+         RETURNING id`,
+        [newCollection.id, f.parentSourceId ? folderIdMap.get(f.parentSourceId) : null, f.name]
+      );
+      folderIdMap.set(f.sourceId, folderRows[0].id);
+    }
+
     const created = [];
     const idMap = new Map();
     for (const r of validated) {
+      const folderId = r.folderSourceId ? (folderIdMap.get(r.folderSourceId) || null) : null;
       const { rows: reqRows } = await client.query(
         `INSERT INTO api_requests
-           (collection_id, name, method, url, api_type, headers, query_params,
+           (collection_id, folder_id, name, method, url, api_type, headers, query_params,
             body_type, body_json, body_text, formula, assertions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id, name, method, url, api_type`,
         [
           newCollection.id,
+          folderId,
           r.name,
           r.method,
           r.url,
@@ -262,7 +337,7 @@ router.post('/collections/import', async (req, res, next) => {
       entityType: 'collection',
       entityId: newCollection.id,
       action: 'import_collection',
-      detail: { projectId, name: collectionName, requestCount: created.length },
+      detail: { projectId, name: collectionName, requestCount: created.length, folderCount: folderIdMap.size },
       ip: req.ip,
     });
     res.status(201).json({ collection: newCollection, requests: created });
