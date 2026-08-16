@@ -74,6 +74,35 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.20 M12 + M13 — F2 rename shortcut + folder drag-move (pushed this turn)
+
+Parallel-agent micro tasks completing the "Sidebar tree interactions" feature
+set (M10–M13 all done, pushed with M10+M11 in `c7ac1f3`):
+
+**M12 — F2 inline rename for the selected sidebar item**
+- New `frontend/src/components/useTreeRenameShortcut.ts`: capture-mode F2
+  keydown; ignores `INPUT`/`TEXTAREA`/`contentEditable` targets; calls
+  `onStartRename(kind, id, name)` for the selected row.
+- Wired into `CollectionsTree` in `Sidebar.tsx` (single call after
+  `startRename`, deps `selectedRow` + `ws.tree` + `startRename`).
+- New e2e `rename-f2.spec.ts` (rename request, rename folder, F2 ignored while
+  typing in the URL input).
+
+**M13 — drag-and-drop move of folders between nested folders**
+- Reuses existing `PUT /api/folders/:id` with `parentId` (backend cycle guard
+  already present). New store action `WorkspaceStore.moveFolder(folderId,
+  parentId)` patches `tree.folders` locally.
+- `Sidebar.handleDragStart` generalized to carry `kind: 'request'|'folder'`;
+  folder rows are now `draggable={!isRenaming}`; `handleDrop` gained a folder
+  path with a client-side cycle guard (folder into itself/descendant/root-when-
+  already-root → `Cannot move a folder into itself or its subfolder` toast).
+- `.tree-folder-row { cursor: grab }` affordance.
+- New e2e `folder-drag-move.spec.ts`.
+
+Verification: frontend `node --test` 56/56; `tsc --noEmit` clean; new e2e
+4/4 + regressions (nav-normal, request-tabs, request-drag-move,
+request-duplicate) all green. Backend untouched. Docs updated and committed.
+
 ### 5.19 M9 — Docs + wrap-up (pushed 2d3ee16)
 
 Final micro task of the "Postman-style request editing" feature set — the

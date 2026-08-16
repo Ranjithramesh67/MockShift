@@ -7,6 +7,7 @@ import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
 import { useAuth } from '@/lib/auth';
+import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { accessRequestApi } from '@/lib/api';
 import { CreateModal, type CreateKind } from './CreateModal';
 import { SharingModal } from './SharingModal';
@@ -174,6 +175,9 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
     setRenameValue(name);
   };
 
+  // M12: F2 on the selected row starts its inline rename.
+  useTreeRenameShortcut({ selectedRow, tree: ws.tree, onStartRename: startRename });
+
   const commitRename = async () => {
     if (!renaming) return;
     const name = renameValue.trim();
@@ -214,10 +218,10 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
 
   const tree = ws.tree;
 
-  // M10: native HTML5 drag-and-drop — request rows are the drag source; folder
-  // rows and collection roots are drop targets.
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    e.dataTransfer.setData('text/plain', JSON.stringify({ kind: 'request', id }));
+  // M10: native HTML5 drag-and-drop — request rows and folder rows are drag
+  // sources; folder rows and collection roots are drop targets.
+  const handleDragStart = (e: React.DragEvent, kind: 'request' | 'folder', id: string) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify({ kind, id }));
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -240,19 +244,62 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
     setDropTarget(null);
     try {
       const payload = JSON.parse(e.dataTransfer.getData('text/plain')) as { kind?: string; id?: string };
-      if (!payload || payload.kind !== 'request' || typeof payload.id !== 'string') return;
-      const moved = tree.requests.find((r) => r.id === payload.id);
-      ws.moveRequest(payload.id, folderId)
-        .then(() => {
+      if (!payload || typeof payload.id !== 'string') return;
+
+      if (payload.kind === 'request') {
+        const moved = tree.requests.find((r) => r.id === payload.id);
+        ws.moveRequest(payload.id, folderId)
+          .then(() => {
+            dispatch({
+              type: 'SHOW_TOAST',
+              kind: 'success',
+              message: moved ? `Moved "${moved.name}"` : 'Request moved',
+            });
+          })
+          .catch((err) => {
+            dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Move failed' });
+          });
+        return;
+      }
+
+      if (payload.kind === 'folder') {
+        const dragged = tree.folders.find((f) => f.id === payload.id);
+        if (!dragged) return;
+        const descendantIds = new Set<string>();
+        const collect = (parentId: string) => {
+          for (const f of tree.folders) {
+            if (f.parent_id === parentId && !descendantIds.has(f.id)) {
+              descendantIds.add(f.id);
+              collect(f.id);
+            }
+          }
+        };
+        collect(payload.id);
+        const wouldCycle =
+          folderId === payload.id ||
+          (folderId !== null && descendantIds.has(folderId)) ||
+          (folderId === null && dragged.parent_id == null);
+        if (wouldCycle) {
           dispatch({
             type: 'SHOW_TOAST',
-            kind: 'success',
-            message: moved ? `Moved "${moved.name}"` : 'Request moved',
+            kind: 'error',
+            message: 'Cannot move a folder into itself or its subfolder',
           });
-        })
-        .catch((err) => {
-          dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Move failed' });
-        });
+          return;
+        }
+        ws.moveFolder(payload.id, folderId)
+          .then(() => {
+            dispatch({
+              type: 'SHOW_TOAST',
+              kind: 'success',
+              message: `Moved "${dragged.name}"`,
+            });
+          })
+          .catch((err) => {
+            dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Move failed' });
+          });
+        return;
+      }
     } catch {
       // ignore malformed drag payload
     }
@@ -268,7 +315,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
         className={`sidebar-row ${isSelected ? 'selected' : ''}`}
         data-testid={`sidebar-row-${r.name}`}
         draggable={!isRenaming}
-        onDragStart={(e) => handleDragStart(e, r.id)}
+        onDragStart={(e) => handleDragStart(e, 'request', r.id)}
       >
         {isRenaming ? (
           <input
@@ -388,6 +435,8 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
       <div key={folder.id} className="tree-folder">
         <div
           className={`tree-folder-row ${isSelected ? 'selected' : ''} ${isDropTarget ? 'tree-drop-target' : ''}`}
+          draggable={!isRenaming}
+          onDragStart={(e) => handleDragStart(e, 'folder', folder.id)}
           onDragOver={(e) => handleDragOver(e, `folder:${folder.id}`)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, folder.id)}

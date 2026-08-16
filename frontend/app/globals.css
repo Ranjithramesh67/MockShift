@@ -668,6 +668,11 @@ body.is-col-dragging .sidebar {
   min-width: 0;
 }
 
+/* M13: draggable affordance for folder rows (re-parent via drag-and-drop). */
+.tree-folder-row {
+  cursor: grab;
+}
+
 .tree-folder-name {
   display: flex;
   align-items: center;
