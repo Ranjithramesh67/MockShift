@@ -550,7 +550,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
               </ul>
             )}
             {!hasChildren && (
-              <p className="hint" style={{ padding: '4px 8px 6px 30px' }}>
+              <p className="hint" style={{ padding: '4px 8px 6px 26px' }}>
                 Empty folder.
               </p>
             )}
@@ -738,7 +738,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                     </div>
                   )}
                   {!isCollapsed && rootFolders.length === 0 && rootRequests.length === 0 && (
-                    <p className="hint" style={{ padding: '4px 8px 6px 30px' }}>
+                    <p className="hint" style={{ padding: '4px 8px 6px 26px' }}>
                       No requests yet.
                     </p>
                   )}
