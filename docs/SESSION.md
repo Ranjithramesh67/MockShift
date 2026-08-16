@@ -281,6 +281,61 @@ params, headers, and body (JSON/form/multipart/raw auto-detected). The request i
 `tsc --noEmit` + `next build` clean. New testids: `create-mode-toggle`, `create-mode-form`,
 `create-mode-curl`, `create-curl-input`.
 
+### 5.13 Postman-style request editing — M1/M2 + Ctrl+Enter (pushed e80c29c, e61cc82, 1f79920)
+
+Started the user-approved "Postman-style request editing" feature set
+(`instructions.md` micro tasks M1–M9). This covers M1, M2 and an extra shortcut:
+
+- **M1** — `CreateModal` cURL auto-detect (pushed `e80c29c`): removed the
+  Fill-form / Paste-cURL toggle (`.create-mode-*` CSS dropped). The URL field now
+  auto-detects a pasted `curl …` via `isCurlCommand` + `parseCurl` (shared
+  `frontend/src/lib/curl.js`), populating method + URL live; structured
+  headers/params/body are applied on create. Name stays optional with the
+  `METHOD host` fallback. Testids preserved: `new-api-modal`, `create-name`,
+  `create-method`, `create-url`, `create-submit`.
+- **M2** — URL-field cURL auto-parse in the existing editor (pushed `e61cc82`):
+  `RequestConfigurator.tsx` `onUrlChange` detects `curl …` pasted into
+  `url-input`, runs `parseCurl`, and applies method, URL, headers, queryParams,
+  bodyType/bodyJson to the working request via `updateActiveRequest`, with a
+  "cURL parsed into the request." toast.
+- **Extra** — Ctrl/Cmd+Enter anywhere in the editor triggers Send
+  (`runActiveRequest`); Send button label reads "Send (Ctrl+Enter)" (pushed in
+  `1f79920`, a Rules-of-Hooks fix moving the listener above the early return).
+
+### 5.14 M3 — dirty-state tracking in WorkspaceStore (pushed cb2451c)
+
+`frontend/src/store/WorkspaceStore.tsx` now stores a `savedBaseline` snapshot of
+the dirty-relevant request fields (method, url, headers, queryParams, bodyType,
+bodyJson, formula, assertions), captured in `selectRequest` and after
+`saveActiveRequest` succeeds. `isDirty` is derived by deep-comparing the working
+copy against the baseline and is exposed on the store/context (feeds M4).
+Cleared on save success and on select. Verified: `tsc --noEmit` clean,
+`next build` green, 47/47 frontend unit tests.
+
+### 5.15 M4 + M5 — dirty dot indicator + ephemeral run endpoint (pushed 2ad35d2, d9c80b4)
+
+- **M4** (pushed `2ad35d2`): when `isDirty` is true the editor's Save button
+  shows a `data-testid="unsaved-dot"` `•` (colour `--warn`) with
+  title/aria-label "You have unsaved changes"; it clears on save. CSS
+  `.unsaved-dot` in `frontend/app/globals.css`. New self-contained e2e spec
+  `frontend/e2e/dirty-dot.spec.ts` (fresh user + own request): no dot on load →
+  dot on edit → dot gone after save. tsc/build clean, 47/47 units,
+  curl-import + nav-normal e2e still pass.
+- **M5** (pushed `d9c80b4`): new authenticated `POST /api/runs` executing an
+  in-memory request shape (method, url, headers, queryParams, bodyType,
+  bodyJson, formula, assertions) with optional `collectionId` (env-var
+  resolution + folder auth provider, read-access enforced) and optional
+  `persistHistory`. `backend/src/api/runner.js` refactored: the fetch pipeline
+  was extracted into `executePipeline` (vars → formula → auth provider → HTTP →
+  assertions → history), shared by `runRequest` (stored) and the new
+  `runInMemoryRequest`; `resolveVariables`/`activeEnvironmentId` were
+  generalized to key off a `collectionId`. `run_history` is only written when
+  `persistHistory` is true (`request_id` NULL — the migration-005 nullable FK
+  allows it; history read path already LEFT JOINs, verified). New integration
+  test file `backend/tests/ephemeralRuns.integration.test.cjs` (5 tests);
+  backend jest 47/47, API units 49/49, existing integration suites green;
+  live smoke on the running backend.
+
 ## 6. Verification performed
 
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
@@ -302,21 +357,16 @@ params, headers, and body (JSON/form/multipart/raw auto-detected). The request i
 
 ## 7. Current uncommitted changes
 
+All M1–M5 code + docs are committed and pushed on `master` (HEAD `655755b`).
+Remaining working-tree noise:
+
 ```
-M backend/src/engine/requestDispatcher.js        (passInputs injection option)
-M backend/src/workflow/workflowEngine.js          (friendly step/stepRequest/stepResponse vars)
-M backend/tests/workflowChaining.integration.test.js (passInputs test)
-M frontend/src/components/WorkflowBuilder.tsx     (pass-data-from-previous-step UI)
-M frontend/src/lib/workflowValidation.js           (+ sanitizeLabel, passInputs validation)
-M frontend/src/lib/types.ts                        (StepPassInput type)
-M frontend/src/lib/__tests__/workflowValidation.test.cjs (6 new tests)
-M frontend/app/globals.css                         (.pass-refs/.pass-form/.pass-list styles)
-?? frontend/e2e/workflow-pass-inputs.spec.ts       (3 new e2e tests)
+M  frontend/tsconfig.tsbuildinfo      (build artifact; left by convention)
+?? package-lock.json                  (stray empty root lockfile from a failed root `npm install`)
 ```
 
 The response-pane prettify/preview/PDF feature and all prior session work are
-already committed and pushed on `master` (HEAD `22f4e17` + this session's
-commit).
+already committed and pushed on `master`.
 
 ## 8. Known issues / notes for the next agent
 
