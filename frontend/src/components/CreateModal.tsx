@@ -5,7 +5,7 @@ import type { ApiRequest, ApiType } from '@/lib/types';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
 import { contentApi } from '@/lib/api';
-import { parseCurl } from '@/lib/curl';
+import { isCurlCommand, parseCurl } from '@/lib/curl';
 import { Modal } from './Modal';
 import { RestIcon, SoapIcon, GraphqlIcon, KeyIcon } from './icons';
 
@@ -23,10 +23,6 @@ function deriveRequestName(parsed: { method: string; url: string }): string {
   const base = clean || parsed.url || 'request';
   const host = base.split('/')[0];
   return `${parsed.method} ${host}`;
-}
-
-function isCurlCommand(text: string): boolean {
-  return /^\s*(?:curl|curl\.exe)\b/i.test(text.trim());
 }
 
 export function CreateModal({

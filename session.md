@@ -9,11 +9,11 @@ Last updated: 2026-08-15
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: PAUSED at M1 (user declined M2). M1 pushed. Resumable.
+Status: IN PROGRESS — M1, M2 done; awaiting approval for M3.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
-M2 URL-field cURL auto-parse in existing request editor — DECLINED by user (stop)
+M2 URL-field cURL auto-parse in existing request editor — DONE
 M3 Dirty-state tracking in WorkspaceStore
 M4 Dirty dot indicator in editor
 M5 Backend ephemeral run endpoint (POST /api/runs)
@@ -22,16 +22,17 @@ M7 Tabs for opened requests
 M8 Test cURL without saving (scratchpad)
 M9 Docs + wrap-up
 
-Resume rule: to continue, the next agent should confirm with the user which of
-M2–M9 to execute next (M2 was explicitly declined this turn).
-
 ## Completed (this feature)
 
-- **M1 (pushed)** — removed the Fill form / Paste cURL toggle from `CreateModal`;
-  the URL field now auto-detects a `curl …` command via `parseCurl` and fills
-  method + URL live; structured headers/params/body applied on create. Name is
-  optional with `METHOD host` fallback. Removed `.create-mode-*` CSS. `tsc
-  --noEmit` + `next build` clean; running live on :3000.
+- **M2** — request editor URL field (`RequestConfigurator`) auto-detects a pasted
+  `curl …` and applies method, URL, headers, query params, body via
+  `updateActiveRequest`, with a "cURL parsed" toast. Added shared
+  `isCurlCommand` to `lib/curl.js` (reused by CreateModal). `tsc --noEmit` +
+  `next build` + 47 frontend unit tests clean.
+- **M1** — removed the Fill form / Paste cURL toggle from `CreateModal`; the URL
+  field auto-detects `curl …` via `parseCurl` and fills method + URL live;
+  structured headers/params/body applied on create. Name optional with `METHOD
+  host` fallback. Removed `.create-mode-*` CSS.
 
 - **Aiven cloud Postgres** — backend reads a gitignored `backend/.env` `DATABASE_URL` (+
   `sslmode=require`, CA via `db/ca.pem`); local PG* env vars still take precedence for tests/tooling.

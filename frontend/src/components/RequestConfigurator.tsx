@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import type { ApiRequest, ApiType, BodyType, HttpMethod, RequestContentType } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
+import { isCurlCommand, parseCurl } from '@/lib/curl';
 import { KeyValueRows } from './KeyValueRows';
 import { CodeEditor } from './CodeEditor';
 import { TabBar } from './TabBar';
@@ -95,6 +96,27 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
 
   const update = (patch: Partial<ApiRequest>) => ws.updateActiveRequest(patch);
 
+  const onUrlChange = (value: string) => {
+    if (isCurlCommand(value)) {
+      const parsed = parseCurl(value);
+      if (parsed.url) {
+        update({
+          method: parsed.method,
+          url: parsed.url,
+          headers: parsed.headers,
+          queryParams: parsed.queryParams,
+          bodyType: parsed.bodyType,
+          bodyJson: parsed.bodyJson ?? parsed.bodyText ?? null,
+          bodyText: parsed.bodyText ?? null,
+          contentType: parsed.contentType,
+        });
+        dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'cURL parsed into the request.' });
+        return;
+      }
+    }
+    update({ url: value });
+  };
+
   const updateKeyValue = (field: 'headers' | 'queryParams', entries: ApiRequest['headers']) => {
     update({ [field]: entries } as Partial<ApiRequest>);
   };
@@ -155,11 +177,11 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           className="url-input"
           type="text"
           value={request.url}
-          placeholder="https://api.example.com/path"
+          placeholder="https://api.example.com/path  ·  or paste a curl command"
           spellCheck={false}
           aria-label="Request URL"
           data-testid="url-input"
-          onChange={(e) => update({ url: e.target.value })}
+          onChange={(e) => onUrlChange(e.target.value)}
         />
         <select
           className="compact-select"
