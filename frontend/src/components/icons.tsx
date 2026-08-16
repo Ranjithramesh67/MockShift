@@ -49,12 +49,6 @@ export const CollectionIcon = (p: IconProps) => (
   </svg>
 );
 
-export const FolderIcon = (p: IconProps) => (
-  <svg {...svgProps(p)}>
-    <path d="M2.5 5A2 2 0 0 1 4.5 3h4.6a1.5 1.5 0 0 1 1.2.6l1 1.4a1.5 1.5 0 0 0 1.2.6h6a2 2 0 0 1 2 2v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V5z" />
-  </svg>
-);
-
 export const MoveIcon = (p: IconProps) => (
   <svg {...svgProps(p)}>
     <path d="M4 12h13" />
@@ -399,5 +393,26 @@ export const ZoomIcon = (p: IconProps) => (
   <svg {...svgProps(p)}>
     <circle cx="11" cy="11" r="7" />
     <path d="m21 21-4.3-4.3" />
+  </svg>
+);
+
+export const FolderIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+  </svg>
+);
+
+export const PencilIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    <path d="m15 5 4 4" />
+  </svg>
+);
+
+export const DotsIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none" />
   </svg>
 );

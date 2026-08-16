@@ -2,6 +2,11 @@
 node_modules/
 npm-debug.log*
 
+# Local environment / secrets
+.env
+.env.local
+*.pem
+
 # Build output
 frontend/.next/
 frontend/.next-prod/

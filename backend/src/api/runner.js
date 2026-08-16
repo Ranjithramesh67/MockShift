@@ -17,32 +17,36 @@ function substitute(input, variables) {
   });
 }
 
-async function resolveVariables(requestId, userId) {
-  const { rows } = await query(
-    `SELECT key, value FROM app.resolve_variables($1, $2)`,
-    [requestId, await activeEnvironmentIdForRequest(requestId, userId)],
-    { userId }
-  );
-  const vars = {};
-  for (const r of rows) vars[r.key] = r.value;
-  return vars;
-}
-
-// The workspace's ACTIVE environment (is_active=true), or NULL when none is set.
-async function activeEnvironmentIdForRequest(requestId, userId) {
+// The workspace's ACTIVE environment (is_active=true), or NULL when none is
+// set. Keyed off a stored request or a collection (for in-memory runs).
+async function activeEnvironmentId({ requestId = null, collectionId = null }, userId) {
+  const target = requestId ?? collectionId;
+  if (!target) return null;
   const { rows } = await query(
     `SELECT e.id
        FROM environments e
        JOIN workspaces w ON w.id = e.workspace_id
        JOIN projects p  ON p.workspace_id = w.id
        JOIN collections c ON c.project_id = p.id
-       JOIN api_requests ar ON ar.collection_id = c.id
-      WHERE ar.id = $1 AND e.is_active = true
+       ${requestId ? 'JOIN api_requests ar ON ar.collection_id = c.id' : ''}
+      WHERE ${requestId ? 'ar.id = $1' : 'c.id = $1'} AND e.is_active = true
       LIMIT 1`,
-    [requestId],
+    [target],
     { userId }
   );
   return rows[0]?.id ?? null;
+}
+
+async function resolveVariables({ requestId = null, collectionId = null }, userId) {
+  const environmentId = await activeEnvironmentId({ requestId, collectionId }, userId);
+  const { rows } = await query(
+    `SELECT key, value FROM app.resolve_variables($1, $2)`,
+    [requestId, environmentId],
+    { userId }
+  );
+  const vars = {};
+  for (const r of rows) vars[r.key] = r.value;
+  return vars;
 }
 
 async function loadRequest(requestId) {
@@ -56,6 +60,7 @@ async function loadRequest(requestId) {
 }
 
 async function loadAuthProvider(collectionId) {
+  if (!collectionId) return null;
   const { rows } = await query(
     `SELECT auth_type, token_request_id, token_path, header_key, header_prefix
        FROM auth_providers WHERE collection_id = $1`,
@@ -75,7 +80,7 @@ function headersObject(headersArray) {
 async function runTokenRequest(tokenRequestId, userId) {
   const tokenReq = await loadRequest(tokenRequestId);
   if (!tokenReq) throw new Error('Auth token request not found');
-  const vars = await resolveVariables(tokenReq.id, userId);
+  const vars = await resolveVariables({ requestId: tokenReq.id }, userId);
   const url = substitute(tokenReq.url, vars);
   const method = (tokenReq.method || 'POST').toUpperCase();
   const headers = headersObject(tokenReq.headers);
@@ -104,19 +109,54 @@ async function runTokenRequest(tokenRequestId, userId) {
   return { status: response.status, body: text, parsed, headers: Object.fromEntries(response.headers) };
 }
 
+function normalizeInMemoryRequest(input = {}) {
+  const bodyType = input.bodyType || 'NONE';
+  let bodyJson = null;
+  let bodyText = input.bodyText ?? null;
+  if (bodyType === 'JSON' && input.bodyJson !== undefined && input.bodyJson !== null) {
+    if (typeof input.bodyJson === 'string') {
+      try {
+        bodyJson = JSON.parse(input.bodyJson);
+        bodyText = null;
+      } catch {
+        bodyText = input.bodyJson;
+      }
+    } else {
+      bodyJson = input.bodyJson;
+    }
+  } else if (bodyType !== 'JSON' && typeof input.bodyJson === 'string') {
+    bodyText = input.bodyJson;
+  }
+  return {
+    id: input.id || null,
+    name: input.name || '',
+    method: String(input.method || 'GET').toUpperCase(),
+    url: input.url || '',
+    headers: Array.isArray(input.headers) ? input.headers : [],
+    query_params: Array.isArray(input.queryParams) ? input.queryParams : [],
+    body_type: bodyType,
+    body_json: bodyJson,
+    body_text: bodyText,
+    api_type: input.apiType || 'REST',
+    collection_id: input.collectionId || null,
+    formula: input.formula || '',
+    assertions: Array.isArray(input.assertions) ? input.assertions : [],
+  };
+}
+
 /**
- * Execute a stored request for a user.
+ * Core request execution pipeline, shared by stored requests and in-memory
+ * (ephemeral) runs.
  * - resolves environment variables ({{key}})
  * - applies the pre-request sandbox formula (may mutate req / $vars)
  * - applies the folder auth provider (calls the AUTH request, extracts the
  *   token, injects the configured header)
- * - performs the HTTP call and records run_history
+ * - performs the HTTP call
+ * - evaluates assertions
+ * - records run_history / test_results only when persistHistory is true
+ *   (request_id may be NULL for in-memory runs; the nullable FK allows it)
  */
-async function runRequest(requestId, userId) {
-  const request = await loadRequest(requestId);
-  if (!request) throw Object.assign(new Error('Request not found'), { status: 404 });
-
-  let vars = await resolveVariables(request.id, userId);
+async function executePipeline({ request, vars, userId, persistHistory }) {
   let resolvedAuth = null;
   const provider = await loadAuthProvider(request.collection_id);
 
@@ -219,30 +259,33 @@ async function runRequest(requestId, userId) {
   const testResults = evaluateAssertions(request.assertions || [], responseSnapshot || {});
   const assertionsPassed = testResults.length > 0 && testResults.every((t) => t.passed);
 
-  const { rows: runRows } = await query(
-    `INSERT INTO run_history
-       (request_id, user_id, trigger, status, request_snapshot, response_snapshot, started_at, finished_at)
-     VALUES ($1, $2, 'MANUAL', $3, $4, $5, $6, $7)
-     RETURNING id`,
-    [
-      request.id,
-      userId,
-      status,
-      JSON.stringify({ url, method: req.method, headers: fetchHeaders, body }),
-      responseSnapshot ? JSON.stringify(responseSnapshot) : null,
-      startedAt,
-      finishedAt,
-    ],
-    { userId }
-  );
-  const runId = runRows[0]?.id || null;
-
-  for (const t of testResults) {
-    await query(
-      `INSERT INTO test_results (run_id, test_name, passed, assertions, error)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [runId, t.message, t.passed, JSON.stringify(t), t.passed ? null : t.message]
+  let runId = null;
+  if (persistHistory) {
+    const { rows: runRows } = await query(
+      `INSERT INTO run_history
+         (request_id, user_id, trigger, status, request_snapshot, response_snapshot, started_at, finished_at)
+       VALUES ($1, $2, 'MANUAL', $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [
+        request.id,
+        userId,
+        status,
+        JSON.stringify({ url, method: req.method, headers: fetchHeaders, body }),
+        responseSnapshot ? JSON.stringify(responseSnapshot) : null,
+        startedAt,
+        finishedAt,
+      ],
+      { userId }
     );
+    runId = runRows[0]?.id || null;
+
+    for (const t of testResults) {
+      await query(
+        `INSERT INTO test_results (run_id, test_name, passed, assertions, error)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [runId, t.message, t.passed, JSON.stringify(t), t.passed ? null : t.message]
+      );
+    }
   }
 
   return {
@@ -259,4 +302,48 @@ async function runRequest(requestId, userId) {
   };
 }
 
-module.exports = { runRequest, runTokenRequest, substitute, resolveVariables, loadRequest, loadAuthProvider };
+/**
+ * Execute a stored request for a user.
+ * - resolves environment variables ({{key}})
+ * - applies the pre-request sandbox formula (may mutate req / $vars)
+ * - applies the folder auth provider (calls the AUTH request, extracts the
+ *   token, injects the configured header)
+ * - performs the HTTP call and records run_history
+ */
+async function runRequest(requestId, userId) {
+  const request = await loadRequest(requestId);
+  if (!request) throw Object.assign(new Error('Request not found'), { status: 404 });
+  const vars = await resolveVariables({ requestId: request.id }, userId);
+  return executePipeline({ request, vars, userId, persistHistory: true });
+}
+
+/**
+ * Execute an in-memory request shape (no stored row required). Used by the
+ * ephemeral POST /api/runs endpoint and the scratchpad flow.
+ * - optional `collectionId` enables env-var resolution and the folder auth
+ *   provider
+ * - run_history is only written when `persistHistory` is true (request_id is
+ *   NULL then, which the nullable FK permits)
+ */
+async function runInMemoryRequest(input, userId) {
+  const request = normalizeInMemoryRequest(input);
+  const vars = request.collection_id
+    ? await resolveVariables({ collectionId: request.collection_id }, userId)
+    : {};
+  return executePipeline({
+    request,
+    vars,
+    userId,
+    persistHistory: Boolean(input.persistHistory),
+  });
+}
+
+module.exports = {
+  runRequest,
+  runInMemoryRequest,
+  runTokenRequest,
+  substitute,
+  resolveVariables,
+  loadRequest,
+  loadAuthProvider,
+};

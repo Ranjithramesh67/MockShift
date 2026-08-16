@@ -1,38 +1,208 @@
 # MockShift — Session State
 
-Last updated: 2026-08-09
+Last updated: 2026-08-16
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
 
 ## Current
 
-Step: S3 — run-history retention + purge
-Status: IN PROGRESS (GO given 2026-08-09 "start with s3") — implementation started by this session.
+Step: Rework M8 scratchpad — replace the modal with a full-width editor
+pane + a Save location picker (name + collection + nested folder).
+Status: IN PROGRESS — plan confirmed with user; some refactor committed,
+editor pane + picker still to build.
 
-## Plan for current step (as approved)
+USER DECISIONS (2026-08-16):
+- "Test cURL" opens a **full-width editor pane** in the main area (method
+  select + URL input + Params/Headers/Body/Formula/Tests tabs + Send/Save/
+  Close + response split below) — NOT a modal. Reads like the request tab.
+- Save must **ask for a request name** in the picker (not silently auto-derive).
+- Save picker lists **all collections in the current workspace** with
+  **nested folders** shown as an indented tree; can't target a folder of a
+  different collection (backend enforces 400).
+- Send stays ephemeral (POST /api/runs, persistHistory false) — nothing saved.
 
-- **Setting** — `run_history_retention_days` as a workspace-level setting (default 90, min 7,
-  ADMIN-only to change). New migration **010** + RLS consistent with existing tables (use the
-  `app.*` helpers + session-scoped user/vault key).
-- **Purge job** — scheduled, reusing `workflowScheduler.js`. On expiry, delete the snapshot
-  payloads but keep the aggregate row (timestamp, user, request, status, duration, assertion
-  results) so trend/audit data survives. Do NOT delete the run record itself.
-- **Audit** — every purge writes to `audit_logs`: workspace, rows affected, cut-off date.
-- **Batching** — batch the deletes; a purge must not lock the table for a large workspace.
-- **UI** — surface the setting in the Manage view with a plain-language note on exactly what is
-  removed.
-- **Acceptance** — a run older than the window loses payloads but stays visible as a historical
-  result; purge is audit-logged; workspace changed 90→30 purges correctly on the next tick;
-  unit-test the cut-off boundary.
-- **When done** — update `session.md` and stop; say explicitly "this closes P0".
+PROGRESS (committed on `master`):
+- Created `frontend/src/lib/requestForm.ts` (shared METHODS, API_TYPES,
+  METHOD_COLORS, BODY_KIND_OPTIONS, bodyKindOf, bodyTypeForKind + BodyKind).
+- Refactored `RequestConfigurator.tsx` to import the constants from it (local
+  copies removed).
+- Extended `WorkspaceStore.runScratchpad` to accept `formula` + `assertions`
+  (passed through to `contentApi.runEphemeral`); added `clearScratchpadRun`.
 
-## Test status
+STILL TODO (next session):
+1. `ScratchpadWorkspace.tsx` full-width pane (data-testids: `scratchpad-workspace`,
+   `scratchpad-method`, `scratchpad-url`, `scratchpad-send`, `scratchpad-save`,
+   `scratchpad-close`, tab prefix `scratchpad`, response reuse `ResponsePane`).
+   Paste curl into URL → auto-parse (reuse `parseCurl`); local draft state
+   (no WS store wiring needed); Send → `ws.runScratchpad(...)`; Save → open picker.
+2. `ScratchpadSaveModal.tsx` location picker (`scratchpad-save-name`,
+   `scratchpad-save-location`, `scratchpad-save-confirm`): name field +
+   recursive tree of `ws.tree.collections`/`folders`; on confirm do
+   `contentApi.createRequest({collectionId,name,method,url,apiType,folderId})`
+   then `contentApi.updateRequest(id, toServerPatchLike)` (headers, queryParams,
+   bodyType, bodyJson/bodyText, formula, assertions), then `ws.reloadTree()` +
+   `ws.selectRequest(id)`.
+3. AppShell wiring: replace `ScratchpadModal` with full-width
+   `<ScratchpadWorkspace>` in the main area when open; close on sidebar request
+   selection (watch `activeRequestId` change or pass an onClose from Sidebar
+   `onSelectRequest`).
+4. Remove `ScratchpadModal.tsx` + `.scratchpad-preview` CSS (keep `curl-input`).
+5. CSS in globals.css for `.scratchpad-workspace` header/bar and picker tree.
+6. Rewrite `frontend/e2e/scratchpad.spec.ts` for the new UI: open editor, type
+   method/url, send → response shown + no request created; save → picker asks
+   name, pick collection + nested folder → request appears at that folder.
+7. Verify: `npx tsc --noEmit`, `npm test`, Playwright (scratchpad + regression
+   request-tabs/nav-normal); update `session.md` + `instructions.md` (M14 rows);
+   commit + push.
 
-backend jest: 47/47 · test:api: 35/35 · api units: 45/45 · db run.sh: all pass · frontend unit: 47/47 ·
-tsc --noEmit: clean · e2e: 22/23 on fresh DB (only the known pre-existing `history.spec.ts`
-detail-modal flake failed; it passes in isolation) — full suite needs a freshly `reset:db`+`seed:dev`
-DB because specs leave requests in "Mock API Demo" (breaks `Requests: 8` in assertions-runner).
+SERVICES STILL RUNNING: mock upstream :3999, backend :3001
+(term_1786896470085_11), frontend :3000 (term_1786894968458_9); preview
+https://3000-cd39fa5d440bb155.monkeycode-ai.live. Demo logins
+`boss1785867669@test.io`/`bosspass123` (ADMIN), `pm1785867669@test.io`/`pmpass1234`,
+`dev1785867669@test.io`/`devpass123`. Live `next build` is NOT safe while the
+dev server is up (shared `.next`) — use tsc + Playwright + `npm test` instead.
+
+M13 DONE (this turn, alongside M12):
+- Backend: reuses existing `PUT /api/folders/:id` with `parentId` (cycle guard
+  already enforced on the backend).
+- Frontend: `WorkspaceStore.moveFolder(folderId, parentId)` (calls
+  `folderApi.update`, patches `tree.folders` locally); `Sidebar.handleDragStart`
+  generalized to `'request'|'folder'`; folder rows `draggable={!isRenaming}`;
+  `handleDrop` folder path with cycle guard (folder into itself/descendant or
+  root-when-already-root disallowed → toast `Cannot move a folder into itself or
+  its subfolder`, else `Moved "NAME"`); `.tree-folder-row { cursor: grab }`.
+  New e2e `folder-drag-move.spec.ts`.
+
+M12 DONE (this turn, alongside M13):
+- New hook `useTreeRenameShortcut({ selectedRow, tree, onStartRename })`
+  (capture-mode F2 keydown, ignores INPUT/TEXTAREA/contentEditable).
+- Wired into `CollectionsTree` in `Sidebar.tsx` (one call after `startRename`).
+- New e2e `rename-f2.spec.ts`.
+
+M11 DONE (earlier turn, alongside M10):
+- Backend `POST /api/requests/:id/duplicate` (deep copy same collection+folder,
+  same name) + `POST /api/folders/:id/duplicate` (deep-copies the folder and its
+  whole subtree, re-parents copies to NEW copied ids) in `content.js`.
+- Frontend: `contentApi.duplicateRequest`/`duplicateFolder`; store
+  `moveRequest`/`duplicateRequest`/`duplicateFolder`; sidebar Duplicate items in
+  request menu + folder actions + Ctrl/Cmd+C on a selected row (ignored while
+  typing). New e2e `request-drag-move.spec.ts` + `request-duplicate.spec.ts`.
+
+Plan (micro tasks, see `instructions.md`):
+M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
+M2 URL-field cURL auto-parse in existing request editor — DONE
++ Extra: Ctrl+Enter (Cmd+Enter) triggers Send in the request editor — DONE
+M3 Dirty-state tracking in WorkspaceStore — DONE (pushed `cb2451c`)
+M4 Dirty dot indicator in editor — DONE (pushed `2ad35d2`)
+M5 Backend ephemeral run endpoint (POST /api/runs) — DONE (pushed `d9c80b4`)
+M6 Send uses working copy — DONE (pushed this turn)
+M7 Tabs for opened requests — DONE (pushed `183d7ab`)
+M8 Test cURL without saving (scratchpad) — DONE (pushed `75143f7`)
+M9 Docs + wrap-up — DONE (pushed `2d3ee16`)
+M10 Drag-and-drop move: request into any folder/subfolder — DONE (pushed `c7ac1f3`)
+M11 Duplicate request/folder/subfolder via Ctrl+C — DONE (pushed `c7ac1f3`)
+M12 Rename focused tree item via F2 shortcut — DONE (this turn)
+M13 Drag-and-drop move: folder between nested folders — DONE (this turn)
+M14 Rework scratchpad: full-width editor pane + save location picker — IN PROGRESS
+
+## Completed (this feature)
+
+- **M9 — docs + wrap-up** (pushed `2d3ee16`). Final micro task. Updated
+  `session.md` (Current status → COMPLETE; M9 marked DONE in the plan and this
+  completed log), `instructions.md` (M9 status-table row → done), and
+  `docs/SESSION.md` (dated §5 narrative entry). Docs only — no source, test,
+  or DB changes. Feature set M1–M9 fully shipped.
+
+- **M7 — tabs for opened requests** (pushed `183d7ab`). `WorkspaceStore` gained
+  `openRequestIds[]` + `activeRequestId` + `requestCopies{}` (a working copy per
+  open request) + `baselines{}` (per-request saved baseline). `selectRequest`
+  now opens a request once (dedupe) or activates an already-open tab WITHOUT
+  refetching, so unsaved edits survive switching; `closeRequestTab` removes the
+  tab and activates a neighbour (right, else left); `isTabDirty` exposes
+  per-tab dirty state. Deletes/selection clear affected tabs. Pure helpers in
+  `frontend/src/lib/tabs.js` (`openTab`/`closeTab`) + `tabs.test.cjs` (6 tests).
+  New `RequestTabs` component (method badge + name + dirty dot + close ×,
+  confirm before closing a dirty tab) rendered above the editor in `AppShell`,
+  styled in `globals.css`. New e2e `frontend/e2e/request-tabs.spec.ts` (2 tests)
+  and scoped `dirty-dot`/`send-working-copy` specs to the Save-button dot since
+  tabs now carry their own dots. Verified: tsc clean, `next build` green, new
+  unit 6/6, new e2e 2/2, affected specs 2/2.
+
+- **M6 — Send uses the working copy** (pushed this turn). `runActiveRequest`
+  now runs the **working copy**: when `isDirty` it calls the new
+  `contentApi.runEphemeral` (`POST /api/runs`) with the current editor state +
+  `collectionId` and `persistHistory: false` (scratch run, no history row, the
+  stored request untouched); when clean it keeps `POST /requests/:id/run` so
+  run_history stays linked to the request as before. New e2e
+  `frontend/e2e/send-working-copy.spec.ts`: clean send → response +1 history
+  row; dirty send → `/posts/2` executed (working copy), no history, dot stays,
+  stored URL still `/posts/1`. Fixed implicit-any types in
+  `dirty-dot.spec.ts`. `tsc --noEmit` clean, `next build` green, 47/47 frontend
+  unit tests.
+- **M5 — ephemeral run endpoint `POST /api/runs`** (pushed `d9c80b4`).
+  `runner.js` refactored: the fetch pipeline is extracted into
+  `executePipeline` (variable substitution → formula → folder auth provider →
+  HTTP call → assertions → optional history), shared by `runRequest` (stored)
+  and the new `runInMemoryRequest` (in-memory shape, no stored row).
+  `resolveVariables`/`activeEnvironmentId` generalized to key off a
+  `collectionId`. The route takes method/url/headers/queryParams/bodyType/
+  bodyJson/formula/assertions + optional `collectionId` (env vars + auth
+  provider, read-access checked) + `persistHistory`; run_history is written
+  only when `persistHistory` is true (request_id NULL via the nullable FK —
+  history read path already LEFT JOINs, verified). Live smoke on the running
+  backend (SUCCESS + persisted + no-persist), new integration test file
+  `backend/tests/ephemeralRuns.integration.test.cjs` (5 tests), backend jest
+  47/47, API units 49/49, existing integration suites all green.
+- **M4 — dirty dot indicator** (pushed `2ad35d2`). When `isDirty` is true the
+  Save button shows a `data-testid="unsaved-dot"` `•` (color `--warn`) with
+  title/aria-label "You have unsaved changes"; cleared on save. New e2e spec
+  `frontend/e2e/dirty-dot.spec.ts` (self-contained: fresh user + own request)
+  verifies no dot on load → dot on edit → dot gone after save. `tsc --noEmit`
+  clean, `next build` green, 47/47 frontend unit tests, curl-import + nav-normal
+  e2e still pass.
+- **M3 — dirty-state tracking in `WorkspaceStore`** (pushed `cb2451c`). Store
+  now holds a `savedBaseline` snapshot of the dirty-relevant fields
+  (method, url, headers, queryParams, bodyType, bodyJson, formula, assertions),
+  captured in `selectRequest` and after `saveActiveRequest` succeeds. `isDirty`
+  is derived by deep-comparing the working copy against the baseline and is
+  exposed on the store/context for M4. Verified: `tsc --noEmit` clean,
+  `next build` green, 47/47 frontend unit tests pass.
+- **Ctrl+Enter send shortcut** — pressing Ctrl/Cmd+Enter anywhere in the request
+  editor triggers Send (`runActiveRequest`); Send button shows "Send (Ctrl+Enter)".
+- **M2** — request editor URL field (`RequestConfigurator`) auto-detects a pasted
+  `curl …` and applies method, URL, headers, query params, body via
+  `updateActiveRequest`, with a "cURL parsed" toast. Added shared
+  `isCurlCommand` to `lib/curl.js` (reused by CreateModal). `tsc --noEmit` +
+  `next build` + 47 frontend unit tests clean.
+- **M1** — removed the Fill form / Paste cURL toggle from `CreateModal`; the URL
+  field auto-detects `curl …` via `parseCurl` and fills method + URL live;
+  structured headers/params/body applied on create. Name optional with `METHOD
+  host` fallback. Removed `.create-mode-*` CSS.
+
+- **Aiven cloud Postgres** — backend reads a gitignored `backend/.env` `DATABASE_URL` (+
+  `sslmode=require`, CA via `db/ca.pem`); local PG* env vars still take precedence for tests/tooling.
+  Migrations 001–011 applied on Aiven; DB seeded with demo accounts + "Mock API Demo".
+- **Migration 011** — `folders` table (collection_id, parent_id for nesting, cascade deletes) +
+  `api_requests.folder_id` (SET NULL on delete so requests resurface at collection root) + RLS.
+- **Backend** — folders CRUD (`POST/PUT/DELETE /api/folders[/:folderId]`, includes parent-cycle
+  guard), requests gain `folder_id` on create/update, workspace content tree returns `folders[]`.
+- **Frontend** — Sidebar renders nested folders; create/rename/delete folder UI (CreateModal +
+  MoveModal); per-request edit/rename/delete stays in place. `WorkspaceStore`/`lib/api.ts` extended.
+- **New API request modal now imports cURL** — `CreateModal` request mode has a **Fill form /
+  Paste cURL** toggle. In cURL mode: paste a `curl …` command, it is parsed by `lib/curl.js`
+  `parseCurl` into method, url, headers, query params, body; Name is optional and auto-derived
+  (`METHOD host`). Creates the request then applies the structured fields via `updateRequest`.
+  Verified live: POST orders curl → method/url/headers/queryParams/bodyType/bodyJson persisted on
+  Aiven DB; `next build` + `tsc --noEmit` clean.
+
+## Test status (2026-08-16, local PG+Redis, after folders + M1–M5)
+
+backend jest: 47/47 · test:api: 40/40 (35 + new ephemeralRuns 5) · api units: 49/49 ·
+db run.sh: all pass · frontend unit: 47/47 · tsc --noEmit: clean · next build: green ·
+e2e (spot): dirty-dot, curl-import, nav-normal all pass (full suite needs a freshly
+`reset:db`+`seed:dev` DB because specs leave requests in "Mock API Demo").
+Folders added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collection_folders.sql`.
 
 ## Decisions (durable)
 
@@ -48,6 +218,12 @@ DB because specs leave requests in "Mock API Demo" (breaks `Requests: 8` in asse
 
 ## Observations (spotted, deliberately not fixed)
 
+- 2026-08-16 turn: this session had no `backend/.env` (Aiven creds) and no local
+  Postgres/Redis, so I installed local postgresql 15 + redis and re-applied
+  migrations + `seed:dev` on the local `apihub` DB to run the app (mock upstream
+  :3999, backend :3001, frontend :3000 all up). Installed Playwright chromium
+  browser + `install-deps` for e2e. A stray empty root `package-lock.json`
+  (artifact of a failed root `npm install`) is left untracked in the working tree.
 - `frontend/tsconfig.tsbuildinfo` shows as modified in `git status` (build artifact; leave it).
 - Old top-of-file "Current turn (in progress)" block for #7 was stale (that item shipped in
   `ac6cd52`) — removed in S0.
@@ -83,11 +259,15 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
 - PostgreSQL 15 (`apihub`), Redis (BullMQ, snapshots disabled). Backend env for dev/tests:
   `AUTH_SECRET=dev-secret VAULT_KEY=test-vault-key-do-not-use-in-prod PGHOST=127.0.0.1 PGPORT=5432
   PGUSER=postgres PGPASSWORD=postgres PGDATABASE=apihub`.
+- **Production DB is Aiven cloud Postgres** — a gitignored `backend/.env` holds
+  `DATABASE_URL=postgres://…?...sslmode=require`; CA trust store is `db/ca.pem` (gitignored via
+  `*.pem`). `db.js` prefers explicit PG* env vars over `DATABASE_URL`, so tests/psql still hit the
+  local DB.
 - Seed demo accounts + "Mock API Demo" collection: `cd backend && npm run seed:dev`. Login:
   boss1785867669@test.io/bosspass123 (ADMIN) · pm1785867669@test.io/pmpass1234 (MANAGER) ·
   dev1785867669@test.io/devpass123 (EDITOR).
 - **Migrations are not auto-applied** — after `seed:dev`, apply yours manually via psql;
-  `db/tests/run.sh` applies all of them. Use the next free migration number (010 next) and record
+  `db/tests/run.sh` applies all of them. Use the next free migration number (012 next) and record
   it here.
 - **Restart the backend after adding/changing routes** — a stale process serves old handlers.
 - **Full e2e run needs a freshly reset + seeded DB and mock upstream on :3999** — other specs
@@ -110,6 +290,12 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
 
 ## Completed
 
+- **Collection folders feature (pushed as `b61a2c6`)** — Postman-style nested folders on Aiven:
+  migration 011 (`folders` + `api_requests.folder_id` + RLS), backend folders CRUD + request-move
+  + folder-aware tree, frontend nested sidebar tree + create/rename/delete UI + per-request
+  edit/rename/delete, Aiven Postgres wired via gitignored `backend/.env` (`DATABASE_URL` +
+  `db/ca.pem`), seeded demo data. New coverage: `backend/tests/folders.integration.test.cjs` +
+  `db/tests/04_collection_folders.sql`.
 - S2 — redactor wired everywhere (pushed as `90b88a7`): `shares.js` (public share → full response
   snapshot + stored request url/headers/query_params/body_json/body_text through the redactor, not
   the old header-only allowlist), `history.js` (detail snapshots + run-list url redacted),

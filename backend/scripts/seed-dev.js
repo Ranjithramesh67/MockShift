@@ -60,6 +60,16 @@ const DEMO_REQUESTS = [
   { name: 'GET HTML page', method: 'GET', url: `${MOCK_BASE}/html`, bodyType: 'NONE', bodyJson: null },
 ];
 
+// Nested folder layout for the demo collection. `parent` references another
+// folder by name (null = top level). Requests by name are moved into the
+// folder; anything not listed stays at the collection root.
+const DEMO_FOLDERS = [
+  { name: 'Posts', parent: null, requests: ['GET all posts', 'POST create post'] },
+  { name: 'Read one', parent: 'Posts', requests: ['GET post 1'] },
+  { name: 'Update & Delete', parent: 'Posts', requests: ['PUT replace post 1', 'PATCH post 1', 'DELETE post 2'] },
+  { name: 'Files', parent: null, requests: ['GET sample PDF', 'GET HTML page'] },
+];
+
 async function ensureUser(client, account) {
   const existing = await client.query('SELECT id FROM users WHERE email = $1', [account.email]);
   if (existing.rows.length > 0) {
@@ -166,29 +176,67 @@ async function ensureDemoCollection(client) {
     collectionId = col.rows[0].id;
   }
 
+  // Upsert folders (by name), resolving parents and the full path for nesting.
+  const folderIdByName = new Map();
+  for (const f of DEMO_FOLDERS) {
+    const { rows: existing } = await client.query(
+      `SELECT id FROM folders WHERE collection_id = $1 AND name = $2 LIMIT 1`,
+      [collectionId, f.name]
+    );
+    let folderId;
+    if (existing.length > 0) {
+      folderId = existing[0].id;
+    } else {
+      const ins = await client.query(
+        `INSERT INTO folders (collection_id, name, parent_id)
+         VALUES ($1, $2, $3) RETURNING id`,
+        [collectionId, f.name, f.parent ? folderIdByName.get(f.parent) || null : null]
+      );
+      folderId = ins.rows[0].id;
+    }
+    // Keep parent relationships in sync on re-runs (folders may be re-nested).
+    const parentId = f.parent ? folderIdByName.get(f.parent) || null : null;
+    await client.query(
+      `UPDATE folders SET parent_id = $2 WHERE id = $1 AND parent_id IS DISTINCT FROM $2`,
+      [folderId, parentId]
+    );
+    folderIdByName.set(f.name, folderId);
+  }
+
   for (const r of DEMO_REQUESTS) {
     const { rows: existing } = await client.query(
       `SELECT id FROM api_requests WHERE collection_id = $1 AND name = $2 LIMIT 1`,
       [collectionId, r.name]
     );
+    const folderId = folderIdByName.get(
+      (DEMO_FOLDERS.find((f) => f.requests.includes(r.name)) || {}).name || ''
+    ) || null;
     const values = [r.method, r.url, r.bodyType, r.bodyJson];
     if (existing.length > 0) {
       await client.query(
-        `UPDATE api_requests SET method = $2, url = $3, body_type = $4, body_json = $5
+        `UPDATE api_requests SET method = $2, url = $3, body_type = $4, body_json = $5, folder_id = $6
           WHERE id = $1`,
-        [existing[0].id, ...values]
+        [existing[0].id, ...values, folderId]
       );
     } else {
       await client.query(
         `INSERT INTO api_requests
-           (collection_id, name, method, url, headers, query_params, body_type, body_json)
-         VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, $5, $6)`,
-        [collectionId, r.name, ...values]
+           (collection_id, name, method, url, headers, query_params, body_type, body_json, folder_id)
+         VALUES ($1, $2, $3, $4, '[]'::jsonb, '[]'::jsonb, $5, $6, $7)`,
+        [collectionId, r.name, ...values, folderId]
       );
     }
   }
+  const counts = await client.query(
+    `SELECT
+       (SELECT count(*)::int FROM folders WHERE collection_id = $1) AS folders,
+       (SELECT count(*)::int FROM api_requests WHERE collection_id = $1) AS requests`,
+    [collectionId]
+  );
   // eslint-disable-next-line no-console
-  console.log(`[seed:dev] collection "${DEMO_COLLECTION}" ready (${collectionId}) with ${DEMO_REQUESTS.length} requests`);
+  console.log(
+    `[seed:dev] collection "${DEMO_COLLECTION}" ready (${collectionId}) with ${counts.rows[0].folders} folders and ${counts.rows[0].requests} requests`
+  );
 }
 
 // Demo rows for the Admin panel Users view: make the MANAGER a project manager

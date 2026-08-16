@@ -10,9 +10,11 @@ import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 import { SplitPane } from './SplitPane';
 import { RequestConfigurator } from './RequestConfigurator';
+import { RequestTabs } from './RequestTabs';
 import { ResponsePane } from './ResponsePane';
 import { WorkflowBuilder } from './WorkflowBuilder';
 import { CurlModal } from './CurlModal';
+import { ScratchpadModal } from './ScratchpadModal';
 import { ToastHost } from './ToastHost';
 import { AutomationsView } from './views/AutomationsView';
 import { ManageView } from './views/ManageView';
@@ -33,23 +35,26 @@ function WorkspaceArea({ onOpenCurl }: { onOpenCurl: () => void }) {
         testIdPrefix="main"
       />
       {state.activeTab === 'request' ? (
-        state.viewMode === 'request' ? (
-          <RequestConfigurator onOpenCurl={onOpenCurl} />
-        ) : state.viewMode === 'response' ? (
-          <ResponsePane />
-        ) : state.viewMode === 'side' ? (
-          <SplitPane
-            orientation="horizontal"
-            top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
-            bottom={<ResponsePane />}
-          />
-        ) : (
-          <SplitPane
-            orientation="vertical"
-            top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
-            bottom={<ResponsePane />}
-          />
-        )
+        <>
+          <RequestTabs />
+          {state.viewMode === 'request' ? (
+            <RequestConfigurator onOpenCurl={onOpenCurl} />
+          ) : state.viewMode === 'response' ? (
+            <ResponsePane />
+          ) : state.viewMode === 'side' ? (
+            <SplitPane
+              orientation="horizontal"
+              top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
+              bottom={<ResponsePane />}
+            />
+          ) : (
+            <SplitPane
+              orientation="vertical"
+              top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
+              bottom={<ResponsePane />}
+            />
+          )}
+        </>
       ) : (
         <div className="workflow-area">
           <WorkflowBuilder />
@@ -64,6 +69,7 @@ export function AppShell() {
   const { view } = useNav();
   const router = useRouter();
   const [curlOpen, setCurlOpen] = useState(false);
+  const [scratchpadOpen, setScratchpadOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
@@ -81,7 +87,7 @@ export function AppShell() {
 
   return (
     <div className="app">
-      <TopBar onOpenCurl={() => setCurlOpen(true)} />
+      <TopBar onOpenCurl={() => setCurlOpen(true)} onOpenScratchpad={() => setScratchpadOpen(true)} />
       <div className="app-body">
         <Sidebar panelHidden={view !== 'workspace'} />
         <main className="main-area">
@@ -103,6 +109,7 @@ export function AppShell() {
         </main>
       </div>
       <CurlModal open={curlOpen} onClose={() => setCurlOpen(false)} />
+      <ScratchpadModal open={scratchpadOpen} onClose={() => setScratchpadOpen(false)} />
       <ToastHost />
     </div>
   );

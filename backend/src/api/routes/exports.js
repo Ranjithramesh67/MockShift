@@ -50,9 +50,9 @@ async function serializeCollection(collectionId) {
   );
 
   const { rows: folderRows } = await query(
-    `SELECT id, parent_id, name FROM collection_folders
+    `SELECT id, parent_id, name FROM folders
       WHERE collection_id = $1
-      ORDER BY position, name`,
+      ORDER BY name`,
     [collectionId]
   );
 
@@ -267,7 +267,7 @@ router.post('/collections/import', async (req, res, next) => {
     const folderIdMap = new Map();
     for (const f of orderedFolders) {
       const { rows: folderRows } = await client.query(
-        `INSERT INTO collection_folders (collection_id, parent_id, name)
+        `INSERT INTO folders (collection_id, parent_id, name)
          VALUES ($1, $2, $3)
          RETURNING id`,
         [newCollection.id, f.parentSourceId ? folderIdMap.get(f.parentSourceId) : null, f.name]

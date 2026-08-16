@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
 import { useAuth } from '@/lib/auth';
+import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { accessRequestApi } from '@/lib/api';
-import type { ApiType } from '@/lib/types';
 import { CreateModal, type CreateKind } from './CreateModal';
 import { SharingModal } from './SharingModal';
 import { TeamsModal } from './TeamsModal';
@@ -17,12 +17,10 @@ import { CollectionRunnerModal } from './CollectionRunnerModal';
 import { EnvironmentsModal } from './EnvironmentsModal';
 import { MockServersModal } from './MockServersModal';
 import { CollectionImportExportModal } from './CollectionImportExportModal';
-import { MoveModal } from './MoveModal';
 import {
   WorkspaceIcon,
   TeamIcon,
   CollectionIcon,
-  FolderIcon,
   KeyIcon,
   PlusIcon,
   TrashIcon,
@@ -35,12 +33,19 @@ import {
   PlayIcon,
   ServerIcon,
   ImportIcon,
-  MoveIcon,
-  SaveIcon,
+  FolderIcon,
+  PencilIcon,
+  DotsIcon,
   RequestIcon,
+  CopyIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
+
+const SIDEBAR_MIN_WIDTH = 240;
+const SIDEBAR_MAX_WIDTH = 560;
+const SIDEBAR_DEFAULT_WIDTH = 296;
+const SIDEBAR_WIDTH_KEY = 'apihub.sidebarWidth';
 
 function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: CreateKind) => void; onNavigate: () => void }) {
   const ws = useWorkspace();
@@ -105,222 +110,7 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
   );
 }
 
-type TreeFolder = { id: string; collection_id: string; parent_id: string | null; name: string };
-type TreeRequest = {
-  id: string;
-  name: string;
-  method: string;
-  url: string;
-  api_type: ApiType;
-  collection_id: string;
-  folder_id: string | null;
-};
-
-function RequestRow({
-  r,
-  active,
-  depth,
-  onSelect,
-  onDelete,
-  onMove,
-}: {
-  r: TreeRequest;
-  active: boolean;
-  depth: number;
-  onSelect: (id: string) => void;
-  onDelete: (r: TreeRequest) => void;
-  onMove: (r: TreeRequest) => void;
-}) {
-  return (
-    <li className="sidebar-row">
-      <button
-        type="button"
-        className={`sidebar-item sidebar-item-indent ${active ? 'active' : ''}`}
-        data-testid={`sidebar-request-${r.name}`}
-        style={{ paddingLeft: `${12 + depth * 14}px` }}
-        onClick={() => onSelect(r.id)}
-      >
-        <span className={`method-badge method-${r.method}`}>{r.method}</span>
-        <span className="sidebar-item-name">{r.name}</span>
-        {r.api_type !== 'REST' && <span className="vis-badge api-type-badge">{r.api_type}</span>}
-      </button>
-      <button
-        type="button"
-        className="icon-button"
-        title="Move to folder"
-        aria-label={`Move request ${r.name}`}
-        data-testid={`move-request-${r.name}`}
-        onClick={() => onMove(r)}
-      >
-        <MoveIcon size={13} />
-      </button>
-      <button
-        type="button"
-        className="icon-button danger"
-        title="Delete request"
-        aria-label={`Delete request ${r.name}`}
-        data-testid={`delete-request-${r.name}`}
-        onClick={() => onDelete(r)}
-      >
-        <TrashIcon size={13} />
-      </button>
-    </li>
-  );
-}
-
-function FolderNode({
-  folder,
-  depth,
-  collapsed,
-  activeRequestId,
-  onToggle,
-  onSelect,
-  onDeleteRequest,
-  onMoveRequest,
-  onOpenCreate,
-  onRename,
-  onDeleteFolder,
-  onMoveFolder,
-  requests,
-  folders,
-}: {
-  folder: TreeFolder;
-  depth: number;
-  collapsed: Record<string, boolean>;
-  activeRequestId: string | null;
-  onToggle: (id: string) => void;
-  onSelect: (id: string) => void;
-  onDeleteRequest: (r: TreeRequest) => void;
-  onMoveRequest: (r: TreeRequest) => void;
-  onOpenCreate: (kind: CreateKind, collectionId: string, folderId: string) => void;
-  onRename: (folder: TreeFolder) => void;
-  onDeleteFolder: (folder: TreeFolder) => void;
-  onMoveFolder: (folder: TreeFolder) => void;
-  requests: TreeRequest[];
-  folders: TreeFolder[];
-}) {
-  const isCollapsed = !!collapsed[folder.id];
-  const childFolders = folders.filter((f) => f.parent_id === folder.id);
-  const childRequests = requests.filter((r) => r.folder_id === folder.id);
-  const hasChildren = childFolders.length > 0 || childRequests.length > 0;
-
-  return (
-    <div className="tree-folder">
-      <div className="tree-folder-row">
-        <button
-          type="button"
-          className={`tree-folder-name`}
-          data-testid={`folder-${folder.name}`}
-          onClick={() => onToggle(folder.id)}
-        >
-          <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
-            <ChevronIcon size={12} />
-          </span>
-          <span className="folder-chevron-spacer" />
-          <span className="folder-icon">
-            <FolderIcon size={13} />
-          </span>
-          <span className="name">{folder.name}</span>
-        </button>
-        <div className="tree-folder-actions">
-          <button
-            type="button"
-            className="icon-button"
-            title="New subfolder"
-            aria-label={`New subfolder in ${folder.name}`}
-            data-testid={`new-subfolder-${folder.name}`}
-            onClick={() => onOpenCreate('folder', folder.collection_id, folder.id)}
-          >
-            <PlusIcon size={13} />
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            title="New API request in folder"
-            aria-label={`New request in ${folder.name}`}
-            data-testid={`new-request-folder-${folder.name}`}
-            onClick={() => onOpenCreate('request', folder.collection_id, folder.id)}
-          >
-            <RequestIcon size={13} />
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            title="Move folder"
-            aria-label={`Move folder ${folder.name}`}
-            data-testid={`move-folder-${folder.name}`}
-            onClick={() => onMoveFolder(folder)}
-          >
-            <MoveIcon size={13} />
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            title="Rename folder"
-            aria-label={`Rename folder ${folder.name}`}
-            data-testid={`rename-folder-${folder.name}`}
-            onClick={() => onRename(folder)}
-          >
-            <SaveIcon size={13} />
-          </button>
-          <button
-            type="button"
-            className="icon-button danger"
-            title="Delete folder"
-            aria-label={`Delete folder ${folder.name}`}
-            data-testid={`delete-folder-${folder.name}`}
-            onClick={() => onDeleteFolder(folder)}
-          >
-            <TrashIcon size={13} />
-          </button>
-        </div>
-      </div>
-      {!isCollapsed && hasChildren && (
-        <div className="tree-folder-children">
-          {childFolders.map((f) => (
-            <FolderNode
-              key={f.id}
-              folder={f}
-              depth={depth + 1}
-              collapsed={collapsed}
-              activeRequestId={activeRequestId}
-              onToggle={onToggle}
-              onSelect={onSelect}
-              onDeleteRequest={onDeleteRequest}
-              onMoveRequest={onMoveRequest}
-              onOpenCreate={onOpenCreate}
-              onRename={onRename}
-              onDeleteFolder={onDeleteFolder}
-              onMoveFolder={onMoveFolder}
-              requests={requests}
-              folders={folders}
-            />
-          ))}
-          <ul className="sidebar-list">
-            {childRequests.map((r) => (
-              <RequestRow
-                key={r.id}
-                r={r}
-                active={activeRequestId === r.id}
-                depth={depth + 1}
-                onSelect={onSelect}
-                onDelete={onDeleteRequest}
-                onMove={onMoveRequest}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
-      {!isCollapsed && !hasChildren && (
-        <p className="hint" style={{ padding: '4px 8px 6px 48px' }}>
-          Empty folder.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection, onOpenMockServer, onOpenImportExport, onRenameFolder, onMoveRequest, onMoveFolder, onDeleteFolder }: {
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection, onOpenMockServer, onOpenImportExport }: {
   onOpenCreate: (kind: CreateKind, collectionId?: string, folderId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
@@ -329,14 +119,45 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   onRunCollection: (collectionId: string, collectionName: string) => void;
   onOpenMockServer: (project: { id: string; name: string }) => void;
   onOpenImportExport: () => void;
-  onRenameFolder: (folder: TreeFolder) => void;
-  onMoveRequest: (r: TreeRequest) => void;
-  onMoveFolder: (folder: TreeFolder) => void;
-  onDeleteFolder: (folder: TreeFolder) => void;
 }) {
   const ws = useWorkspace();
   const { dispatch } = useApp();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [renaming, setRenaming] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [selectedRow, setSelectedRow] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
+
+  // M11: Ctrl/Cmd+C duplicates the currently selected request or folder.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!selectedRow) return;
+      if (!(e.ctrlKey || e.metaKey) || (e.key !== 'c' && e.key !== 'C')) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      e.preventDefault();
+      const row =
+        ws.tree?.requests.find((r) => r.id === selectedRow.id) ??
+        ws.tree?.folders.find((f) => f.id === selectedRow.id);
+      const name = row?.name;
+      const action =
+        selectedRow.kind === 'request'
+          ? ws.duplicateRequest(selectedRow.id)
+          : ws.duplicateFolder(selectedRow.id);
+      action
+        .then(() => {
+          if (name) dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${name}"` });
+        })
+        .catch((err) => {
+          dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' });
+        });
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [selectedRow, ws, dispatch]);
 
   const toggle = (id: string) => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -348,14 +169,395 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
     onNavigate();
   };
 
-  if (!ws.tree) return null;
+  const startRename = (kind: 'request' | 'folder', id: string, name: string) => {
+    setMenuFor(null);
+    setRenaming({ kind, id });
+    setRenameValue(name);
+  };
 
-  const deleteRequest = (r: TreeRequest) => {
-    if (window.confirm(`Delete request "${r.name}"?`)) {
-      ws.deleteRequest(r.id).catch((err) =>
+  // M12: F2 on the selected row starts its inline rename.
+  useTreeRenameShortcut({ selectedRow, tree: ws.tree, onStartRename: startRename });
+
+  const commitRename = async () => {
+    if (!renaming) return;
+    const name = renameValue.trim();
+    setRenaming(null);
+    if (!name) return;
+    try {
+      if (renaming.kind === 'request') {
+        await ws.renameRequest(renaming.id, name);
+      } else {
+        await ws.renameFolder(renaming.id, name);
+      }
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Rename failed' });
+    }
+  };
+
+  const deleteRequest = (id: string, name: string) => {
+    if (window.confirm(`Delete request "${name}"?`)) {
+      ws.deleteRequest(id).catch((err) =>
         alert(err instanceof Error ? err.message : 'Failed to delete request')
       );
     }
+  };
+
+  const deleteFolder = (id: string, name: string) => {
+    if (
+      window.confirm(
+        `Delete folder "${name}" and its contents? Requests inside will be moved back to the collection root.`
+      )
+    ) {
+      ws.deleteFolder(id).catch((err) =>
+        alert(err instanceof Error ? err.message : 'Failed to delete folder')
+      );
+    }
+  };
+
+  if (!ws.tree) return null;
+
+  const tree = ws.tree;
+
+  // M10: native HTML5 drag-and-drop — request rows and folder rows are drag
+  // sources; folder rows and collection roots are drop targets.
+  const handleDragStart = (e: React.DragEvent, kind: 'request' | 'folder', id: string) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify({ kind, id }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, target: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget(target);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    const related = e.relatedTarget as Node | null;
+    if (related && e.currentTarget.contains(related)) return;
+    setDropTarget(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, folderId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTarget(null);
+    try {
+      const payload = JSON.parse(e.dataTransfer.getData('text/plain')) as { kind?: string; id?: string };
+      if (!payload || typeof payload.id !== 'string') return;
+
+      if (payload.kind === 'request') {
+        const moved = tree.requests.find((r) => r.id === payload.id);
+        ws.moveRequest(payload.id, folderId)
+          .then(() => {
+            dispatch({
+              type: 'SHOW_TOAST',
+              kind: 'success',
+              message: moved ? `Moved "${moved.name}"` : 'Request moved',
+            });
+          })
+          .catch((err) => {
+            dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Move failed' });
+          });
+        return;
+      }
+
+      if (payload.kind === 'folder') {
+        const dragged = tree.folders.find((f) => f.id === payload.id);
+        if (!dragged) return;
+        const descendantIds = new Set<string>();
+        const collect = (parentId: string) => {
+          for (const f of tree.folders) {
+            if (f.parent_id === parentId && !descendantIds.has(f.id)) {
+              descendantIds.add(f.id);
+              collect(f.id);
+            }
+          }
+        };
+        collect(payload.id);
+        const wouldCycle =
+          folderId === payload.id ||
+          (folderId !== null && descendantIds.has(folderId)) ||
+          (folderId === null && dragged.parent_id == null);
+        if (wouldCycle) {
+          dispatch({
+            type: 'SHOW_TOAST',
+            kind: 'error',
+            message: 'Cannot move a folder into itself or its subfolder',
+          });
+          return;
+        }
+        ws.moveFolder(payload.id, folderId)
+          .then(() => {
+            dispatch({
+              type: 'SHOW_TOAST',
+              kind: 'success',
+              message: `Moved "${dragged.name}"`,
+            });
+          })
+          .catch((err) => {
+            dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Move failed' });
+          });
+        return;
+      }
+    } catch {
+      // ignore malformed drag payload
+    }
+  };
+
+  const renderRequest = (r: (typeof tree.requests)[number], collectionId: string) => {
+    const isActive = ws.activeRequest?.id === r.id;
+    const isRenaming = renaming?.kind === 'request' && renaming.id === r.id;
+    const isSelected = selectedRow?.kind === 'request' && selectedRow.id === r.id;
+    return (
+      <li
+        key={r.id}
+        className={`sidebar-row ${isSelected ? 'selected' : ''}`}
+        data-testid={`sidebar-row-${r.name}`}
+        draggable={!isRenaming}
+        onDragStart={(e) => handleDragStart(e, 'request', r.id)}
+      >
+        {isRenaming ? (
+          <input
+            type="text"
+            className="tree-rename-input"
+            autoFocus
+            defaultValue={r.name}
+            data-testid={`rename-input-${r.name}`}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename();
+              if (e.key === 'Escape') setRenaming(null);
+            }}
+            onBlur={commitRename}
+          />
+        ) : (
+          <button
+            type="button"
+            className={`sidebar-item sidebar-item-indent ${isActive ? 'active' : ''}`}
+            data-testid={`sidebar-request-${r.name}`}
+            onClick={() => {
+              setSelectedRow({ kind: 'request', id: r.id });
+              onSelectRequest(r.id);
+            }}
+          >
+            <span className={`method-badge method-${r.method}`}>{r.method}</span>
+            <span className="sidebar-item-name">{r.name}</span>
+            {r.api_type !== 'REST' && (
+              <span className="vis-badge api-type-badge">{r.api_type}</span>
+            )}
+          </button>
+        )}
+        <div className="sidebar-row-actions">
+          <button
+            type="button"
+            className="icon-button"
+            title="Request options"
+            aria-label={`Options for ${r.name}`}
+            data-testid={`request-options-${r.name}`}
+            onClick={() => setMenuFor(menuFor === r.id ? null : r.id)}
+          >
+            <DotsIcon size={13} />
+          </button>
+        </div>
+        {menuFor === r.id && (
+          <>
+            <div className="tree-menu-backdrop" onClick={() => setMenuFor(null)} />
+            <div className="tree-menu" data-testid={`request-menu-${r.name}`}>
+              <button
+                type="button"
+                data-testid={`request-edit-${r.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  onSelectRequest(r.id);
+                }}
+              >
+                <RequestIcon size={13} />
+                Edit
+              </button>
+              <button
+                type="button"
+                data-testid={`request-rename-${r.name}`}
+                onClick={() => startRename('request', r.id, r.name)}
+              >
+                <PencilIcon size={13} />
+                Rename
+              </button>
+              <button
+                type="button"
+                data-testid={`request-duplicate-${r.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  ws.duplicateRequest(r.id)
+                    .then(() =>
+                      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${r.name}"` })
+                    )
+                    .catch((err) =>
+                      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
+                    );
+                }}
+              >
+                <CopyIcon size={13} />
+                Duplicate
+              </button>
+              <button
+                type="button"
+                className="danger"
+                data-testid={`request-delete-${r.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  deleteRequest(r.id, r.name);
+                }}
+              >
+                <TrashIcon size={13} />
+                Delete
+              </button>
+            </div>
+          </>
+        )}
+      </li>
+    );
+  };
+
+  const renderFolder = (folder: (typeof tree.folders)[number], collectionId: string) => {
+    const isCollapsed = !!collapsed[folder.id];
+    const isRenaming = renaming?.kind === 'folder' && renaming.id === folder.id;
+    const subFolders = tree.folders.filter(
+      (f) => f.collection_id === collectionId && f.parent_id === folder.id
+    );
+    const requests = tree.requests.filter(
+      (r) => r.collection_id === collectionId && r.folder_id === folder.id
+    );
+    const hasChildren = subFolders.length > 0 || requests.length > 0;
+    const isSelected = selectedRow?.kind === 'folder' && selectedRow.id === folder.id;
+    const isDropTarget = dropTarget === `folder:${folder.id}`;
+    return (
+      <div key={folder.id} className="tree-folder">
+        <div
+          className={`tree-folder-row ${isSelected ? 'selected' : ''} ${isDropTarget ? 'tree-drop-target' : ''}`}
+          draggable={!isRenaming}
+          onDragStart={(e) => handleDragStart(e, 'folder', folder.id)}
+          onDragOver={(e) => handleDragOver(e, `folder:${folder.id}`)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, folder.id)}
+        >
+          {isRenaming ? (
+            <input
+              type="text"
+              className="tree-rename-input"
+              autoFocus
+              defaultValue={folder.name}
+              data-testid={`rename-folder-input-${folder.name}`}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+              onBlur={commitRename}
+            />
+          ) : (
+            <button
+              type="button"
+              className="tree-folder-name"
+              data-testid={`folder-${folder.name}`}
+              onClick={() => {
+                setSelectedRow({ kind: 'folder', id: folder.id });
+                toggle(folder.id);
+              }}
+            >
+              <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
+                <ChevronIcon size={11} />
+              </span>
+              <span className="tree-folder-icon">
+                <FolderIcon size={13} />
+              </span>
+              <span className="name">{folder.name}</span>
+              {!isCollapsed && hasChildren && <span className="folder-count">{requests.length}</span>}
+            </button>
+          )}
+          <div className="tree-folder-actions">
+            <button
+              type="button"
+              className="icon-button"
+              title="New API request"
+              aria-label={`New request in ${folder.name}`}
+              data-testid={`new-request-folder-${folder.name}`}
+              onClick={() => onOpenCreate('request', collectionId, folder.id)}
+            >
+              <PlusIcon size={12} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="New sub-folder"
+              aria-label={`New sub-folder in ${folder.name}`}
+              data-testid={`new-subfolder-${folder.name}`}
+              onClick={() => onOpenCreate('folder', collectionId, folder.id)}
+            >
+              <FolderIcon size={12} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="Rename folder"
+              aria-label={`Rename folder ${folder.name}`}
+              data-testid={`rename-folder-${folder.name}`}
+              onClick={() => startRename('folder', folder.id, folder.name)}
+            >
+              <PencilIcon size={12} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="Duplicate folder"
+              aria-label={`Duplicate folder ${folder.name}`}
+              data-testid={`duplicate-folder-${folder.name}`}
+              onClick={() => {
+                ws.duplicateFolder(folder.id)
+                  .then(() =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${folder.name}"` })
+                  )
+                  .catch((err) =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
+                  );
+              }}
+            >
+              <CopyIcon size={12} />
+            </button>
+            <button
+              type="button"
+              className="icon-button danger"
+              title="Delete folder"
+              aria-label={`Delete folder ${folder.name}`}
+              data-testid={`delete-folder-${folder.name}`}
+              onClick={() => deleteFolder(folder.id, folder.name)}
+            >
+              <TrashIcon size={12} />
+            </button>
+          </div>
+        </div>
+        {!isCollapsed && (
+          <div
+            className={`tree-folder-children ${isDropTarget ? 'tree-drop-target' : ''}`}
+            onDragOver={(e) => handleDragOver(e, `folder:${folder.id}`)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, folder.id)}
+          >
+            {subFolders.map((f) => renderFolder(f, collectionId))}
+            {requests.length > 0 && (
+              <ul className="sidebar-list">
+                {requests.map((r) => renderRequest(r, collectionId))}
+              </ul>
+            )}
+            {!hasChildren && (
+              <p className="hint" style={{ padding: '4px 8px 6px 30px' }}>
+                Empty folder.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -392,7 +594,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
           Share
         </button>
       </div>
-      {ws.tree.projects.map((p) => (
+      {tree.projects.map((p) => (
         <div key={p.id} className="tree-project">
           <div className="tree-project-name">
             <CollectionIcon size={12} />
@@ -427,19 +629,24 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
               Request access
             </button>
           )}
-          {ws.tree!.collections
+          {tree.collections
             .filter((c) => c.project_id === p.id)
             .map((c) => {
               const isCollapsed = !!collapsed[c.id];
-              const rootFolders = ws.tree!.folders.filter(
-                (f) => f.collection_id === c.id && f.parent_id === null
+              const rootFolders = tree.folders.filter(
+                (f) => f.collection_id === c.id && !f.parent_id
               );
-              const rootRequests = ws.tree!.requests.filter(
-                (r) => r.collection_id === c.id && r.folder_id === null
+              const rootRequests = tree.requests.filter(
+                (r) => r.collection_id === c.id && !r.folder_id
               );
               return (
                 <div key={c.id} className="tree-collection">
-                  <div className="tree-collection-row">
+                  <div
+                    className={`tree-collection-row ${dropTarget === `collection:${c.id}` ? 'tree-drop-target' : ''}`}
+                    onDragOver={(e) => handleDragOver(e, `collection:${c.id}`)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, null)}
+                  >
                     <button
                       type="button"
                       className={`tree-collection-name ${ws.activeCollectionId === c.id ? 'active' : ''}`}
@@ -515,55 +722,32 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                       </button>
                     </div>
                   </div>
-                  {!isCollapsed && (
-                    <div className="tree-collection-children">
-                      {rootFolders.map((f) => (
-                        <FolderNode
-                          key={f.id}
-                          folder={f}
-                          depth={0}
-                          collapsed={collapsed}
-                          activeRequestId={ws.activeRequest?.id ?? null}
-                          onToggle={toggle}
-                          onSelect={onSelectRequest}
-                          onDeleteRequest={deleteRequest}
-                          onMoveRequest={onMoveRequest}
-                          onOpenCreate={onOpenCreate}
-                          onRename={onRenameFolder}
-                          onDeleteFolder={onDeleteFolder}
-                          onMoveFolder={onMoveFolder}
-                          requests={ws.tree!.requests}
-                          folders={ws.tree!.folders}
-                        />
-                      ))}
+                  {!isCollapsed && (rootFolders.length > 0 || rootRequests.length > 0) && (
+                    <div
+                      className={`tree-collection-children ${dropTarget === `children:${c.id}` ? 'tree-drop-target' : ''}`}
+                      onDragOver={(e) => handleDragOver(e, `children:${c.id}`)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, null)}
+                    >
+                      {rootFolders.map((f) => renderFolder(f, c.id))}
                       {rootRequests.length > 0 && (
                         <ul className="sidebar-list">
-                          {rootRequests.map((r) => (
-                            <RequestRow
-                              key={r.id}
-                              r={r}
-                              active={ws.activeRequest?.id === r.id}
-                              depth={0}
-                              onSelect={onSelectRequest}
-                              onDelete={deleteRequest}
-                              onMove={onMoveRequest}
-                            />
-                          ))}
+                          {rootRequests.map((r) => renderRequest(r, c.id))}
                         </ul>
                       )}
-                      {rootFolders.length === 0 && rootRequests.length === 0 && (
-                        <p className="hint" style={{ padding: '4px 8px 6px 30px' }}>
-                          No requests yet.
-                        </p>
-                      )}
                     </div>
+                  )}
+                  {!isCollapsed && rootFolders.length === 0 && rootRequests.length === 0 && (
+                    <p className="hint" style={{ padding: '4px 8px 6px 30px' }}>
+                      No requests yet.
+                    </p>
                   )}
                 </div>
               );
             })}
         </div>
       ))}
-      {ws.tree.collections.length === 0 && <p className="hint">No collections yet.</p>}
+      {tree.collections.length === 0 && <p className="hint">No collections yet.</p>}
     </div>
   );
 }
@@ -640,10 +824,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
   const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
-  const [createFolderId, setCreateFolderId] = useState<string | null>(null);
-  const [renameFolderTarget, setRenameFolderTarget] = useState<{ folderId: string; name: string; collectionId: string } | null>(null);
-  const [moveRequestTarget, setMoveRequestTarget] = useState<TreeRequest | null>(null);
-  const [moveFolderTarget, setMoveFolderTarget] = useState<TreeFolder | null>(null);
+  const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -655,10 +836,40 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const [requestingProject, setRequestingProject] = useState<{ id: string; name: string } | null>(null);
   const [accessReason, setAccessReason] = useState('');
   const [importExportOpen, setImportExportOpen] = useState(false);
+  const [width, setWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
+    const saved = window.localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    const parsed = saved ? parseInt(saved, 10) : NaN;
+    return Number.isFinite(parsed)
+      ? Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, parsed))
+      : SIDEBAR_DEFAULT_WIDTH;
+  });
+  const widthRef = useRef(width);
+  widthRef.current = width;
+
+  const onResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = widthRef.current;
+    const move = (ev: PointerEvent) => {
+      setWidth(
+        Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, startWidth + (ev.clientX - startX)))
+      );
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      document.body.classList.remove('is-col-dragging');
+      window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(widthRef.current));
+    };
+    document.body.classList.add('is-col-dragging');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }, []);
 
   const openCreate = (kind: CreateKind, collectionId?: string, folderId?: string) => {
     setTargetCollectionId(collectionId ?? null);
-    setCreateFolderId(folderId ?? null);
+    setTargetFolderId(folderId ?? null);
     setCreateKind(kind);
   };
 
@@ -707,7 +918,11 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   return (
-    <aside className={`sidebar ${railHidden ? 'sidebar-rail-only' : ''}`} data-testid="sidebar">
+    <aside
+      className={`sidebar ${railHidden ? 'sidebar-rail-only' : ''}`}
+      data-testid="sidebar"
+      style={railHidden ? undefined : { width }}
+    >
       <nav className="rail" aria-label="Sidebar navigation">
         <button
           type="button"
@@ -825,16 +1040,6 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
                 onRunCollection={onRunCollection}
                 onOpenMockServer={(p) => setMockProject(p)}
                 onOpenImportExport={() => setImportExportOpen(true)}
-                onRenameFolder={(f) => setRenameFolderTarget({ folderId: f.id, name: f.name, collectionId: f.collection_id })}
-                onMoveRequest={(r) => setMoveRequestTarget(r)}
-                onMoveFolder={(f) => setMoveFolderTarget(f)}
-                onDeleteFolder={(f) => {
-                  if (window.confirm(`Delete folder "${f.name}" and all of its subfolders? Requests inside will move to the collection root.`)) {
-                    ws.deleteFolder(f.id).catch((err) =>
-                      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Failed to delete folder' })
-                    );
-                  }
-                }}
               />
             ) : (
               !ws.loading && (
@@ -863,47 +1068,8 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         <CreateModal
           kind={createKind}
           collectionId={targetCollectionId ?? undefined}
-          parentFolderId={createFolderId ?? undefined}
-          renameTarget={renameFolderTarget}
-          onClose={() => {
-            setCreateKind(null);
-            setRenameFolderTarget(null);
-          }}
-        />
-      )}
-      {moveRequestTarget && (
-        <MoveModal
-          title="Move request"
-          collectionId={moveRequestTarget.collection_id}
-          onSelect={(target) => {
-            const folderId = 'folderId' in target ? target.folderId : null;
-            ws.moveRequest(moveRequestTarget.id, folderId).then(
-              () => {
-                setMoveRequestTarget(null);
-                dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Request moved.' });
-              },
-              (err) => dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Failed to move request' })
-            );
-          }}
-          onClose={() => setMoveRequestTarget(null)}
-        />
-      )}
-      {moveFolderTarget && (
-        <MoveModal
-          title="Move folder"
-          collectionId={moveFolderTarget.collection_id}
-          excludeFolderId={moveFolderTarget.id}
-          onSelect={(target) => {
-            const parentId = 'folderId' in target ? target.folderId : null;
-            ws.moveFolder(moveFolderTarget.id, parentId).then(
-              () => {
-                setMoveFolderTarget(null);
-                dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Folder moved.' });
-              },
-              (err) => dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Failed to move folder' })
-            );
-          }}
-          onClose={() => setMoveFolderTarget(null)}
+          folderId={targetFolderId ?? undefined}
+          onClose={() => setCreateKind(null)}
         />
       )}
       {requestingProject && (
@@ -965,6 +1131,16 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         }}
       />
       <CollectionImportExportModal open={importExportOpen} onClose={() => setImportExportOpen(false)} />
+      {!railHidden && (
+        <div
+          className="sidebar-resizer"
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          title="Drag to resize"
+          onPointerDown={onResizeStart}
+        />
+      )}
     </aside>
   );
 }

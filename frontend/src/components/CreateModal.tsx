@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import type { ApiType } from '@/lib/types';
+import type { ApiRequest, ApiType } from '@/lib/types';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
+import { contentApi } from '@/lib/api';
+import { isCurlCommand, parseCurl } from '@/lib/curl';
 import { Modal } from './Modal';
 import { RestIcon, SoapIcon, GraphqlIcon, KeyIcon } from './icons';
 
@@ -16,24 +18,29 @@ const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: 
 
 export type CreateKind = 'workspace' | 'collection' | 'request' | 'folder';
 
+function deriveRequestName(parsed: { method: string; url: string }): string {
+  const clean = parsed.url.replace(/^https?:\/\//i, '').split(/[/?#]/)[0];
+  const base = clean || parsed.url || 'request';
+  const host = base.split('/')[0];
+  return `${parsed.method} ${host}`;
+}
+
 export function CreateModal({
   kind,
   defaultApiType = 'REST',
   collectionId,
-  parentFolderId,
-  renameTarget,
+  folderId,
   onClose,
 }: {
   kind: CreateKind;
   defaultApiType?: ApiType;
   collectionId?: string;
-  parentFolderId?: string;
-  renameTarget?: { folderId: string; name: string } | null;
+  folderId?: string;
   onClose: () => void;
 }) {
   const ws = useWorkspace();
   const { organizations } = useAuth();
-  const [name, setName] = useState(renameTarget?.name ?? '');
+  const [name, setName] = useState('');
   const [method, setMethod] = useState('GET');
   const [url, setUrl] = useState('');
   const [apiType, setApiType] = useState<ApiType>(defaultApiType);
@@ -42,53 +49,78 @@ export function CreateModal({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const title = renameTarget
-    ? 'Rename folder'
-    : kind === 'workspace'
-    ? 'New workspace'
-    : kind === 'collection'
-    ? 'New collection'
-    : kind === 'folder'
-    ? 'New folder'
-    : 'New API request';
+  const title =
+    kind === 'workspace'
+      ? 'New workspace'
+      : kind === 'collection'
+        ? 'New collection'
+        : kind === 'folder'
+          ? 'New folder'
+          : 'New API request';
 
   const canCreateWorkspace = organizations.some((o) => o.role === 'ADMIN');
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!name.trim()) {
+    // A cURL command in the URL field is auto-detected and used as the full
+    // request source instead of a bare URL.
+    const curlParsed = isCurlCommand(url) ? parseCurl(url) : null;
+    const finalName = name.trim() || (curlParsed?.url ? deriveRequestName(curlParsed) : '');
+    if (!finalName && kind !== 'request') {
       setError('Name is required');
+      return;
+    }
+    if (kind === 'request' && !curlParsed && !url.trim()) {
+      setError('URL is required');
       return;
     }
     setBusy(true);
     try {
-      if (renameTarget) {
-        await ws.renameFolder(renameTarget.folderId, name.trim());
-      } else if (kind === 'workspace') {
+      if (kind === 'workspace') {
         await ws.createWorkspace(name.trim(), visibility);
       } else if (kind === 'collection') {
         await ws.createCollection(name.trim());
       } else if (kind === 'folder') {
-        if (!collectionId) {
-          setError('A collection is required to create a folder');
+        const targetCollectionId = collectionId ?? ws.activeCollectionId;
+        if (!targetCollectionId) {
+          setError('Select a collection first');
           return;
         }
+        const collection = ws.tree?.collections.find((c) => c.id === targetCollectionId);
+        await ws.selectCollection(targetCollectionId, collection?.name ?? '');
         await ws.createFolder({
-          collectionId,
-          parentId: parentFolderId ?? null,
           name: name.trim(),
+          collectionId: targetCollectionId,
+          parentId: folderId ?? null,
         });
       } else {
-        if (!url.trim()) {
-          setError('URL is required');
-          return;
-        }
         if (collectionId) {
           const collection = ws.tree?.collections.find((c) => c.id === collectionId);
           await ws.selectCollection(collectionId, collection?.name ?? '');
         }
-        await ws.createRequest({ name: name.trim(), method, url: url.trim(), apiType, folderId: parentFolderId ?? null });
+        if (curlParsed) {
+          const { request } = await contentApi.createRequest({
+            collectionId: collectionId ?? ws.activeCollectionId!,
+            name: finalName,
+            method: curlParsed.method,
+            url: curlParsed.url,
+            apiType,
+            folderId: folderId ?? null,
+          });
+          await contentApi.updateRequest(request.id, {
+            headers: curlParsed.headers,
+            queryParams: curlParsed.queryParams,
+            bodyType: curlParsed.bodyType,
+            bodyJson: curlParsed.bodyJson ?? curlParsed.bodyText ?? null,
+            bodyText: curlParsed.bodyText ?? null,
+            contentType: curlParsed.contentType,
+          });
+          await ws.reloadTree();
+          await ws.selectRequest(request.id);
+        } else {
+          await ws.createRequest({ name: finalName, method, url: url.trim(), apiType, folderId: folderId ?? null });
+        }
       }
       onClose();
     } catch (err) {
@@ -98,14 +130,26 @@ export function CreateModal({
     }
   };
 
+  const onUrlChange = (value: string) => {
+    setUrl(value);
+    setError('');
+    // Live-preview the HTTP method while typing a curl command.
+    if (isCurlCommand(value)) {
+      const parsed = parseCurl(value);
+      if (parsed.url) {
+        setMethod(parsed.method);
+      }
+    }
+  };
+
   const testId =
     kind === 'workspace'
       ? 'new-workspace-modal'
       : kind === 'collection'
-      ? 'new-collection-modal'
-      : kind === 'folder'
-      ? 'new-folder-modal'
-      : 'new-api-modal';
+        ? 'new-collection-modal'
+        : kind === 'folder'
+          ? 'new-folder-modal'
+          : 'new-api-modal';
 
   return (
     <Modal title={title} onClose={onClose} testId={testId}>
@@ -121,14 +165,15 @@ export function CreateModal({
           </p>
         )}
         <label className="auth-field">
-          <span>Name</span>
+          <span>{kind === 'request' ? 'Name' : 'Name'}</span>
           <input
             type="text"
             autoFocus
             data-testid="create-name"
             value={name}
+            placeholder={kind === 'request' ? 'Auto-derived from URL or cURL (optional)' : undefined}
             onChange={(e) => setName(e.target.value)}
-            required
+            required={kind !== 'request'}
           />
         </label>
 
@@ -170,14 +215,14 @@ export function CreateModal({
                 type="text"
                 data-testid="create-url"
                 value={url}
-                placeholder="https://api.example.com/path"
-                onChange={(e) => setUrl(e.target.value)}
+                placeholder={'https://api.example.com/path  ·  or paste a curl command'}
+                onChange={(e) => onUrlChange(e.target.value)}
               />
             </label>
           </>
         )}
 
-        {kind === 'workspace' && !renameTarget && (
+        {kind === 'workspace' && (
           <>
             <label className="auth-field">
               <span>Organization</span>
@@ -213,7 +258,7 @@ export function CreateModal({
             disabled={busy || (kind === 'workspace' && !canCreateWorkspace)}
             data-testid="create-submit"
           >
-            {busy ? 'Saving…' : renameTarget ? 'Rename' : 'Create'}
+            {busy ? 'Creating…' : 'Create'}
           </button>
         </div>
       </form>

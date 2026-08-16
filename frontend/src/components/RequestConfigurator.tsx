@@ -1,9 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
-import type { ApiRequest, ApiType, BodyType, HttpMethod, RequestContentType } from '@/lib/types';
+import React, { useEffect, useState } from 'react';
+import type { ApiRequest, ApiType, HttpMethod, RequestContentType } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
+import { isCurlCommand, parseCurl } from '@/lib/curl';
+import {
+  METHODS,
+  API_TYPES,
+  METHOD_COLORS,
+  BODY_KIND_OPTIONS,
+  bodyKindOf,
+  bodyTypeForKind,
+  type BodyKind,
+} from '@/lib/requestForm';
 import { KeyValueRows } from './KeyValueRows';
 import { CodeEditor } from './CodeEditor';
 import { TabBar } from './TabBar';
@@ -24,60 +34,6 @@ import {
   ShareIcon,
 } from './icons';
 
-const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
-const API_TYPES: ApiType[] = ['REST', 'SOAP', 'GRAPHQL', 'AUTH'];
-
-const METHOD_COLORS: Record<HttpMethod, string> = {
-  GET: '#1f6feb',
-  POST: '#2ea043',
-  PUT: '#9e6a03',
-  PATCH: '#8957e5',
-  DELETE: '#da3633',
-  HEAD: '#6b7684',
-  OPTIONS: '#6b7684',
-};
-
-type BodyKind = 'NONE' | 'JSON' | 'XML' | 'FORM_URLENCODED' | 'MULTIPART' | 'GRAPHQL' | 'RAW_TEXT';
-
-const BODY_KIND_OPTIONS: Array<{ id: BodyKind; label: string }> = [
-  { id: 'NONE', label: 'None' },
-  { id: 'JSON', label: 'JSON' },
-  { id: 'XML', label: 'XML' },
-  { id: 'FORM_URLENCODED', label: 'Form' },
-  { id: 'MULTIPART', label: 'Multipart' },
-  { id: 'GRAPHQL', label: 'GraphQL' },
-  { id: 'RAW_TEXT', label: 'Raw' },
-];
-
-function bodyKindOf(request: ApiRequest): BodyKind {
-  if (request.bodyType === 'NONE') return 'NONE';
-  if (request.bodyType === 'JSON') return 'JSON';
-  if (request.bodyType === 'MULTIPART') return 'MULTIPART';
-  if (request.bodyType === 'FORM_URLENCODED') return 'FORM_URLENCODED';
-  if (request.bodyType === 'GRAPHQL') return 'GRAPHQL';
-  if (request.contentType.includes('xml')) return 'XML';
-  return 'RAW_TEXT';
-}
-
-function bodyTypeForKind(kind: BodyKind): { bodyType: BodyType; contentType: RequestContentType } {
-  switch (kind) {
-    case 'JSON':
-      return { bodyType: 'JSON', contentType: 'application/json' };
-    case 'XML':
-      return { bodyType: 'RAW_TEXT', contentType: 'application/xml' };
-    case 'FORM_URLENCODED':
-      return { bodyType: 'FORM_URLENCODED', contentType: 'application/x-www-form-urlencoded' };
-    case 'MULTIPART':
-      return { bodyType: 'MULTIPART', contentType: 'multipart/form-data' };
-    case 'GRAPHQL':
-      return { bodyType: 'GRAPHQL', contentType: 'application/json' };
-    case 'RAW_TEXT':
-      return { bodyType: 'RAW_TEXT', contentType: 'text/plain' };
-    default:
-      return { bodyType: 'NONE', contentType: 'text/plain' };
-  }
-}
-
 export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) {
   const { state, dispatch } = useApp();
   const ws = useWorkspace();
@@ -85,6 +41,28 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
   const [shareOpen, setShareOpen] = useState(false);
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
+
+  // Ctrl+Enter / Cmd+Enter sends the active request. This effect lives above the
+  // early return so the hook is always called the same number of times on every
+  // render (React Rules of Hooks) whether or not a request is selected.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        void ws
+          .runActiveRequest()
+          .then(() => dispatch({ type: 'SHOW_TOAST', kind: 'info', message: 'Request executed.' }))
+          .catch((err) =>
+            dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Run failed' })
+          );
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // ws / dispatch are stable context references; re-register on each render's request is unnecessary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ws, dispatch]);
+
   if (!request)
     return (
       <div className="panel-empty" data-testid="request-configurator">
@@ -94,6 +72,29 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
     );
 
   const update = (patch: Partial<ApiRequest>) => ws.updateActiveRequest(patch);
+
+  const onUrlChange = (value: string) => {
+    // Pasting a curl command into the URL field overwrites the whole request
+    // with the parsed method, headers, query params and body.
+    if (isCurlCommand(value)) {
+      const parsed = parseCurl(value);
+      if (parsed.url) {
+        update({
+          method: parsed.method,
+          url: parsed.url,
+          headers: parsed.headers,
+          queryParams: parsed.queryParams,
+          bodyType: parsed.bodyType,
+          bodyJson: parsed.bodyJson ?? parsed.bodyText ?? null,
+          bodyText: parsed.bodyText ?? null,
+          contentType: parsed.contentType,
+        });
+        dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'cURL parsed into the request.' });
+        return;
+      }
+    }
+    update({ url: value });
+  };
 
   const updateKeyValue = (field: 'headers' | 'queryParams', entries: ApiRequest['headers']) => {
     update({ [field]: entries } as Partial<ApiRequest>);
@@ -155,11 +156,11 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           className="url-input"
           type="text"
           value={request.url}
-          placeholder="https://api.example.com/path"
+          placeholder="https://api.example.com/path  ·  or paste a curl command"
           spellCheck={false}
           aria-label="Request URL"
           data-testid="url-input"
-          onChange={(e) => update({ url: e.target.value })}
+          onChange={(e) => onUrlChange(e.target.value)}
         />
         <select
           className="compact-select"
@@ -174,12 +175,22 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
             </option>
           ))}
         </select>
-        <button type="button" className="primary-button" data-testid="send-button" onClick={onSend} style={actionBtn}>
+        <button type="button" className="primary-button" data-testid="send-button" onClick={onSend} title="Send (Ctrl+Enter)" style={actionBtn}>
           <SendIcon size={14} />
           Send
         </button>
         <button type="button" className="ghost-button" data-testid="save-request-button" onClick={onSave} style={actionBtn}>
           <SaveIcon size={14} />
+          {ws.isDirty && (
+            <span
+              className="unsaved-dot"
+              data-testid="unsaved-dot"
+              title="You have unsaved changes"
+              aria-label="You have unsaved changes"
+            >
+              •
+            </span>
+          )}
           Save
         </button>
         <button type="button" className="ghost-button" data-testid="codegen-open-button" onClick={onExportCode} style={actionBtn}>
