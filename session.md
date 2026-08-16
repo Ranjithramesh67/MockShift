@@ -9,18 +9,13 @@ Last updated: 2026-08-16
 
 Step: Postman-style request editing (remove create toggle, cURL auto-detect,
 dirty-state dot, request tabs, test-cURL-without-saving).
-Status: IN PROGRESS — M1–M8 done; M9 (docs + wrap-up) next.
+Status: COMPLETE — M1–M9 all done; feature shipped.
 
-M8 DONE (pushed `75143f7`):
-- `ScratchpadModal` opened from new TopBar "Test cURL" button: paste a curl
-  command -> live structured preview (method/url/headers/query params/body),
-  **Send** runs via `POST /api/runs` (persistHistory:false), closes the modal
-  and switches to side-by-side so the response shows in ResponsePane. No
-  request row is created anywhere.
-- Pure helper `src/lib/scratchpad.js` + node:test `__tests__/scratchpad.test.cjs`
-  (3/3 pass). `WorkspaceStore.runScratchpad` typed action (sets `lastRun`).
-- e2e `frontend/e2e/scratchpad.spec.ts` 2/2 pass (run-without-saving + rejects
-  non-curl input). tsc --noEmit clean. Full suite + `next build` left to user.
+M9 DONE (pushed this turn):
+- Docs + wrap-up: `session.md` Current + Plan + Completed updated,
+  `instructions.md` status table finalised (M9 → done), `docs/SESSION.md` gained
+  a dated §5 narrative entry. Final commit records the full feature set. Docs
+  only — no source, test, or DB changes.
 
 Plan (micro tasks, see `instructions.md`):
 M1 CreateModal auto-detect cURL (remove Fill form/Paste cURL toggle) — DONE
@@ -32,9 +27,15 @@ M5 Backend ephemeral run endpoint (POST /api/runs) — DONE (pushed `d9c80b4`)
 M6 Send uses working copy — DONE (pushed this turn)
 M7 Tabs for opened requests — DONE (pushed `183d7ab`)
 M8 Test cURL without saving (scratchpad) — DONE (pushed `75143f7`)
-M9 Docs + wrap-up
+M9 Docs + wrap-up — DONE (pushed this turn)
 
 ## Completed (this feature)
+
+- **M9 — docs + wrap-up** (pushed this turn). Final micro task. Updated
+  `session.md` (Current status → COMPLETE; M9 marked DONE in the plan and this
+  completed log), `instructions.md` (M9 status-table row → done), and
+  `docs/SESSION.md` (dated §5 narrative entry). Docs only — no source, test,
+  or DB changes. Feature set M1–M9 fully shipped.
 
 - **M7 — tabs for opened requests** (pushed `183d7ab`). `WorkspaceStore` gained
   `openRequestIds[]` + `activeRequestId` + `requestCopies{}` (a working copy per
