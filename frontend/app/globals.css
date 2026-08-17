@@ -1444,14 +1444,6 @@ body.is-col-dragging .sidebar {
   transition: border-color var(--speed) var(--ease);
 }
 
-.formula-editor {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 10px;
-  max-width: 860px;
-}
-
 .hint {
   color: var(--text-muted);
   font-size: 12px;
@@ -3030,6 +3022,50 @@ body.is-col-dragging .sidebar {
   background: rgba(88, 166, 255, 0.16);
 }
 
+/* ---- Admin access tab ----------------------------------------------------- */
+.admin-access-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.admin-access-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.admin-access-members {
+  margin-top: 6px;
+}
+
+.admin-access-members .manage-section-title {
+  margin: 14px 0 8px;
+}
+
+.admin-access-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 4px;
+}
+
+.admin-access-add .compact-select {
+  max-width: 260px;
+}
+
+.ghost-button.small.danger,
+.ghost-button.danger:hover {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
 /* ---- Manage & automations pages ------------------------------------------- */
 .admin-header-actions {
   display: flex;
@@ -3587,14 +3623,50 @@ body.is-col-dragging .sidebar {
   gap: 10px;
   height: 100%;
   min-height: 0;
+  max-width: 860px;
+}
+
+/* The code editor fills the remaining space and scrolls internally instead of
+   growing the page; the helper sits below it and can be collapsed. */
+.formula-editor .code-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.formula-editor > .editor-placeholder {
+  flex: 1;
+}
+.formula-editor .code-editor .cm-theme,
+.formula-editor .code-editor .cm-editor {
+  height: 100% !important;
+}
+.formula-editor .code-editor .cm-scroller {
+  overflow: auto !important;
 }
 
 .formula-helper {
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 10px 12px;
   background: var(--bg-panel-2);
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.formula-helper-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  text-align: left;
+}
+
+.formula-helper-head:hover {
+  background: rgba(148, 163, 184, 0.05);
 }
 
 .formula-helper-title {
@@ -3606,11 +3678,31 @@ body.is-col-dragging .sidebar {
   color: var(--accent);
 }
 
+.formula-helper-count {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-left: 2px;
+}
+
+.formula-helper-head .chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.formula-helper-body {
+  max-height: 42vh;
+  overflow: auto;
+  padding: 0 12px 10px;
+}
+
+.formula-helper-body .hint {
+  margin-bottom: 8px;
+}
+
 .formula-helper-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 6px;
-  margin-top: 8px;
 }
 
 .formula-helper-item {

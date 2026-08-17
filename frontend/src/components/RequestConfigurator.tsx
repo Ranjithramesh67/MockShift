@@ -47,21 +47,34 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
   // render (React Rules of Hooks) whether or not a request is selected.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        void ws
-          .runActiveRequest()
-          .then(() => dispatch({ type: 'SHOW_TOAST', kind: 'info', message: 'Request executed.' }))
-          .catch((err) =>
-            dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Run failed' })
-          );
-      }
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'Enter') return;
+      // CodeMirror editors that expose onModEnter handle the shortcut in their
+      // own keymap (so it doesn't insert a newline); skip those to avoid
+      // running the request twice.
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest && target.closest('[data-mod-enter="true"]')) return;
+      e.preventDefault();
+      void ws
+        .runActiveRequest()
+        .then(() => dispatch({ type: 'SHOW_TOAST', kind: 'info', message: 'Request executed.' }))
+        .catch((err) =>
+          dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Run failed' })
+        );
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // ws / dispatch are stable context references; re-register on each render's request is unnecessary.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, dispatch]);
+
+  const runActive = () => {
+    void ws
+      .runActiveRequest()
+      .then(() => dispatch({ type: 'SHOW_TOAST', kind: 'info', message: 'Request executed.' }))
+      .catch((err) =>
+        dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Run failed' })
+      );
+  };
 
   if (!request)
     return (
@@ -265,6 +278,7 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
                 language={bodyKind === 'JSON' || bodyKind === 'GRAPHQL' ? 'json' : bodyKind === 'XML' ? 'xml' : 'text'}
                 height="100%"
                 ariaLabel="Request body editor"
+                onModEnter={runActive}
               />
             )}
           </div>
@@ -277,6 +291,7 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
               language="javascript"
               height="100%"
               ariaLabel="Formula editor"
+              onModEnter={runActive}
             />
             <FormulaHelper
               onInsert={(code) => {
