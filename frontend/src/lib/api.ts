@@ -328,7 +328,49 @@ export const adminApi = {
     apiFetch(`/api/admin/users/${userId}`, { method: 'PATCH', body: patch }),
   createUser: (input: { email: string; name: string; role: UserRole; password: string }) =>
     apiFetch<{ user: User }>('/api/admin/users', { method: 'POST', body: input }),
+  access: () => apiFetch<AdminAccessOverview>('/api/admin/access'),
+  grantProjectMember: (projectId: string, input: { userId: string; role: UserRole }) =>
+    apiFetch(`/api/admin/projects/${projectId}/members`, { method: 'POST', body: input }),
+  revokeProjectMember: (projectId: string, userId: string) =>
+    apiFetch(`/api/admin/projects/${projectId}/members/${userId}`, { method: 'DELETE' }),
+  assignManager: (projectId: string, userId: string) =>
+    apiFetch(`/api/admin/projects/${projectId}/managers`, { method: 'POST', body: { userId } }),
+  removeManager: (projectId: string, userId: string) =>
+    apiFetch(`/api/admin/projects/${projectId}/managers/${userId}`, { method: 'DELETE' }),
+  grantWorkspaceMember: (workspaceId: string, input: { userId: string; role: UserRole }) =>
+    apiFetch(`/api/admin/workspaces/${workspaceId}/members`, { method: 'POST', body: input }),
+  revokeWorkspaceMember: (workspaceId: string, userId: string) =>
+    apiFetch(`/api/admin/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' }),
 };
+
+export interface AdminAccessUser {
+  id: string;
+  name: string;
+  email: string;
+  role?: UserRole;
+}
+
+export interface AdminAccessProject {
+  id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name: string;
+  managers: AdminAccessUser[];
+  members: AdminAccessUser[];
+}
+
+export interface AdminAccessWorkspace {
+  id: string;
+  name: string;
+  organization_id: string;
+  organization_name: string;
+  members: AdminAccessUser[];
+}
+
+export interface AdminAccessOverview {
+  projects: AdminAccessProject[];
+  workspaces: AdminAccessWorkspace[];
+}
 
 // ---------------------------------------------------------------- Manage API
 export interface ManageOverview {

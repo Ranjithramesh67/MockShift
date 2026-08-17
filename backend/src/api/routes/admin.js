@@ -9,6 +9,217 @@ const { logAudit } = require('../audit');
 const router = Router();
 router.use(requireAuth, requireAdmin);
 
+const ROLES = ['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'];
+
+async function userExists(userId) {
+  const { rows } = await query(`SELECT id, name, email, is_active FROM users WHERE id = $1`, [userId]);
+  return rows[0] || null;
+}
+
+// ------------------------------------------------------------- Access overview
+// Admin-only view of every project and workspace with their current access
+// grants, so an admin can directly create/revoke membership.
+router.get('/access', async (req, res, next) => {
+  try {
+    const [projects, workspaces] = await Promise.all([
+      query(
+        `SELECT p.id, p.name, p.workspace_id, w.name AS workspace_name,
+                COALESCE(json_agg(DISTINCT m) FILTER (WHERE m.id IS NOT NULL), '[]'::json) AS managers,
+                COALESCE(json_agg(DISTINCT mem) FILTER (WHERE mem.id IS NOT NULL), '[]'::json) AS members
+           FROM projects p
+           JOIN workspaces w ON w.id = p.workspace_id
+           LEFT JOIN (
+             SELECT pm.project_id, u.id, u.name, u.email
+               FROM project_managers pm JOIN users u ON u.id = pm.user_id
+           ) m ON m.project_id = p.id
+           LEFT JOIN (
+             SELECT pm.project_id, u.id, u.name, u.email, pm.role
+               FROM project_members pm JOIN users u ON u.id = pm.user_id
+           ) mem ON mem.project_id = p.id
+          GROUP BY p.id, w.name
+          ORDER BY w.name, p.name`
+      ),
+      query(
+        `SELECT ws.id, ws.name, ws.organization_id, o.name AS organization_name,
+                COALESCE(json_agg(DISTINCT wm) FILTER (WHERE wm.id IS NOT NULL), '[]'::json) AS members
+           FROM workspaces ws
+           JOIN organizations o ON o.id = ws.organization_id
+           LEFT JOIN (
+             SELECT wm.workspace_id, u.id, u.name, u.email, wm.role
+               FROM workspace_members wm JOIN users u ON u.id = wm.user_id
+           ) wm ON wm.workspace_id = ws.id
+          GROUP BY ws.id, o.name
+          ORDER BY o.name, ws.name`
+      ),
+    ]);
+    res.json({ projects: projects.rows, workspaces: workspaces.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------- Project membership
+// Directly grant a user project access (bypasses the access-request flow).
+router.post('/projects/:projectId/members', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { userId, role } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    const roleValue = ROLES.includes(role) ? role : 'VIEWER';
+    const [user, project] = await Promise.all([
+      userExists(userId),
+      query(`SELECT id, name FROM projects WHERE id = $1`, [projectId]),
+    ]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    await query(
+      `INSERT INTO project_members (project_id, user_id, role, granted_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role, granted_by = EXCLUDED.granted_by`,
+      [projectId, userId, roleValue, req.user.id]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'grant_project_access',
+      detail: { userId, role: roleValue },
+      ip: req.ip,
+    });
+    res.json({ ok: true, role: roleValue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/projects/:projectId/members/:userId', async (req, res, next) => {
+  try {
+    const { projectId, userId } = req.params;
+    await query(
+      `DELETE FROM project_members WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'revoke_project_access',
+      detail: { userId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------- Manager assignment
+router.post('/projects/:projectId/managers', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    const [user, project] = await Promise.all([
+      userExists(userId),
+      query(`SELECT id FROM projects WHERE id = $1`, [projectId]),
+    ]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    await query(
+      `INSERT INTO project_managers (project_id, user_id, created_by)
+       VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [projectId, userId, req.user.id]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'assign_manager',
+      detail: { userId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/projects/:projectId/managers/:userId', async (req, res, next) => {
+  try {
+    const { projectId, userId } = req.params;
+    await query(
+      `DELETE FROM project_managers WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'remove_manager',
+      detail: { userId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------ Workspace membership
+// Directly grant/revoke workspace membership (overrides visibility defaults).
+router.post('/workspaces/:workspaceId/members', async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    const { userId, role } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    const roleValue = ROLES.includes(role) ? role : 'VIEWER';
+    const [user, workspace] = await Promise.all([
+      userExists(userId),
+      query(`SELECT id, name FROM workspaces WHERE id = $1`, [workspaceId]),
+    ]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (workspace.rows.length === 0) return res.status(404).json({ error: 'Workspace not found' });
+    await query(
+      `INSERT INTO workspace_members (workspace_id, user_id, role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+      [workspaceId, userId, roleValue]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'workspace',
+      entityId: workspaceId,
+      action: 'grant_workspace_access',
+      detail: { userId, role: roleValue },
+      ip: req.ip,
+    });
+    res.json({ ok: true, role: roleValue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/workspaces/:workspaceId/members/:userId', async (req, res, next) => {
+  try {
+    const { workspaceId, userId } = req.params;
+    await query(
+      `DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`,
+      [workspaceId, userId]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'workspace',
+      entityId: workspaceId,
+      action: 'revoke_workspace_access',
+      detail: { userId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/users', async (req, res, next) => {
   try {
     const { email, name, role, password } = req.body || {};

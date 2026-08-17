@@ -224,6 +224,7 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
                     language={bodyKind === 'JSON' || bodyKind === 'GRAPHQL' ? 'json' : bodyKind === 'XML' ? 'xml' : 'text'}
                     height="100%"
                     ariaLabel="Request body editor"
+                    onModEnter={onSend}
                   />
                 )}
               </div>
@@ -236,6 +237,7 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
                   language="javascript"
                   height="100%"
                   ariaLabel="Formula editor"
+                  onModEnter={onSend}
                 />
                 <FormulaHelper
                   onInsert={(code) => {
