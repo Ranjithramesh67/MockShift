@@ -230,6 +230,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     Array<{ requestId: string; index: number; request: ApiRequest; baseline: unknown[] | null }>
   >([]);
   const [lastRun, setLastRun] = useState<RunResult | null>(null);
+  // Last executed response per request id, kept in memory for the lifetime of
+  // the page so closing a tab (Ctrl+Q) and reopening it (Ctrl+Shift+Q) or
+  // switching back to it restores the previous response instead of dropping it.
+  const [requestRuns, setRequestRuns] = useState<Record<string, RunResult | null>>({});
   const [collectionRun, setCollectionRun] = useState<CollectionRunResult | null>(null);
   const [collectionRunRunning, setCollectionRunRunning] = useState(false);
 
@@ -274,6 +278,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setBaselines({});
     setClosedTabs([]);
     setLastRun(null);
+    setRequestRuns({});
     const ws = workspaces.find((w) => w.id === workspaceId);
     setActiveWorkspaceRole(ws?.role ?? null);
     const t = await workspaceApi.content(workspaceId);
@@ -301,6 +306,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setBaselines({});
     setClosedTabs([]);
     setLastRun(null);
+    setRequestRuns({});
     try {
       const { authProvider: p } = await contentApi.getAuthProvider(collectionId);
       setAuthProvider(p);
@@ -311,7 +317,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const selectRequest = useCallback(async (requestId: string) => {
     setError(null);
-    setLastRun(null);
+    // Restore the last stored response for this request if one exists.
+    setLastRun(requestRuns[requestId] ?? null);
     if (openRequestIds.includes(requestId)) {
       // Already open: switch to it without refetching so the working copy
       // (with any unsaved edits) is restored.
@@ -330,7 +337,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setBaselines((b) => ({ ...b, [requestId]: dirtySnapshot(editorRequest) }));
     setOpenRequestIds((ids) => openTab(ids, requestId));
     setActiveRequestId(requestId);
-  }, [openRequestIds, requestCopies]);
+  }, [openRequestIds, requestCopies, requestRuns]);
 
   const updateActiveRequest = useCallback((patch: Partial<ApiRequest>) => {
     setActiveRequest((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -357,7 +364,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const activateRequestTab = useCallback(
     async (requestId: string) => {
       if (requestId === activeRequestId) return;
-      setLastRun(null);
+      setLastRun(requestRuns[requestId] ?? null);
       const copy = requestCopies[requestId];
       if (copy) {
         setActiveRequestId(requestId);
@@ -366,7 +373,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       }
       await selectRequest(requestId);
     },
-    [activeRequestId, requestCopies, selectRequest]
+    [activeRequestId, requestCopies, requestRuns, selectRequest]
   );
 
   const closeRequestTab = useCallback(
@@ -404,13 +411,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       if (neighbourCopy) {
         setActiveRequestId(nextActiveId);
         setActiveRequest(neighbourCopy);
-        setLastRun(null);
+        setLastRun(requestRuns[nextActiveId] ?? null);
         return;
       }
       setActiveRequestId(nextActiveId);
       await selectRequest(nextActiveId);
     },
-    [openRequestIds, activeRequestId, requestCopies, baselines, selectRequest]
+    [openRequestIds, activeRequestId, requestCopies, requestRuns, baselines, selectRequest]
   );
 
   // Ctrl+Shift+Q: undo the last tab close — restore its working copy (including
@@ -431,8 +438,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     });
     setActiveRequestId(top.requestId);
     setActiveRequest(top.request);
-    setLastRun(null);
-  }, [closedTabs]);
+    // Restore the response that was shown when the tab was closed (kept in
+    // requestRuns for the lifetime of the page).
+    setLastRun(requestRuns[top.requestId] ?? null);
+  }, [closedTabs, requestRuns]);
 
   const isTabDirty = useCallback(
     (requestId: string) => {
@@ -464,6 +473,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       result = await contentApi.runRequest(activeRequest.id);
     }
     setLastRun(result);
+    // Keep the response for this request in memory so it can be restored when
+    // the tab is closed and reopened (Ctrl+Q / Ctrl+Shift+Q) or switched to.
+    setRequestRuns((runs) => ({ ...runs, [activeRequest.id]: result }));
   }, [activeRequest, isDirty, activeCollectionId]);
 
   // M8: scratchpad — execute an in-memory request shape (e.g. a pasted cURL)
@@ -651,6 +663,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const deleteRequest = useCallback(async (requestId: string) => {
     await contentApi.deleteRequest(requestId);
     await closeRequestTab(requestId, false);
+    setRequestRuns((runs) => {
+      const next = { ...runs };
+      delete next[requestId];
+      return next;
+    });
     if (tree) {
       setTree({ ...tree, requests: tree.requests.filter((r) => r.id !== requestId) });
     }
@@ -666,6 +683,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     for (const id of affectedIds) {
       await closeRequestTab(id, false);
     }
+    setRequestRuns((runs) => {
+      const next = { ...runs };
+      for (const r of tree?.requests ?? []) {
+        if (r.collection_id === collectionId) delete next[r.id];
+      }
+      return next;
+    });
     if (activeCollectionId === collectionId) {
       setActiveCollectionId(null);
       setActiveCollectionName('');
@@ -699,6 +723,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setBaselines({});
       setClosedTabs([]);
       setLastRun(null);
+      setRequestRuns({});
     }
     const updated = await workspaceApi.list();
     setWorkspaces(updated.workspaces);
