@@ -52,9 +52,13 @@ export function CodeEditor({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // extensionFor returns a single (non-iterable) Extension object, so it must
+  // always be wrapped in an array before spreading into the extensions list.
+  const baseExtensions = [extensionFor(language)] as any[];
+
   const extensions = onModEnter
     ? [
-        ...(extensionFor(language) as any[]),
+        ...baseExtensions,
         // Highest precedence so this binding wins over the default Mod-Enter
         // (insertBlankLine) shipped with basicSetup.
         Prec.highest(
@@ -69,7 +73,7 @@ export function CodeEditor({
           ])
         ),
       ]
-    : (extensionFor(language) as any[]);
+    : baseExtensions;
 
   if (!mounted) {
     return <div className="editor-placeholder" style={{ height }} aria-label={ariaLabel} />;

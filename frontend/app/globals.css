@@ -3637,6 +3637,7 @@ body.is-col-dragging .sidebar {
   flex: 1;
 }
 .formula-editor .code-editor .cm-theme,
+.formula-editor .code-editor .cm-theme-dark,
 .formula-editor .code-editor .cm-editor {
   height: 100% !important;
 }
@@ -3648,7 +3649,11 @@ body.is-col-dragging .sidebar {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-panel-2);
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 45%;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -3663,6 +3668,7 @@ body.is-col-dragging .sidebar {
   cursor: pointer;
   color: var(--text);
   text-align: left;
+  flex-shrink: 0;
 }
 
 .formula-helper-head:hover {
@@ -3690,7 +3696,8 @@ body.is-col-dragging .sidebar {
 }
 
 .formula-helper-body {
-  max-height: 42vh;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 0 12px 10px;
 }
