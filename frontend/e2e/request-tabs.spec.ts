@@ -231,3 +231,54 @@ test('request tabs: Ctrl+Q closes the active request tab; Ctrl+Shift+Q reopens i
     page.getByTestId(`request-tab-switch-${nameA}`).locator('.unsaved-dot')
   ).toBeVisible();
 });
+
+/**
+ * The executed response of a request is kept in memory for the lifetime of the
+ * page: closing a tab with Ctrl+Q and reopening it with Ctrl+Shift+Q restores
+ * the response that was shown before the tab was closed.
+ */
+test('request tabs: Ctrl+Shift+Q restores the last executed response', async ({ page }) => {
+  const email = await signupFreshUser(page);
+
+  const wsRes = await page.request.get('/api/workspaces');
+  const ws = (await wsRes.json()).workspaces.find(
+    (w: { id: string; name: string }) => w.name === 'My Workspace'
+  );
+  const content = await (await page.request.get(`/api/workspaces/${ws.id}/content`)).json();
+  const projectId = content.projects.find(
+    (p: { id: string; name: string }) => p.name === 'Default Project'
+  ).id;
+  const colRes = await page.request.post('/api/collections', {
+    data: { projectId, name: 'Tabs Response Col' },
+  });
+  const collectionId = (await colRes.json()).collection.id;
+
+  const name = `tabs-resp-${email}`;
+  const res = await page.request.post('/api/requests', {
+    data: { collectionId, name, method: 'GET', url: 'http://127.0.0.1:3999/posts/1' },
+  });
+  expect(res.status()).toBe(201);
+
+  await page.goto('/');
+  await page.getByTestId('workspace-My Workspace').click();
+  await expect(page.getByTestId('sidebar')).toBeVisible();
+
+  // Open the request and execute it -> response pane shows the result.
+  await page.getByTestId(`sidebar-request-${name}`).click();
+  await expect(page.getByTestId(`request-tab-${name}`)).toBeVisible();
+  const responseBody = page.locator('.response-pane .cm-content');
+  await page.getByTestId('send-button').click();
+  await expect(responseBody).toContainText('"id": 1');
+  await expect(page.getByTestId('response-pane')).toContainText('Status: 200');
+
+  // Ctrl+Q closes the tab; the response pane is replaced by the empty state.
+  await page.keyboard.press('Control+q');
+  await expect(page.getByTestId(`request-tab-${name}`)).toHaveCount(0);
+  await expect(page.getByTestId('response-pane')).toContainText('No response yet.');
+
+  // Ctrl+Shift+Q reopens the tab and restores the executed response.
+  await page.keyboard.press('Control+Shift+q');
+  await expect(page.getByTestId(`request-tab-${name}`)).toBeVisible();
+  await expect(page.getByTestId('response-pane')).toContainText('Status: 200');
+  await expect(responseBody).toContainText('"id": 1');
+});
