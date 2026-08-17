@@ -149,3 +149,74 @@ test('request tabs: closing the active tab activates a neighbour', async ({ page
   await expect(page.getByTestId(`request-tab-switch-${nameA}`)).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('url-input')).toHaveValue(/\/posts\/1/);
 });
+
+/**
+ * Ctrl+F4 closes the active request tab instead of letting the browser close
+ * the whole app tab. Dirty tabs ask for confirmation first, matching the close
+ * (×) button.
+ */
+test('request tabs: Ctrl+F4 closes the active request tab, not the browser tab', async ({ page }) => {
+  const email = await signupFreshUser(page);
+
+  const wsRes = await page.request.get('/api/workspaces');
+  const ws = (await wsRes.json()).workspaces.find(
+    (w: { id: string; name: string }) => w.name === 'My Workspace'
+  );
+  const content = await (await page.request.get(`/api/workspaces/${ws.id}/content`)).json();
+  const projectId = content.projects.find(
+    (p: { id: string; name: string }) => p.name === 'Default Project'
+  ).id;
+  const colRes = await page.request.post('/api/collections', {
+    data: { projectId, name: 'Tabs F4 Col' },
+  });
+  const collectionId = (await colRes.json()).collection.id;
+
+  const nameA = `tabs-f4-a-${email}`;
+  const nameB = `tabs-f4-b-${email}`;
+  for (const [name, id] of [
+    [nameA, 1],
+    [nameB, 2],
+  ] as const) {
+    const res = await page.request.post('/api/requests', {
+      data: { collectionId, name, method: 'GET', url: `http://127.0.0.1:3999/posts/${id}` },
+    });
+    expect(res.status()).toBe(201);
+  }
+
+  await page.goto('/');
+  await page.getByTestId('workspace-My Workspace').click();
+  await expect(page.getByTestId('sidebar')).toBeVisible();
+
+  // Open A and B; B is active.
+  await page.getByTestId(`sidebar-request-${nameA}`).click();
+  await expect(page.getByTestId(`request-tab-${nameA}`)).toBeVisible();
+  await page.getByTestId(`sidebar-request-${nameB}`).click();
+  await expect(page.getByTestId(`request-tab-${nameB}`)).toBeVisible();
+  await expect(page.getByTestId(`request-tab-switch-${nameB}`)).toHaveAttribute('aria-selected', 'true');
+
+  // Ctrl+F4 closes B (the active request tab) and activates A. The app (page)
+  // itself stays alive — verify A's tab strip is still there.
+  await page.keyboard.press('Control+F4');
+  await expect(page.getByTestId(`request-tab-${nameB}`)).toHaveCount(0);
+  await expect(page.getByTestId(`request-tab-${nameA}`)).toBeVisible();
+  await expect(page.getByTestId(`request-tab-switch-${nameA}`)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('url-input')).toHaveValue(/\/posts\/1/);
+
+  // Make A dirty; Ctrl+F4 asks for confirmation; dismiss keeps the tab open.
+  await page.getByTestId('url-input').fill('http://127.0.0.1:3999/posts/777');
+  await expect(
+    page.getByTestId(`request-tab-switch-${nameA}`).locator('.unsaved-dot')
+  ).toBeVisible();
+  page.once('dialog', (d) => d.dismiss());
+  await page.keyboard.press('Control+F4');
+  await expect(page.getByTestId(`request-tab-${nameA}`)).toBeVisible();
+
+  // Accepting the confirmation closes the last tab and hides the strip.
+  page.once('dialog', (d) => d.accept());
+  await page.keyboard.press('Control+F4');
+  await expect(page.getByTestId(`request-tab-${nameA}`)).toHaveCount(0);
+  await expect(page.getByTestId('request-tabs')).toHaveCount(0);
+
+  // The app is still usable after the strip is gone.
+  await expect(page.getByTestId('sidebar')).toBeVisible();
+});
