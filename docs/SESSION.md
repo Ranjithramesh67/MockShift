@@ -74,6 +74,55 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.22 Fix follow-ups on remote commit `7af6044` (Ctrl+Enter from editors + formula helpers panel + admin Access tab)
+
+Pulled the remote fast-forward `26189c9..7af6044` ("fix(editor): ctrl+enter
+sends request from body/formula editors; formula helpers stop covering the edit
+pane", also bundling the admin Access tab). Inspected the commit, restarted the
+backend so the new `admin.js` routes would load, then verified/fixed what the
+commit introduced. Three fixes + verification:
+
+**Fix 1 — `CodeEditor` runtime crash (regression from the commit).**
+`CodeEditor.tsx` spread `...(extensionFor(language) as any[])`, but
+`extensionFor` returns a single **non-iterable** `Extension` object (not an
+array) for every language, so rendering any body/formula editor threw
+`extensionFor is not a function or its return value is not iterable` and the
+editor never appeared (caught via Playwright console/pageerror while smoke-
+testing Ctrl+Enter). Fixed by wrapping it in an array first
+(`const baseExtensions = [extensionFor(language)]`), then spreading.
+
+**Fix 2 — formula helpers panel still covered the edit pane.**
+The commit's CSS left the helper `flex-shrink: 0` with a `42vh` body cap, so on
+the ~220px-tall formula tab the 337px helper overflowed and overlapped the
+editor (measured via Playwright bounding boxes). Also, the commit targeted the
+nonexistent `.cm-theme` wrapper class (the real one is `.cm-theme-dark`), so the
+editor never filled its flex slot. Fixed in `globals.css`:
+- `.formula-helper` → `flex: 0 1 auto; min-height: 0; max-height: 45%; display:
+  flex; flex-direction: column` (shrinks to fit, never covers the editor).
+- `.formula-helper-body` → `flex: 1; min-height: 0` (internal scroll instead of
+  fixed `42vh`).
+- Added `.formula-editor .code-editor .cm-theme-dark` alongside `.cm-theme` so
+  the CodeMirror chain fills the remaining space.
+
+**Fix 3 — backend running stale code.** The backend predated the commit, so the
+new `/api/admin/access` routes weren't served; restarted it on :3001.
+
+**Verified (not changed):** the Ctrl+Enter `onModEnter` keymap (`Prec.highest`)
+works — standalone Playwright smoke confirms body and formula editors both run
+the request with exactly **one** history row each (no double-fire; the global
+handler skips `[data-mod-enter="true"]` editors). Admin Access tab renders and
+all grant/revoke endpoints work (project members, managers, workspace members,
+role selection) — smoke-tested with the boss admin login.
+
+**Tests:** backend jest 47/47 · `test:api` 58/58 · `test:api:unit` 49/49 ·
+frontend unit 68/68 · `tsc --noEmit` clean. E2e: request-tabs, scratchpad,
+send-working-copy, dirty-dot, assertions-runner, rename-f2, folder-drag-move,
+request-drag-move, request-duplicate pass standalone on a fresh reset+seeded DB.
+Two full-suite failures (`send-working-copy`, `assertions-runner`) are the
+**documented pre-existing ordering issue** — earlier specs mutate the shared
+mock upstream (`/posts`) and leave requests in "Mock API Demo", so later specs
+see `posts/2 not found` / `Requests: 9` instead of 8. Both pass standalone.
+
 ### 5.21 M14 — Rework scratchpad: full-width editor pane + save location picker (pushed this turn)
 
 The M8 scratchpad modal was reworked into a full-width editor pane +

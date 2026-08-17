@@ -230,6 +230,7 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M12 | Rename focused item via F2 | done (this turn) |
 | M13 | Drag-and-drop move: folder between nested folders | done (this turn) |
 | M14 | Rework scratchpad: full-width editor + save location picker | done (pushed `edff412`) |
+| M15 | Verify/fix pulled commit `7af6044` (Ctrl+Enter editors + formula helpers panel + admin Access tab) | done (this turn, pushed) |
 
 ## M14 — Rework scratchpad (done)
 
@@ -257,3 +258,31 @@ location picker (user decisions above):
 - e2e `frontend/e2e/scratchpad.spec.ts` rewritten for the new UI (open editor,
   method/url, send → response shown + no request created; save → picker asks
   name, pick collection + nested folder → request appears at that folder).
+
+## M15 — Verify/fix pulled remote commit `7af6044` (done)
+
+The remote fast-forward `26189c9..7af6044` bundled "ctrl+enter sends request
+from body/formula editors; formula helpers stop covering the edit pane" plus
+the admin Access tab. Inspected it, then fixed three things:
+
+- **`CodeEditor.tsx` runtime crash** — `extensionFor(language)` returns a single
+  non-iterable `Extension`, so `...(extensionFor(language) as any[])` threw
+  `extensionFor is not a function or its return value is not iterable` and
+  body/formula editors never rendered. Fixed: `const baseExtensions =
+  [extensionFor(language)]`.
+- **`globals.css` formula-helpers panel** — helper was `flex-shrink: 0` with a
+  `42vh` body cap, so on the ~220px formula tab it overflowed and covered the
+  editor; the commit also targeted the nonexistent `.cm-theme` wrapper (real:
+  `.cm-theme-dark`). Fixed: helper is `flex: 0 1 auto; max-height: 45%` with an
+  internally-scrolling body; added `.cm-theme-dark` height rule so the editor
+  fills the remaining space.
+- **Stale backend** — restarted on :3001 so `/api/admin/access` grant/revoke
+  routes load.
+
+Verified: body + formula Ctrl+Enter each run the request exactly once (history
+delta 1); admin Access tab renders and all grant/revoke endpoints work.
+Backend jest 47/47, `test:api` 58/58, `test:api:unit` 49/49, frontend unit
+68/68, `tsc --noEmit` clean. Key e2e specs pass standalone on a fresh
+reset+seeded DB; the two full-suite failures (`send-working-copy`,
+`assertions-runner`) are the documented pre-existing ordering issue (shared
+mock-upstream + "Mock API Demo" mutation).

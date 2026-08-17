@@ -7,28 +7,37 @@ Last updated: 2026-08-16
 
 ## Current
 
-Step: M14 — rework the M8 scratchpad into a full-width editor pane + a save
-location picker (name + collection + nested folder).
-Status: COMPLETE — full-width editor pane + save-location picker shipped; see
-the "Completed (this feature)" log below for what was built. Final commit SHA
-to be filled into the `instructions.md` status table by the integrator.
+Step: M15 — verify/fix the pulled remote commit `7af6044` (Ctrl+Enter from
+body/formula editors + formula helpers panel + admin Access tab).
+Status: COMPLETE — three fixes made and verified; see "Completed (this feature)"
+log below. Committed + pushed.
 
-USER DECISIONS (2026-08-16):
-- "Test cURL" opens a **full-width editor pane** in the main area (method
-  select + URL input + Params/Headers/Body/Formula/Tests tabs + Send/Save/
-  Close + response split below) — NOT a modal. Reads like the request tab.
-- Save must **ask for a request name** in the picker (not silently auto-derive).
-- Save picker lists **all collections in the current workspace** with
-  **nested folders** shown as an indented tree; can't target a folder of a
-  different collection (backend enforces 400).
-- Send stays ephemeral (POST /api/runs, persistHistory false) — nothing saved.
+THIS TURN (2026-08-17):
+- Fixed the commit's `CodeEditor` regression: `extensionFor()` returns a single
+  non-iterable Extension, so `...(extensionFor(language) as any[])` crashed the
+  editor at runtime (body/formula editors never rendered). Wrapped in an array.
+- Fixed the formula helpers panel still covering the edit pane: helper is now
+  `flex: 0 1 auto; max-height: 45%` with an internally-scrolling body, and the
+  CodeMirror chain uses the real `.cm-theme-dark` wrapper class so the editor
+  fills the remaining space.
+- Restarted the backend (was running pre-pull code) so the new `/api/admin/access`
+  grant/revoke routes are served.
+- Verified: body + formula Ctrl+Enter each produce exactly ONE history row (no
+  double-fire); admin Access tab renders and grant/revoke endpoints work.
+- Test status: backend jest 47/47 · test:api 58/58 · test:api:unit 49/49 ·
+  frontend unit 68/68 · tsc clean. Key e2e specs pass standalone on a fresh
+  reset+seeded DB. Full-suite failures (send-working-copy, assertions-runner)
+  are the documented pre-existing ordering issue (shared mock-upstream/"Mock
+  API Demo" mutation), not regressions.
 
 SERVICES STILL RUNNING: mock upstream :3999, backend :3001
-(term_1786896470085_11), frontend :3000 (term_1786894968458_9); preview
-https://3000-cd39fa5d440bb155.monkeycode-ai.live. Demo logins
+(term_1787001091713_12), frontend :3000 (term_1786883180092_11). Demo logins
 `boss1785867669@test.io`/`bosspass123` (ADMIN), `pm1785867669@test.io`/`pmpass1234`,
 `dev1785867669@test.io`/`devpass123`. Live `next build` is NOT safe while the
 dev server is up (shared `.next`) — use tsc + Playwright + `npm test` instead.
+
+M15 DONE (this turn): verified/fixed remote commit `7af6044` — see the
+"Completed (this feature)" log.
 
 M13 DONE (this turn, alongside M12):
 - Backend: reuses existing `PUT /api/folders/:id` with `parentId` (cycle guard
@@ -72,8 +81,29 @@ M11 Duplicate request/folder/subfolder via Ctrl+C — DONE (pushed `c7ac1f3`)
 M12 Rename focused tree item via F2 shortcut — DONE (this turn)
 M13 Drag-and-drop move: folder between nested folders — DONE (this turn)
 M14 Rework scratchpad: full-width editor pane + save location picker — DONE (this turn)
+M15 Verify/fix pulled commit `7af6044` (Ctrl+Enter editors + formula helpers + admin Access) — DONE (this turn)
 
 ## Completed (this feature)
+
+- **M15 — verify/fix pulled remote commit `7af6044`** (this turn). The pull
+  (`26189c9..7af6044`) bundled Ctrl+Enter-from-editors + formula-helpers-panel
+  fixes plus the admin Access tab. Three fixes needed:
+  1. `CodeEditor.tsx` regression: `extensionFor()` returns a single
+     **non-iterable** `Extension` object, so `...(extensionFor(language) as
+     any[])` threw at runtime and body/formula editors never rendered. Now
+     wrapped in `[extensionFor(language)]` first.
+  2. `globals.css`: the formula helpers panel still covered the edit pane
+     (helper was `flex-shrink: 0` with a `42vh` cap on a ~220px tab) and the
+     commit targeted the nonexistent `.cm-theme` wrapper (real class is
+     `.cm-theme-dark`). Helper is now `flex: 0 1 auto; max-height: 45%` with an
+     internally-scrolling body; `.cm-theme-dark` added so the editor fills.
+  3. Backend restarted on :3001 (was running pre-pull code) so `/api/admin/access`
+     grant/revoke routes load.
+  Verified: body + formula Ctrl+Enter each produce exactly ONE history row (no
+  double-fire); admin Access tab renders; all grant/revoke endpoints work.
+  Tests: backend jest 47/47 · test:api 58/58 · test:api:unit 49/49 · frontend
+  unit 68/68 · tsc clean. Key e2e specs pass standalone on fresh reset+seeded
+  DB; the two full-suite failures are the documented pre-existing ordering issue.
 
 - **M14 — rework scratchpad: full-width editor pane + save location picker**
   (pushed this turn). `ScratchpadWorkspace.tsx` full-width editor pane (method
