@@ -102,9 +102,10 @@ test('duplicate a folder (with its requests) via the folder button and Ctrl+C', 
   await expect(folderBtns).toHaveCount(1);
   await expect(innerRows).toHaveCount(1);
 
-  // 1. Duplicate the folder via its action button — the request inside is
+  // 1. Duplicate the folder via its action menu — the request inside is
   //    copied along with it (same names, so row count doubles).
   await page.getByTestId(`folder-${folderName}`).hover();
+  await page.getByTestId(`folder-options-${folderName}`).click();
   await page.getByTestId(`duplicate-folder-${folderName}`).click();
   await expect(page.getByTestId('toast')).toContainText(`Duplicated "${folderName}"`);
   await expect(folderBtns).toHaveCount(2);

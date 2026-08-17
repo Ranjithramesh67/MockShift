@@ -47,6 +47,8 @@ test('adds a status assertion, sees it pass, and runs the collection', async ({ 
   await expect(page.getByTestId('assertions-results')).toContainText('status eq 200: actual 200');
 
   // Run the whole collection from the sidebar.
+  await page.getByTestId('collection-Mock API Demo').hover();
+  await page.getByTestId('collection-options-Mock API Demo').click();
   await page.getByTestId('run-collection-Mock API Demo').click();
   await expect(page.getByTestId('collection-runner-modal')).toBeVisible();
   await expect(page.getByTestId('collection-run-summary')).toBeVisible();

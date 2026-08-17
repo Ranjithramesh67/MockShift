@@ -125,7 +125,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [renaming, setRenaming] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<{ kind: 'request' | 'folder' | 'collection'; id: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [selectedRow, setSelectedRow] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
 
@@ -355,12 +355,12 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
             title="Request options"
             aria-label={`Options for ${r.name}`}
             data-testid={`request-options-${r.name}`}
-            onClick={() => setMenuFor(menuFor === r.id ? null : r.id)}
+            onClick={() => setMenuFor(menuFor?.kind === 'request' && menuFor.id === r.id ? null : { kind: 'request', id: r.id })}
           >
             <DotsIcon size={13} />
           </button>
         </div>
-        {menuFor === r.id && (
+        {menuFor?.kind === 'request' && menuFor.id === r.id && (
           <>
             <div className="tree-menu-backdrop" onClick={() => setMenuFor(null)} />
             <div className="tree-menu" data-testid={`request-menu-${r.name}`}>
@@ -489,52 +489,75 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
             <button
               type="button"
               className="icon-button"
-              title="New sub-folder"
-              aria-label={`New sub-folder in ${folder.name}`}
-              data-testid={`new-subfolder-${folder.name}`}
-              onClick={() => onOpenCreate('folder', collectionId, folder.id)}
+              title="Folder options"
+              aria-label={`Options for ${folder.name}`}
+              data-testid={`folder-options-${folder.name}`}
+              onClick={() =>
+                setMenuFor(
+                  menuFor?.kind === 'folder' && menuFor.id === folder.id
+                    ? null
+                    : { kind: 'folder', id: folder.id }
+                )
+              }
             >
-              <FolderIcon size={12} />
-            </button>
-            <button
-              type="button"
-              className="icon-button"
-              title="Rename folder"
-              aria-label={`Rename folder ${folder.name}`}
-              data-testid={`rename-folder-${folder.name}`}
-              onClick={() => startRename('folder', folder.id, folder.name)}
-            >
-              <PencilIcon size={12} />
-            </button>
-            <button
-              type="button"
-              className="icon-button"
-              title="Duplicate folder"
-              aria-label={`Duplicate folder ${folder.name}`}
-              data-testid={`duplicate-folder-${folder.name}`}
-              onClick={() => {
-                ws.duplicateFolder(folder.id)
-                  .then(() =>
-                    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${folder.name}"` })
-                  )
-                  .catch((err) =>
-                    dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
-                  );
-              }}
-            >
-              <CopyIcon size={12} />
-            </button>
-            <button
-              type="button"
-              className="icon-button danger"
-              title="Delete folder"
-              aria-label={`Delete folder ${folder.name}`}
-              data-testid={`delete-folder-${folder.name}`}
-              onClick={() => deleteFolder(folder.id, folder.name)}
-            >
-              <TrashIcon size={12} />
+              <DotsIcon size={12} />
             </button>
           </div>
+          {menuFor?.kind === 'folder' && menuFor.id === folder.id && (
+            <>
+              <div className="tree-menu-backdrop" onClick={() => setMenuFor(null)} />
+              <div className="tree-menu" data-testid={`folder-menu-${folder.name}`}>
+                <button
+                  type="button"
+                  data-testid={`new-subfolder-${folder.name}`}
+                  onClick={() => {
+                    setMenuFor(null);
+                    onOpenCreate('folder', collectionId, folder.id);
+                  }}
+                >
+                  <FolderIcon size={13} />
+                  New sub-folder
+                </button>
+                <button
+                  type="button"
+                  data-testid={`rename-folder-${folder.name}`}
+                  onClick={() => startRename('folder', folder.id, folder.name)}
+                >
+                  <PencilIcon size={13} />
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  data-testid={`duplicate-folder-${folder.name}`}
+                  onClick={() => {
+                    setMenuFor(null);
+                    ws.duplicateFolder(folder.id)
+                      .then(() =>
+                        dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${folder.name}"` })
+                      )
+                      .catch((err) =>
+                        dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
+                      );
+                  }}
+                >
+                  <CopyIcon size={13} />
+                  Duplicate
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  data-testid={`delete-folder-${folder.name}`}
+                  onClick={() => {
+                    setMenuFor(null);
+                    deleteFolder(folder.id, folder.name);
+                  }}
+                >
+                  <TrashIcon size={13} />
+                  Delete folder
+                </button>
+              </div>
+            </>
+          )}
         </div>
         {!isCollapsed && (
           <div
@@ -667,36 +690,6 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                       <button
                         type="button"
                         className="icon-button"
-                        title="New folder"
-                        aria-label={`New folder in ${c.name}`}
-                        data-testid={`new-folder-${c.name}`}
-                        onClick={() => onOpenCreate('folder', c.id)}
-                      >
-                        <FolderIcon size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        title="Run collection"
-                        aria-label={`Run collection ${c.name}`}
-                        data-testid={`run-collection-${c.name}`}
-                        onClick={() => onRunCollection(c.id, c.name)}
-                      >
-                        <PlayIcon size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        title="Auth provider"
-                        aria-label={`Auth settings for ${c.name}`}
-                        data-testid={`auth-settings-${c.name}`}
-                        onClick={() => onOpenAuth(c.id)}
-                      >
-                        <KeyIcon size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-button"
                         title="New API request"
                         aria-label={`New request in ${c.name}`}
                         data-testid={`new-request-${c.name}`}
@@ -706,21 +699,77 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
                       </button>
                       <button
                         type="button"
-                        className="icon-button danger"
-                        title="Delete collection"
-                        aria-label={`Delete collection ${c.name}`}
-                        data-testid={`delete-collection-${c.name}`}
-                        onClick={() => {
-                          if (window.confirm(`Delete collection "${c.name}" and all of its requests?`)) {
-                            ws.deleteCollection(c.id).catch((err) =>
-                              alert(err instanceof Error ? err.message : 'Failed to delete collection')
-                            );
-                          }
-                        }}
+                        className="icon-button"
+                        title="Collection options"
+                        aria-label={`Options for ${c.name}`}
+                        data-testid={`collection-options-${c.name}`}
+                        onClick={() =>
+                          setMenuFor(
+                            menuFor?.kind === 'collection' && menuFor.id === c.id
+                              ? null
+                              : { kind: 'collection', id: c.id }
+                          )
+                        }
                       >
-                        <TrashIcon size={13} />
+                        <DotsIcon size={13} />
                       </button>
                     </div>
+                    {menuFor?.kind === 'collection' && menuFor.id === c.id && (
+                      <>
+                        <div className="tree-menu-backdrop" onClick={() => setMenuFor(null)} />
+                        <div className="tree-menu" data-testid={`collection-menu-${c.name}`}>
+                          <button
+                            type="button"
+                            data-testid={`new-folder-${c.name}`}
+                            onClick={() => {
+                              setMenuFor(null);
+                              onOpenCreate('folder', c.id);
+                            }}
+                          >
+                            <FolderIcon size={13} />
+                            New folder
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`run-collection-${c.name}`}
+                            onClick={() => {
+                              setMenuFor(null);
+                              onRunCollection(c.id, c.name);
+                            }}
+                          >
+                            <PlayIcon size={13} />
+                            Run collection
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`auth-settings-${c.name}`}
+                            onClick={() => {
+                              setMenuFor(null);
+                              onOpenAuth(c.id);
+                            }}
+                          >
+                            <KeyIcon size={13} />
+                            Auth settings
+                          </button>
+                          <button
+                            type="button"
+                            className="danger"
+                            data-testid={`delete-collection-${c.name}`}
+                            onClick={() => {
+                              setMenuFor(null);
+                              if (window.confirm(`Delete collection "${c.name}" and all of its requests?`)) {
+                                ws.deleteCollection(c.id).catch((err) =>
+                                  alert(err instanceof Error ? err.message : 'Failed to delete collection')
+                                );
+                              }
+                            }}
+                          >
+                            <TrashIcon size={13} />
+                            Delete collection
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                   {!isCollapsed && (rootFolders.length > 0 || rootRequests.length > 0) && (
                     <div

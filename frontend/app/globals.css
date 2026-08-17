@@ -463,6 +463,7 @@ body.is-col-dragging .sidebar {
 }
 
 .sidebar-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -598,6 +599,7 @@ body.is-col-dragging .sidebar {
 }
 
 .tree-collection-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -662,6 +664,7 @@ body.is-col-dragging .sidebar {
 }
 
 .tree-folder-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
