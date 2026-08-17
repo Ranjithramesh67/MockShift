@@ -17,6 +17,7 @@ import { WorkflowBuilder } from './WorkflowBuilder';
 import { CurlModal } from './CurlModal';
 import { ScratchpadWorkspace } from './ScratchpadWorkspace';
 import { ToastHost } from './ToastHost';
+import { useCloseRequestTabShortcut } from './useCloseRequestTabShortcut';
 import { AutomationsView } from './views/AutomationsView';
 import { ManageView } from './views/ManageView';
 import { AdminView } from './views/AdminView';
@@ -84,6 +85,8 @@ export function AppShell() {
   const [curlOpen, setCurlOpen] = useState(false);
   const [scratchpadOpen, setScratchpadOpen] = useState(false);
   const prevRequestId = useRef<string | null>(null);
+
+  useCloseRequestTabShortcut();
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
