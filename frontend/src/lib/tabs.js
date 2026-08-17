@@ -29,4 +29,16 @@ function closeTab(ids, activeId, id) {
   return { ids: next, nextActiveId: next[nextIndex] };
 }
 
-module.exports = { openTab, closeTab };
+/**
+ * `insertTab` re-inserts a previously closed tab at the position it occupied
+ * (clamped to the list bounds, deduped). Used to undo a tab close.
+ */
+function insertTab(ids, id, index) {
+  if (ids.includes(id)) return ids;
+  const next = [...ids];
+  const at = Math.max(0, Math.min(index, next.length));
+  next.splice(at, 0, id);
+  return next;
+}
+
+module.exports = { openTab, closeTab, insertTab };

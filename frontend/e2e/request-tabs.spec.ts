@@ -151,11 +151,12 @@ test('request tabs: closing the active tab activates a neighbour', async ({ page
 });
 
 /**
- * Ctrl+F4 closes the active request tab instead of letting the browser close
- * the whole app tab. Dirty tabs ask for confirmation first, matching the close
- * (×) button.
+ * Ctrl+Q closes the active request tab (instead of a browser-reserved combo
+ * like Ctrl+F4 that would close the whole app tab); Ctrl+Shift+Q reopens the
+ * most recently closed tab with its working copy restored. Dirty tabs ask for
+ * confirmation first, matching the close (×) button.
  */
-test('request tabs: Ctrl+F4 closes the active request tab, not the browser tab', async ({ page }) => {
+test('request tabs: Ctrl+Q closes the active request tab; Ctrl+Shift+Q reopens it', async ({ page }) => {
   const email = await signupFreshUser(page);
 
   const wsRes = await page.request.get('/api/workspaces');
@@ -167,12 +168,12 @@ test('request tabs: Ctrl+F4 closes the active request tab, not the browser tab',
     (p: { id: string; name: string }) => p.name === 'Default Project'
   ).id;
   const colRes = await page.request.post('/api/collections', {
-    data: { projectId, name: 'Tabs F4 Col' },
+    data: { projectId, name: 'Tabs CtrlQ Col' },
   });
   const collectionId = (await colRes.json()).collection.id;
 
-  const nameA = `tabs-f4-a-${email}`;
-  const nameB = `tabs-f4-b-${email}`;
+  const nameA = `tabs-q-a-${email}`;
+  const nameB = `tabs-q-b-${email}`;
   for (const [name, id] of [
     [nameA, 1],
     [nameB, 2],
@@ -194,29 +195,39 @@ test('request tabs: Ctrl+F4 closes the active request tab, not the browser tab',
   await expect(page.getByTestId(`request-tab-${nameB}`)).toBeVisible();
   await expect(page.getByTestId(`request-tab-switch-${nameB}`)).toHaveAttribute('aria-selected', 'true');
 
-  // Ctrl+F4 closes B (the active request tab) and activates A. The app (page)
+  // Ctrl+Q closes B (the active request tab) and activates A. The app (page)
   // itself stays alive — verify A's tab strip is still there.
-  await page.keyboard.press('Control+F4');
+  await page.keyboard.press('Control+q');
   await expect(page.getByTestId(`request-tab-${nameB}`)).toHaveCount(0);
   await expect(page.getByTestId(`request-tab-${nameA}`)).toBeVisible();
   await expect(page.getByTestId(`request-tab-switch-${nameA}`)).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('url-input')).toHaveValue(/\/posts\/1/);
 
-  // Make A dirty; Ctrl+F4 asks for confirmation; dismiss keeps the tab open.
+  // Make A dirty; Ctrl+Q asks for confirmation; dismiss keeps the tab open.
   await page.getByTestId('url-input').fill('http://127.0.0.1:3999/posts/777');
   await expect(
     page.getByTestId(`request-tab-switch-${nameA}`).locator('.unsaved-dot')
   ).toBeVisible();
   page.once('dialog', (d) => d.dismiss());
-  await page.keyboard.press('Control+F4');
+  await page.keyboard.press('Control+q');
   await expect(page.getByTestId(`request-tab-${nameA}`)).toBeVisible();
 
   // Accepting the confirmation closes the last tab and hides the strip.
   page.once('dialog', (d) => d.accept());
-  await page.keyboard.press('Control+F4');
+  await page.keyboard.press('Control+q');
   await expect(page.getByTestId(`request-tab-${nameA}`)).toHaveCount(0);
   await expect(page.getByTestId('request-tabs')).toHaveCount(0);
 
   // The app is still usable after the strip is gone.
   await expect(page.getByTestId('sidebar')).toBeVisible();
+
+  // Ctrl+Shift+Q reopens the last closed tab (A) at its original position,
+  // restoring its unsaved working copy.
+  await page.keyboard.press('Control+Shift+q');
+  await expect(page.getByTestId(`request-tab-${nameA}`)).toBeVisible();
+  await expect(page.getByTestId(`request-tab-switch-${nameA}`)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('url-input')).toHaveValue(/\/posts\/777/);
+  await expect(
+    page.getByTestId(`request-tab-switch-${nameA}`).locator('.unsaved-dot')
+  ).toBeVisible();
 });
