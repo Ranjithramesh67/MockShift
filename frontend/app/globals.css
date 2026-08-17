@@ -2328,100 +2328,6 @@ body.is-col-dragging .sidebar {
   transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
 }
 
-/* ---- Scratchpad (M8): structured preview of a pasted cURL ------------------- */
-.scratchpad-preview {
-  margin: 4px 0 8px;
-  padding: 10px 12px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.scratchpad-preview-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.scratchpad-preview-url {
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 12px;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scratchpad-preview-group {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.scratchpad-preview-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-faint);
-}
-
-.scratchpad-preview-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.scratchpad-preview-list li {
-  display: flex;
-  gap: 2px;
-  min-width: 0;
-}
-
-.scratchpad-preview-list li strong {
-  color: var(--text);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scratchpad-preview-list .kv-value {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scratchpad-preview-more {
-  color: var(--text-faint);
-  font-style: italic;
-}
-
-.scratchpad-preview-body {
-  margin: 0;
-  max-height: 160px;
-  overflow: auto;
-  background: var(--bg);
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 12px;
-  color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 /* ==========================================================================
    API type picker
    ========================================================================== */
@@ -4167,3 +4073,85 @@ body.is-col-dragging .sidebar {
 
 .status-chip.pass { background: rgba(63, 185, 80, 0.12); color: var(--ok, #3fb950); }
 .status-chip.fail { background: rgba(248, 81, 73, 0.12); color: var(--err, #f85149); }
+
+/* ==========================================================================
+   Scratchpad (M14): full-width editor pane + save-location picker
+   ========================================================================== */
+.scratchpad-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+}
+
+.scratchpad-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.scratchpad-method {
+  width: 96px;
+}
+
+.scratchpad-url {
+  flex: 1;
+}
+
+.scratchpad-actions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.scratchpad-response {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- Save-location picker (ScratchpadSaveModal) ---------------------------- */
+.scratchpad-save-location {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 6px;
+}
+
+.scratchpad-save-col + .scratchpad-save-col {
+  margin-top: 4px;
+}
+
+.scratchpad-save-location-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.scratchpad-save-location-row:hover {
+  background: var(--bg-hover);
+}
+
+.scratchpad-save-location-row.selected {
+  background: var(--accent);
+  color: #fff;
+}
+
+.scratchpad-save-location-mark {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  margin-right: 2px;
+}

@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useApp } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
+import { useWorkspace } from '@/store/WorkspaceStore';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
@@ -14,15 +15,26 @@ import { RequestTabs } from './RequestTabs';
 import { ResponsePane } from './ResponsePane';
 import { WorkflowBuilder } from './WorkflowBuilder';
 import { CurlModal } from './CurlModal';
-import { ScratchpadModal } from './ScratchpadModal';
+import { ScratchpadWorkspace } from './ScratchpadWorkspace';
 import { ToastHost } from './ToastHost';
 import { AutomationsView } from './views/AutomationsView';
 import { ManageView } from './views/ManageView';
 import { AdminView } from './views/AdminView';
 import { HistoryView } from './views/HistoryView';
 
-function WorkspaceArea({ onOpenCurl }: { onOpenCurl: () => void }) {
+function WorkspaceArea({
+  onOpenCurl,
+  scratchpadOpen,
+  onCloseScratchpad,
+}: {
+  onOpenCurl: () => void;
+  scratchpadOpen: boolean;
+  onCloseScratchpad: () => void;
+}) {
   const { state, dispatch } = useApp();
+  if (scratchpadOpen) {
+    return <ScratchpadWorkspace onClose={onCloseScratchpad} />;
+  }
   return (
     <>
       <TabBar
@@ -67,13 +79,21 @@ function WorkspaceArea({ onOpenCurl }: { onOpenCurl: () => void }) {
 export function AppShell() {
   const { loading, user } = useAuth();
   const { view } = useNav();
+  const ws = useWorkspace();
   const router = useRouter();
   const [curlOpen, setCurlOpen] = useState(false);
   const [scratchpadOpen, setScratchpadOpen] = useState(false);
+  const prevRequestId = useRef<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
   }, [loading, user, router]);
+
+  useEffect(() => {
+    if (ws.activeRequestId && ws.activeRequestId !== prevRequestId.current)
+      setScratchpadOpen(false);
+    prevRequestId.current = ws.activeRequestId;
+  }, [ws.activeRequestId]);
 
   if (loading) {
     return (
@@ -92,7 +112,11 @@ export function AppShell() {
         <Sidebar panelHidden={view !== 'workspace'} />
         <main className="main-area">
           {view === 'workspace' ? (
-            <WorkspaceArea onOpenCurl={() => setCurlOpen(true)} />
+            <WorkspaceArea
+              onOpenCurl={() => setCurlOpen(true)}
+              scratchpadOpen={scratchpadOpen}
+              onCloseScratchpad={() => setScratchpadOpen(false)}
+            />
           ) : (
             <div className="admin-view">
               {view === 'automations' ? (
@@ -109,7 +133,6 @@ export function AppShell() {
         </main>
       </div>
       <CurlModal open={curlOpen} onClose={() => setCurlOpen(false)} />
-      <ScratchpadModal open={scratchpadOpen} onClose={() => setScratchpadOpen(false)} />
       <ToastHost />
     </div>
   );
