@@ -229,4 +229,31 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M11 | Duplicate request/folder via Ctrl+C | done (pushed `c7ac1f3`) |
 | M12 | Rename focused item via F2 | done (this turn) |
 | M13 | Drag-and-drop move: folder between nested folders | done (this turn) |
-| M14 | Rework scratchpad: full-width editor + save location picker | in progress |
+| M14 | Rework scratchpad: full-width editor + save location picker | done (pushed `edff412`) |
+
+## M14 — Rework scratchpad (done)
+
+The M8 scratchpad modal was reworked into a full-width editor pane + a save
+location picker (user decisions above):
+
+- `ScratchpadWorkspace.tsx` — full-width editor pane in the main area: method
+  select + URL input with cURL auto-parse (reuses `parseCurl`), tabs
+  Params/Headers/Body/Formula/Tests, explicit **Send** (ephemeral — nothing
+  saved) / **Save** / **Close** controls, response shown via `ResponsePane` in
+  a split below. Local draft state (no WS store wiring); Send →
+  `ws.runScratchpad(...)`; Save → open the picker.
+- `ScratchpadSaveModal.tsx` — save-location picker: required name field (no
+  silent auto-derive) + all collections in the current workspace with nested
+  folders as an indented tree; on confirm →
+  `contentApi.createRequest({collectionId,name,method,url,apiType,folderId})`
+  then `contentApi.updateRequest(id, patch)` (headers, queryParams, bodyType,
+  bodyJson/bodyText, formula, assertions), then `ws.reloadTree()` +
+  `ws.selectRequest(id)`.
+- `AppShell` renders `<ScratchpadWorkspace>` full-width instead of the modal
+  and closes it on sidebar request selection; `ScratchpadModal.tsx` removed
+  (`.scratchpad-preview` CSS dropped, `curl-input` kept).
+- New shared lib `frontend/src/lib/scratchpadDraft.js`
+  (`defaultScratchDraft`, `scratchDraftToRunInput`, `scratchDraftToServerPatch`).
+- e2e `frontend/e2e/scratchpad.spec.ts` rewritten for the new UI (open editor,
+  method/url, send → response shown + no request created; save → picker asks
+  name, pick collection + nested folder → request appears at that folder).
