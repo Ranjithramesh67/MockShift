@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { openTab, closeTab } = require('../tabs.js');
+const { openTab, closeTab, insertTab } = require('../tabs.js');
 
 test('openTab dedupes and keeps insertion order', () => {
   assert.deepEqual(openTab([], 'a'), ['a']);
@@ -32,4 +32,16 @@ test('closeTab clears everything when the only tab is closed', () => {
 
 test('closeTab ignores an unknown id', () => {
   assert.deepEqual(closeTab(['a', 'b'], 'b', 'zzz'), { ids: ['a', 'b'], nextActiveId: 'b' });
+});
+
+test('insertTab re-inserts a closed tab at its original position', () => {
+  assert.deepEqual(insertTab(['b', 'c'], 'a', 0), ['a', 'b', 'c']);
+  assert.deepEqual(insertTab(['a', 'c'], 'b', 1), ['a', 'b', 'c']);
+  assert.deepEqual(insertTab(['a', 'b'], 'c', 2), ['a', 'b', 'c']);
+});
+
+test('insertTab dedupes and clamps out-of-range indices', () => {
+  assert.deepEqual(insertTab(['a', 'b'], 'a', 5), ['a', 'b']);
+  assert.deepEqual(insertTab(['a', 'b'], 'c', 99), ['a', 'b', 'c']);
+  assert.deepEqual(insertTab(['a', 'b'], 'c', -3), ['c', 'a', 'b']);
 });

@@ -2,17 +2,30 @@ import { useEffect } from 'react';
 import { useWorkspace } from '@/store/WorkspaceStore';
 
 /**
- * Ctrl+F4 / Cmd+F4 closes the currently active request tab. Without
- * intercepting the key the browser would close the whole app tab, so we
- * preventDefault and route it into the request-tab strip instead. Dirty tabs
- * ask for confirmation, mirroring the close (×) button on each tab.
+ * Ctrl+Q closes the currently active request tab; Ctrl+Shift+Q reopens the
+ * most recently closed one (restoring its unsaved working copy at its original
+ * position).
+ *
+ * Unlike Ctrl+F4/Ctrl+W (browser-reserved shortcuts that close the whole app
+ * tab before the page ever sees the key), Ctrl+Q and Ctrl+Shift+Q are not
+ * reserved by Chrome/Edge on Windows or Linux, so the browser delivers them to
+ * the page and preventDefault keeps the app alive. Note Firefox binds Ctrl+Q
+ * to "quit" and some Chromium builds on Linux bind Ctrl+Shift+Q to "quit" —
+ * those are handled by the browser before the page and cannot be overridden.
  */
 export function useCloseRequestTabShortcut(): void {
   const ws = useWorkspace();
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.key !== 'F4') return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const q = e.key.toLowerCase();
+      if (q !== 'q') return;
+      if (e.shiftKey) {
+        e.preventDefault();
+        ws.reopenLastClosedTab().catch(() => undefined);
+        return;
+      }
       const requestId = ws.activeRequestId;
       if (!requestId) return;
       e.preventDefault();
