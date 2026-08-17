@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { collectionExportApi } from '@/lib/api';
 import { useWorkspace } from '@/store/WorkspaceStore';
@@ -10,7 +10,7 @@ import {
   formatForDownload,
   parseCollectionFile,
 } from '@/lib/collectionExport';
-import { ExportIcon, ImportIcon, CollectionIcon } from './icons';
+import { ExportIcon, ImportIcon, CollectionIcon, FileIcon } from './icons';
 
 type Tab = 'export' | 'import';
 type ExportFormat = 'json' | 'curl' | 'openapi';
@@ -47,6 +47,7 @@ export function CollectionImportExportModal({
   const [requestCount, setRequestCount] = useState<number | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState('');
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -57,11 +58,19 @@ export function CollectionImportExportModal({
     setRequestCount(null);
     setFileName('');
     setImportName('');
+    setDragging(false);
     const collections = ws.tree?.collections ?? [];
     setExportCollectionId(ws.activeCollectionId || collections[0]?.id || '');
     const writeable = (ws.tree?.projects ?? []).filter((p) => p.can_access);
     setImportProjectId(writeable[0]?.id ?? '');
   }, [open, ws.tree, ws.activeCollectionId]);
+
+  const clearFile = useCallback(() => {
+    setFileName('');
+    setParsedFile(null);
+    setRequestCount(null);
+    if (fileRef.current) fileRef.current.value = '';
+  }, []);
 
   if (!open) return null;
 
@@ -117,6 +126,12 @@ export function CollectionImportExportModal({
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Invalid collection file');
     }
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    if (e.dataTransfer.files?.[0]) onFilePicked(e.dataTransfer.files[0]);
   };
 
   const onImport = async () => {
@@ -175,37 +190,41 @@ export function CollectionImportExportModal({
 
       {tab === 'export' ? (
         <div className="modal-form" data-testid="ie-export-pane">
-          <label className="field">
-            <span className="field-label">Collection</span>
-            <select
-              data-testid="ie-export-collection"
-              value={exportCollectionId}
-              onChange={(e) => setExportCollectionId(e.target.value)}
-            >
-              {collections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span className="field-label">Format</span>
-            <select
-              data-testid="ie-export-format"
-              value={exportFormat}
-              onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-            >
-              {(Object.keys(FORMAT_LABELS) as ExportFormat[]).map((f) => (
-                <option key={f} value={f}>
-                  {FORMAT_LABELS[f]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="ie-col-grid">
+            <label className="field">
+              <span className="field-label">Collection</span>
+              <select
+                className="compact-select"
+                data-testid="ie-export-collection"
+                value={exportCollectionId}
+                onChange={(e) => setExportCollectionId(e.target.value)}
+              >
+                {collections.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Format</span>
+              <select
+                className="compact-select"
+                data-testid="ie-export-format"
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+              >
+                {(Object.keys(FORMAT_LABELS) as ExportFormat[]).map((f) => (
+                  <option key={f} value={f}>
+                    {FORMAT_LABELS[f]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <p className="hint">
-            Downloads the selected collection. JSON round-trips back into API Hub; cURL and
-            OpenAPI are convenience exports.
+            JSON round-trips back into API Hub; cURL and OpenAPI are convenience exports for
+            sharing with other tools.
           </p>
           {exportError && (
             <p className="auth-error" role="alert" data-testid="ie-export-error">
@@ -230,8 +249,15 @@ export function CollectionImportExportModal({
         </div>
       ) : (
         <div className="modal-form" data-testid="ie-import-pane">
-          <label className="field">
-            <span className="field-label">Collection file</span>
+          <label
+            className={`ie-dropzone ${dragging ? 'dragging' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+          >
             <input
               ref={fileRef}
               type="file"
@@ -239,49 +265,72 @@ export function CollectionImportExportModal({
               data-testid="ie-import-file"
               onChange={(e) => onFilePicked(e.target.files?.[0] ?? null)}
             />
+            {fileName ? (
+              <span className="ie-dropzone-file" data-testid="ie-import-summary">
+                <FileIcon size={16} />
+                {fileName}
+                <span className="ie-dropzone-meta">
+                  {requestCount} request{requestCount === 1 ? '' : 's'}
+                </span>
+                <span className="ie-dropzone-action">Replace</span>
+              </span>
+            ) : (
+              <span className="ie-dropzone-empty">
+                <ImportIcon size={18} />
+                <strong>Drop a collection file here</strong>
+                <span>or click to browse (JSON from API Hub)</span>
+              </span>
+            )}
           </label>
-          {fileName && (
-            <p className="hint" data-testid="ie-import-summary">
-              <CollectionIcon size={12} />
-              {requestCount} request{requestCount === 1 ? '' : 's'} in "{fileName}"
-            </p>
-          )}
-          <label className="field">
-            <span className="field-label">Collection name</span>
-            <input
-              type="text"
-              data-testid="ie-import-name"
-              value={importName}
-              onChange={(e) => setImportName(e.target.value)}
-              placeholder="Imported collection"
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">Target project</span>
-            <select
-              data-testid="ie-import-project"
-              value={importProjectId}
-              onChange={(e) => setImportProjectId(e.target.value)}
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {projects.length === 0 && (
-            <p className="auth-error" role="alert">
-              You need access to a project to import into.
-            </p>
-          )}
+
           {importError && (
             <p className="auth-error" role="alert" data-testid="ie-import-error">
               {importError}
             </p>
           )}
+
+          <div className="ie-col-grid">
+            <label className="field">
+              <span className="field-label">Collection name</span>
+              <input
+                type="text"
+                className="text-input"
+                data-testid="ie-import-name"
+                value={importName}
+                onChange={(e) => setImportName(e.target.value)}
+                placeholder="Imported collection"
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">Target project</span>
+              <select
+                className="compact-select"
+                data-testid="ie-import-project"
+                value={importProjectId}
+                onChange={(e) => setImportProjectId(e.target.value)}
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {projects.length === 0 && (
+            <p className="auth-error" role="alert">
+              You need access to a project to import into.
+            </p>
+          )}
           <div className="modal-actions">
-            <button type="button" className="ghost-button" onClick={onClose}>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => {
+                clearFile();
+                onClose();
+              }}
+            >
               Cancel
             </button>
             <button
