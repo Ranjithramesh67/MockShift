@@ -20,7 +20,10 @@ type ViewMode = 'pretty' | 'raw' | 'preview';
 
 export function ResponsePane() {
   const ws = useWorkspace();
-  const run = ws.lastRun;
+  // Prefer the per-request stored response (survives tab switches and
+  // Ctrl+Q/Ctrl+Shift+Q close/reopen) and fall back to the latest run —
+  // which is what the scratchpad and just-executed requests set.
+  const run = ws.requestRuns[ws.activeRequestId ?? ''] ?? ws.lastRun;
   const response = run?.response ?? null;
   const [showHeaders, setShowHeaders] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('pretty');

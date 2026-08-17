@@ -146,6 +146,7 @@ interface WorkspaceState {
   activeRequest: ApiRequest | null;
   isDirty: boolean;
   lastRun: RunResult | null;
+  requestRuns: Record<string, RunResult | null>;
   collectionRun: CollectionRunResult | null;
   collectionRunRunning: boolean;
 
@@ -799,6 +800,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       activeRequest,
       isDirty,
       lastRun,
+      requestRuns,
       collectionRun,
       collectionRunRunning,
       openRequestIds,
@@ -845,6 +847,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [
       loading, error, workspaces, teams, activeWorkspaceId, activeWorkspaceRole, tree,
       activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
+      requestRuns,
       collectionRun, collectionRunRunning,
       openRequestIds, activeRequestId, requestCopies,
       activateRequestTab, closeRequestTab, reopenLastClosedTab, isTabDirty,
