@@ -74,6 +74,20 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.21 M14 — Rework scratchpad: full-width editor pane + save location picker (pushed this turn)
+
+The M8 scratchpad modal was reworked into a full-width editor pane +
+save-location picker (`instructions.md` M14). `ScratchpadWorkspace.tsx` renders
+the pane in the main area (method select, URL input with cURL auto-parse,
+Params/Headers/Body/Formula/Tests tabs, Send ephemeral / Save / Close, response
+via `ResponsePane` in a split); `ScratchpadSaveModal.tsx` is the picker
+(required name + all collections with nested folders as an indented tree;
+confirm → `createRequest` + `updateRequest` + `reloadTree` + `selectRequest`).
+`AppShell` renders the pane full-width and closes it on sidebar request
+selection; `ScratchpadModal` removed. New shared lib `lib/scratchpadDraft.js`;
+e2e `scratchpad.spec.ts` rewritten for the new UI. Final commit SHA to be
+recorded in the `instructions.md` status table after push.
+
 ### 5.20 M12 + M13 — F2 rename shortcut + folder drag-move (pushed this turn)
 
 Parallel-agent micro tasks completing the "Sidebar tree interactions" feature
