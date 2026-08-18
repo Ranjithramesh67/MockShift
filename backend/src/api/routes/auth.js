@@ -57,7 +57,7 @@ router.post('/signup', async (req, res, next) => {
       const { rows } = await client.query(
         `INSERT INTO users (email, password_hash, name, role)
          VALUES ($1, $2, $3, $4) RETURNING id, email, name, role`,
-        [email, hashPassword(password), displayName, role]
+        [email, await hashPassword(password), displayName, role]
       );
       const userId = rows[0].id;
 
@@ -103,7 +103,7 @@ router.post('/login', async (req, res, next) => {
     const { email, password } = req.body || {};
     const { rows } = await query('SELECT * FROM users WHERE email = $1', [email]);
     const user = rows[0];
-    if (!user || !verifyPassword(password, user.password_hash)) {
+    if (!user || !(await verifyPassword(password, user.password_hash))) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
     if (!user.is_active) {

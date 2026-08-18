@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useApp } from '@/store/AppStore';
@@ -13,15 +14,16 @@ import { SplitPane } from './SplitPane';
 import { RequestConfigurator } from './RequestConfigurator';
 import { RequestTabs } from './RequestTabs';
 import { ResponsePane } from './ResponsePane';
-import { WorkflowBuilder } from './WorkflowBuilder';
-import { CurlModal } from './CurlModal';
-import { ScratchpadWorkspace } from './ScratchpadWorkspace';
 import { ToastHost } from './ToastHost';
 import { useCloseRequestTabShortcut } from './useCloseRequestTabShortcut';
-import { AutomationsView } from './views/AutomationsView';
-import { ManageView } from './views/ManageView';
-import { AdminView } from './views/AdminView';
-import { HistoryView } from './views/HistoryView';
+
+const WorkflowBuilder = dynamic(() => import('./WorkflowBuilder').then((m) => m.WorkflowBuilder));
+const CurlModal = dynamic(() => import('./CurlModal').then((m) => m.CurlModal));
+const ScratchpadWorkspace = dynamic(() => import('./ScratchpadWorkspace').then((m) => m.ScratchpadWorkspace));
+const AutomationsView = dynamic(() => import('./views/AutomationsView').then((m) => m.AutomationsView));
+const ManageView = dynamic(() => import('./views/ManageView').then((m) => m.ManageView));
+const AdminView = dynamic(() => import('./views/AdminView').then((m) => m.AdminView));
+const HistoryView = dynamic(() => import('./views/HistoryView').then((m) => m.HistoryView));
 
 function WorkspaceArea({
   onOpenCurl,

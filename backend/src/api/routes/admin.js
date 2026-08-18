@@ -244,7 +244,7 @@ router.post('/users', async (req, res, next) => {
       `INSERT INTO users (email, password_hash, name, role)
        VALUES ($1, $2, $3, $4)
        RETURNING id, email, name, role, is_active, created_at`,
-      [normalizedEmail, hashPassword(String(password)), String(name).trim() || normalizedEmail, roleValue]
+      [normalizedEmail, await hashPassword(String(password)), String(name).trim() || normalizedEmail, roleValue]
     );
     await logAudit({
       actorId: req.user.id,

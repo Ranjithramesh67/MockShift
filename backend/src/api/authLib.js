@@ -11,21 +11,31 @@ function secret() {
 }
 
 // ---------------------------------------------------------------------------
-// Password hashing (node:crypto scrypt; no external deps)
+// Password hashing (node:crypto scrypt; no external deps). Async so the CPU
+// cost of hashing/verifying never blocks the event loop.
 // ---------------------------------------------------------------------------
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64 };
 
-function hashPassword(password) {
+function scryptAsync(password, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, SCRYPT.keylen, SCRYPT, (err, derivedKey) => {
+      if (err) reject(err);
+      else resolve(derivedKey);
+    });
+  });
+}
+
+async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const derived = crypto.scryptSync(password, salt, SCRYPT.keylen, SCRYPT).toString('hex');
+  const derived = (await scryptAsync(password, salt)).toString('hex');
   return `scrypt$${salt}$${derived}`;
 }
 
-function verifyPassword(password, stored) {
+async function verifyPassword(password, stored) {
   const parts = String(stored || '').split('$');
   if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
   const [, salt, expected] = parts;
-  const derived = crypto.scryptSync(password, salt, SCRYPT.keylen, SCRYPT);
+  const derived = await scryptAsync(password, salt);
   const expectedBuffer = Buffer.from(expected, 'hex');
   return (
     derived.length === expectedBuffer.length &&

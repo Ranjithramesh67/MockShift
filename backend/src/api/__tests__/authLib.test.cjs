@@ -11,16 +11,16 @@ const {
   verifySession: verify,
 } = require('../authLib');
 
-test('password hashing round-trips', () => {
-  const hash = hashPassword('correct horse battery staple');
+test('password hashing round-trips', async () => {
+  const hash = await hashPassword('correct horse battery staple');
   assert.ok(hash.startsWith('scrypt$'));
-  assert.equal(verifyPassword('correct horse battery staple', hash), true);
-  assert.equal(verifyPassword('wrong password', hash), false);
+  assert.equal(await verifyPassword('correct horse battery staple', hash), true);
+  assert.equal(await verifyPassword('wrong password', hash), false);
 });
 
-test('hashes are salted (same password, different hashes)', () => {
-  const a = hashPassword('pw');
-  const b = hashPassword('pw');
+test('hashes are salted (same password, different hashes)', async () => {
+  const a = await hashPassword('pw');
+  const b = await hashPassword('pw');
   assert.notEqual(a, b);
 });
 
