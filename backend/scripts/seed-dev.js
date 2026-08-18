@@ -75,14 +75,14 @@ async function ensureUser(client, account) {
   if (existing.rows.length > 0) {
     await client.query(
       `UPDATE users SET name = $1, role = $2, password_hash = $3, is_active = true WHERE id = $4`,
-      [account.name, account.role, hashPassword(account.password), existing.rows[0].id]
+      [account.name, account.role, await hashPassword(account.password), existing.rows[0].id]
     );
     return existing.rows[0].id;
   }
   const { rows } = await client.query(
     `INSERT INTO users (email, password_hash, name, role)
      VALUES ($1, $2, $3, $4) RETURNING id`,
-    [account.email, hashPassword(account.password), account.name, account.role]
+    [account.email, await hashPassword(account.password), account.name, account.role]
   );
   return rows[0].id;
 }
