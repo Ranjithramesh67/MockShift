@@ -74,6 +74,35 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.24 Pulled parallel-agent commit `c853316` "sidebar click fixes" + docs sync (this turn)
+
+The co-author/parallel agent built on the sidebar collapse-toggles work
+(`d41b27c`) and pushed `c853316`; pulled fast-forward (tree clean). No source
+changes needed from this side — this turn was docs + app-refresh only.
+
+What the pulled commit changed (recorded so the session state is accurate):
+- `frontend/src/components/Sidebar.tsx` — request/folder/collection tree-row
+  menus now close on a **document-level click** instead of the
+  `.tree-menu-backdrop` element (backdrop removed). Rationale in the commit:
+  the backdrop swallowed the same click, so opening a ⋯ menu made the following
+  sidebar click "disappear". The document listener ignores clicks inside
+  `.tree-menu` and on `[data-tree-menu-trigger]` buttons (which keep their own
+  onClick toggle). The collapse toggles from `d41b27c`
+  (`collapse-workspaces`/`collapse-collections`, `workspacesCollapsed`/
+  `collectionsCollapsed`, `.section-chevron`) survived the refactor intact.
+- `frontend/src/store/WorkspaceStore.tsx` — new `selectSeqRef` selection
+  sequencing: a stale in-flight `selectRequest` fetch can no longer clobber the
+  request the user actually clicked last; `deleteRequest`/`deleteCollection`/
+  `deleteWorkspace` bump the sequence to invalidate any in-flight selection.
+- `frontend/app/globals.css` — dropped the now-unused `.tree-menu-backdrop`
+  rule (net −6 lines).
+
+App refreshed against this HEAD and running: mock upstream :3999, backend :3001
+(`/api/health` ok), frontend :3000 — dev server recompiled the pulled files with
+no errors. Preview: https://3000-204dde05e6623a51.monkeycode-ai.live
+
+No tests run this turn (docs only; user waived testing).
+
 ### 5.23 Independent collapse toggles for the left-sidebar panels (pushed `d41b27c`)
 
 User: "add collapse icon for both the side bars. not only for workspaces."
@@ -545,8 +574,8 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-All code + docs are committed and pushed on `master` (HEAD `d41b27c`, the
-sidebar collapse-toggles feature). Working tree clean.
+All code + docs are committed and pushed on `master` (HEAD `c853316`, the
+parallel agent's "sidebar click fixes"). Working tree clean.
 
 ## 8. Known issues / notes for the next agent
 

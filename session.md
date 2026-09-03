@@ -7,10 +7,30 @@ Last updated: 2026-09-03
 
 ## Current
 
-Step: independent collapse/expand toggles on the two panels of the left sidebar.
-Status: COMPLETE — committed + pushed as `d41b27c` (see "Completed (this feature)" log).
+Step: bring session docs up to date after pulling the parallel agent's commit.
+Status: COMPLETE — recorded c853316 + app run; pushed (see "Completed (this feature)" log).
 
-THIS TURN (2026-09-03, sidebar collapse toggles):
+THIS TURN (2026-09-03, pull c853316 + docs sync):
+- Pulled `c853316` "sidebar click fixes" (the co-author/parallel agent built on
+  the collapse-toggles work and pushed). Working tree clean.
+  - `Sidebar.tsx`: tree row menus (request/folder/collection) now close on a
+    document-level click instead of a `.tree-menu-backdrop` (removed) — the same
+    click still reaches the tree row underneath so an open ⋯ menu no longer
+    makes the next sidebar click "disappear"; trigger buttons carry
+    `data-tree-menu-trigger` so their own onClick is excluded. My collapse
+    toggles (`collapse-workspaces` / `collapse-collections`,
+    `workspacesCollapsed`/`collectionsCollapsed`, `.section-chevron`) are intact.
+  - `WorkspaceStore.tsx`: added `selectSeqRef` sequencing so a stale in-flight
+    `selectRequest` response can't clobber the request the user clicked last;
+    deletes invalidate any in-flight selection.
+  - `globals.css`: `-6px` net change (backdrop CSS dropped).
+- App is running on the latest code: mock upstream :3999, backend :3001
+  (`/api/health` ok), frontend :3000 — dev server recompiled the pulled files
+  with no errors (GET / 200). Preview:
+  https://3000-204dde05e6623a51.monkeycode-ai.live
+- No source changes and no tests this turn (docs only).
+
+PREVIOUS TURN (2026-09-03, sidebar collapse toggles):
 - The two stacked panels inside the left sidebar now collapse independently:
   the **Workspaces** chips and the **Collections** tree each have a chevron
   toggle in their section header (the rail button at the bottom still collapses
@@ -106,7 +126,21 @@ M15 Verify/fix pulled commit `7af6044` (Ctrl+Enter editors + formula helpers + a
 
 ## Completed (this feature)
 
-- **Sidebar section collapse toggles** (this turn, pushed `d41b27c`). Both
+- **Pulled parallel agent's "sidebar click fixes" (`c853316`) + docs sync**
+  (this turn). The co-author agent pushed fixes on top of the collapse-toggles
+  work; pulled, tree clean, no source changes needed from me.
+  - Tree-row menus now close via a document click listener (`.tree-menu-backdrop`
+    removed) so the click passes through to the row underneath; trigger buttons
+    tagged `data-tree-menu-trigger`.
+  - `WorkspaceStore` gained `selectSeqRef` request-selection sequencing; deletes
+    invalidate in-flight selections.
+  - Collapse toggles from `d41b27c` verified intact after the refactor.
+  - App confirmed running on this HEAD (backend :3001, frontend :3000, mock
+    :3999; frontend recompiled clean). Preview:
+    https://3000-204dde05e6623a51.monkeycode-ai.live
+  - No tests run (docs only).
+
+- **Sidebar section collapse toggles** (previous turn, pushed `d41b27c`). Both
   stacked panels of the left sidebar — the Workspaces chips and the Collections
   tree — now have their own collapse/expand chevron in the section header, so
   each can be hidden independently (previously only the whole sidebar could be
