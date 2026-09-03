@@ -814,12 +814,6 @@ body.is-col-dragging .sidebar {
   padding: 4px;
 }
 
-.tree-menu-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 49;
-}
-
 .tree-menu {
   position: absolute;
   right: 6px;
