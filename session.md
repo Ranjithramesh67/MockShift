@@ -7,12 +7,27 @@ Last updated: 2026-09-03
 
 ## Current
 
-Step: request-execution loader UI — visible feedback (centered circular
-loader in the Response pane + a fixed-size busy Send button) when a request is
-triggered with Ctrl+Enter / Send.
-Status: COMPLETE — committed + pushed (see "Completed (this feature)" log).
+Step: independent collapse/expand toggles on the two panels of the left sidebar.
+Status: COMPLETE — committed + pushed as `d41b27c` (see "Completed (this feature)" log).
 
-THIS TURN (2026-09-03):
+THIS TURN (2026-09-03, sidebar collapse toggles):
+- The two stacked panels inside the left sidebar now collapse independently:
+  the **Workspaces** chips and the **Collections** tree each have a chevron
+  toggle in their section header (the rail button at the bottom still collapses
+  the whole sidebar to rail-only).
+  - `Sidebar.tsx`: added `workspacesCollapsed` / `collectionsCollapsed` state to
+    the `Sidebar` component; `CollectionsTree` accepts new `collapsed` +
+    `onToggleCollapsed` props. The per-node folder/collection collapse map was
+    renamed `collapsedNodes` so it no longer collides with the new boolean prop.
+    When a section is collapsed only its header stays visible (chevron points
+    right); the header action buttons (New collection / Import-export / Share /
+    Env) remain. Testids `collapse-workspaces`, `collapse-collections`.
+  - `globals.css`: `.sidebar-section-head .section-chevron` rotates 90° down
+    when open — same visual language as the tree chevrons.
+- Verification: `npx tsc --noEmit` clean; dev-server HMR compiled (GET / 200).
+  No tests run this turn (working order per docs/SESSION.md section 9).
+
+EARLIER TURN (2026-09-03 — env boot + request-execution loader UI):
 - Fresh environment boot (no code task): installed local PostgreSQL 15 +
   Redis, started both, created `apihub`, applied migrations 001–011, ran
   `seed:dev`; installed frontend deps. Services running: mock upstream :3999,
@@ -91,7 +106,21 @@ M15 Verify/fix pulled commit `7af6044` (Ctrl+Enter editors + formula helpers + a
 
 ## Completed (this feature)
 
-- **Request-execution loader UI** (this turn, pushed `4dd8c6d`). While a request is
+- **Sidebar section collapse toggles** (this turn, pushed `d41b27c`). Both
+  stacked panels of the left sidebar — the Workspaces chips and the Collections
+  tree — now have their own collapse/expand chevron in the section header, so
+  each can be hidden independently (previously only the whole sidebar could be
+  collapsed via the rail button).
+  - `Sidebar.tsx`: `workspacesCollapsed` / `collectionsCollapsed` state on the
+    `Sidebar` component; `CollectionsTree` gained `collapsed` / `onToggleCollapsed`
+    props. The internal per-node collapse `Record` was renamed `collapsedNodes`
+    (the new prop is a `boolean`). Collapsed sections keep only their header.
+  - `globals.css`: `.sidebar-section-head .section-chevron` — chevron points
+    right when collapsed and rotates 90° down when open (matches the tree
+    chevron pattern). Testids `collapse-workspaces` / `collapse-collections`.
+  - Verified `npx tsc --noEmit` clean + dev-server HMR compiled; no tests run.
+
+- **Request-execution loader UI** (earlier this day, pushed `4dd8c6d`). While a request is
   running (Ctrl+Enter / Send / scratchpad Send) the UI now gives visible
   feedback instead of appearing to do nothing:
   - `WorkspaceStore` gained `requestRunning` (boolean on the context) backed by

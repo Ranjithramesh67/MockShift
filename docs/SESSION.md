@@ -74,6 +74,32 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.23 Independent collapse toggles for the left-sidebar panels (pushed `d41b27c`)
+
+User: "add collapse icon for both the side bars. not only for workspaces."
+Clarified as the two stacked panels inside the left sidebar (the user picked
+"Both panels inside left sidebar"). Each panel now collapses on its own —
+previously only the whole sidebar collapsed (rail button → rail-only).
+
+- `frontend/src/components/Sidebar.tsx`
+  - `Sidebar`: new `workspacesCollapsed` / `collectionsCollapsed` state; the
+    Workspaces section head gained a chevron toggle (`data-testid="collapse-workspaces"`)
+    and the chips/loading/error body renders only when expanded.
+  - `CollectionsTree`: new `collapsed: boolean` + `onToggleCollapsed` props
+    driven from `Sidebar` state. Its internal per-node collapse `Record` was
+    renamed `collapsedNodes` to avoid clashing with the boolean prop. The
+    Collections section head gained the matching chevron
+    (`data-testid="collapse-collections"`); header action buttons
+    (Import-export / New collection / Share) and the tree body are hidden while
+    collapsed.
+  - Collapsed sections keep only their header row; the chevron points right when
+    collapsed and rotates down when open.
+- `frontend/app/globals.css` — `.sidebar-section-head .section-chevron`
+  (rotate 90° on `.open`, same language as the `.chevron.open` tree rows).
+- Kept the existing bottom rail toggle (whole-sidebar collapse) unchanged.
+- Verification: `npx tsc --noEmit` clean, dev-server HMR recompiled (GET / 200).
+  No tests run this turn (working order, section 9).
+
 ### 5.22 Fix follow-ups on remote commit `7af6044` (Ctrl+Enter from editors + formula helpers panel + admin Access tab)
 
 Pulled the remote fast-forward `26189c9..7af6044` ("fix(editor): ctrl+enter
@@ -519,16 +545,8 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-All M1–M6 code + docs are committed and pushed on `master` (HEAD `6dd891e`).
-Remaining working-tree noise:
-
-```
-M  frontend/tsconfig.tsbuildinfo      (build artifact; left by convention)
-?? package-lock.json                  (stray empty root lockfile from a failed root `npm install`)
-```
-
-The response-pane prettify/preview/PDF feature and all prior session work are
-already committed and pushed on `master`.
+All code + docs are committed and pushed on `master` (HEAD `d41b27c`, the
+sidebar collapse-toggles feature). Working tree clean.
 
 ## 8. Known issues / notes for the next agent
 
