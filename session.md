@@ -1,37 +1,43 @@
 # MockShift — Session State
 
-Last updated: 2026-08-16
+Last updated: 2026-09-03
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
 
 ## Current
 
-Step: M15 — verify/fix the pulled remote commit `7af6044` (Ctrl+Enter from
-body/formula editors + formula helpers panel + admin Access tab).
-Status: COMPLETE — three fixes made and verified; see "Completed (this feature)"
-log below. Committed + pushed.
+Step: request-execution loader UI — visible feedback (centered circular
+loader in the Response pane + a fixed-size busy Send button) when a request is
+triggered with Ctrl+Enter / Send.
+Status: COMPLETE — committed + pushed (see "Completed (this feature)" log).
 
-THIS TURN (2026-08-17):
-- Fixed the commit's `CodeEditor` regression: `extensionFor()` returns a single
-  non-iterable Extension, so `...(extensionFor(language) as any[])` crashed the
-  editor at runtime (body/formula editors never rendered). Wrapped in an array.
-- Fixed the formula helpers panel still covering the edit pane: helper is now
-  `flex: 0 1 auto; max-height: 45%` with an internally-scrolling body, and the
-  CodeMirror chain uses the real `.cm-theme-dark` wrapper class so the editor
-  fills the remaining space.
-- Restarted the backend (was running pre-pull code) so the new `/api/admin/access`
-  grant/revoke routes are served.
-- Verified: body + formula Ctrl+Enter each produce exactly ONE history row (no
-  double-fire); admin Access tab renders and grant/revoke endpoints work.
-- Test status: backend jest 47/47 · test:api 58/58 · test:api:unit 49/49 ·
-  frontend unit 68/68 · tsc clean. Key e2e specs pass standalone on a fresh
-  reset+seeded DB. Full-suite failures (send-working-copy, assertions-runner)
-  are the documented pre-existing ordering issue (shared mock-upstream/"Mock
-  API Demo" mutation), not regressions.
+THIS TURN (2026-09-03):
+- Fresh environment boot (no code task): installed local PostgreSQL 15 +
+  Redis, started both, created `apihub`, applied migrations 001–011, ran
+  `seed:dev`; installed frontend deps. Services running: mock upstream :3999,
+  backend :3001, frontend :3000.
+- Feature: run feedback while a request executes.
+  - `WorkspaceStore`: new `requestRunning` state + `requestRunningRef` guard —
+    set true at the top of `runActiveRequest`/`runScratchpad`, cleared in
+    `finally`; the ref prevents a Ctrl+Enter/Send race from firing twice.
+    Exposed on the context value.
+  - `ResponsePane`: while `ws.requestRunning`, a translucent overlay
+    (`data-testid="response-loading"`) dims the pane and centers a large
+    circular `.spinner-lg` loader — NO text, as requested.
+  - Send button (request editor + scratchpad): label stays "Send" so the button
+    keeps a constant size; only the 14px SendIcon is swapped for an equal-size
+    `.spinner-sm` while running (bar no longer shifts). Button disabled with
+    title "Running…".
+  - CSS: `.spinner-sm` (14px), `.spinner-lg` (34px), `.response-loading-overlay`
+    (absolute inset-0, centered flex, color-mix dim backdrop);
+    `.response-pane` is now `position: relative`.
+- Verification: `npx tsc --noEmit` clean; dev-server HMR compiled. No test runs
+  this turn (explicitly waived by the user).
 
-SERVICES STILL RUNNING: mock upstream :3999, backend :3001
-(term_1787001091713_12), frontend :3000 (term_1786883180092_11). Demo logins
+SERVICES STILL RUNNING: mock upstream :3999
+(term_1788446455814_3), backend :3001 (term_1788446457814_4), frontend :3000
+(term_1788446470277_5). Demo logins
 `boss1785867669@test.io`/`bosspass123` (ADMIN), `pm1785867669@test.io`/`pmpass1234`,
 `dev1785867669@test.io`/`devpass123`. Live `next build` is NOT safe while the
 dev server is up (shared `.next`) — use tsc + Playwright + `npm test` instead.
@@ -84,6 +90,25 @@ M14 Rework scratchpad: full-width editor pane + save location picker — DONE (t
 M15 Verify/fix pulled commit `7af6044` (Ctrl+Enter editors + formula helpers + admin Access) — DONE (this turn)
 
 ## Completed (this feature)
+
+- **Request-execution loader UI** (this turn, pushed `4dd8c6d`). While a request is
+  running (Ctrl+Enter / Send / scratchpad Send) the UI now gives visible
+  feedback instead of appearing to do nothing:
+  - `WorkspaceStore` gained `requestRunning` (boolean on the context) backed by
+    a `requestRunningRef` guard so a Ctrl+Enter + Send race cannot double-fire.
+    Set around `runActiveRequest` and `runScratchpad`, cleared in `finally`.
+  - `ResponsePane` shows a centered circular loader: a full-pane translucent
+    overlay (`.response-loading-overlay`) with a 34px `.spinner-lg` circle in
+    the middle. No text labels — earlier text banners were rejected in review.
+    Previous response content stays visible underneath and is revealed when the
+    run resolves.
+  - Send buttons (`RequestConfigurator` + `ScratchpadWorkspace`) keep a constant
+    size while running: the label remains "Send" and only the 14px SendIcon is
+    swapped for an equal-size `.spinner-sm`, so the request-bar no longer shifts;
+    button is disabled and `title` becomes "Running…".
+  - CSS additions: `.spinner-sm`/`.spinner-lg` size variants, white spinner on
+    the gradient primary button, `.response-loading-overlay`, and
+    `position: relative` on `.response-pane`.
 
 - **M15 — verify/fix pulled remote commit `7af6044`** (this turn). The pull
   (`26189c9..7af6044`) bundled Ctrl+Enter-from-editors + formula-helpers-panel
