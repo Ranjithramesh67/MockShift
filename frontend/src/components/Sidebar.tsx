@@ -110,7 +110,7 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
   );
 }
 
-function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection, onOpenMockServer, onOpenImportExport }: {
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection, onOpenMockServer, onOpenImportExport, collapsed, onToggleCollapsed }: {
   onOpenCreate: (kind: CreateKind, collectionId?: string, folderId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
@@ -119,10 +119,12 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   onRunCollection: (collectionId: string, collectionName: string) => void;
   onOpenMockServer: (project: { id: string; name: string }) => void;
   onOpenImportExport: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const ws = useWorkspace();
   const { dispatch } = useApp();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({});
   const [renaming, setRenaming] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [menuFor, setMenuFor] = useState<{ kind: 'request' | 'folder' | 'collection'; id: string } | null>(null);
@@ -160,7 +162,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   }, [selectedRow, ws, dispatch]);
 
   const toggle = (id: string) => {
-    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+    setCollapsedNodes((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const onSelectRequest = (id: string) => {
@@ -420,7 +422,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   };
 
   const renderFolder = (folder: (typeof tree.folders)[number], collectionId: string) => {
-    const isCollapsed = !!collapsed[folder.id];
+    const isCollapsed = !!collapsedNodes[folder.id];
     const isRenaming = renaming?.kind === 'folder' && renaming.id === folder.id;
     const subFolders = tree.folders.filter(
       (f) => f.collection_id === collectionId && f.parent_id === folder.id
@@ -586,38 +588,53 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
   return (
     <div className="sidebar-section tree-section">
       <div className="sidebar-section-head">
+        <button
+          type="button"
+          className={`icon-button section-chevron ${collapsed ? '' : 'open'}`}
+          data-testid="collapse-collections"
+          title={collapsed ? 'Show collections' : 'Hide collections'}
+          aria-label={collapsed ? 'Show collections' : 'Hide collections'}
+          aria-expanded={!collapsed}
+          onClick={onToggleCollapsed}
+        >
+          <ChevronIcon size={13} />
+        </button>
         <h3>Collections</h3>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Import / export collections"
-          title="Import / export collections"
-          data-testid="open-import-export"
-          onClick={onOpenImportExport}
-        >
-          <ImportIcon size={14} />
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="New collection"
-          title="New collection"
-          data-testid="new-collection"
-          onClick={() => onOpenCreate('collection')}
-        >
-          <PlusIcon size={14} />
-        </button>
-        <button
-          type="button"
-          className="ghost-button small"
-          title="Share workspace"
-          data-testid="share-workspace"
-          onClick={onOpenSharing}
-        >
-          Share
-        </button>
+        {!collapsed && (
+          <>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Import / export collections"
+              title="Import / export collections"
+              data-testid="open-import-export"
+              onClick={onOpenImportExport}
+            >
+              <ImportIcon size={14} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="New collection"
+              title="New collection"
+              data-testid="new-collection"
+              onClick={() => onOpenCreate('collection')}
+            >
+              <PlusIcon size={14} />
+            </button>
+            <button
+              type="button"
+              className="ghost-button small"
+              title="Share workspace"
+              data-testid="share-workspace"
+              onClick={onOpenSharing}
+            >
+              Share
+            </button>
+          </>
+        )}
       </div>
-      {tree.projects.map((p) => (
+      {!collapsed && tree.projects.map((p) => (
         <div key={p.id} className="tree-project">
           <div className="tree-project-name">
             <CollectionIcon size={12} />
@@ -655,7 +672,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
           {tree.collections
             .filter((c) => c.project_id === p.id)
             .map((c) => {
-              const isCollapsed = !!collapsed[c.id];
+              const isCollapsed = !!collapsedNodes[c.id];
               const rootFolders = tree.folders.filter(
                 (f) => f.collection_id === c.id && !f.parent_id
               );
@@ -796,7 +813,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
             })}
         </div>
       ))}
-      {tree.collections.length === 0 && <p className="hint">No collections yet.</p>}
+      {!collapsed && tree.collections.length === 0 && <p className="hint">No collections yet.</p>}
     </div>
   );
 }
@@ -871,6 +888,8 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const router = useRouter();
   const [rail, setRail] = useState<RailTab>('apis');
   const [collapsed, setCollapsed] = useState(false);
+  const [workspacesCollapsed, setWorkspacesCollapsed] = useState(false);
+  const [collectionsCollapsed, setCollectionsCollapsed] = useState(false);
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
   const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
@@ -1063,6 +1082,17 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
           <>
             <div className="sidebar-section">
               <div className="sidebar-section-head">
+                <button
+                  type="button"
+                  className={`icon-button section-chevron ${workspacesCollapsed ? '' : 'open'}`}
+                  data-testid="collapse-workspaces"
+                  title={workspacesCollapsed ? 'Show workspaces' : 'Hide workspaces'}
+                  aria-label={workspacesCollapsed ? 'Show workspaces' : 'Hide workspaces'}
+                  aria-expanded={!workspacesCollapsed}
+                  onClick={() => setWorkspacesCollapsed((v) => !v)}
+                >
+                  <ChevronIcon size={13} />
+                </button>
                 <h3>Workspaces</h3>
                 <button
                   type="button"
@@ -1074,9 +1104,13 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
                   Env
                 </button>
               </div>
-              {ws.loading && <p className="hint">Loading…</p>}
-              {ws.error && <p className="auth-error">{ws.error}</p>}
-              <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} />
+              {!workspacesCollapsed && (
+                <>
+                  {ws.loading && <p className="hint">Loading…</p>}
+                  {ws.error && <p className="auth-error">{ws.error}</p>}
+                  <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} />
+                </>
+              )}
             </div>
 
             {ws.tree && ws.activeWorkspaceId ? (
@@ -1089,6 +1123,8 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
                 onRunCollection={onRunCollection}
                 onOpenMockServer={(p) => setMockProject(p)}
                 onOpenImportExport={() => setImportExportOpen(true)}
+                collapsed={collectionsCollapsed}
+                onToggleCollapsed={() => setCollectionsCollapsed((v) => !v)}
               />
             ) : (
               !ws.loading && (
