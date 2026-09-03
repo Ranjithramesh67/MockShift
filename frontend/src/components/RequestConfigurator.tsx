@@ -188,8 +188,16 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
             </option>
           ))}
         </select>
-        <button type="button" className="primary-button" data-testid="send-button" onClick={onSend} title="Send (Ctrl+Enter)" style={actionBtn}>
-          <SendIcon size={14} />
+        <button
+          type="button"
+          className="primary-button"
+          data-testid="send-button"
+          onClick={onSend}
+          title={ws.requestRunning ? 'Running…' : 'Send (Ctrl+Enter)'}
+          style={actionBtn}
+          disabled={ws.requestRunning}
+        >
+          {ws.requestRunning ? <span className="spinner spinner-sm" /> : <SendIcon size={14} />}
           Send
         </button>
         <button type="button" className="ghost-button" data-testid="save-request-button" onClick={onSave} style={actionBtn}>

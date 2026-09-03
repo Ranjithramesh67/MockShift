@@ -147,10 +147,10 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
           data-testid="scratchpad-send"
           onClick={onSend}
           disabled={busy}
-          title="Send"
+          title={busy ? 'Running…' : 'Send'}
           style={actionBtn}
         >
-          <SendIcon size={14} />
+          {busy ? <span className="spinner spinner-sm" /> : <SendIcon size={14} />}
           Send
         </button>
         <button type="button" className="ghost-button" data-testid="scratchpad-save" onClick={() => setSaveOpen(true)} style={actionBtn}>

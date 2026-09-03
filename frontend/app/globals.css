@@ -1507,6 +1507,7 @@ body.is-col-dragging .sidebar {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 
 .response-header {
@@ -3321,10 +3322,38 @@ body.is-col-dragging .sidebar {
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.spinner-sm {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.primary-button .spinner {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+
+.spinner-lg {
+  width: 34px;
+  height: 34px;
+  border-width: 3px;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.response-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
 }
 
 .loading-screen {

@@ -6,6 +6,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -149,6 +150,7 @@ interface WorkspaceState {
   requestRuns: Record<string, RunResult | null>;
   collectionRun: CollectionRunResult | null;
   collectionRunRunning: boolean;
+  requestRunning: boolean;
 
   openRequestIds: string[];
   activeRequestId: string | null;
@@ -237,6 +239,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [requestRuns, setRequestRuns] = useState<Record<string, RunResult | null>>({});
   const [collectionRun, setCollectionRun] = useState<CollectionRunResult | null>(null);
   const [collectionRunRunning, setCollectionRunRunning] = useState(false);
+  // True while a single request (saved, working copy or scratchpad) is being
+  // executed through the run pipeline — drives the send/execution loader.
+  const [requestRunning, setRequestRunning] = useState(false);
+  const requestRunningRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -455,28 +461,36 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const runActiveRequest = useCallback(async () => {
     if (!activeRequest) return;
-    let result: RunResult;
-    if (isDirty) {
-      result = await contentApi.runEphemeral({
-        method: activeRequest.method,
-        url: activeRequest.url,
-        headers: activeRequest.headers,
-        queryParams: activeRequest.queryParams,
-        bodyType: activeRequest.bodyType,
-        bodyJson: activeRequest.bodyJson,
-        formula: activeRequest.formula,
-        assertions: activeRequest.assertions,
-        apiType: activeRequest.apiType,
-        collectionId: activeCollectionId,
-        persistHistory: false,
-      });
-    } else {
-      result = await contentApi.runRequest(activeRequest.id);
+    if (requestRunningRef.current) return;
+    requestRunningRef.current = true;
+    setRequestRunning(true);
+    try {
+      let result: RunResult;
+      if (isDirty) {
+        result = await contentApi.runEphemeral({
+          method: activeRequest.method,
+          url: activeRequest.url,
+          headers: activeRequest.headers,
+          queryParams: activeRequest.queryParams,
+          bodyType: activeRequest.bodyType,
+          bodyJson: activeRequest.bodyJson,
+          formula: activeRequest.formula,
+          assertions: activeRequest.assertions,
+          apiType: activeRequest.apiType,
+          collectionId: activeCollectionId,
+          persistHistory: false,
+        });
+      } else {
+        result = await contentApi.runRequest(activeRequest.id);
+      }
+      setLastRun(result);
+      // Keep the response for this request in memory so it can be restored when
+      // the tab is closed and reopened (Ctrl+Q / Ctrl+Shift+Q) or switched to.
+      setRequestRuns((runs) => ({ ...runs, [activeRequest.id]: result }));
+    } finally {
+      requestRunningRef.current = false;
+      setRequestRunning(false);
     }
-    setLastRun(result);
-    // Keep the response for this request in memory so it can be restored when
-    // the tab is closed and reopened (Ctrl+Q / Ctrl+Shift+Q) or switched to.
-    setRequestRuns((runs) => ({ ...runs, [activeRequest.id]: result }));
   }, [activeRequest, isDirty, activeCollectionId]);
 
   // M8: scratchpad — execute an in-memory request shape (e.g. a pasted cURL)
@@ -496,12 +510,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }) => {
       setError(null);
       setLastRun(null);
-      const result = await contentApi.runEphemeral({
-        ...input,
-        collectionId: activeCollectionId,
-        persistHistory: false,
-      });
-      setLastRun(result);
+      if (requestRunningRef.current) return;
+      requestRunningRef.current = true;
+      setRequestRunning(true);
+      try {
+        const result = await contentApi.runEphemeral({
+          ...input,
+          collectionId: activeCollectionId,
+          persistHistory: false,
+        });
+        setLastRun(result);
+      } finally {
+        requestRunningRef.current = false;
+        setRequestRunning(false);
+      }
     },
     [activeCollectionId]
   );
@@ -803,6 +825,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       requestRuns,
       collectionRun,
       collectionRunRunning,
+      requestRunning,
       openRequestIds,
       activeRequestId,
       requestCopies,
@@ -848,7 +871,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       loading, error, workspaces, teams, activeWorkspaceId, activeWorkspaceRole, tree,
       activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
       requestRuns,
-      collectionRun, collectionRunRunning,
+      collectionRun, collectionRunRunning, requestRunning,
       openRequestIds, activeRequestId, requestCopies,
       activateRequestTab, closeRequestTab, reopenLastClosedTab, isTabDirty,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
