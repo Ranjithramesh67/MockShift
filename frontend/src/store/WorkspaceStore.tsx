@@ -243,6 +243,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // executed through the run pipeline — drives the send/execution loader.
   const [requestRunning, setRequestRunning] = useState(false);
   const requestRunningRef = useRef(false);
+  // Guards selectRequest against out-of-order responses: each selection bumps
+  // the sequence and records the target id; a fetch that resolves after a newer
+  // click (or a workspace/collection switch) is dropped instead of overwriting
+  // the active request with a stale one.
+  const selectSeqRef = useRef(0);
+  const selectTargetRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!user) {
@@ -277,6 +283,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const selectWorkspace = useCallback(async (workspaceId: string) => {
     setError(null);
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
     setActiveWorkspaceId(workspaceId);
     setActiveRequest(null);
     setActiveRequestId(null);
@@ -304,6 +311,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [workspaces]);
 
   const selectCollection = useCallback(async (collectionId: string, collectionName: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
     setActiveCollectionId(collectionId);
     setActiveCollectionName(collectionName);
     setActiveRequest(null);
@@ -324,6 +332,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const selectRequest = useCallback(async (requestId: string) => {
     setError(null);
+    // Record this selection as the latest intent; any earlier in-flight fetch
+    // that resolves afterwards will be discarded below.
+    const seq = ++selectSeqRef.current;
+    selectTargetRef.current = requestId;
     // Restore the last stored response for this request if one exists.
     setLastRun(requestRuns[requestId] ?? null);
     if (openRequestIds.includes(requestId)) {
@@ -338,6 +350,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       // Fallback: open tab without a cached copy (should not happen normally).
     }
     const { request } = await contentApi.getRequest(requestId);
+    if (selectSeqRef.current !== seq || selectTargetRef.current !== requestId) {
+      // A newer sidebar/tab click (or workspace/collection switch) superseded
+      // this selection — drop the stale response rather than clobbering the
+      // request the user actually clicked last.
+      return;
+    }
     const editorRequest = toEditorRequest(request);
     setActiveRequest(editorRequest);
     setRequestCopies((c) => ({ ...c, [requestId]: editorRequest }));
@@ -684,6 +702,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [tree]);
 
   const deleteRequest = useCallback(async (requestId: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight selection of this request
     await contentApi.deleteRequest(requestId);
     await closeRequestTab(requestId, false);
     setRequestRuns((runs) => {
@@ -697,6 +716,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [tree, closeRequestTab]);
 
   const deleteCollection = useCallback(async (collectionId: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
     await contentApi.deleteCollection(collectionId);
     // Close tabs for requests that belonged to the deleted collection.
     const affectedIds = openRequestIds.filter((id) => {
@@ -731,6 +751,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [tree, activeCollectionId, openRequestIds, closeRequestTab]);
 
   const deleteWorkspace = useCallback(async (workspaceId: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
     await workspaceApi.remove(workspaceId);
     if (activeWorkspaceId === workspaceId) {
       setActiveWorkspaceId(null);
