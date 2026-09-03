@@ -24,6 +24,7 @@ export function ResponsePane() {
   // Ctrl+Q/Ctrl+Shift+Q close/reopen) and fall back to the latest run —
   // which is what the scratchpad and just-executed requests set.
   const run = ws.requestRuns[ws.activeRequestId ?? ''] ?? ws.lastRun;
+  const running = ws.requestRunning;
   const response = run?.response ?? null;
   const [showHeaders, setShowHeaders] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('pretty');
@@ -270,6 +271,12 @@ export function ResponsePane() {
         </div>
       ) : (
         <div className="panel-empty">No response yet.</div>
+      )}
+
+      {running && (
+        <div className="response-loading-overlay" data-testid="response-loading" role="status" aria-label="Executing request">
+          <span className="spinner spinner-lg" />
+        </div>
       )}
     </div>
   );
