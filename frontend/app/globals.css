@@ -421,6 +421,22 @@ body.is-col-dragging .sidebar {
   opacity: 1;
 }
 
+/* Collapse/expand toggle for a sidebar section header (Workspaces /
+   Collections). Points right when collapsed, rotates down when open. */
+.sidebar-section-head .section-chevron {
+  flex-shrink: 0;
+  padding: 2px;
+  margin-right: -4px;
+}
+
+.sidebar-section-head .section-chevron svg {
+  transition: transform 0.16s var(--ease);
+}
+
+.sidebar-section-head .section-chevron.open svg {
+  transform: rotate(90deg);
+}
+
 .sidebar-list {
   list-style: none;
   margin: 0;
