@@ -68,8 +68,8 @@ THIS TURN (2026-09-04, per-request undo/redo + back to previous request):
 - Running now: frontend `npm run dev` :3000 (term_1788555014639_40), backend
   :3001 (term_1788544342120_23), mock upstream :3999 (term_1788554330931_36);
   preview https://3000-d996ae6ab8ef93e4.monkeycode-ai.live
-- Commit: see git log (this turn's undo/redo/back work) — pushed to
-  `origin/master`.
+- Commit: `3b6ac59` (feat(undo): per-request undo/redo and back-to-previous-
+  request with global shortcuts) — pushed to `origin/master`.
 
 PREVIOUS TURN (2026-09-04, narrow-pane preview UI fix — commit `138631e`):
 - QA feedback at <641px in the preview pane ("fonts/buttons very big",
