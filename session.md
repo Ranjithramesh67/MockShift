@@ -7,10 +7,30 @@ Last updated: 2026-09-03
 
 ## Current
 
-Step: bring session docs up to date after pulling the parallel agent's commit.
-Status: COMPLETE — recorded c853316 + app run; pushed (see "Completed (this feature)" log).
+Step: fix slow page loads when navigating via the sidebar (rail pages).
+Status: COMPLETE — frontend switched from `next dev` to a production
+`next start` server (built + running); pushed doc note.
 
-THIS TURN (2026-09-03, pull c853316 + docs sync):
+THIS TURN (2026-09-03, sidebar page-load slowness fix):
+- User: "why it is taking more time to load the pages in sidebar? check and fix
+  ASAP." Investigated:
+  - Backend endpoints (workspaces, teams, tree/content, admin/manage/history/
+    automations data) all serve in <75 ms — data is not the bottleneck.
+  - Frontend in `next dev` was the bottleneck: every sidebar rail page
+    (`/admin`, `/manage`, `/automations`, `/history`, `/login`) recompiled on
+    first request (0.5–2 s cold compiles), then warmed to ~30–80 ms. Providers
+    live in the root layout (no refetch on nav); route HTML + client JS in dev
+    mode were the cost.
+  - Fix: stopped the dev server and now serve a production build —
+    `next build` (green; `/` First Load JS 323 kB) + `next start -p 3000`
+    (background terminal term_1788511594790_6). Prod route timings now ~8–25 ms
+    for every route (`/admin` 9 ms vs 1.95 s dev cold), no per-route compiling.
+  - Preview unchanged: https://3000-204dde05e6623a51.monkeycode-ai.live
+  - Note: no HMR while `next start` runs; rebuild + restart to pick up frontend
+    changes. `npm run build` after the prod server is stopped only.
+- No tests run (user waived). Working tree clean.
+
+PREVIOUS TURN (2026-09-03, pull c853316 + docs sync):
 - Pulled `c853316` "sidebar click fixes" (the co-author/parallel agent built on
   the collapse-toggles work and pushed). Working tree clean.
   - `Sidebar.tsx`: tree row menus (request/folder/collection) now close on a
