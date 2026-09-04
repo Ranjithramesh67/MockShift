@@ -74,7 +74,44 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
-### 5.28 Team- and project-scoped workspaces (this turn)
+### 5.29 Narrow-pane preview UI fix (this turn)
+
+QA feedback in the platform preview pane (< 641px wide): "Fonts and buttons
+are very big, align everything properly, and also split view or side by side
+is not working properly check that as well." Root cause was found by measuring
+the running app (Playwright geometry across 1440→360px), not by guessing:
+the desktop >900px UI is compact (13px text, 28-44px buttons) and both split
+modes already work correctly at every desktop width, so the complaint only
+reproduced at ≤640px. There, `frontend/app/mobile.editor.css` intentionally
+forced `.split-pane-horizontal` into stacked full-width panes (choosing
+"Side by side" therefore visibly did nothing) and inflated every control to
+40-46px touch targets. All changes live in `frontend/app/mobile.editor.css`
+(media-scoped, desktop and committed testids untouched):
+
+- **≤900px** — removed the forced horizontal-split→stack override. "Side by
+  side" is now honored at every width: the two columns keep `min-width:0` +
+  internal scroll and the divider is widened to 10px for touch. Verified down
+  to 390px where it produces two usable, resizable columns. Vertical Split
+  and the desktop layout are unchanged.
+- **≤640px** — compacted the phone-size controls: method/url inputs 42→34px;
+  Send 44→36px and no longer full-width (actions become one left-aligned
+  wrapping row — api-type, Send, Save, export — at ≥480px instead of the
+  giant stacked rows); editor tabs 40→36px; KV/multipart/assertion inputs
+  40→34px; row icon/ghost buttons 40→34px; response tabs/actions 36→32px;
+  formula-helper + scratchpad rows 44-46→38px; CodeMirror min-height
+  40vh→32vh. Body font remains 13px everywhere; no horizontal overflow at any
+  probed width (360-1440px) in any view mode.
+
+Verification: Playwright sweeps of control sizes, pane boxes and
+`scrollWidth` vs `clientWidth` across widths and view modes found correctly
+sized side-by-side columns and no overflow; `tsc --noEmit` clean; `npm test`
+89/89; `next build` green. Full desktop e2e (25 specs / 39 tests): **37
+passed, 2 failed** — `nav-race` (documented environmental flake) and
+`history.spec` §"sees their own run" whose first `/history` dev compile took
+5.6s (> the spec's 5s assertion) and which passes warm — both environmental,
+not regressions (see §8).
+
+### 5.28 Team- and project-scoped workspaces
 
 User scope: "We should be able to create everything based on team wise." A
 member of a team (e.g. EMEA) with access to that team's projects (e.g. ats,
@@ -901,6 +938,12 @@ committed and pushed on `master`; working tree clean.
   work. The new `e2e/project-overview.spec.ts` is hermetic (deletes any prior
   "E2E Team" before re-creating it) and passed. Suite is now 25 specs / 39
   tests.
+- **Narrow-pane QA turn (§5.29) — same environmental class, different spec:**
+  full-suite run gave 37/39 with failures `nav-race` (unchanged) and
+  `history.spec` "sees their own run". The history failure is dev-server
+  cold-compile latency: the first hit of `/history` in a run compiles in
+  ~5.6s while the spec's `toBeVisible` waits only 5s; it passes in isolation
+  on a warm cache and is unrelated to the CSS-only fix in that turn.
 - **Navigation model decision (team-first)**: keep the existing schema; teams
   (`GET /api/teams/groups`) group the sidebar's workspace chips, and clicking a
   project name opens its command center (`GET /api/projects/:id/overview`).

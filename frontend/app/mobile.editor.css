@@ -32,34 +32,15 @@
     min-width: 0;
   }
 
-  /* Side-by-side (horizontal) splits degrade to stacked panes: full-width
-     request editor on top, response below, separated by a horizontal divider.
-     The inline width set by the resize logic is overridden on purpose. */
-  .split-pane-horizontal {
-    flex-direction: column;
-  }
-  .split-pane-horizontal .split-pane-first {
-    width: 100% !important;
-    height: 55%;
-    flex: 0 0 auto;
-  }
+  /* Side-by-side (horizontal) splits stay side-by-side on narrow screens so
+     the chosen layout is respected in slim preview panes. Each column already
+     scrolls internally and never forces the page wider than the viewport. */
+  .split-pane-horizontal .split-pane-first,
   .split-pane-horizontal .split-pane-second {
-    width: 100% !important;
-    flex: 1 1 auto;
+    min-width: 0;
   }
   .split-pane-horizontal .split-pane-divider {
-    width: auto;
-    height: 12px;
-    flex: 0 0 auto;
-    border-top: 1px solid var(--border-soft);
-    border-bottom: 1px solid var(--border-soft);
-    border-left: none;
-    border-right: none;
-    cursor: row-resize;
-  }
-  .split-pane-horizontal .split-pane-divider::after {
-    width: 36px;
-    height: 3px;
+    width: 10px;
   }
 
   /* Bigger, touch-friendly grab area for stacked (vertical) dividers and stop
@@ -90,34 +71,41 @@
 
 @media (max-width: 640px) {
   /* --- Request method + URL + action buttons --------------------------- */
+  /* Compact but still touch-usable controls so the studio does not look
+     oversized in narrow preview panes (< 641px). */
   .request-bar {
-    padding: 10px;
-    row-gap: 8px;
+    padding: 10px 12px;
+    row-gap: 6px;
   }
   .request-bar .method-select {
     flex: 0 0 auto;
-    min-height: 42px;
+    min-height: 34px;
   }
   .request-bar .url-input {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: 42px;
+    min-height: 34px;
   }
   .request-bar .request-bar-actions {
     flex: 1 1 100%;
     display: flex !important;
     flex-wrap: wrap;
-    gap: 8px;
+    align-items: center;
+    row-gap: 6px;
+    column-gap: 8px;
   }
   .request-bar-actions .primary-button {
     order: -1;
-    flex: 1 1 100%;
-    min-height: 44px;
+    flex: 0 0 auto;
+    min-height: 36px;
   }
   .request-bar-actions > :not(.primary-button) {
-    flex: 1 1 calc(33.333% - 6px);
+    flex: 0 0 auto;
     min-width: 0;
-    min-height: 42px;
+    min-height: 34px;
+  }
+  .request-bar-actions .compact-select {
+    min-width: 88px;
   }
   .request-bar-actions button,
   .request-bar-actions select {
@@ -133,9 +121,9 @@
   .request-configurator > .tab-bar .tab,
   .scratchpad-workspace > .tab-bar .tab {
     flex: 0 0 auto;
-    min-height: 40px;
-    padding-top: 9px;
-    padding-bottom: 9px;
+    min-height: 36px;
+    padding-top: 7px;
+    padding-bottom: 7px;
   }
 
   /* --- Tab body / editors --------------------------------------------- */
@@ -150,7 +138,7 @@
      .response-body rules. */
   .body-editor .code-editor {
     flex: 1 1 auto;
-    min-height: 40vh;
+    min-height: 32vh;
   }
   .body-editor .code-editor .cm-theme,
   .body-editor .code-editor .cm-theme-dark,
@@ -158,10 +146,10 @@
     height: 100% !important;
   }
   .formula-editor {
-    min-height: 42vh;
+    min-height: 34vh;
   }
   .formula-editor .code-editor {
-    min-height: 30vh;
+    min-height: 24vh;
   }
 
   /* --- Key/Value editor rows: stack key above value -------------------- */
@@ -189,18 +177,18 @@
   .scratchpad-workspace .kv-row > :nth-child(2) {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: 40px;
+    min-height: 34px;
   }
   .request-configurator .kv-row > :nth-child(3),
   .scratchpad-workspace .kv-row > :nth-child(3) {
     flex: 1 1 calc(100% - 38px);
     margin-left: 38px;
     min-width: 0;
-    min-height: 40px;
+    min-height: 34px;
   }
   .request-configurator .kv-row > .kv-actions,
   .scratchpad-workspace .kv-row > .kv-actions {
-    width: 40px;
+    width: 36px;
     flex: 0 0 auto;
   }
 
@@ -225,13 +213,13 @@
   .scratchpad-workspace .multipart-row > :nth-child(2) {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: 40px;
+    min-height: 34px;
   }
   .request-configurator .multipart-row > :nth-child(3),
   .scratchpad-workspace .multipart-row > :nth-child(3) {
     width: auto;
     flex: 0 0 auto;
-    min-height: 40px;
+    min-height: 34px;
   }
   .request-configurator .multipart-row > :nth-child(4),
   .scratchpad-workspace .multipart-row > :nth-child(4) {
@@ -239,17 +227,17 @@
     flex: 1 1 calc(100% - 38px);
     margin-left: 38px;
     min-width: 0;
-    min-height: 40px;
+    min-height: 34px;
   }
   .request-configurator .multipart-row > .multipart-actions,
   .scratchpad-workspace .multipart-row > .multipart-actions {
     order: 1;
-    width: 40px;
+    width: 36px;
     flex: 0 0 auto;
   }
   .multipart-file-cell .multipart-file-button {
     flex: 0 0 auto;
-    min-height: 40px;
+    min-height: 34px;
   }
   .multipart-file-cell .multipart-file-meta {
     flex: 1 1 auto;
@@ -266,18 +254,18 @@
     padding: 8px 10px;
   }
   .response-tab {
-    padding: 8px 2px;
-    min-height: 36px;
+    padding: 7px 2px;
+    min-height: 32px;
   }
   .response-toolbar {
     row-gap: 8px;
   }
   .response-viewmode {
-    padding: 9px 14px;
+    padding: 7px 12px;
   }
   .response-action {
-    padding: 8px 12px;
-    min-height: 36px;
+    padding: 6px 10px;
+    min-height: 32px;
   }
 
   /* --- Assertions editor ------------------------------------------------ */
@@ -291,41 +279,41 @@
   }
   .assertion-row .compact-select {
     flex: 1 1 calc(50% - 4px);
-    min-height: 42px;
+    min-height: 34px;
   }
   .assertion-row .assertion-path {
     flex: 1 1 100%;
     min-width: 0;
-    min-height: 42px;
+    min-height: 34px;
   }
   .assertion-row .assertion-expected {
     flex: 1 1 auto;
     width: auto;
     min-width: 0;
-    min-height: 42px;
+    min-height: 34px;
   }
 
   /* --- Formula helper --------------------------------------------------- */
   .formula-helper-head {
-    min-height: 44px;
+    min-height: 38px;
   }
   .formula-helper-item {
-    min-height: 46px;
-    padding: 8px 10px;
+    min-height: 38px;
+    padding: 7px 10px;
   }
 
   /* --- Touch-friendly hit areas for row controls ------------------------ */
   .kv-rows .icon-button,
   .multipart-rows .icon-button,
   .assertions-editor .icon-button {
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 34px;
+    min-height: 34px;
   }
   .kv-rows .ghost-button,
   .multipart-rows .ghost-button,
   .assertions-editor .ghost-button {
-    min-height: 40px;
-    padding: 8px 14px;
+    min-height: 34px;
+    padding: 6px 12px;
   }
 
   /* --- Scratchpad save-location picker ---------------------------------- */
@@ -335,8 +323,8 @@
   .scratchpad-save-location-row {
     display: flex;
     align-items: center;
-    min-height: 44px;
-    padding: 8px 10px;
+    min-height: 38px;
+    padding: 6px 10px;
   }
 
   /* --- Pressed states that are visible on touch -------------------------- */

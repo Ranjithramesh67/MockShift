@@ -299,6 +299,15 @@ clean, `npm test` 89/89, `next build` green, and a new hermetic e2e spec
 two failures (`nav-race`, `send-working-copy`) reproduce on the clean
 pre-change baseline (see docs/SESSION.md §5.28/§8).
 
+QA follow-up (narrow preview pane <641px: "fonts/buttons very big", "split /
+side-by-side not working"): fixed entirely in `frontend/app/mobile.editor.css`.
+The <900px mobile CSS no longer forces `.split-pane-horizontal` into stacked
+panes, so "Side by side" works down to 390px, and the ≤640px touch controls
+were compacted (Send 44→36px and no longer full-width, inputs 42/40→34px,
+tabs/rows 40-46→34-38px, CodeMirror 40vh→32vh). Verified with Playwright
+geometry sweeps 1440→360px (no overflow, correct columns); desktop and all
+testids untouched. Docs: docs/SESSION.md §5.29.
+
 ## M16 — Structured multipart/form-data parts (done)
 
 Postman-style multipart parts in the request editor AND scratchpad: text rows
