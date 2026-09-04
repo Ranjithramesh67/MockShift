@@ -50,7 +50,8 @@ THIS TURN (2026-09-04, narrow-pane preview QA fix):
 - Running now: frontend `npm run dev` :3000 (term_1788550670180_29), backend
   :3001, mock upstream :3999; preview
   https://3000-d996ae6ab8ef93e4.monkeycode-ai.live
-- Commit: see git log — pushed to `origin/master`.
+- Commit: `138631e` (fix(ui): honor side-by-side split and compact controls in
+  narrow preview panes) — pushed to `origin/master`; tree clean.
 
 PREVIOUS TURN (2026-09-04, team/project-scoped workspaces — commit `6846d88`):
 - User scope: "We should be able to create everything based on team wise" — a
