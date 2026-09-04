@@ -7,14 +7,52 @@ Last updated: 2026-09-04
 
 ## Current
 
-Step: TEAM- AND PROJECT-SCOPED WORKSPACES — team-first navigation plus a
-per-project "command center" (project overview screen).
-Status: COMPLETE — backend verified live; frontend gates green
-(tsc, 89/89 unit, `next build`); desktop e2e 37/39 with the two failures
-reproduced on the clean pre-change baseline (environmental flakes, not
-regressions); committed and pushed to `origin/master`.
+Step: NARROW-PANE UI POLISH — after QA feedback in the ~600px preview pane
+("fonts/buttons very big", "split/side-by-side not working"), the <900px/
+<640px mobile CSS no longer silently stacks the side-by-side split, and the
+phone-size touch controls were compacted so the studio no longer looks blown
+up in a slim pane.
+Status: COMPLETE — verified live at 360-1440px (side-by-side now works down
+to 390px; controls 34-36px; zero overflow); tsc clean, 89/89 unit, `next
+build` green, full desktop e2e 37/39 with only the documented environmental
+flakes; committed and pushed to `origin/master`.
 
-THIS TURN (2026-09-04, team/project-scoped workspaces):
+THIS TURN (2026-09-04, narrow-pane preview QA fix):
+- QA feedback in the platform preview pane (< 641px): "Fonts and buttons are
+  very big, align everything properly, and also split view or side by side is
+  not working properly check that as well." Investigation (measured, not
+  guessed) showed the desktop >900px UI is compact 13px text with 28-44px
+  buttons and both split modes already render correctly on every desktop
+  width — the complaint only reproduced at ≤640px, where
+  `frontend/app/mobile.editor.css` deliberately forced `.split-pane-horizontal`
+  into stacked full-width panes (so choosing "Side by side" visibly did
+  nothing) and inflated every control to 40-46px touch targets.
+- Fixes (all inside `frontend/app/mobile.editor.css`, media-scoped; desktop
+  and all committed testids untouched):
+  - ≤900px: removed the forced horizontal-split→stack override — "Side by
+    side" is honored at every width (columns keep `min-width:0` + internal
+    scroll, divider widened to 10px for touch). Verified down to 390px (two
+    usable resizable columns); vertical Split unchanged.
+  - ≤640px: compacted phone-size controls — method/url inputs 42→34px, Send
+    44→36px and no longer full-width (actions are one left-aligned wrapping
+    row of api-type + Send + Save + export at ≥480px), editor tabs 40→36px,
+    KV/multipart/assertion inputs 40→34px, row icon/ghost buttons 40→34px,
+    response tabs/actions 36→32px, formula + scratchpad rows 44-46→38px,
+    CodeMirror min-height 40vh→32vh. Body font stays 13px everywhere; zero
+    horizontal overflow at any probed width 360-1440px.
+- Verification: Playwright geometry sweeps (controls + pane boxes +
+  scrollWidth-vs-clientWidth) across 1440→360px in every view mode found
+  correct side-by-side columns and no overflow; tsc clean; unit 89/89;
+  `next build` green; full desktop e2e (25 specs / 39 tests) 37/39 — the two
+  failures are the documented environmental `nav-race` plus a first-compile
+  variant of `history.spec` (first `/history` dev compile 5.6s > the spec's
+  5s assertion; passes warm — unrelated to this CSS change).
+- Running now: frontend `npm run dev` :3000 (term_1788550670180_29), backend
+  :3001, mock upstream :3999; preview
+  https://3000-d996ae6ab8ef93e4.monkeycode-ai.live
+- Commit: see git log — pushed to `origin/master`.
+
+PREVIOUS TURN (2026-09-04, team/project-scoped workspaces — commit `6846d88`):
 - User scope: "We should be able to create everything based on team wise" — a
   member of a team (e.g. EMEA) who holds access to that team's projects
   (e.g. ats, ayq) should work inside those projects only; an admin must be
