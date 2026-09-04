@@ -77,28 +77,17 @@ the live DB:
 ### 5.31 Pending plan: two subscription portals (recorded, docs only)
 
 No code — Ranjith asked to record a segmented pending plan for two new portals
-in `session.md`, then work once it is pushed. Added `## Pending — Two
-subscription portals` to session.md and populated `## Blocked / needs answer
-from Ranjith` with open questions (Q1–Q6):
+in `session.md`, then work once it is pushed. Decisions Q1–Q6 were answered
+2026-09-04 and recorded: **generic standalone SaaS catalog** (not API Hub
+seats); **separate portal codebase** (X1 — not extending the current Next
+app); **mock/manual invoicing first**; **reuse existing `users`**
+(auto-create on checkout); Portal B roles **ADMIN / MANAGER / SUPPORT / VIEWER**
+on the existing `role` enum infra (SUPPORT added via migration `012`); first
+milestone = **A1+B1+X1 foundation** (catalog data model + API, Portal B RBAC,
+separate `portal/` scaffold). Open remaining inputs: portal stack/ports and
+initial plan seed rows. Push `2ed93be` recorded the plan; this docs entry was
+updated after the decision follow-up. No source changes, no tests.
 
-- **Portal A** — public subscription showcase + purchase website: segments A1
-  plan/catalog model+API (migration `012`), A2 showcase/pricing UI, A3
-  subscriber identity, A4 purchase/checkout flow, A5 self-service, A6 payment
-  integration + webhooks.
-- **Portal B** — internal subscription management portal with RBAC: segments
-  B1 RBAC design (roles ADMIN/MANAGER/SUPPORT/VIEWER on the existing `role`
-  enum + `access.js` guards + RLS), B2 dashboard/metrics, B3 subscriber &
-  subscription management + lifecycle actions, B4 plan/catalog admin UI, B5
-  audit trail + export, B6 portal UI shell.
-- Cross-cutting X1 architecture (recommend extending the current Next.js app:
-  public `/plans` + `/checkout` + `/admin/*` group, single preview port), X2
-  frontend hooks/patterns, X3 DB migration(s) `012+`.
-- Confirmed existing RBAC base: `role` enum (`ADMIN`/`MANAGER`/`EDITOR`/
-  `VIEWER`), `users.role` global role, per-scope memberships,
-  `backend/src/api/access.js` (`ROLE_RANK`, `requireGlobalRole`), RLS helpers
-  `app.role_at` / `app.workspace_role`.
-- Pulled latest master first (HEAD `58a478b`). Pushed docs update. No source
-  changes, no tests this turn.
 
 ### 5.30 Per-request undo/redo + back to previous request (this turn)
 

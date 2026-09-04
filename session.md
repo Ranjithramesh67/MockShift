@@ -7,11 +7,13 @@ Last updated: 2026-09-04
 
 ## Current
 
-Step: NOT STARTED — two new portals planned below; no code written yet.
-Status: AWAITING GO — the plan is recorded in `## Pending — Two subscription
-portals`; open decisions are listed in `## Blocked / needs answer from
-Ranjith`. This turn is docs-only (record plan in session.md + push). Work
-begins once Ranjith says GO and answers the open questions.
+Step: NOT STARTED — milestone `A1+B1+X1` (first foundation milestone) is
+scoped below; no code written yet.
+Status: AWAITING GO — decisions Q1–Q6 answered and recorded in
+`## Pending — Two subscription portals`; everything else under
+`## Blocked / needs answer from Ranjith`. Start milestone `A1+B1+X1` (scaffold
+separate portal codebase + plans/catalog model+migration `012` + Portal B RBAC
+on existing role infra) as soon as Ranjith says GO.
 
 THIS TURN (2026-09-04, plan two subscription portals — docs only):
 - Pulled latest code (HEAD `58a478b`, incl. `3b6ac59` per-request undo/redo,
@@ -623,24 +625,18 @@ Folders added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collec
 
 ## Blocked / needs answer from Ranjith
 
-Open questions for the TWO-SUBSCRIPTION-PORTAL plan (see `## Pending — Two
-subscription portals`). Work starts after these are answered + GO is given:
-- Q1 **Subscriptions to what?** Is Portal A selling access/seats to THIS API
-  Hub product (plans like free/pro/team), or a generic SaaS catalog unrelated
-  to API Hub? What are the initial plans + pricing/currencies/billing cycles?
-- Q2 **Architecture** (X1): extend the current Next.js app with a public
-  `/plans` + `/checkout` + self-service area and a `/admin/*` management group
-  (recommended — single port/proxy), or a separate portal codebase?
-- Q3 **Payments**: real gateway (which one — Stripe/etc.) with live/sandbox
-  keys, or mock/manual invoicing first (recommended start) with webhooks added
-  later?
-- Q4 **Subscriber identity**: reuse existing `users` (auto-create on checkout,
-  default role EDITOR/VIEWER) or introduce a separate `customers` entity?
-- Q5 **Portal B RBAC roles**: ok to use portal roles ADMIN / MANAGER / SUPPORT /
-  VIEWER built on the existing `role` enum + `access.js` middleware, with
-  granular permissions (view-only vs manage vs suspend/refund)?
-- Q6 **Scope of the first milestone**: recommend A1 + B1 + X1 (data model +
-  RBAC foundation + architecture) before any UI.
+- **(none blocking)** — decisions Q1–Q6 for the two-subscription-portal plan
+  were answered 2026-09-04 (see `## Pending — Two subscription portals`:
+  generic standalone catalog; separate portal codebase; mock/manual invoicing;
+  reuse existing `users`; Portal B roles ADMIN/MANAGER/SUPPORT/VIEWER on
+  existing role infra; first milestone = A1+B1+X1).
+- Awaiting **GO to start milestone `A1+B1+X1`**. Before coding, two minor
+  inputs are needed (can be decided by the agent at start if Ranjith prefers):
+  - Portal stack + location: reuse the repo's Express 5 + Next 14 stack in a
+    new `portal/` folder with its own backend + frontend (recommended), or a
+    different stack? Which ports?
+  - Initial `plans` seed rows for the catalog (first milestone only needs the
+    model + admin CRUD, so placeholders fine until Portal A2 showcase).
 
 ## Working rules
 
@@ -684,14 +680,44 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
   leave requests in "Mock API Demo", so "Requests: 8" in assertions-runner.spec.ts breaks otherwise.
    - **Never run `next build` while `next dev` is live on the same `.next` dir** (clobbers dev chunks).
 
-## Pending — Two subscription portals (recorded 2026-09-04, NOT started)
+## Pending — Two subscription portals (decisions made 2026-09-04)
 
 Feature request from Ranjith: build TWO portals —
 **Portal A** = public "website" for subscription showcase + purchase
 (pricing/plans page, checkout, subscriber self-service), and
 **Portal B** = internal management portal for subscription users/details with
-**RBAC**. Recorded here as segments so each can be its own micro-task/session.
-Awaiting GO + answers to the open questions below.
+**RBAC**. Recorded as segments so each can be its own micro-task/session.
+
+Decisions (answered by Ranjith 2026-09-04):
+- **Q1** Subscriptions are a **generic standalone SaaS catalog** (not API Hub
+  seats); initial plans/pricing to be specified by Ranjith before Portal A2.
+- **Q2/X1** **Separate portal codebase** (decided) — NOT extending the current
+  Next app. New app(s) live outside the API Hub frontend/backend (structure TBD
+  at milestone start: shared repo folder `portal/` with its own frontend +
+  backend, own port; keep existing API Hub untouched).
+- **Q3** **Mock/manual invoicing first** — real gateway + webhooks later.
+- **Q4** **Reuse existing `users`** (auto-create on checkout, default role
+  EDITOR/VIEWER), same DB cluster/`apihub`.
+- **Q5** Portal B roles **ADMIN / MANAGER / SUPPORT / VIEWER** on the existing
+  `role` enum infra (`users.role`, memberships, `access.js`); SUPPORT is new —
+  add to enum in migration `012`.
+- **Q6** **First milestone = A1 + B1 + X1 foundation** (see below).
+
+Current: AWAITING GO to start milestone `A1+B1+X1` (plan below).
+
+### First milestone — A1 + B1 + X1 (data model + RBAC + architecture)
+
+Scope when GO is given:
+- **X1**: scaffold separate portal codebase (new `portal/` dir: its own
+  Express/Next(?) backend + frontend per repo conventions; own port + proxy
+  wiring for preview; confirm stack with Ranjith or reuse repo's Express 5 +
+  Next 14 stack).
+- **A1**: `plans`/catalog data model + public read API + admin CRUD — migration
+  `012` (next free number) on the same `apihub` DB (plans/subscriptions/orders/
+  invoices + SUPPORT role added to enum), reusing `db/migrations` numbering.
+- **B1**: Portal B RBAC — role gate middleware (extend pattern from
+  `backend/src/api/access.js`), RLS policies for the new tables, endpoint
+  matrix (ADMIN full / MANAGER ops / SUPPORT read-mostly / VIEWER read-only).
 
 ### Portal A — public subscription showcase + purchase website (customer-facing)
 
@@ -699,7 +725,7 @@ Awaiting GO + answers to the open questions below.
 |---|---|
 | A1 | Plan/catalog data model + API: `plans` (name, features, price, billing cycle, trial days, active/published) — migration `012` (next free number), public read endpoints, RBAC-scoped admin CRUD |
 | A2 | Showcase UI: landing + plans/pricing pages rendered from the catalog (public, no login), responsive |
-| A3 | Subscriber identity: decide reuse of `users` vs a new `customers` entity; signup/account creation at checkout |
+| A3 | Subscriber identity — DECIDED: reuse existing `users`, auto-create on checkout (default EDITOR/VIEWER) |
 | A4 | Purchase/checkout flow: pick plan → billing/contact info → create subscription + order → confirmation page |
 | A5 | Subscriber self-service: "My subscription" area — current plan, status, invoices, change/cancel |
 | A6 | Payment integration + webhooks + receipts (provider-dependent; see open questions) |
@@ -719,7 +745,7 @@ Awaiting GO + answers to the open questions below.
 
 | Seg | Deliverable |
 |---|---|
-| X1 | Architecture: extend the current Next.js app (public `/plans`, `/checkout`, self-service + `/admin/*` portal group, reusing auth/session/proxy) vs separate portals — **recommend extending the current app** (single preview port, shared store patterns) |
+| X1 | Architecture — DECIDED: separate portal codebase (not in the current Next app). Scaffold `portal/` with its own frontend + backend (stack + ports TBD at start of milestone) |
 | X2 | Frontend patterns: keep `data-testid`/`aria-label` hooks (e2e green), component/store structure consistent with existing `WorkspaceStore`-style providers |
 | X3 | DB: single new migration(s) `012+` covering plans/subscriptions/orders/invoices + RBAC/RLS; record applied migrations in the Environment note |
 
