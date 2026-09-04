@@ -7,13 +7,89 @@ Last updated: 2026-09-04
 
 ## Current
 
-Step: FULL mobile responsive UI + touch UX — phones/tablets end-to-end
-(off-canvas drawer navigation, bottom-sheet modals, stacked card tables,
-compact request editor) — delivered by 4 parallel agents.
-Status: COMPLETE — frontend gates green; desktop e2e green apart from
-environmental timing flakes; committed and pushed to `origin/master`.
+Step: TEAM- AND PROJECT-SCOPED WORKSPACES — team-first navigation plus a
+per-project "command center" (project overview screen).
+Status: COMPLETE — backend verified live; frontend gates green
+(tsc, 89/89 unit, `next build`); desktop e2e 37/39 with the two failures
+reproduced on the clean pre-change baseline (environmental flakes, not
+regressions); committed and pushed to `origin/master`.
 
-THIS TURN (2026-09-04, mobile responsive UI via 4 parallel agents):
+THIS TURN (2026-09-04, team/project-scoped workspaces):
+- User scope: "We should be able to create everything based on team wise" — a
+  member of a team (e.g. EMEA) who holds access to that team's projects
+  (e.g. ats, ayq) should work inside those projects only; an admin must be
+  able to assign users to projects; opening a project should show its users,
+  sub-project/workspace info and access levels. Clarified mapping with the
+  user: Team = top grouping in navigation (teams → shared workspaces →
+  projects → collections, plus an "Other workspaces" fallback so no current
+  access is lost); "sub projects" = the project's workspace shown as an info
+  panel in the overview; overview = full command center (Members + access
+  levels, content summary, activity/history, workspace info); access is
+  managed by admins AND project managers. No schema change was needed — the
+  org → teams → workspaces → projects model already existed but the UI never
+  surfaced it.
+- Backend (`backend/src/api/routes/projects.js`, `teams.js`, `workspaces.js`):
+  - `GET /api/teams/groups` — team-scoped nav data: teams the user is a member
+    of (or org-admin of) each with its shared workspaces + the caller's role
+    on each, plus an `other` bucket (accessible workspaces not shared by any
+    of the user's teams). `listWorkspaces()` in `workspaces.js` was exported
+    for reuse.
+  - `GET /api/projects/:projectId/overview` — member-readable (any user with
+    project read access): project + workspace/organization info, myAccess
+    (level/isManager) + canManage, content counts (collections/folders/
+    requests/automations/workflows/mock-server), managers & members with
+    roles + grantor/granted-at, and the 8 most recent project runs.
+  - Manager-grade membership management (guarded by effective project access
+    >= MANAGER, so real project managers who are not global MANAGERs can act):
+    `POST /api/projects/:projectId/members` (add/upsert member, roles
+    EDITOR|VIEWER only), `PATCH .../members/:userId` (role change),
+    `DELETE .../members/:userId` (remove member; managers are protected),
+    `GET /api/projects/:projectId/org-users` (org users not yet on the
+    project, for the add-member picker). Every mutation is audited. Admins
+    keep the existing `/api/admin` grant endpoints unchanged.
+- Frontend (`frontend/src/components/Sidebar.tsx`, `ProjectOverview.tsx`,
+  `store/WorkspaceStore.tsx`, `lib/api.ts`, `AppShell.tsx`,
+  `app/globals.css`):
+  - Sidebar workspace chips are now grouped under Team sections
+    (`team-group-<name>`) with an "Other workspaces" fallback; every
+    pre-existing testid/behavior is preserved and the flat layout is kept
+    when the user has no team grouping. Chips fetch from `/api/teams/groups`
+    via `teamApi.groups()` inside the store `refresh()`.
+  - Project rows in the tree are now clickable and open the Project Overview
+    command center in the main area (new `projectApi.overview` wiring; the
+    existing mock-server icon and request-access buttons are untouched).
+  - `ProjectOverview.tsx` tabs Overview (stat tiles: collections/folders/
+    requests/automations/workflows/mock-server + Workspace info card showing
+    workspace/organization/visibility) · Members & Access (managers + members
+    with role badges; admins/project managers get an org-user picker,
+    per-member role select `role-<email>`, and `remove-member-<email>`; every
+    mutation refreshes the overview in place) · Activity (recent project
+    runs). Closing it returns to the normal request-editor empty state.
+- Verification:
+  - Backend: `node --check` clean on all three route files; live curl matrix
+    against :3001 — `/api/teams/groups` returns team groups with shared
+    workspaces and moves them out of `other`; overview returns counts/managers
+    (PM)/members (Dev); a VIEWER member gets `canManage:false` and is
+    rejected from member-management (403), while a project MANAGER can add/
+    re-role/remove members (MANAGER role rejected) and sees the empty
+    add-member picker correctly; all mutations audit-logged.
+  - Frontend gates: `npx tsc --noEmit` clean; `npm test` 89/89; `next build`
+    green; globals.css braces balanced.
+  - Desktop e2e (Playwright 1280px, serial): 37/39 — the two failures are
+    `nav-race` (toHaveURL stays /manage) and `send-working-copy`
+    (posts/2 not found); BOTH were reproduced on the clean pre-change
+    baseline via `git stash`, and send-working-copy passes alone on a fresh
+    seed+mock ⇒ environmental flakes, not regressions. The new spec
+    `e2e/project-overview.spec.ts` (team grouping + command center end to end)
+    passes. New total: 25 specs / 39 tests.
+- Running now: frontend `npm run dev` :3000 (term_1788538358285_19), backend
+  :3001 (restarted this turn: term_1788544342120_23), mock upstream :3999
+  (restarted this turn: term_1788544971366_25); preview
+  https://3000-d996ae6ab8ef93e4.monkeycode-ai.live
+- Commit: see git log (this turn's team/project scoping work, docs included)
+  pushed to `origin/master`.
+
+PREVIOUS TURN (2026-09-04, mobile responsive UI via 4 parallel agents — commit `4672c15`):
 - User scope: "Make it full mobile responsive ui and better UX as well. Use
   parallel agents to achieve that and test." All desktop styles live in one
   `app/globals.css` (4548 lines) with existing e2e at 1280px, so each agent

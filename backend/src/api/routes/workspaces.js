@@ -246,3 +246,4 @@ router.delete('/:workspaceId/teams/:teamId', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.listWorkspaces = listWorkspaces;

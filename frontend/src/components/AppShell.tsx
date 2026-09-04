@@ -14,6 +14,7 @@ import { SplitPane } from './SplitPane';
 import { RequestConfigurator } from './RequestConfigurator';
 import { RequestTabs } from './RequestTabs';
 import { ResponsePane } from './ResponsePane';
+import { ProjectOverview } from './ProjectOverview';
 import { ToastHost } from './ToastHost';
 import { useCloseRequestTabShortcut } from './useCloseRequestTabShortcut';
 
@@ -35,9 +36,17 @@ function WorkspaceArea({
   onCloseScratchpad: () => void;
 }) {
   const { state, dispatch } = useApp();
+  const ws = useWorkspace();
   if (scratchpadOpen) {
     return <ScratchpadWorkspace onClose={onCloseScratchpad} />;
   }
+  // The project overview replaces the request editor whenever it is open (or
+  // still loading) and no request tab is being edited. Requests opened from the
+  // tree / tab strip take priority and close the overview.
+  const projectOverviewActive =
+    (ws.overview !== null || ws.overviewLoading || ws.overviewError !== null) &&
+    ws.activeRequestId === null &&
+    ws.openRequestIds.length === 0;
   return (
     <>
       <TabBar
@@ -50,26 +59,30 @@ function WorkspaceArea({
         testIdPrefix="main"
       />
       {state.activeTab === 'request' ? (
-        <>
-          <RequestTabs />
-          {state.viewMode === 'request' ? (
-            <RequestConfigurator onOpenCurl={onOpenCurl} />
-          ) : state.viewMode === 'response' ? (
-            <ResponsePane />
-          ) : state.viewMode === 'side' ? (
-            <SplitPane
-              orientation="horizontal"
-              top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
-              bottom={<ResponsePane />}
-            />
-          ) : (
-            <SplitPane
-              orientation="vertical"
-              top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
-              bottom={<ResponsePane />}
-            />
-          )}
-        </>
+        projectOverviewActive ? (
+          <ProjectOverview />
+        ) : (
+          <>
+            <RequestTabs />
+            {state.viewMode === 'request' ? (
+              <RequestConfigurator onOpenCurl={onOpenCurl} />
+            ) : state.viewMode === 'response' ? (
+              <ResponsePane />
+            ) : state.viewMode === 'side' ? (
+              <SplitPane
+                orientation="horizontal"
+                top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
+                bottom={<ResponsePane />}
+              />
+            ) : (
+              <SplitPane
+                orientation="vertical"
+                top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
+                bottom={<ResponsePane />}
+              />
+            )}
+          </>
+        )
       ) : (
         <div className="workflow-area">
           <WorkflowBuilder />

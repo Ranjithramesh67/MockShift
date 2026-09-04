@@ -49,53 +49,126 @@ const SIDEBAR_WIDTH_KEY = 'apihub.sidebarWidth';
 
 function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: CreateKind) => void; onNavigate: () => void }) {
   const ws = useWorkspace();
-  return (
-    <div className="workspace-chips" data-testid="workspace-chips">
-      {ws.workspaces.map((w) => (
-        <div key={w.id} className="workspace-chip-wrap">
+
+  const renderChip = (w: { id: string; name: string; visibility: string }) => (
+    <div key={w.id} className="workspace-chip-wrap">
+      <button
+        type="button"
+        className={`workspace-chip ${ws.activeWorkspaceId === w.id ? 'active' : ''}`}
+        data-testid={`workspace-${w.name}`}
+        title={w.name}
+        onClick={() => {
+          ws.selectWorkspace(w.id).catch(() => undefined);
+          onNavigate();
+        }}
+      >
+        <span className="workspace-chip-icon">
+          <WorkspaceIcon size={12} />
+        </span>
+        <span className="workspace-chip-name">{w.name}</span>
+        <span className={`vis-dot vis-${w.visibility.toLowerCase()}`} title={`${w.visibility} visibility`} />
+      </button>
+      <button
+        type="button"
+        className="icon-button danger workspace-chip-delete"
+        title="Delete workspace"
+        aria-label={`Delete workspace ${w.name}`}
+        data-testid={`delete-workspace-${w.name}`}
+        disabled={w.name === 'My Workspace'}
+        onClick={() => {
+          if (w.name === 'My Workspace') return;
+          if (
+            window.confirm(
+              `Delete workspace "${w.name}"? This removes all of its projects, collections and requests.`
+            )
+          ) {
+            ws.deleteWorkspace(w.id).catch((err) =>
+              alert(err instanceof Error ? err.message : 'Failed to delete workspace')
+            );
+          }
+        }}
+      >
+        <TrashIcon size={12} />
+      </button>
+    </div>
+  );
+
+  const grouped = !!ws.groups && (ws.groups.groups.length > 0 || ws.groups.other.length > 0);
+  const availableIds = new Set(ws.workspaces.map((w) => w.id));
+
+  let body: React.ReactNode;
+  if (!grouped) {
+    body = (
+      <>
+        {ws.workspaces.map((w) => renderChip(w))}
+        {ws.workspaces.length === 0 && !ws.loading && <p className="hint">No workspaces yet.</p>}
+        {ws.workspaces.length > 0 && (
           <button
             type="button"
-            className={`workspace-chip ${ws.activeWorkspaceId === w.id ? 'active' : ''}`}
-            data-testid={`workspace-${w.name}`}
-            title={w.name}
-            onClick={() => {
-              ws.selectWorkspace(w.id).catch(() => undefined);
-              onNavigate();
-            }}
+            className="workspace-chip new"
+            title="New workspace"
+            aria-label="New workspace"
+            data-testid="new-workspace"
+            onClick={() => onOpenCreate('workspace')}
           >
-            <span className="workspace-chip-icon">
-              <WorkspaceIcon size={12} />
-            </span>
-            <span className="workspace-chip-name">{w.name}</span>
-            <span className={`vis-dot vis-${w.visibility.toLowerCase()}`} title={`${w.visibility} visibility`} />
+            <PlusIcon size={12} />
           </button>
-          <button
-            type="button"
-            className="icon-button danger workspace-chip-delete"
-            title="Delete workspace"
-            aria-label={`Delete workspace ${w.name}`}
-            data-testid={`delete-workspace-${w.name}`}
-            disabled={w.name === 'My Workspace'}
-            onClick={() => {
-              if (w.name === 'My Workspace') return;
-              if (
-                window.confirm(
-                  `Delete workspace "${w.name}"? This removes all of its projects, collections and requests.`
-                )
-              ) {
-                ws.deleteWorkspace(w.id).catch((err) =>
-                  alert(err instanceof Error ? err.message : 'Failed to delete workspace')
-                );
-              }
-            }}
-          >
-            <TrashIcon size={12} />
-          </button>
-        </div>
-      ))}
-      {ws.workspaces.length === 0 && !ws.loading && <p className="hint">No workspaces yet.</p>}
-      {ws.workspaces.length > 0 && (
+        )}
+      </>
+    );
+  } else {
+    const groups = ws.groups!.groups;
+    const accounted = new Set<string>();
+    const sections: React.ReactNode[] = [];
+    let chipCount = 0;
+    for (const g of groups) {
+      const chips = g.workspaces.filter((w) => availableIds.has(w.id));
+      chips.forEach((w) => accounted.add(w.id));
+      chipCount += chips.length;
+      const team = ws.teams.find((t) => t.id === g.id);
+      sections.push(
+        <React.Fragment key={g.id}>
+          <div className="workspace-group-head" data-testid={`team-group-${g.name}`}>
+            <span className="workspace-group-name">{g.name}</span>
+            <span className="workspace-group-sub">{g.organization_name}</span>
+            {team && (
+              <span className="workspace-group-count" title={`${team.members.length} members`}>
+                {team.members.length}
+              </span>
+            )}
+          </div>
+          <div className="workspace-group-chips">{chips.map((w) => renderChip(w))}</div>
+        </React.Fragment>
+      );
+    }
+    const otherChips = ws.groups!.other.filter((w) => availableIds.has(w.id));
+    otherChips.forEach((w) => accounted.add(w.id));
+    const leftoverChips = ws.workspaces.filter((w) => !accounted.has(w.id));
+    chipCount += otherChips.length + leftoverChips.length;
+    if (otherChips.length > 0 || leftoverChips.length > 0) {
+      sections.push(
+        <React.Fragment key="other">
+          <div className="workspace-group-head other">
+            <span className="workspace-group-name">Other workspaces</span>
+          </div>
+          <div className="workspace-group-chips">
+            {otherChips.map((w) => renderChip(w))}
+            {leftoverChips.map((w) => renderChip(w))}
+          </div>
+        </React.Fragment>
+      );
+    }
+    if (chipCount === 0 && !ws.loading) {
+      sections.push(
+        <p key="hint" className="hint">
+          No workspaces yet.
+        </p>
+      );
+    }
+    if (chipCount > 0) {
+      sections.push(
         <button
+          key="new"
           type="button"
           className="workspace-chip new"
           title="New workspace"
@@ -105,15 +178,23 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
         >
           <PlusIcon size={12} />
         </button>
-      )}
+      );
+    }
+    body = sections;
+  }
+
+  return (
+    <div className={`workspace-chips${grouped ? ' grouped' : ''}`} data-testid="workspace-chips">
+      {body}
     </div>
   );
 }
 
-function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRequestClose, onRunCollection, onOpenMockServer, onOpenImportExport, collapsed, onToggleCollapsed }: {
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProject, onRequestAccess, onNavigate, onRequestClose, onRunCollection, onOpenMockServer, onOpenImportExport, collapsed, onToggleCollapsed }: {
   onOpenCreate: (kind: CreateKind, collectionId?: string, folderId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
+  onOpenProject: (project: { id: string; name: string }) => void;
   onRequestAccess: (project: { id: string; name: string }) => void;
   onNavigate: () => void;
   onRequestClose?: () => void;
@@ -652,15 +733,19 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
       </div>
       {!collapsed && tree.projects.map((p) => (
         <div key={p.id} className="tree-project">
-          <div className="tree-project-name">
-            <CollectionIcon size={12} />
-            {p.name}
-            {p.can_access ? (
-              <span className="vis-badge access-badge">MEMBER</span>
-            ) : p.access_status === 'PENDING' ? (
-              <span className="vis-badge pending-badge">PENDING</span>
-            ) : null}
-            {p.can_access && (
+          {p.can_access ? (
+            <div className="tree-project-head">
+              <button
+                type="button"
+                className="tree-project-name"
+                title={`Open ${p.name} overview`}
+                aria-label={`Open ${p.name} overview`}
+                onClick={() => onOpenProject({ id: p.id, name: p.name })}
+              >
+                <CollectionIcon size={12} />
+                {p.name}
+                <span className="vis-badge access-badge">MEMBER</span>
+              </button>
               <button
                 type="button"
                 className="icon-button tree-project-mock"
@@ -671,8 +756,16 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
               >
                 <ServerIcon size={12} />
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="tree-project-name">
+              <CollectionIcon size={12} />
+              {p.name}
+              {p.access_status === 'PENDING' ? (
+                <span className="vis-badge pending-badge">PENDING</span>
+              ) : null}
+            </div>
+          )}
           {!p.can_access && p.access_status !== 'PENDING' && (
             <button
               type="button"
@@ -1157,6 +1250,18 @@ export function Sidebar({
                 onOpenCreate={openCreate}
                 onOpenSharing={() => setSharingOpen(true)}
                 onOpenAuth={onOpenAuth}
+                onOpenProject={(p) => {
+                  goWorkspace();
+                  dispatch({ type: 'SET_TAB', tab: 'request' });
+                  onRequestClose?.();
+                  ws.selectProjectOverview(p).catch((err) =>
+                    dispatch({
+                      type: 'SHOW_TOAST',
+                      kind: 'error',
+                      message: err instanceof Error ? err.message : 'Failed to open project',
+                    })
+                  );
+                }}
                 onRequestAccess={(p) => setRequestingProject(p)}
                 onNavigate={goWorkspace}
                 onRequestClose={onRequestClose}

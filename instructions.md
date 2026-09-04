@@ -233,6 +233,7 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M15 | Verify/fix pulled commit `7af6044` (Ctrl+Enter editors + formula helpers panel + admin Access tab) | done (this turn, pushed) |
 | M16 | Structured multipart/form-data parts — text + FILE rows in request editor + scratchpad; run sends real file bytes (ephemeral); save persists file reference only | done (this turn, pushed) |
 | M17 | Full mobile responsive UI + touch UX (off-canvas drawer nav, bottom-sheet modals, stacked card tables, compact editor) — 4 parallel agents | done (this turn, pushed) |
+| M18 | Team- and project-scoped workspaces — team-first grouped nav (`/api/teams/groups`) + Project Overview command center (members & access mgmt for admins AND project managers, workspace info panel, activity), self-service member role changes | done (this turn, pushed) |
 
 ## M17 — Mobile responsive UI + touch UX (done)
 
@@ -263,6 +264,40 @@ Verified: `tsc --noEmit` clean, `npm test` 89/89, `next build` green, 390px
 smoke passed; desktop e2e 1280px green except one environment-flaky spec per
 run (differs each run, passes alone — see docs/SESSION.md §5.27/§8). Full
 file-by-file breakdown in docs/SESSION.md §5.27.
+
+## M18 — Team- and project-scoped workspaces (done)
+
+Team-first navigation + a per-project "command center". The schema already had
+org → teams → workspaces → projects; the UI just never surfaced teams or made
+the project the thing you open. No migration was needed.
+
+- Sidebar: workspace chips are grouped under the user's teams
+  (`GET /api/teams/groups` → teams the user belongs to (or org-admins), each
+  with its shared workspaces + the caller's workspace role, plus an "Other
+  workspaces" fallback for direct/public workspaces). Flat layout is preserved
+  when there is no grouping; all pre-existing testids (`workspace-*`,
+  `delete-workspace-*`, `new-workspace`) are unchanged.
+- Project Overview command center (`GET /api/projects/:projectId/overview`,
+  member-readable): stat tiles (collections/folders/requests/automations/
+  workflows/mock server) + Workspace info panel (workspace · organization ·
+  visibility); Members & Access tab lists managers + members with role badges;
+  Activity tab lists recent project runs. Clicking a project name in the tree
+  opens it; closing returns to the request-editor empty state.
+- Membership management is self-service for anyone with effective MANAGER+
+  access on that project (`requireProjectManager` — a pure project manager who
+  is only a global EDITOR still qualifies): add member (`POST /api/projects/
+  :id/members`, roles EDITOR|VIEWER only), change role (`PATCH .../members/
+  :userId`), remove member (`DELETE .../members/:userId`, managers protected),
+  and `GET /api/projects/:id/org-users` fills the add-member picker. All
+  mutations audited. Admin-only grant endpoints under `/api/admin` unchanged.
+
+Verified: backend curl matrix (grouping moves a shared workspace under its
+team; VIEWER member gets canManage:false + 403 on member routes; project
+MANAGER can add/re-role/remove; MANAGER role rejected), frontend `tsc --noEmit`
+clean, `npm test` 89/89, `next build` green, and a new hermetic e2e spec
+`frontend/e2e/project-overview.spec.ts` passes. Full desktop e2e 37/39 — the
+two failures (`nav-race`, `send-working-copy`) reproduce on the clean
+pre-change baseline (see docs/SESSION.md §5.28/§8).
 
 ## M16 — Structured multipart/form-data parts (done)
 
