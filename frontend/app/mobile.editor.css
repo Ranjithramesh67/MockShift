@@ -1,0 +1,353 @@
+/* ==========================================================================
+   Mobile responsive overrides — Agent 2: Request studio / editors / scratchpad
+   (RequestConfigurator / ResponsePane / SplitPane / CodeEditor / KeyValueRows /
+   MultipartRows / AssertionsEditor / FormulaHelper / ScratchpadWorkspace /
+   ScratchpadSaveModal / RequestTabs markup is NOT yours).
+
+   Only append responsive rules here. NEVER edit app/globals.css.
+   Breakpoints: <= 900px tablet, <= 640px phone.
+   Wrap every override in a media query. Keep desktop (>900px) untouched.
+   Do NOT redefine selectors that live outside your namespace (e.g. .modal-*,
+   .sidebar, .manage-*, .admin-*). Your namespace: .request-*, .response-*,
+   .split-pane, .kv-rows, .key-value-*, .multipart-*, .body-editor,
+   .cm-editor/.cm-*, .formula-*, .assertions-*, .scratchpad-*, .editor-tabs,
+   .save-picker-*.
+   ========================================================================== */
+
+/* ==========================================================================
+   Tablets / narrow (<= 900px)
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  /* Never let the studio panes or their columns force the page wider than the
+     viewport. */
+  .split-pane,
+  .split-pane-first,
+  .split-pane-second,
+  .request-configurator,
+  .response-pane,
+  .scratchpad-workspace,
+  .request-tab-body {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* Side-by-side (horizontal) splits degrade to stacked panes: full-width
+     request editor on top, response below, separated by a horizontal divider.
+     The inline width set by the resize logic is overridden on purpose. */
+  .split-pane-horizontal {
+    flex-direction: column;
+  }
+  .split-pane-horizontal .split-pane-first {
+    width: 100% !important;
+    height: 55%;
+    flex: 0 0 auto;
+  }
+  .split-pane-horizontal .split-pane-second {
+    width: 100% !important;
+    flex: 1 1 auto;
+  }
+  .split-pane-horizontal .split-pane-divider {
+    width: auto;
+    height: 12px;
+    flex: 0 0 auto;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+    border-left: none;
+    border-right: none;
+    cursor: row-resize;
+  }
+  .split-pane-horizontal .split-pane-divider::after {
+    width: 36px;
+    height: 3px;
+  }
+
+  /* Bigger, touch-friendly grab area for stacked (vertical) dividers and stop
+     the browser from hijacking pointer drags into page scrolling. */
+  .split-pane-vertical .split-pane-divider {
+    height: 12px;
+  }
+  .split-pane-divider {
+    touch-action: none;
+  }
+
+  /* The response body area scrolls its contents internally (headers list,
+     editors) instead of pushing the pane out of shape. */
+  .response-body {
+    overflow: hidden;
+  }
+  .response-pane .kv-rows {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* ==========================================================================
+   Phones (<= 640px)
+   ========================================================================== */
+
+@media (max-width: 640px) {
+  /* --- Request method + URL + action buttons --------------------------- */
+  .request-bar {
+    padding: 10px;
+    row-gap: 8px;
+  }
+  .request-bar .method-select {
+    flex: 0 0 auto;
+    min-height: 42px;
+  }
+  .request-bar .url-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 42px;
+  }
+  .request-bar .request-bar-actions {
+    flex: 1 1 100%;
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .request-bar-actions .primary-button {
+    order: -1;
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+  .request-bar-actions > :not(.primary-button) {
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 0;
+    min-height: 42px;
+  }
+  .request-bar-actions button,
+  .request-bar-actions select {
+    justify-content: center;
+  }
+
+  /* --- Inner editor tab strip (Params/Headers/Body/Formula/Tests) ------ */
+  .request-configurator > .tab-bar,
+  .scratchpad-workspace > .tab-bar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  .request-configurator > .tab-bar .tab,
+  .scratchpad-workspace > .tab-bar .tab {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  /* --- Tab body / editors --------------------------------------------- */
+  .request-configurator .request-tab-body,
+  .scratchpad-workspace .request-tab-body {
+    padding: 10px;
+  }
+
+  /* CodeMirror keeps a usable height on phones (40-50vh when it is the area
+     the user is editing) and scrolls internally instead of stretching the
+     page. The response-pane editors already size themselves via the existing
+     .response-body rules. */
+  .body-editor .code-editor {
+    flex: 1 1 auto;
+    min-height: 40vh;
+  }
+  .body-editor .code-editor .cm-theme,
+  .body-editor .code-editor .cm-theme-dark,
+  .body-editor .code-editor .cm-editor {
+    height: 100% !important;
+  }
+  .formula-editor {
+    min-height: 42vh;
+  }
+  .formula-editor .code-editor {
+    min-height: 30vh;
+  }
+
+  /* --- Key/Value editor rows: stack key above value -------------------- */
+  .request-configurator .kv-rows,
+  .scratchpad-workspace .kv-rows {
+    max-width: 100%;
+  }
+  .request-configurator .kv-row-header,
+  .scratchpad-workspace .kv-row-header {
+    display: none;
+  }
+  .request-configurator .kv-row,
+  .scratchpad-workspace .kv-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 3px 0;
+  }
+  .request-configurator .kv-row > .kv-check,
+  .scratchpad-workspace .kv-row > .kv-check {
+    align-self: flex-start;
+    margin-top: 11px;
+    width: 30px;
+  }
+  .request-configurator .kv-row > :nth-child(2),
+  .scratchpad-workspace .kv-row > :nth-child(2) {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 40px;
+  }
+  .request-configurator .kv-row > :nth-child(3),
+  .scratchpad-workspace .kv-row > :nth-child(3) {
+    flex: 1 1 calc(100% - 38px);
+    margin-left: 38px;
+    min-width: 0;
+    min-height: 40px;
+  }
+  .request-configurator .kv-row > .kv-actions,
+  .scratchpad-workspace .kv-row > .kv-actions {
+    width: 40px;
+    flex: 0 0 auto;
+  }
+
+  /* --- Multipart rows: stack label/kind above value/file ---------------- */
+  .request-configurator .multipart-row-header,
+  .scratchpad-workspace .multipart-row-header {
+    display: none;
+  }
+  .request-configurator .multipart-row,
+  .scratchpad-workspace .multipart-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 3px 0;
+  }
+  .request-configurator .multipart-row > .multipart-check,
+  .scratchpad-workspace .multipart-row > .multipart-check {
+    align-self: flex-start;
+    margin-top: 11px;
+    width: 30px;
+  }
+  .request-configurator .multipart-row > :nth-child(2),
+  .scratchpad-workspace .multipart-row > :nth-child(2) {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 40px;
+  }
+  .request-configurator .multipart-row > :nth-child(3),
+  .scratchpad-workspace .multipart-row > :nth-child(3) {
+    width: auto;
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
+  .request-configurator .multipart-row > :nth-child(4),
+  .scratchpad-workspace .multipart-row > :nth-child(4) {
+    order: 2;
+    flex: 1 1 calc(100% - 38px);
+    margin-left: 38px;
+    min-width: 0;
+    min-height: 40px;
+  }
+  .request-configurator .multipart-row > .multipart-actions,
+  .scratchpad-workspace .multipart-row > .multipart-actions {
+    order: 1;
+    width: 40px;
+    flex: 0 0 auto;
+  }
+  .multipart-file-cell .multipart-file-button {
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
+  .multipart-file-cell .multipart-file-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* --- Response pane ---------------------------------------------------- */
+  .response-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .response-body {
+    padding: 8px 10px;
+  }
+  .response-tab {
+    padding: 8px 2px;
+    min-height: 36px;
+  }
+  .response-toolbar {
+    row-gap: 8px;
+  }
+  .response-viewmode {
+    padding: 9px 14px;
+  }
+  .response-action {
+    padding: 8px 12px;
+    min-height: 36px;
+  }
+
+  /* --- Assertions editor ------------------------------------------------ */
+  .assertions-editor {
+    padding: 6px 2px;
+    gap: 8px;
+  }
+  .assertion-row {
+    row-gap: 8px;
+    column-gap: 8px;
+  }
+  .assertion-row .compact-select {
+    flex: 1 1 calc(50% - 4px);
+    min-height: 42px;
+  }
+  .assertion-row .assertion-path {
+    flex: 1 1 100%;
+    min-width: 0;
+    min-height: 42px;
+  }
+  .assertion-row .assertion-expected {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    min-height: 42px;
+  }
+
+  /* --- Formula helper --------------------------------------------------- */
+  .formula-helper-head {
+    min-height: 44px;
+  }
+  .formula-helper-item {
+    min-height: 46px;
+    padding: 8px 10px;
+  }
+
+  /* --- Touch-friendly hit areas for row controls ------------------------ */
+  .kv-rows .icon-button,
+  .multipart-rows .icon-button,
+  .assertions-editor .icon-button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .kv-rows .ghost-button,
+  .multipart-rows .ghost-button,
+  .assertions-editor .ghost-button {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+
+  /* --- Scratchpad save-location picker ---------------------------------- */
+  .scratchpad-save-location {
+    max-height: 34vh;
+  }
+  .scratchpad-save-location-row {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+
+  /* --- Pressed states that are visible on touch -------------------------- */
+  .request-bar-actions button:active,
+  .response-tab:active,
+  .response-viewmode:active,
+  .response-action:active,
+  .kv-rows .icon-button:active,
+  .multipart-rows .icon-button:active,
+  .assertions-editor .icon-button:active,
+  .assertions-editor .ghost-button:active {
+    transform: scale(0.97);
+  }
+}

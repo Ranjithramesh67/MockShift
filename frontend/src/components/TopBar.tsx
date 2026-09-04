@@ -18,6 +18,7 @@ import {
   ChevronIcon,
   CheckIcon,
   PlayIcon,
+  MenuIcon,
 } from './icons';
 
 const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string; icon: typeof LayoutIcon }> = [
@@ -119,7 +120,17 @@ function NotificationBell() {
   );
 }
 
-export function TopBar({ onOpenCurl, onOpenScratchpad }: { onOpenCurl: () => void; onOpenScratchpad: () => void }) {
+export function TopBar({
+  onOpenCurl,
+  onOpenScratchpad,
+  drawerOpen = false,
+  onToggleDrawer,
+}: {
+  onOpenCurl: () => void;
+  onOpenScratchpad: () => void;
+  drawerOpen?: boolean;
+  onToggleDrawer?: () => void;
+}) {
   const { user, logout } = useAuth();
   const { state, dispatch } = useApp();
   const router = useRouter();
@@ -147,6 +158,17 @@ export function TopBar({ onOpenCurl, onOpenScratchpad }: { onOpenCurl: () => voi
   return (
     <header className="top-bar" data-testid="top-bar">
       <div className="brand">
+        <button
+          type="button"
+          className="mobile-drawer-toggle"
+          data-testid="mobile-drawer-toggle"
+          aria-label={drawerOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={drawerOpen}
+          aria-controls="app-sidebar"
+          onClick={onToggleDrawer}
+        >
+          {drawerOpen ? <XIcon size={18} /> : <MenuIcon size={18} />}
+        </button>
         <span className="brand-mark">AH</span>
         <span className="brand-name">API Hub</span>
         <span className="brand-env">
@@ -194,6 +216,7 @@ export function TopBar({ onOpenCurl, onOpenScratchpad }: { onOpenCurl: () => voi
           type="button"
           className="ghost-button"
           data-testid="topbar-import-curl"
+          aria-label="Import cURL"
           onClick={onOpenCurl}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >
@@ -204,6 +227,7 @@ export function TopBar({ onOpenCurl, onOpenScratchpad }: { onOpenCurl: () => voi
           type="button"
           className="ghost-button"
           data-testid="topbar-test-curl"
+          aria-label="Test cURL"
           onClick={onOpenScratchpad}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >

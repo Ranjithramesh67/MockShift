@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import './mobile.chrome.css';
+import './mobile.editor.css';
+import './mobile.views.css';
+import './mobile.modals.css';
 import { AuthProvider } from '@/lib/auth';
 import { AppProvider } from '@/store/AppStore';
 import { WorkspaceProvider } from '@/store/WorkspaceStore';

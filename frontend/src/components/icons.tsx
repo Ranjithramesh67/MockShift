@@ -242,6 +242,12 @@ export const XIcon = (p: IconProps) => (
   </svg>
 );
 
+export const MenuIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M4 6h16M4 12h16M4 18h16" />
+  </svg>
+);
+
 export const ArrowUpIcon = (p: IconProps) => (
   <svg {...svgProps(p)}>
     <path d="M12 19V5" />

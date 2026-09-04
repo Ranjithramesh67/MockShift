@@ -86,6 +86,7 @@ export function AppShell() {
   const router = useRouter();
   const [curlOpen, setCurlOpen] = useState(false);
   const [scratchpadOpen, setScratchpadOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const prevRequestId = useRef<string | null>(null);
 
   useCloseRequestTabShortcut();
@@ -100,6 +101,22 @@ export function AppShell() {
     prevRequestId.current = ws.activeRequestId;
   }, [ws.activeRequestId]);
 
+  // Close the mobile drawer when the user presses Escape.
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNavOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen]);
+
+  // Lock page scroll while the mobile drawer is open (CSS scoped to <=900px).
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-drawer-open', navOpen);
+    return () => document.body.classList.remove('sidebar-drawer-open');
+  }, [navOpen]);
+
   if (loading) {
     return (
       <div className="loading-screen" data-testid="loading-splash">
@@ -111,10 +128,15 @@ export function AppShell() {
   if (!user) return null;
 
   return (
-    <div className="app">
-      <TopBar onOpenCurl={() => setCurlOpen(true)} onOpenScratchpad={() => setScratchpadOpen(true)} />
+    <div className={`app${navOpen ? ' sidebar-drawer-open' : ''}`}>
+      <TopBar
+        onOpenCurl={() => setCurlOpen(true)}
+        onOpenScratchpad={() => setScratchpadOpen(true)}
+        drawerOpen={navOpen}
+        onToggleDrawer={() => setNavOpen((v) => !v)}
+      />
       <div className="app-body">
-        <Sidebar panelHidden={view !== 'workspace'} />
+        <Sidebar panelHidden={view !== 'workspace'} onRequestClose={() => setNavOpen(false)} />
         <main className="main-area">
           {view === 'workspace' ? (
             <WorkspaceArea
@@ -137,6 +159,14 @@ export function AppShell() {
           )}
         </main>
       </div>
+      {navOpen && (
+        <div
+          className="sidebar-backdrop"
+          data-testid="sidebar-backdrop"
+          aria-hidden="true"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
       <CurlModal open={curlOpen} onClose={() => setCurlOpen(false)} />
       <ToastHost />
     </div>

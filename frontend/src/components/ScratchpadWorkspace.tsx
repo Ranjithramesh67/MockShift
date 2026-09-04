@@ -198,26 +198,28 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
           data-testid="scratchpad-url"
           onChange={(e) => onUrlChange(e.target.value)}
         />
-        <button
-          type="button"
-          className="primary-button"
-          data-testid="scratchpad-send"
-          onClick={onSend}
-          disabled={busy}
-          title={busy ? 'Running…' : 'Send'}
-          style={actionBtn}
-        >
-          {busy ? <span className="spinner spinner-sm" /> : <SendIcon size={14} />}
-          Send
-        </button>
-        <button type="button" className="ghost-button" data-testid="scratchpad-save" onClick={() => setSaveOpen(true)} style={actionBtn}>
-          <SaveIcon size={14} />
-          Save
-        </button>
-        <button type="button" className="ghost-button" data-testid="scratchpad-close" onClick={onClose} style={actionBtn}>
-          <XIcon size={14} />
-          Close
-        </button>
+        <div className="request-bar-actions" style={{ display: 'contents' }}>
+          <button
+            type="button"
+            className="primary-button"
+            data-testid="scratchpad-send"
+            onClick={onSend}
+            disabled={busy}
+            title={busy ? 'Running…' : 'Send'}
+            style={actionBtn}
+          >
+            {busy ? <span className="spinner spinner-sm" /> : <SendIcon size={14} />}
+            Send
+          </button>
+          <button type="button" className="ghost-button" data-testid="scratchpad-save" onClick={() => setSaveOpen(true)} style={actionBtn}>
+            <SaveIcon size={14} />
+            Save
+          </button>
+          <button type="button" className="ghost-button" data-testid="scratchpad-close" onClick={onClose} style={actionBtn}>
+            <XIcon size={14} />
+            Close
+          </button>
+        </div>
       </div>
 
       <TabBar

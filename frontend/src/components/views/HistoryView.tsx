@@ -78,65 +78,67 @@ export function HistoryView() {
         </p>
       )}
 
-      <table className="admin-table" data-testid="history-list">
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Name</th>
-            <th>Method</th>
-            <th>URL</th>
-            <th>Trigger</th>
-            <th>Status</th>
-            <th>Duration</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => (
-            <tr key={r.id} data-testid={`history-run-${r.name ?? 'deleted'}`}>
-              <td className="hint">{fmtDate(r.started_at)}</td>
-              <td className="admin-user-name">{r.name ?? '(deleted)'}</td>
-              <td>
-                {r.method ? <span className={`method-badge method-${r.method.toLowerCase()}`}>{r.method}</span> : '—'}
-              </td>
-              <td className="hint mono-cell" title={r.url ?? ''}>
-                {r.url ?? '—'}
-              </td>
-              <td className="hint">{r.trigger}</td>
-              <td>
-                <span className={`vis-badge ${r.status === 'SUCCESS' ? 'vis-active' : r.status === 'FAILED' ? 'vis-inactive' : 'pending-badge'}`}>
-                  {r.status}
-                </span>
-              </td>
-              <td className="hint">{fmtDuration(r.duration_ms)}</td>
-              <td>
-                <button
-                  type="button"
-                  className="ghost-button small"
-                  data-testid={`history-detail-${r.name ?? 'deleted'}`}
-                  onClick={() => openDetail(r.id)}
-                >
-                  View
-                </button>
-              </td>
-            </tr>
-          ))}
-          {!loading && runs.length === 0 && (
+      <div className="table-wrap table-stack">
+        <table className="admin-table" data-testid="history-list">
+          <thead>
             <tr>
-              <td colSpan={8} className="hint" data-testid="history-empty">
-                No runs yet. Send a request to start building your history.
-              </td>
+              <th>Time</th>
+              <th>Name</th>
+              <th>Method</th>
+              <th>URL</th>
+              <th>Trigger</th>
+              <th>Status</th>
+              <th>Duration</th>
+              <th />
             </tr>
-          )}
-          {loading && (
-            <tr>
-              <td colSpan={8} className="hint">
-                Loading…
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {runs.map((r) => (
+              <tr key={r.id} data-testid={`history-run-${r.name ?? 'deleted'}`}>
+                <td className="hint" data-label="Time">{fmtDate(r.started_at)}</td>
+                <td className="admin-user-name" data-label="Name">{r.name ?? '(deleted)'}</td>
+                <td data-label="Method">
+                  {r.method ? <span className={`method-badge method-${r.method.toLowerCase()}`}>{r.method}</span> : '—'}
+                </td>
+                <td className="hint mono-cell" title={r.url ?? ''} data-label="URL">
+                  {r.url ?? '—'}
+                </td>
+                <td className="hint" data-label="Trigger">{r.trigger}</td>
+                <td data-label="Status">
+                  <span className={`vis-badge ${r.status === 'SUCCESS' ? 'vis-active' : r.status === 'FAILED' ? 'vis-inactive' : 'pending-badge'}`}>
+                    {r.status}
+                  </span>
+                </td>
+                <td className="hint" data-label="Duration">{fmtDuration(r.duration_ms)}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="ghost-button small"
+                    data-testid={`history-detail-${r.name ?? 'deleted'}`}
+                    onClick={() => openDetail(r.id)}
+                  >
+                    View
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!loading && runs.length === 0 && (
+              <tr>
+                <td colSpan={8} className="hint" data-testid="history-empty">
+                  No runs yet. Send a request to start building your history.
+                </td>
+              </tr>
+            )}
+            {loading && (
+              <tr>
+                <td colSpan={8} className="hint">
+                  Loading…
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {detail && (
         <div className="modal-overlay" data-testid="history-detail-modal" onClick={() => setDetail(null)}>
