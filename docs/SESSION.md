@@ -23,7 +23,7 @@ state, what has already been done, and how to continue without redoing work.
 | PostgreSQL     | 5432   | `pg_ctlcluster 15 main start` (root)                                |
 | Redis          | 6379   | `redis-server --daemonize yes`                                      |
 | Backend API    | 3001   | `cd backend && PORT=3001 node src/api/server.js`                    |
-| Frontend (dev) | 3000   | `cd frontend && npm run dev`                                        |
+| Frontend (prod) | 3000   | `next build` then `cd frontend && npx next start -p 3000` (no HMR) — see §5.25 |
 | Mock upstream  | 3999   | `cd backend && node scripts/mock-upstream.js`                       |
 | Preview        | tunnel | https://3000-1807d442a88c3aec.monkeycode-ai.live (from port 3000)   |
 
@@ -73,6 +73,28 @@ the live DB:
   adds `api_requests.formula text NOT NULL DEFAULT ''`.
 
 ## 5. What was done in this session (chronological)
+
+### 5.25 Sidebar page-load slowness — serve a production build instead of `next dev` (this turn)
+
+User reported sidebar/rail pages loading slowly. Investigation:
+
+- Backend is fast: timed the endpoints each page loads (workspaces, teams,
+  workspace content tree, notifications, manage overview/users/teams/projects/
+  access-requests/audit-logs/history, run history, workflows, admin users/access)
+  — all <75 ms locally. Not the bottleneck.
+- Providers live once in the root layout (no refetch when switching routes);
+  the cost was the **Next dev server**: every rail route (`/admin`, `/manage`,
+  `/automations`, `/history`, `/login`) recompiled on first request (0.5–2 s
+  cold, e.g. `/admin` 1.95 s), warming to ~30–80 ms afterwards.
+- Fix: frontend now runs a **production build**. Stopped `next dev`, ran
+  `next build` (green; `/` first-load JS 323 kB), started `next start -p 3000`
+  (background terminal term_1788511594790_6). Prod route timings now ~8–25 ms
+  for every route (`/admin` ~9 ms), no per-route compilation, no dev-mode JS
+  overhead.
+- Caveat recorded: no HMR under `next start`; rebuild + restart to ship frontend
+  changes, and run `npm run build` only while no dev/prod server holds `.next`.
+- No tests run (user waived). Preview:
+  https://3000-204dde05e6623a51.monkeycode-ai.live
 
 ### 5.24 Pulled parallel-agent commit `c853316` "sidebar click fixes" + docs sync (this turn)
 
