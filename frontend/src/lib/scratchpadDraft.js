@@ -1,5 +1,7 @@
 'use strict';
 
+const { stripTransportData } = require('./multipartParts');
+
 /**
  * M14: full-width scratchpad draft.
  *
@@ -30,6 +32,7 @@
  *   bodyType: 'NONE'|'JSON'|'FORM_URLENCODED'|'MULTIPART'|'RAW_TEXT'|'GRAPHQL',
  *   bodyJson: string | null,
  *   bodyText: string | null,
+ *   bodyParts: Array<{ id: string, key: string, enabled: boolean, kind: 'text'|'file', value?: string, fileName?: string, fileType?: string, fileSize?: number }>,
  *   contentType: string,
  *   apiType: 'REST'|'SOAP'|'GRAPHQL'|'AUTH',
  *   formula: string,
@@ -45,6 +48,7 @@ function defaultScratchDraft() {
     bodyType: 'NONE',
     bodyJson: null,
     bodyText: null,
+    bodyParts: [],
     contentType: 'text/plain',
     apiType: 'REST',
     formula: '',
@@ -68,6 +72,7 @@ function defaultScratchDraft() {
  *   bodyType: string,
  *   bodyJson: unknown,
  *   bodyText: string | null,
+ *   bodyParts: Array<object>,
  *   formula: string,
  *   assertions: Array<object>,
  *   apiType: string,
@@ -95,6 +100,7 @@ function scratchDraftToRunInput(draft) {
     bodyType: draft.bodyType ?? 'NONE',
     bodyJson,
     bodyText: draft.bodyText ?? null,
+    bodyParts: Array.isArray(draft.bodyParts) ? draft.bodyParts : [],
     formula: draft.formula || '',
     assertions: Array.isArray(draft.assertions) ? draft.assertions : [],
     apiType: draft.apiType ?? 'REST',
@@ -106,8 +112,10 @@ function scratchDraftToRunInput(draft) {
  *
  * JSON bodies follow the same convention as `toServerPatch` in the workspace
  * store: a parseable JSON string becomes a `bodyJson` object, an unparseable
- * one falls back to `bodyText`, and an empty/absent body clears both. Any
- * other body type moves the text into `bodyText` with `bodyJson` null.
+ * one falls back to `bodyText`, and an empty/absent body clears both. A
+ * MULTIPART body sends `bodyParts` (with any transport `data` stripped) and
+ * null `bodyJson`/`bodyText`. Any other body type moves the text into
+ * `bodyText` with `bodyJson` null.
  *
  * @param {object} draft
  * @returns {Record<string, unknown>}
@@ -133,6 +141,10 @@ function scratchDraftToServerPatch(draft) {
       patch.bodyJson = null;
       patch.bodyText = null;
     }
+  } else if (draft.bodyType === 'MULTIPART') {
+    patch.bodyParts = stripTransportData(draft.bodyParts ?? []);
+    patch.bodyJson = null;
+    patch.bodyText = null;
   } else {
     patch.bodyText = draft.bodyJson ?? null;
     patch.bodyJson = null;

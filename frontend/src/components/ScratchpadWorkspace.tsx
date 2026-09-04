@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import type { Assertion, HttpMethod, KeyValueEntry } from '@/lib/types';
+import type { Assertion, BodyFormPart, HttpMethod, KeyValueEntry } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { isCurlCommand, parseCurl } from '@/lib/curl';
+import { seedPartsFromLegacy, readFileAsBase64 } from '@/lib/multipartParts';
 import {
   METHODS,
   METHOD_COLORS,
@@ -16,6 +17,7 @@ import {
 import { defaultScratchDraft, scratchDraftToRunInput } from '@/lib/scratchpadDraft';
 import { TabBar } from './TabBar';
 import { KeyValueRows } from './KeyValueRows';
+import { MultipartRows } from './MultipartRows';
 import { CodeEditor } from './CodeEditor';
 import { FormulaHelper } from './FormulaHelper';
 import { AssertionsEditor } from './AssertionsEditor';
@@ -38,6 +40,7 @@ interface ScratchDraft {
   apiType: string;
   formula: string;
   assertions: Assertion[];
+  bodyParts?: BodyFormPart[];
 }
 
 /**
@@ -49,10 +52,17 @@ interface ScratchDraft {
 export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
   const { dispatch } = useApp();
   const ws = useWorkspace();
-  const [draft, setDraft] = useState<ScratchDraft>(() => defaultScratchDraft() as ScratchDraft);
+  const [draft, setDraft] = useState<ScratchDraft>(() => {
+    const initial = defaultScratchDraft() as ScratchDraft;
+    return { ...initial, bodyParts: initial.bodyParts ?? [] };
+  });
   const [activeTab, setActiveTab] = useState<ScratchTab>('params');
   const [busy, setBusy] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
+  // [partId] -> chosen File for the current scratchpad draft. Browser File
+  // objects never live inside the draft/bodyParts — only here in memory, so
+  // the draft stays serializable for the save modal and history.
+  const [files, setFiles] = useState<Record<string, File>>({});
 
   // Clear any previous scratchpad run so the response pane starts empty.
   useEffect(() => {
@@ -77,6 +87,9 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
           bodyJson: parsed.bodyJson ?? parsed.bodyText ?? null,
           bodyText: parsed.bodyText ?? null,
           contentType: parsed.contentType,
+          ...(parsed.bodyType === 'MULTIPART'
+            ? { bodyParts: seedPartsFromLegacy(parsed.bodyText ?? '') }
+            : {}),
         });
         dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'cURL parsed into the request.' });
         return;
@@ -93,17 +106,61 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
 
   const onBodyKindChange = (kind: BodyKind) => {
     const next = bodyTypeForKind(kind);
-    update({
-      bodyType: next.bodyType,
-      contentType: next.contentType,
-      bodyJson: kind === 'NONE' ? null : draft.bodyJson ?? '',
-    });
+    if (kind === 'MULTIPART') {
+      update({
+        bodyType: next.bodyType,
+        contentType: next.contentType,
+        bodyJson: null,
+        bodyParts: draft.bodyParts?.length
+          ? draft.bodyParts
+          : seedPartsFromLegacy(draft.bodyText ?? ''),
+      });
+    } else {
+      update({
+        bodyType: next.bodyType,
+        contentType: next.contentType,
+        bodyJson: kind === 'NONE' ? null : draft.bodyJson ?? '',
+      });
+    }
   };
 
   const onSend = async () => {
+    const parts = draft.bodyParts ?? [];
+    if (draft.bodyType === 'MULTIPART') {
+      const missing = parts.find(
+        (p) => p.kind === 'file' && p.enabled !== false && p.key && !files[p.id]
+      );
+      if (missing) {
+        dispatch({
+          type: 'SHOW_TOAST',
+          kind: 'error',
+          message: `Select a file for multipart part "${missing.key}" before sending.`,
+        });
+        return;
+      }
+    }
     setBusy(true);
     try {
-      await ws.runScratchpad(scratchDraftToRunInput(draft) as Parameters<typeof ws.runScratchpad>[0]);
+      const runInput: Record<string, unknown> = { ...scratchDraftToRunInput(draft) };
+      if (draft.bodyType === 'MULTIPART') {
+        const bodyParts: BodyFormPart[] = [];
+        for (const p of parts) {
+          if (p.kind === 'file' && p.enabled !== false && p.key) {
+            const file = files[p.id];
+            bodyParts.push({
+              ...p,
+              data: await readFileAsBase64(file),
+              fileName: file.name,
+              fileType: file.type || undefined,
+              fileSize: file.size,
+            });
+          } else {
+            bodyParts.push(p);
+          }
+        }
+        runInput.bodyParts = bodyParts;
+      }
+      await ws.runScratchpad(runInput as Parameters<typeof ws.runScratchpad>[0]);
       dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Scratchpad request executed (nothing saved).' });
     } catch (err) {
       dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Run failed' });
@@ -217,6 +274,20 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
                 </div>
                 {bodyKind === 'NONE' ? (
                   <div className="panel-empty">This request has no body.</div>
+                ) : bodyKind === 'MULTIPART' ? (
+                  <MultipartRows
+                    parts={draft.bodyParts ?? []}
+                    onChange={(parts) => update({ bodyParts: parts })}
+                    files={files}
+                    onFileChange={(partId, file) =>
+                      setFiles((prev) => {
+                        const next = { ...prev };
+                        if (file) next[partId] = file;
+                        else delete next[partId];
+                        return next;
+                      })
+                    }
+                  />
                 ) : (
                   <CodeEditor
                     value={draft.bodyJson ?? ''}

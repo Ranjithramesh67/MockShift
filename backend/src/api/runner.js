@@ -7,6 +7,11 @@ const { evaluateAssertions } = require('../engine/assertions');
 
 const TEMPLATE_RE = /\{\{\s*([A-Za-z0-9_\-\.]+)\s*\}\}/g;
 
+// Structured multipart/form-data bodies (api_requests.body_parts). File bytes
+// travel with the run payload (base64) and are never persisted.
+const MAX_FILE_PART_BYTES = 10 * 1024 * 1024; // 10 MB per file part
+const MAX_TOTAL_FILE_BYTES = 20 * 1024 * 1024; // 20 MB of file bytes per request
+
 const formulaRunner = new FormulaRunner({ timeoutMs: 150 });
 
 function substitute(input, variables) {
@@ -52,7 +57,7 @@ async function resolveVariables({ requestId = null, collectionId = null }, userI
 async function loadRequest(requestId) {
   const { rows } = await query(
     `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
-            api_type, collection_id, formula, assertions
+            body_parts, api_type, collection_id, formula, assertions
        FROM api_requests WHERE id = $1`,
     [requestId]
   );
@@ -75,6 +80,68 @@ function headersObject(headersArray) {
     if (h && h.enabled !== false && h.key) out[h.key] = h.value;
   }
   return out;
+}
+
+// True when a request carries structured multipart parts (the body_parts path).
+// Legacy MULTIPART requests that only have raw text (body_text) keep their old
+// text/plain serialisation so nothing pre-existing regresses.
+function isMultipartPartsRequest(request) {
+  return (
+    request.body_type === 'MULTIPART' &&
+    Array.isArray(request.body_parts) &&
+    request.body_parts.some((p) => p && typeof p === 'object' && p.enabled !== false && p.key)
+  );
+}
+
+function assertMultipartFileLimit(totalBytes) {
+  if (totalBytes > MAX_TOTAL_FILE_BYTES) {
+    throw Object.assign(new Error('Total multipart file upload exceeds the 20 MB limit'), {
+      status: 400,
+    });
+  }
+}
+
+/**
+ * Build a real multipart/form-data body from structured parts.
+ * - text parts become plain form fields ({{var}} templates substituted)
+ * - file parts are reconstructed from their base64 `data` bytes
+ * Returns { form, summary } where `summary` is a compact, JSON-serialisable
+ * description used for request snapshots/history (never the raw bytes).
+ */
+async function buildMultipartBody(request, vars) {
+  const form = new FormData();
+  let totalFileBytes = 0;
+  const summary = [];
+  for (const part of request.body_parts || []) {
+    if (!part || typeof part !== 'object' || part.enabled === false) continue;
+    const key = String(part.key ?? '').trim();
+    if (!key) continue;
+    if (part.kind === 'file') {
+      const data = typeof part.data === 'string' ? part.data : '';
+      if (!data) {
+        throw Object.assign(new Error(`Missing file data for multipart part "${key}"`), {
+          status: 400,
+        });
+      }
+      const buf = Buffer.from(data, 'base64');
+      if (buf.length > MAX_FILE_PART_BYTES) {
+        throw Object.assign(new Error(`Multipart part "${key}" exceeds the 10 MB file limit`), {
+          status: 400,
+        });
+      }
+      totalFileBytes += buf.length;
+      assertMultipartFileLimit(totalFileBytes);
+      const fileName = substitute(String(part.fileName || 'file'), vars).replace(/[\r\n"]/g, '');
+      const mimeType = String(part.fileType || 'application/octet-stream').replace(/[\r\n]/g, '');
+      form.append(key, new Blob([buf], { type: mimeType }), fileName);
+      summary.push(`${key}=<${fileName}, ${buf.length} bytes>`);
+    } else {
+      const value = substitute(String(part.value ?? ''), vars);
+      form.append(key, value);
+      summary.push(`${key}=${value}`);
+    }
+  }
+  return { form, summary: summary.join('; ') || '' };
 }
 
 async function runTokenRequest(tokenRequestId, userId) {
@@ -137,6 +204,7 @@ function normalizeInMemoryRequest(input = {}) {
     body_type: bodyType,
     body_json: bodyJson,
     body_text: bodyText,
+    body_parts: Array.isArray(input.bodyParts) ? input.bodyParts : null,
     api_type: input.apiType || 'REST',
     collection_id: input.collectionId || null,
     formula: input.formula || '',
@@ -199,18 +267,36 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
     enabled: true,
   }));
   if (resolvedAuth) headers = applyAuthHeader(headers, resolvedAuth);
-  const fetchHeaders = headersObject(headers);
+  let fetchHeaders = headersObject(headers);
 
-  const body =
-    req.body !== null && req.body !== undefined
-      ? typeof req.body === 'string'
-        ? substitute(req.body, vars)
-        : JSON.stringify(req.body)
-      : null;
+  // Multipart parts (text + file) build a native FormData body so Node's fetch
+  // supplies the correct multipart/form-data content-type + boundary. A legacy
+  // raw-text MULTIPART request (no parts) keeps the plain serialisation below.
+  const multipartParts = isMultipartPartsRequest(request);
 
-  if (body && !Object.keys(fetchHeaders).some((k) => k.toLowerCase() === 'content-type')) {
-    fetchHeaders['Content-Type'] =
-      request.body_type === 'JSON' ? 'application/json' : request.body_type === 'FORM_URLENCODED' ? 'application/x-www-form-urlencoded' : 'text/plain';
+  let body = null;
+  let snapshotBody = null;
+  if (multipartParts) {
+    const built = await buildMultipartBody(request, vars);
+    body = built.form;
+    snapshotBody = built.summary;
+    // Drop any caller-set Content-Type: undici must set the boundary itself or
+    // the multipart body would be rejected by the upstream server.
+    fetchHeaders = Object.fromEntries(
+      Object.entries(fetchHeaders).filter(([k]) => k.toLowerCase() !== 'content-type')
+    );
+  } else {
+    body =
+      req.body !== null && req.body !== undefined
+        ? typeof req.body === 'string'
+          ? substitute(req.body, vars)
+          : JSON.stringify(req.body)
+        : null;
+    snapshotBody = body;
+    if (body && !Object.keys(fetchHeaders).some((k) => k.toLowerCase() === 'content-type')) {
+      fetchHeaders['Content-Type'] =
+        request.body_type === 'JSON' ? 'application/json' : request.body_type === 'FORM_URLENCODED' ? 'application/x-www-form-urlencoded' : 'text/plain';
+    }
   }
 
   const startedAt = new Date().toISOString();
@@ -270,7 +356,7 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
         request.id,
         userId,
         status,
-        JSON.stringify({ url, method: req.method, headers: fetchHeaders, body }),
+        JSON.stringify({ url, method: req.method, headers: fetchHeaders, body: snapshotBody ?? null }),
         responseSnapshot ? JSON.stringify(responseSnapshot) : null,
         startedAt,
         finishedAt,
@@ -295,7 +381,12 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
     error,
     response: responseSnapshot,
     resolvedAuth,
-    requestSnapshot: { url, method: req.method, headers: fetchHeaders, body },
+    requestSnapshot: {
+      url,
+      method: req.method,
+      headers: fetchHeaders,
+      body: snapshotBody ?? null,
+    },
     variables: vars,
     testResults,
     assertionsPassed,
@@ -346,4 +437,8 @@ module.exports = {
   resolveVariables,
   loadRequest,
   loadAuthProvider,
+  isMultipartPartsRequest,
+  buildMultipartBody,
+  MAX_FILE_PART_BYTES,
+  MAX_TOTAL_FILE_BYTES,
 };

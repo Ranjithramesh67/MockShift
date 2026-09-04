@@ -299,6 +299,18 @@ function redactRequestRecord(record, options = {}) {
   if (typeof out.body_text === 'string' && out.body_text !== '') {
     out.body_text = redactBody(out.body_text, secretValues, patterns, marker);
   }
+  if (Array.isArray(out.body_parts)) {
+    out.body_parts = out.body_parts.map((p) => {
+      if (!p || typeof p !== 'object') return p;
+      const next = { ...p };
+      if (next.kind !== 'file' && typeof next.value === 'string' && next.value !== '') {
+        next.value = redactBody(next.value, secretValues, patterns, marker);
+      }
+      // File parts only carry a file reference (name/type/size); bytes are
+      // never stored, so there is nothing sensitive to redact here.
+      return next;
+    });
+  }
   return out;
 }
 

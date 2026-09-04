@@ -76,6 +76,9 @@ let admin;
 let projectId;
 let collectionId;
 let mockBase;
+let multipartStoredRequestId;
+
+const MULTIPART_SAVED_PARTS = [{ key: 'title', kind: 'text', value: 'saved text' }];
 
 before(async () => {
   psqlReset();
@@ -87,8 +90,26 @@ before(async () => {
   }
 
   mockUpstream = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ url: req.url, method: req.method, echoed: true }));
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      const buf = Buffer.concat(chunks);
+      if (req.url === '/upload-echo') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            url: req.url,
+            method: req.method,
+            contentType: req.headers['content-type'] || null,
+            length: buf.length,
+            body: buf.toString('utf8'),
+          })
+        );
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ url: req.url, method: req.method, echoed: true }));
+    });
   });
   await new Promise((resolve) => mockUpstream.listen(0, '127.0.0.1', resolve));
   mockBase = `http://127.0.0.1:${mockUpstream.address().port}`;
@@ -238,4 +259,130 @@ test('ephemeral run requires read access when a collectionId is given', async ()
   });
   assert.equal(res.status, 403);
   assert.match(res.json.error, /No access/);
+});
+
+test('ephemeral multipart run sends text + file parts as real multipart/form-data', async () => {
+  const fileBytes = Buffer.from('hello-file-bytes');
+  const res = await admin.api('POST', '/api/runs', {
+    method: 'POST',
+    url: `${mockBase}/upload-echo`,
+    bodyType: 'MULTIPART',
+    bodyParts: [
+      { key: 'title', enabled: true, kind: 'text', value: 'Hi there' },
+      {
+        key: 'avatar',
+        enabled: true,
+        kind: 'file',
+        fileName: 'a.txt',
+        fileType: 'text/plain',
+        data: fileBytes.toString('base64'),
+      },
+    ],
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.json.runStatus, 'SUCCESS');
+  assert.equal(res.json.httpStatus, 200);
+  assert.equal(res.json.response.status, 200);
+
+  const echoed = JSON.parse(res.json.response.body);
+  assert.ok(
+    echoed.contentType.startsWith('multipart/form-data'),
+    `wire content-type is ${echoed.contentType}`
+  );
+  assert.ok(echoed.body.includes('name="title"'), 'text part name header present on the wire');
+  assert.ok(echoed.body.includes('Hi there'), 'text part value present on the wire');
+  assert.ok(echoed.body.includes('name="avatar"'), 'file part name header present on the wire');
+  assert.ok(echoed.body.includes('filename="a.txt"'), 'file part filename present on the wire');
+  assert.ok(echoed.body.includes('hello-file-bytes'), 'file bytes present on the wire');
+
+  assert.ok(
+    !String(res.json.requestSnapshot.body).includes('hello-file-bytes'),
+    'request snapshot omits the raw file bytes'
+  );
+  assert.ok(
+    String(res.json.requestSnapshot.body).includes('title=Hi there'),
+    'request snapshot carries the compact text-part summary'
+  );
+});
+
+test('ephemeral multipart run rejects a file part with no data', async () => {
+  const res = await admin.api('POST', '/api/runs', {
+    method: 'POST',
+    url: `${mockBase}/upload-echo`,
+    bodyType: 'MULTIPART',
+    bodyParts: [
+      { key: 'avatar', enabled: true, kind: 'file', fileName: 'a.txt', fileType: 'text/plain' },
+    ],
+  });
+  assert.equal(res.status, 400);
+  assert.match(res.json.error, /Missing file data/);
+});
+
+test('multipart file part exceeding 10MB is rejected', async () => {
+  const big = Buffer.alloc(11 * 1024 * 1024, 0x61);
+  const res = await admin.api('POST', '/api/runs', {
+    method: 'POST',
+    url: `${mockBase}/upload-echo`,
+    bodyType: 'MULTIPART',
+    bodyParts: [
+      {
+        key: 'bigfile',
+        enabled: true,
+        kind: 'file',
+        fileName: 'big.bin',
+        fileType: 'application/octet-stream',
+        data: big.toString('base64'),
+      },
+    ],
+  });
+  assert.equal(res.status, 400);
+  assert.match(res.json.error, /10 MB file limit/);
+});
+
+test('stored request round-trips multipart text parts and runs via POST /requests/:id/run', async () => {
+  const created = await admin.api('POST', '/api/requests', {
+    collectionId,
+    name: 'Multipart Stored Req',
+    method: 'POST',
+    url: `${mockBase}/upload-echo`,
+    apiType: 'REST',
+  });
+  assert.equal(created.status, 201, 'create stored request');
+  multipartStoredRequestId = created.json.request.id;
+
+  const put = await admin.api('PUT', `/api/requests/${multipartStoredRequestId}`, {
+    method: 'POST',
+    url: `${mockBase}/upload-echo`,
+    bodyType: 'MULTIPART',
+    bodyParts: MULTIPART_SAVED_PARTS,
+  });
+  assert.equal(put.status, 200, 'update stored request with multipart parts');
+
+  const got = await admin.api('GET', `/api/requests/${multipartStoredRequestId}`);
+  assert.equal(got.status, 200);
+  assert.equal(got.json.request.bodyType, 'MULTIPART');
+  assert.deepEqual(got.json.request.bodyParts, MULTIPART_SAVED_PARTS, 'bodyParts round-trips');
+
+  const run = await admin.api('POST', `/api/requests/${multipartStoredRequestId}/run`);
+  assert.equal(run.status, 200);
+  assert.equal(run.json.runStatus, 'SUCCESS');
+  assert.equal(run.json.httpStatus, 200);
+  const echoed = JSON.parse(run.json.response.body);
+  assert.ok(echoed.body.includes('name="title"'), 'stored run sends the text part name');
+  assert.ok(echoed.body.includes('saved text'), 'stored run sends the text part value');
+});
+
+test('duplicate preserves body_parts', async () => {
+  assert.ok(multipartStoredRequestId, 'stored request from round-trip test exists');
+
+  const dup = await admin.api('POST', `/api/requests/${multipartStoredRequestId}/duplicate`);
+  assert.equal(dup.status, 201, 'duplicate stored request');
+  const copyId = dup.json.request.id;
+  assert.notEqual(copyId, multipartStoredRequestId, 'duplicate gets a fresh id');
+
+  const got = await admin.api('GET', `/api/requests/${copyId}`);
+  assert.equal(got.status, 200);
+  assert.equal(got.json.request.bodyType, 'MULTIPART');
+  assert.deepEqual(got.json.request.bodyParts, MULTIPART_SAVED_PARTS, 'duplicate keeps bodyParts');
 });

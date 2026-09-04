@@ -17,6 +17,7 @@ test('default draft has the expected shape', () => {
     bodyType: 'NONE',
     bodyJson: null,
     bodyText: null,
+    bodyParts: [],
     contentType: 'text/plain',
     apiType: 'REST',
     formula: '',
@@ -45,6 +46,7 @@ test('run input maps a GET draft', () => {
     bodyType: 'NONE',
     bodyJson: null,
     bodyText: null,
+    bodyParts: [],
     formula: '',
     assertions: [],
     apiType: 'REST',
@@ -172,4 +174,76 @@ test('formula and assertions get defaults', () => {
   const patch = scratchDraftToServerPatch({ bodyType: 'NONE' });
   assert.equal(patch.formula, '');
   assert.deepEqual(patch.assertions, []);
+});
+
+test('run input passes bodyParts through untouched', () => {
+  const parts = [
+    { id: 'p1', key: 'note', enabled: true, kind: 'text', value: 'hi' },
+    { id: 'p2', key: 'f', enabled: true, kind: 'file', fileName: 'a.bin', data: 'AAEC' },
+  ];
+  const input = scratchDraftToRunInput({
+    method: 'POST',
+    url: 'https://x.test',
+    bodyType: 'MULTIPART',
+    bodyParts: parts,
+  });
+  assert.equal(input.bodyType, 'MULTIPART');
+  assert.deepEqual(input.bodyParts, parts);
+  assert.equal(input.bodyParts[1].data, 'AAEC');
+});
+
+test('run input defaults bodyParts to [] when absent', () => {
+  const input = scratchDraftToRunInput({ method: 'POST', url: 'https://x.test', bodyType: 'MULTIPART' });
+  assert.deepEqual(input.bodyParts, []);
+});
+
+test('server patch sends bodyParts (data stripped) for MULTIPART with null bodyJson/bodyText', () => {
+  const patch = scratchDraftToServerPatch({
+    bodyType: 'MULTIPART',
+    bodyJson: 'not used',
+    bodyText: 'k=v',
+    bodyParts: [
+      { id: 'p1', key: 'note', enabled: true, kind: 'text', value: 'hi' },
+      { id: 'p2', key: 'f', enabled: true, kind: 'file', fileName: 'a.bin', fileType: 'application/octet-stream', fileSize: 3, data: 'AAEC' },
+    ],
+    headers: [],
+    queryParams: [],
+    formula: '',
+    assertions: [],
+  });
+  assert.equal(patch.bodyType, 'MULTIPART');
+  assert.deepEqual(patch.bodyParts, [
+    { id: 'p1', key: 'note', enabled: true, kind: 'text', value: 'hi' },
+    { id: 'p2', key: 'f', enabled: true, kind: 'file', fileName: 'a.bin', fileType: 'application/octet-stream', fileSize: 3 },
+  ]);
+  assert.equal(patch.bodyParts[1].data, undefined);
+  assert.equal(patch.bodyJson, null);
+  assert.equal(patch.bodyText, null);
+});
+
+test('server patch defaults MULTIPART bodyParts to [] when absent', () => {
+  const patch = scratchDraftToServerPatch({
+    bodyType: 'MULTIPART',
+    headers: [],
+    queryParams: [],
+    formula: '',
+    assertions: [],
+  });
+  assert.deepEqual(patch.bodyParts, []);
+  assert.equal(patch.bodyJson, null);
+  assert.equal(patch.bodyText, null);
+});
+
+test('server patch leaves JSON bodies unchanged (no bodyParts key)', () => {
+  const patch = scratchDraftToServerPatch({
+    bodyType: 'JSON',
+    bodyJson: '{"a":1}',
+    headers: [],
+    queryParams: [],
+    formula: '',
+    assertions: [],
+  });
+  assert.deepEqual(patch.bodyJson, { a: 1 });
+  assert.equal(patch.bodyText, undefined);
+  assert.equal(patch.bodyParts, undefined);
 });

@@ -73,7 +73,7 @@ router.get('/shares/:token', async (req, res, next) => {
     const token = req.params.token;
     const { rows } = await query(
       `SELECT rs.id, rs.created_at, ar.id AS request_id, ar.name, ar.method, ar.url,
-              ar.headers, ar.query_params, ar.body_type, ar.body_json, ar.body_text, ar.api_type
+              ar.headers, ar.query_params, ar.body_type, ar.body_json, ar.body_text, ar.body_parts, ar.api_type
          FROM request_shares rs
          JOIN api_requests ar ON ar.id = rs.request_id
         WHERE rs.token = $1`,
@@ -108,6 +108,7 @@ router.get('/shares/:token', async (req, res, next) => {
         body_type: share.body_type,
         body_json: share.body_json ?? null,
         body_text: share.body_text ?? null,
+        body_parts: share.body_parts || [],
         api_type: share.api_type,
       },
       {}
@@ -127,6 +128,7 @@ router.get('/shares/:token', async (req, res, next) => {
           bodyType: safeRequest.body_type,
           bodyJson: safeRequest.body_json ?? null,
           bodyText: safeRequest.body_text ?? null,
+          bodyParts: Array.isArray(safeRequest.body_parts) ? safeRequest.body_parts : [],
           apiType: safeRequest.api_type,
         },
         lastRun: lastRunPayload,

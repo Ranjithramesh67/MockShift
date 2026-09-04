@@ -1358,6 +1358,7 @@ body.is-col-dragging .sidebar {
 .url-input:focus,
 .text-input:focus,
 .kv-cell:focus,
+.multipart-cell:focus,
 .invite-row input:focus,
 .invite-row select:focus,
 .compact-select:focus,
@@ -1427,6 +1428,170 @@ body.is-col-dragging .sidebar {
   width: 34px;
   display: flex;
   justify-content: center;
+}
+
+/* ---- Multipart parts rows ------------------------------------------------- */
+.multipart-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 860px;
+  padding: 0;
+}
+
+.multipart-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.multipart-row-header {
+  color: var(--text-faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+  padding: 4px 6px;
+}
+
+.multipart-check {
+  width: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.multipart-check input[type='checkbox'] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.multipart-cell {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 7px 9px;
+  transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+}
+
+.multipart-cell-label {
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.multipart-kind {
+  flex: none;
+  width: 96px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 7px 6px;
+  cursor: pointer;
+  transition: border-color var(--speed) var(--ease);
+}
+
+.multipart-kind:hover {
+  border-color: var(--border-strong);
+}
+
+.multipart-actions {
+  width: 34px;
+  display: flex;
+  justify-content: center;
+}
+
+.multipart-file-cell {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.multipart-file-input {
+  display: none;
+}
+
+.multipart-file-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: border-color var(--speed) var(--ease), color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
+}
+
+.multipart-file-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.multipart-file-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.multipart-file-name {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multipart-file-size {
+  color: var(--text-faint);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.multipart-file-persisted {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.multipart-file-persisted .multipart-file-name {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.multipart-file-hint {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.multipart-file-none {
+  color: var(--text-faint);
+}
+
+.multipart-empty {
+  padding: 6px 4px;
+}
+
+.multipart-empty-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 /* ---- Body editor ---------------------------------------------------------- */

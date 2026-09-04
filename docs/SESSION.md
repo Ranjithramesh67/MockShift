@@ -74,7 +74,85 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
-### 5.25 Sidebar page-load slowness — serve a production build instead of `next dev` (this turn)
+### 5.26 Structured multipart/form-data body parts (text + files) — pushed
+
+Postman-style structured MULTIPART bodies end-to-end. User scope chosen in
+session: build a parts editor (text rows + file picker) in the request editor
+**and** scratchpad, send real file bytes on each run, and **persist file
+references** (name/mime/size metadata) on saved requests — bytes are never
+stored server-side and are re-picked per Send after a reload. Wire contract
+frozen: `bodyParts` array, part = `{ id, key, enabled, kind: 'text'|'file',
+value?, fileName?, fileType?, fileSize?, data? }`; `data` (base64 bytes)
+appears only in ephemeral run payloads.
+
+Backend:
+- `db/migrations/012_request_body_parts.sql` — adds `api_requests.body_parts
+  jsonb` (NULL for legacy rows).
+- `backend/src/api/runner.js` — `loadRequest` selects `body_parts`;
+  `normalizeInMemoryRequest` maps `input.bodyParts`; new `isMultipartPartsRequest`
+  (true only when parts exist, so legacy raw-text MULTIPART keeps its old text
+  path), `assertMultipartFileLimit` (10 MB/part, 20 MB total),
+  `buildMultipartBody` → native `FormData` (`{{var}}` substitution, file parts
+  reconstructed from base64 `data`, sanitised file name/mime) returning
+  `{ form, summary }`; `executePipeline` sends the FormData, drops any
+  caller-set `Content-Type` so undici sets the boundary, and stores the compact
+  `summary` in run snapshots/history (never raw bytes). Helpers + limits
+  exported.
+- `backend/src/api/routes/content.js` — request GET returns `bodyParts`;
+  PUT field map includes `body_parts` (JSON-encoded, NULL-safe); request +
+  folder duplicates copy `body_parts`; `POST /api/runs` now links run history
+  and fires ON_REQUEST/ON_RUN_FAILURE when the payload carries `id` +
+  `persistHistory:true` (the path stored-request file sends use).
+- `exports.js` — serialise/import round-trip `body_parts` via a new
+  `cleanBodyParts` sanitiser (id/key/kind/enabled + per-kind value or file
+  metadata; only on the MULTIPART path).
+- `shares.js` — share GET returns `body_parts`.
+- `redact.js` — redacts text-part `value`s in `body_parts` (file parts carry
+  no sensitive bytes).
+- `server.js` — `express.json` limit 2 MB → 25 MB (base64 file bytes).
+
+Frontend:
+- New `frontend/src/lib/multipartParts.js` — `makePartId`, `newTextPart`,
+  `newFilePart`, `normalizeParts`, `stripTransportData`, `seedPartsFromLegacy`
+  (`k=v&k2=v2` → text parts), `readFileAsBase64` (+ `multipartParts.test.cjs`).
+- New `frontend/src/components/MultipartRows.tsx` — parts grid with enable
+  checkbox / key / Text-File kind toggle / value or file picker (+ size) /
+  remove / add row, persisted-reference hint ("Re-choose a file to send");
+  stable testids `multipart-rows|row-N|kind-N|key-N|value-N|file-N|clear-N|
+  remove-N|add`.
+- `RequestConfigurator.tsx` — MULTIPART body renders `MultipartRows` (was a
+  raw-text editor); cURL paste + kind switch seed `bodyParts` from legacy text.
+- `ScratchpadWorkspace.tsx` — local draft `bodyParts` + in-memory `files` map;
+  Send validates file parts and embeds base64 `data`; Save persists via
+  `scratchDraftToServerPatch`; cURL paste seeds parts.
+- `WorkspaceStore.tsx` — `selectedFiles: Record<requestId, Record<partId,
+  File>>` + `setFileForPart` (pruned on tab close / request delete);
+  `toEditorRequest`/`toServerPatch`/`DIRTY_FIELDS` multipart-aware;
+  `runActiveRequest` routes multipart-with-file-part requests through the
+  ephemeral run with `id` + `persistHistory:!isDirty`; `runScratchpad` accepts
+  `bodyParts`.
+- `curl.js` `generateCurl` — emits `--form-string 'k=v'` for text parts and
+  `--form 'k=@fileName'` for file parts; `hasBody` accounts for parts
+  (+ updated `curl.test.cjs`).
+- `globals.css` — `.multipart-*` styles for the row grid / file cell.
+
+Coordinator follow-up fix after agent review: picking or clearing a file in
+`MultipartRows` now also writes `fileName`/`fileType`/`fileSize` into the part
+through `onChange` (a new `syncFileMetadata`), not just the in-memory `File`
+map — otherwise a Save persisted an empty file reference. Single central spot
+serves both the request editor and the scratchpad.
+
+Design notes: file bytes never persisted; a stored request with a file part
+will 400 on `POST /requests/:id/run` by design ("Missing file data …") — file
+sends always go through the ephemeral `POST /api/runs` with `id` +
+`persistHistory:true` so history/events still fire. Legacy text-only MULTIPART
+requests are unaffected.
+
+Verification: backend `npm run test:api` 63/63 (5 new multipart/upload cases
+in `ephemeralRuns.integration.test.cjs`, incl. a `/upload-echo` upstream
+asserting the raw multipart body), `npm test` 47/47, `npm run test:api:unit`
+49/49; frontend `npx tsc --noEmit` clean, `npm test` 89/89. Committed and
+pushed to `origin/master`.
 
 User reported sidebar/rail pages loading slowly. Investigation:
 
@@ -596,8 +674,8 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-All code + docs are committed and pushed on `master` (HEAD `c853316`, the
-parallel agent's "sidebar click fixes"). Working tree clean.
+None — the structured multipart body-parts feature (§5.26) is committed and
+pushed on `master`; working tree clean.
 
 ## 8. Known issues / notes for the next agent
 
@@ -625,6 +703,15 @@ parallel agent's "sidebar click fixes"). Working tree clean.
   before running e2e.
 - Installing Postgres/Redis/Playwright was required in this environment (they
   were absent); see section 2 for how they are started.
+- **Structured multipart file parts (M16)** — file BYTES are never persisted,
+  only the reference (name/type/size in `api_requests.body_parts`). After a
+  reload the editor shows "Re-choose a file to send"; a stored request with a
+  file part run through `POST /requests/:id/run` (or a collection run) 400s
+  with "Missing file data …" **by design** — file sends must go through the
+  ephemeral `POST /api/runs` with `id` + `persistHistory:true`, which the
+  frontend does in `runActiveRequest`. The DB `body_parts` column (migration
+  `012_request_body_parts.sql`) is additive; run `psql … -f db/migrations/012…`
+  against any existing Aiven DB before deploying the backend.
 
 ## 9. How to continue
 

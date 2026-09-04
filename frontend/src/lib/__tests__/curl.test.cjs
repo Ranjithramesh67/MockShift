@@ -103,3 +103,44 @@ test('keeps -F multipart form fields as a text body', () => {
   assert.equal(req.bodyType, 'MULTIPART');
   assert.equal(req.bodyText, 'file=@./photo.png');
 });
+
+test('generateCurl emits multipart -F flags for enabled text and file parts', () => {
+  const req = {
+    method: 'POST',
+    url: 'https://api.example.com/upload',
+    queryParams: [],
+    headers: [],
+    bodyType: 'MULTIPART',
+    bodyJson: null,
+    bodyText: null,
+    contentType: 'multipart/form-data',
+    bodyParts: [
+      { id: '1', key: 'note', enabled: true, kind: 'text', value: "it's fine" },
+      { id: '2', key: 'photo', enabled: true, kind: 'file', fileName: './photo.png' },
+      { id: '3', key: '', enabled: true, kind: 'text', value: 'x' },
+      { id: '4', key: 'disabled', enabled: false, kind: 'text', value: 'y' },
+    ],
+  };
+  const curl = generateCurl(req);
+  assert.ok(curl.includes("--form 'photo=@./photo.png'"));
+  assert.equal((curl.match(/--form-string/g) || []).length, 1, 'only the enabled text part is a --form-string');
+  assert.ok(curl.includes("note=it'"), 'text part value emitted');
+  assert.ok(curl.includes("s fine'"), 'single quote inside text part is escaped/survives');
+  assert.ok(!curl.includes('disabled'));
+});
+
+test('generateCurl multipart file part falls back to @file when fileName is empty', () => {
+  const req = {
+    method: 'POST',
+    url: 'https://api.example.com/upload',
+    queryParams: [],
+    headers: [],
+    bodyType: 'MULTIPART',
+    bodyJson: null,
+    bodyText: null,
+    contentType: 'multipart/form-data',
+    bodyParts: [{ id: '1', key: 'upload', enabled: true, kind: 'file' }],
+  };
+  const curl = generateCurl(req);
+  assert.match(curl, /--form 'upload=@file'/);
+});
