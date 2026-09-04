@@ -156,6 +156,15 @@ function dirtySnapshotsEqual(a: unknown[] | null, b: unknown[] | null): boolean 
   return a.every((v, i) => JSON.stringify(v) === JSON.stringify(b[i]));
 }
 
+// Request-level Undo/Redo (working copy only). Edit snapshots are whole
+// ApiRequest objects (already immutable per change, so storing references is
+// cheap). Consecutive edits that land within EDIT_BURST_MS of each other are
+// coalesced into a single undo step so a typing burst in the URL / body editor
+// is reverted in one go. History is kept per open request and dropped when the
+// tab closes or the workspace/collection changes.
+const EDIT_HISTORY_LIMIT = 100;
+const EDIT_BURST_MS = 800;
+
 interface WorkspaceState {
   loading: boolean;
   error: string | null;
@@ -188,6 +197,15 @@ interface WorkspaceState {
   closeRequestTab: (requestId: string) => Promise<void>;
   reopenLastClosedTab: () => Promise<void>;
   isTabDirty: (requestId: string) => boolean;
+
+  // Request-level Undo/Redo (working copy edits only) and Back navigation
+  // (returns to the previously active request in activation order).
+  canUndoRequest: boolean;
+  canRedoRequest: boolean;
+  canGoBackRequest: boolean;
+  undoActiveRequest: () => void;
+  redoActiveRequest: () => void;
+  goBackRequest: () => Promise<void>;
 
   refresh: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
@@ -268,6 +286,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [closedTabs, setClosedTabs] = useState<
     Array<{ requestId: string; index: number; request: ApiRequest; baseline: unknown[] | null }>
   >([]);
+  // Activation history for the Back button: ids of previously active requests,
+  // most recent last. Pushed on every real activation transition (A -> B
+  // pushes A) and reset when no request is active. Back pops the most recent
+  // entry and re-activates it.
+  const [navStack, setNavStack] = useState<string[]>([]);
   const [lastRun, setLastRun] = useState<RunResult | null>(null);
   // Last executed response per request id, kept in memory for the lifetime of
   // the page so closing a tab (Ctrl+Q) and reopening it (Ctrl+Shift+Q) or
@@ -289,6 +312,35 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // the active request with a stale one.
   const selectSeqRef = useRef(0);
   const selectTargetRef = useRef<string | null>(null);
+  // Last committed active request. Kept in sync with `activeRequest` (effect
+  // below) and updated synchronously by updateActiveRequest so undo snapshots
+  // always capture the request as it was before the edit that is being applied.
+  const activeRequestRef = useRef<ApiRequest | null>(null);
+  // Per-request Undo/Redo edit stacks. Undo entries are snapshots of the
+  // working copy *before* each edit burst; Redo entries are snapshots produced
+  // by Undo. Held in refs (mutated inside update/undo/redo handlers) and read
+  // during render — every mutation coincides with a setActiveRequest, so the
+  // provider always re-renders with fresh canUndo/canRedo values.
+  const editUndoRef = useRef<Record<string, ApiRequest[]>>({});
+  const editRedoRef = useRef<Record<string, ApiRequest[]>>({});
+  const editBurstRef = useRef<Record<string, number>>({});
+  // Back-navigation mirror (read synchronously in goBackRequest so two rapid
+  // clicks cannot double-pop the same history entry).
+  const navStackRef = useRef<string[]>([]);
+  const prevActiveNavRef = useRef<string | null>(null);
+  const suppressNavPushRef = useRef(false);
+
+  const clearEditHistory = useCallback((requestId: string) => {
+    delete editUndoRef.current[requestId];
+    delete editRedoRef.current[requestId];
+    delete editBurstRef.current[requestId];
+  }, []);
+
+  const clearAllEditHistory = useCallback(() => {
+    editUndoRef.current = {};
+    editRedoRef.current = {};
+    editBurstRef.current = {};
+  }, []);
 
   // Grouped workspace nav is auxiliary: a failure here degrades to the flat
   // workspace list rather than failing whatever orchestration called it.
@@ -334,6 +386,41 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setRequestCopies((copies) => ({ ...copies, [activeRequest.id]: activeRequest }));
   }, [activeRequest]);
 
+  // Mirror for undo/redo snapshot capture (see activeRequestRef declaration).
+  useEffect(() => {
+    activeRequestRef.current = activeRequest;
+  }, [activeRequest]);
+
+  // Back-navigation bookkeeping. Every real activation transition (A -> B)
+  // records A as the most recent history entry so Back can return to it. A
+  // transition to null (all tabs closed / overview opened) resets the history,
+  // and transitions caused by Back itself are suppressed (the popped entry is
+  // not re-recorded as the new "previous" of the request we land on).
+  useEffect(() => {
+    const prev = prevActiveNavRef.current;
+    prevActiveNavRef.current = activeRequestId;
+    const suppressed = suppressNavPushRef.current;
+    suppressNavPushRef.current = false;
+    if (activeRequestId !== null && activeRequestId !== prev) {
+      // A fresh activation is an edit-burst boundary: continuing to type in the
+      // newly activated request must start a new undo step even if the switch
+      // happened within EDIT_BURST_MS of the last edit to that request.
+      editBurstRef.current[activeRequestId] = 0;
+    }
+    if (suppressed) return;
+    if (activeRequestId === null) {
+      setNavStack([]);
+      return;
+    }
+    if (prev && prev !== activeRequestId) {
+      setNavStack((s) => (s[s.length - 1] === prev ? s : [...s, prev]));
+    }
+  }, [activeRequestId]);
+
+  useEffect(() => {
+    navStackRef.current = navStack;
+  }, [navStack]);
+
   const selectWorkspace = useCallback(async (workspaceId: string) => {
     setError(null);
     selectSeqRef.current += 1; // invalidate any in-flight request selection
@@ -346,6 +433,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setRequestCopies({});
     setBaselines({});
     setClosedTabs([]);
+    setNavStack([]);
+    clearAllEditHistory();
     setLastRun(null);
     setRequestRuns({});
     const ws = workspaces.find((w) => w.id === workspaceId);
@@ -377,6 +466,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setRequestCopies({});
     setBaselines({});
     setClosedTabs([]);
+    setNavStack([]);
+    clearAllEditHistory();
     setLastRun(null);
     setRequestRuns({});
     try {
@@ -425,8 +516,52 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [openRequestIds, requestCopies, requestRuns]);
 
   const updateActiveRequest = useCallback((patch: Partial<ApiRequest>) => {
-    setActiveRequest((prev) => (prev ? { ...prev, ...patch } : prev));
+    const prev = activeRequestRef.current;
+    if (!prev) return;
+    // Record an undo step for the request as it is right now (before this
+    // patch). Consecutive edits inside EDIT_BURST_MS are coalesced so a typing
+    // burst produces a single undo step; a new burst (idle gap or an explicit
+    // activation) pushes a fresh snapshot.
+    const now = Date.now();
+    if (now - (editBurstRef.current[prev.id] ?? 0) > EDIT_BURST_MS) {
+      const stack = editUndoRef.current[prev.id] ?? [];
+      editUndoRef.current[prev.id] = [...stack, prev].slice(-EDIT_HISTORY_LIMIT);
+    }
+    editBurstRef.current[prev.id] = now;
+    // Any new edit invalidates the redo stack for this request.
+    editRedoRef.current[prev.id] = [];
+    const next = { ...prev, ...patch };
+    activeRequestRef.current = next;
+    setActiveRequest(next);
   }, []);
+
+  const undoActiveRequest = useCallback(() => {
+    if (!activeRequest || !activeRequestId) return;
+    const id = activeRequestId;
+    const stack = editUndoRef.current[id] ?? [];
+    const snapshot = stack[stack.length - 1];
+    if (!snapshot) return;
+    editUndoRef.current[id] = stack.slice(0, -1);
+    const redo = editRedoRef.current[id] ?? [];
+    editRedoRef.current[id] = [...redo, activeRequest].slice(-EDIT_HISTORY_LIMIT);
+    editBurstRef.current[id] = 0;
+    activeRequestRef.current = snapshot;
+    setActiveRequest(snapshot);
+  }, [activeRequest, activeRequestId]);
+
+  const redoActiveRequest = useCallback(() => {
+    if (!activeRequest || !activeRequestId) return;
+    const id = activeRequestId;
+    const stack = editRedoRef.current[id] ?? [];
+    const snapshot = stack[stack.length - 1];
+    if (!snapshot) return;
+    editRedoRef.current[id] = stack.slice(0, -1);
+    const undo = editUndoRef.current[id] ?? [];
+    editUndoRef.current[id] = [...undo, activeRequest].slice(-EDIT_HISTORY_LIMIT);
+    editBurstRef.current[id] = 0;
+    activeRequestRef.current = snapshot;
+    setActiveRequest(snapshot);
+  }, [activeRequest, activeRequestId]);
 
   const setFileForPart = useCallback((requestId: string, partId: string, file: File | null) => {
     setSelectedFiles((prev) => {
@@ -461,6 +596,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [activeRequest, baselines]
   );
 
+  // Read the per-request history refs during render. Every write to them is
+  // paired with a setActiveRequest / activeRequestId change below, so the
+  // provider re-renders (and subscribers recompute) right after a push/pop.
+  const canUndoRequest = activeRequestId ? (editUndoRef.current[activeRequestId]?.length ?? 0) > 0 : false;
+  const canRedoRequest = activeRequestId ? (editRedoRef.current[activeRequestId]?.length ?? 0) > 0 : false;
+  const canGoBackRequest = navStack.length > 0;
+
   const activateRequestTab = useCallback(
     async (requestId: string) => {
       if (requestId === activeRequestId) return;
@@ -475,6 +617,74 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     },
     [activeRequestId, requestCopies, requestRuns, selectRequest]
   );
+
+  // Back button: pop the most recent history entry and re-activate that
+  // request. If its tab is still open we just switch to it (restoring its
+  // unsaved working copy); if it was closed since, we reopen it from the
+  // closed-tab stack at its original position — same as Ctrl+Shift+Q does —
+  // restoring its working copy and baseline. Entries that can no longer be
+  // restored (e.g. the request was deleted) are skipped in favour of older
+  // entries.
+  const goBackRequest = useCallback(async () => {
+    const stack = navStackRef.current;
+    if (stack.length === 0) return;
+    const candidates = [...stack].reverse();
+    for (let i = 0; i < candidates.length; i++) {
+      const target = candidates[i];
+      const finalStack = candidates.slice(i + 1).reverse();
+      if (target === activeRequestId) continue;
+      if (openRequestIds.includes(target)) {
+        navStackRef.current = finalStack;
+        setNavStack(finalStack);
+        suppressNavPushRef.current = true;
+        try {
+          await activateRequestTab(target);
+          return;
+        } catch {
+          // Could not switch (e.g. the cached copy is gone and the refetch
+          // failed): undo the suppression flag so the next real activation is
+          // still recorded, and fall through to an older entry.
+          suppressNavPushRef.current = false;
+          continue;
+        }
+      }
+      const closedIdx = closedTabs.findIndex((c) => c.requestId === target);
+      if (closedIdx >= 0) {
+        const entry = closedTabs[closedIdx];
+        navStackRef.current = finalStack;
+        setNavStack(finalStack);
+        setClosedTabs((s) => s.filter((c) => c.requestId !== target));
+        setOpenRequestIds((ids) => insertTab(ids, entry.requestId, entry.index));
+        setRequestCopies((c) => ({ ...c, [entry.requestId]: entry.request }));
+        setBaselines((b) => {
+          if (entry.baseline === null) {
+            const next = { ...b };
+            delete next[entry.requestId];
+            return next;
+          }
+          return { ...b, [entry.requestId]: entry.baseline };
+        });
+        suppressNavPushRef.current = true;
+        setActiveRequestId(entry.requestId);
+        setActiveRequest(entry.request);
+        setLastRun(requestRuns[entry.requestId] ?? null);
+        return;
+      }
+      // Not open anywhere locally — try the server (e.g. it was open before a
+      // workspace/collection switch that closed it without recording an undo
+      // entry). If the request no longer exists, fall through to an older one.
+      try {
+        navStackRef.current = finalStack;
+        setNavStack(finalStack);
+        suppressNavPushRef.current = true;
+        await selectRequest(target);
+        return;
+      } catch {
+        suppressNavPushRef.current = false;
+        continue;
+      }
+    }
+  }, [activeRequestId, openRequestIds, closedTabs, requestRuns, activateRequestTab, selectRequest]);
 
   const closeRequestTab = useCallback(
     async (requestId: string, recordUndo = true) => {
@@ -495,6 +705,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         delete next[requestId];
         return next;
       });
+      // Undo/redo history is scoped to an open tab: dropping it when the tab
+      // closes prevents a re-opened request (fresh server copy) from inheriting
+      // a previous session's edit history.
+      clearEditHistory(requestId);
       setBaselines((b) => {
         const next = { ...b };
         delete next[requestId];
@@ -843,6 +1057,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     selectSeqRef.current += 1; // invalidate any in-flight selection of this request
     await contentApi.deleteRequest(requestId);
     await closeRequestTab(requestId, false);
+    // A deleted request can no longer be Back-navigated to.
+    setNavStack((s) => s.filter((x) => x !== requestId));
     setRequestRuns((runs) => {
       const next = { ...runs };
       delete next[requestId];
@@ -883,6 +1099,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setAuthProvider(null);
       setActiveRequest(null);
       setLastRun(null);
+      setNavStack([]);
+      clearAllEditHistory();
     }
     if (tree) {
       setTree({
@@ -912,6 +1130,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setRequestCopies({});
       setBaselines({});
       setClosedTabs([]);
+      setNavStack([]);
+      clearAllEditHistory();
       setLastRun(null);
       setRequestRuns({});
     }
@@ -980,6 +1200,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setRequestCopies({});
         setBaselines({});
         setClosedTabs([]);
+        setNavStack([]);
+        clearAllEditHistory();
         setLastRun(null);
         setRequestRuns({});
       }
@@ -1051,6 +1273,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       closeRequestTab,
       reopenLastClosedTab,
       isTabDirty,
+      canUndoRequest,
+      canRedoRequest,
+      canGoBackRequest,
+      undoActiveRequest,
+      redoActiveRequest,
+      goBackRequest,
       refresh,
       selectWorkspace,
       selectRequest,
@@ -1095,6 +1323,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       collectionRun, collectionRunRunning, requestRunning, selectedFiles, setFileForPart,
       openRequestIds, activeRequestId, requestCopies,
       activateRequestTab, closeRequestTab, reopenLastClosedTab, isTabDirty,
+      canUndoRequest, canRedoRequest, canGoBackRequest,
+      undoActiveRequest, redoActiveRequest, goBackRequest,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun, clearScratchpadRun,
       createWorkspace, createCollection, createRequest,

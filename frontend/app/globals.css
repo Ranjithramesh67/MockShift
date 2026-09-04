@@ -1143,15 +1143,71 @@ body.is-col-dragging .sidebar {
 }
 
 /* Request tab strip (M7): browser-style tabs above the editor. */
+.request-tabs-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  flex-shrink: 0;
+  min-width: 0;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px 0;
+}
+
+/* Leading toolbar: Back (previous request) + Undo/Redo (working-copy edits). */
+.request-nav-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 6px 6px 0;
+  flex-shrink: 0;
+}
+
+.request-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.request-nav-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.request-nav-btn:disabled {
+  color: var(--text-faint);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.request-nav-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .request-tabs {
   display: flex;
   align-items: stretch;
   gap: 4px;
   overflow-x: auto;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
-  padding: 6px 8px 0;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.request-tabs-bar .request-tabs {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
 .request-tab {

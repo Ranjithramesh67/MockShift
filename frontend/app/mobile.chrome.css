@@ -252,6 +252,10 @@
   .request-tab-select {
     min-height: 38px;
   }
+  .request-nav-btn {
+    width: 30px;
+    height: 30px;
+  }
 
   /* Toasts: keep readable on small screens and respect the bottom safe area. */
   .toast {
