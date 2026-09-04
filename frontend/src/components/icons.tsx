@@ -387,6 +387,27 @@ export const HistoryIcon = (p: IconProps) => (
   </svg>
 );
 
+export const BackIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M19 12H5" />
+    <path d="m12 19-7-7 7-7" />
+  </svg>
+);
+
+export const UndoIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M3 12a9 9 0 1 0 3-6.7" />
+    <path d="M3 4v5h5" />
+  </svg>
+);
+
+export const RedoIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M21 12a9 9 0 1 1-3-6.7" />
+    <path d="M21 20v-5h-5" />
+  </svg>
+);
+
 export const LayersIcon = (p: IconProps) => (
   <svg {...svgProps(p)}>
     <path d="m12 3 9 5-9 5-9-5 9-5z" />

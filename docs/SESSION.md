@@ -74,6 +74,72 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.30 Per-request undo/redo + back to previous request (this turn)
+
+User scope: per-request Undo/Redo toolbar buttons with global Ctrl+Z /
+Ctrl+Y / Ctrl+Shift+Z shortcuts, plus a "Back to previous request" button.
+Scope was confirmed up front: undo/redo covers **working-copy edits only** —
+the DB is never touched, and Save moves the saved baseline, so undoing past a
+save simply re-dirties the tab. Back follows chronological activation order,
+and a previously-active request that was closed since is reopened at its
+original tab position with its unsaved working copy + baseline restored.
+
+- **Store (`frontend/src/store/WorkspaceStore.tsx`)** — all history state is
+  centralized here because edits already flow through the per-request working
+  copies and `RequestTabs` is a store consumer:
+  - Per-request undo/redo lives in refs keyed by requestId
+    (`editUndoRef`/`editRedoRef`), each entry a full `ApiRequest` snapshot
+    (already immutable per edit action). Consecutive edits coalesce into one
+    step via an 800ms burst timer (`EDIT_BURST_MS`, `EDIT_HISTORY_LIMIT=100`)
+    that also resets on tab switch/reactivation; any new edit clears that
+    request's redo stack. `updateActiveRequest` now writes straight to
+    `activeRequest`/`activeRequestRef` and owns the burst/step logic.
+  - Back state is a `navStackRef: string[]` maintained by an effect on
+    `activeRequestId`: it records real A→B transitions only (deduped against
+    the last entry, never on A→null, and never re-pushed because activating an
+    already-active tab early-returns). `goBackRequest` walks the stack
+    newest→oldest and switches to an open tab via `activateRequestTab`, else
+    reopens a `closedTabs` entry at its original index (restoring request
+    copy + baseline + run), else refetches via `selectRequest`; a request that
+    no longer exists is skipped permanently.
+  - Scoping: undo history and the back stack are cleared when that tab is
+    closed (reopened requests start fresh), on workspace/collection switches,
+    and on workspace/team deletion. New context API: `canUndoRequest`,
+    `canRedoRequest`, `canGoBackRequest`, `undoActiveRequest`,
+    `redoActiveRequest`, `goBackRequest`.
+- **UI (`frontend/src/components/RequestTabs.tsx`, `icons.tsx`)**
+  — the existing tab strip is wrapped in `.request-tabs-bar`
+  (`data-testid="request-tabs-bar"`) with a leading `.request-nav-controls`
+  group hosting `request-back` / `request-undo` / `request-redo` ghost
+  buttons (Back = arrow-left, Undo/Redo = corner arrows; each disabled at the
+  end of its history). Every pre-existing testid/behavior — `request-tabs`,
+  `request-tab-switch-*`, `request-tab-close-*`, `unsaved-dot`,
+  `save-request-button`, `aria-selected`, close-dirty confirmation,
+  Ctrl+Q/Ctrl+Shift+Q reopen — is unchanged. Keyboard support lives in a new
+  hook `useRequestHistoryShortcuts.ts` (capture-phase `window` keydown,
+  mirroring `useCloseRequestTabShortcut`), firing Ctrl+Z (undo) and Ctrl+Y /
+  Ctrl+Shift+Z (redo) only when focus is NOT in an editable element
+  (input/textarea/select/contentEditable/CodeMirror), so native editor undo is
+  untouched while typing. Responsive sizing in `globals.css` +
+  `mobile.chrome.css` (30px touch targets ≤640px).
+- **e2e (`frontend/e2e/request-undo-redo-back.spec.ts`, 4 tests)** — back
+  order over 3 requests; undo/redo working-copy semantics with the dirty dot
+  and redo-stack clearing on a new edit; back reopening a closed dirty tab and
+  restoring its unsaved working copy; Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y behavior
+  with the focus guard. The spec is hermetic: it uses `/echo/...` mock URLs and
+  never asserts `posts/N` content (the shared mock store is mutated by earlier
+  specs). Regression-critical specs re-verified green: `request-tabs`,
+  `dirty-dot`, `send-working-copy`.
+- **Verification:** `npx tsc --noEmit` clean; `npm test` 89/89; `next build`
+  green. Full desktop Playwright suite (26 specs / 43 tests) on a freshly
+  reset + `seed:dev` DB with a fresh `mock-upstream.js` (:3999): **41 passed,
+  2 failed** — the two failures are the documented environmental
+  `assertions-runner` (shared-mock ordering: collection summary showed
+  "Requests: 10" vs the seeded 8 because earlier specs mutated "Mock API
+  Demo") and `nav-race` (URL stayed /manage); both reproduce on the clean
+  pre-change baseline and pass in isolation on a fresh mock (see §8). Suite
+  total grew from 25 specs / 39 tests to 26 specs / 43 tests.
+
 ### 5.29 Narrow-pane preview UI fix (this turn)
 
 QA feedback in the platform preview pane (< 641px wide): "Fonts and buttons
@@ -852,6 +918,13 @@ final M9 wrap-up per user instruction.
 
 ## 6. Verification performed
 
+- Undo/redo/back turn (§5.30): frontend `tsc --noEmit` clean, `npm test`
+  89/89, `next build` green. Full desktop e2e (26 specs / 43 tests) on a fresh
+  reset+seed DB and fresh mock-upstream: **41 passed, 2 failed** — the two
+  failures are the documented environmental `assertions-runner` (shared-mock
+  ordering) and `nav-race`; the new `request-undo-redo-back` spec passed 4/4
+  and the regression-critical `request-tabs` / `dirty-dot` /
+  `send-working-copy` specs stayed green.
 - Mobile-responsive UI (this turn, §5.27): frontend `tsc --noEmit` clean,
   `npm test` 89/89, `next build` green, 390px smoke passed (no overflow,
   drawer open→browse→request-select close, editor fits). Desktop e2e at
@@ -877,12 +950,28 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-None — the team/project-scoped workspace turn (§5.28), the mobile-responsive
-UI turn (§5.27) and the structured multipart body-parts feature (§5.26) are
-committed and pushed on `master`; working tree clean.
+Per-request undo/redo + back-to-previous turn (§5.30): `WorkspaceStore.tsx`,
+`RequestTabs.tsx`, `icons.tsx`, `globals.css`, `mobile.chrome.css` + new
+`useRequestHistoryShortcuts.ts` and `e2e/request-undo-redo-back.spec.ts`
+(plus `tsconfig.tsbuildinfo` churn — leave it). Committed and pushed on
+`master` alongside this docs update.
+
+Prior to that, the team/project-scoped workspace turn (§5.28), the
+mobile-responsive UI turn (§5.27) and the structured multipart body-parts
+feature (§5.26) were committed and pushed on `master`.
 
 ## 8. Known issues / notes for the next agent
 
+- **Undo/redo/back turn (§5.30) — full suite 41/43, same two environmental
+  flakes:** `assertions-runner` (expected `Requests: 8`, received
+  `Requests: 10` — earlier specs in the run mutate the shared in-memory
+  `mock-upstream.js` store / add requests to the seeded "Mock API Demo"
+  collection) and `nav-race` (URL stays on `/manage`). Both reproduce on the
+  clean pre-change baseline and pass in isolation after a fresh
+  `reset:db` + `seed:dev` + fresh `mock-upstream.js`. The new
+  `request-undo-redo-back` spec is hermetic by design: it only uses
+  `/echo/...` mock URLs and never asserts `posts/N` content. Suite is now
+  26 specs / 43 tests.
 - ~~**Deleting a run request via the API fails**~~ **FIXED**: migration
   `005_relax_run_history_target.sql` relaxes the `run_history_target` CHECK constraint to
   `NOT (request_id IS NOT NULL AND workflow_id IS NOT NULL)`, so `ON DELETE SET NULL` from a request/

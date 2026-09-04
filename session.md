@@ -7,51 +7,86 @@ Last updated: 2026-09-04
 
 ## Current
 
-Step: NARROW-PANE UI POLISH — after QA feedback in the ~600px preview pane
-("fonts/buttons very big", "split/side-by-side not working"), the <900px/
-<640px mobile CSS no longer silently stacks the side-by-side split, and the
-phone-size touch controls were compacted so the studio no longer looks blown
-up in a slim pane.
-Status: COMPLETE — verified live at 360-1440px (side-by-side now works down
-to 390px; controls 34-36px; zero overflow); tsc clean, 89/89 unit, `next
-build` green, full desktop e2e 37/39 with only the documented environmental
-flakes; committed and pushed to `origin/master`.
+Step: PER-REQUEST UNDO/REDO + BACK TO PREVIOUS REQUEST — every open request
+tab gets its own undo/redo history over working-copy edits (never touches the
+DB), exposed as `request-back` / `request-undo` / `request-redo` buttons on
+the tab bar plus global Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z shortcuts that no-op
+while focus is in any editable field (native editor undo untouched).
+Status: COMPLETE — tsc clean, 89/89 unit, `next build` green, new e2e spec
+4/4, full desktop e2e 41/43 with only the two documented environmental flakes
+(`assertions-runner` shared-mock ordering, `nav-race`); committed and pushed
+to `origin/master`.
 
-THIS TURN (2026-09-04, narrow-pane preview QA fix):
-- QA feedback in the platform preview pane (< 641px): "Fonts and buttons are
-  very big, align everything properly, and also split view or side by side is
-  not working properly check that as well." Investigation (measured, not
-  guessed) showed the desktop >900px UI is compact 13px text with 28-44px
-  buttons and both split modes already render correctly on every desktop
-  width — the complaint only reproduced at ≤640px, where
-  `frontend/app/mobile.editor.css` deliberately forced `.split-pane-horizontal`
-  into stacked full-width panes (so choosing "Side by side" visibly did
-  nothing) and inflated every control to 40-46px touch targets.
-- Fixes (all inside `frontend/app/mobile.editor.css`, media-scoped; desktop
-  and all committed testids untouched):
-  - ≤900px: removed the forced horizontal-split→stack override — "Side by
-    side" is honored at every width (columns keep `min-width:0` + internal
-    scroll, divider widened to 10px for touch). Verified down to 390px (two
-    usable resizable columns); vertical Split unchanged.
-  - ≤640px: compacted phone-size controls — method/url inputs 42→34px, Send
-    44→36px and no longer full-width (actions are one left-aligned wrapping
-    row of api-type + Send + Save + export at ≥480px), editor tabs 40→36px,
-    KV/multipart/assertion inputs 40→34px, row icon/ghost buttons 40→34px,
-    response tabs/actions 36→32px, formula + scratchpad rows 44-46→38px,
-    CodeMirror min-height 40vh→32vh. Body font stays 13px everywhere; zero
-    horizontal overflow at any probed width 360-1440px.
-- Verification: Playwright geometry sweeps (controls + pane boxes +
-  scrollWidth-vs-clientWidth) across 1440→360px in every view mode found
-  correct side-by-side columns and no overflow; tsc clean; unit 89/89;
-  `next build` green; full desktop e2e (25 specs / 39 tests) 37/39 — the two
-  failures are the documented environmental `nav-race` plus a first-compile
-  variant of `history.spec` (first `/history` dev compile 5.6s > the spec's
-  5s assertion; passes warm — unrelated to this CSS change).
-- Running now: frontend `npm run dev` :3000 (term_1788550670180_29), backend
-  :3001, mock upstream :3999; preview
-  https://3000-d996ae6ab8ef93e4.monkeycode-ai.live
-- Commit: `138631e` (fix(ui): honor side-by-side split and compact controls in
-  narrow preview panes) — pushed to `origin/master`; tree clean.
+THIS TURN (2026-09-04, per-request undo/redo + back to previous request):
+- Scope: per-request Undo/Redo toolbar buttons with global Ctrl+Z / Ctrl+Y /
+  Ctrl+Shift+Z shortcuts, plus a "Back to previous request" button. Confirmed
+  scope: undo/redo covers working-copy edits ONLY — the DB is never touched;
+  Save moves the baseline so undoing past a save re-dirties the tab. Back
+  follows chronological activation order (open+use 1 → 2 → 3, Back → 2); a
+  previously-active request closed since is reopened at its original tab
+  position with its unsaved working copy + baseline restored.
+- Store (`frontend/src/store/WorkspaceStore.tsx`): per-request edit history in
+  refs keyed by requestId (`editUndoRef`/`editRedoRef` — snapshots of the
+  whole `ApiRequest` working copy), coalesced into steps by an 800ms burst
+  timer (`EDIT_BURST_MS`, limit `EDIT_HISTORY_LIMIT=100`) that resets on tab
+  switch/reactivation; a redo stack clears on any new edit. `updateActiveRequest`
+  writes straight to `activeRequest`/ref and owns the burst logic. Back state
+  is a `navStackRef: string[]` of real active-request transitions (effect on
+  `activeRequestId`, deduped, never on A→null, never re-pushed when
+  re-clicking the active tab); `goBackRequest` walks it newest→oldest and
+  switches to an open tab, else reopens a `closedTabs` entry at its original
+  index, else refetches via `selectRequest` (a deleted request is skipped).
+  History/back state clears on tab close, request delete, workspace/collection
+  switches, and workspace/team deletion. New context API: `canUndoRequest`,
+  `canRedoRequest`, `canGoBackRequest`, `undoActiveRequest`,
+  `redoActiveRequest`, `goBackRequest`.
+- UI (`frontend/src/components/RequestTabs.tsx`): the tab strip is wrapped in
+  `.request-tabs-bar` (`data-testid="request-tabs-bar"`) with a leading
+  `.request-nav-controls` group: `request-back`, `request-undo`, `request-redo`
+  (each disabled at the end of history). Existing `request-tab-switch-*` /
+  `request-tab-close-*`, `unsaved-dot`, `save-request-button`, `aria-selected`
+  all untouched. New icons `BackIcon`/`UndoIcon`/`RedoIcon` in `icons.tsx`;
+  CSS in `globals.css` + `mobile.chrome.css` (30px touch targets ≤640px).
+- Shortcuts (`frontend/src/components/useRequestHistoryShortcuts.ts`, new):
+  capture-phase `keydown` at `window`; only fires when focus is NOT in an
+  editable element (input/textarea/select/contentEditable/CodeMirror), so
+  Ctrl+Z keeps doing native editor undo while typing. Ctrl+Z undo; Ctrl+Y and
+  Ctrl+Shift+Z redo (Cmd variants on macOS).
+- New e2e `frontend/e2e/request-undo-redo-back.spec.ts` (4 tests): back order
+  over 3 requests; undo/redo working-copy semantics incl. dirty dot and redo
+  cleared by a new edit; back reopens a closed dirty tab restoring its unsaved
+  working copy; Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo/redo with the focus guard.
+  Existing regression-critical specs re-verified (request-tabs, dirty-dot,
+  send-working-copy, request-tabs bar).
+- Verification: `npx tsc --noEmit` clean; `npm test` 89/89; `next build`
+  green; full desktop e2e on a fresh reset+seed DB and fresh mock-upstream
+  (:3999): 26 specs / 43 tests → **41 passed, 2 failed** — the two failures
+  are the documented environmental `assertions-runner` (shared mock state:
+  "Requests: 8" saw 10) and `nav-race` (URL stays /manage), both reproduce on
+  the clean baseline; the new spec passed 4/4 and `send-working-copy`/
+  `request-tabs` stayed green.
+- Running now: frontend `npm run dev` :3000 (term_1788555014639_40), backend
+  :3001 (term_1788544342120_23), mock upstream :3999 (term_1788554330931_36);
+  preview https://3000-d996ae6ab8ef93e4.monkeycode-ai.live
+- Commit: see git log (this turn's undo/redo/back work) — pushed to
+  `origin/master`.
+
+PREVIOUS TURN (2026-09-04, narrow-pane preview UI fix — commit `138631e`):
+- QA feedback at <641px in the preview pane ("fonts/buttons very big",
+  "split/side-by-side not working") traced to `frontend/app/mobile.editor.css`
+  only: the ≤900px override forced `.split-pane-horizontal` into stacked panes
+  (so "Side by side" visibly did nothing) and ≤640px touch controls were
+  inflated (40-46px). Fixed media-scoped: "Side by side" honored down to 390px
+  (divider 10px); controls compacted (method/url 42→34px, Send 44→36px and no
+  longer full-width, editor tabs 40→36px, KV/multipart/assertion inputs
+  40→34px, row buttons 40→34px, response tabs 36→32px, formula/scratchpad rows
+  44-46→38px, CodeMirror 40vh→32vh). Body font stays 13px; zero overflow at
+  every probed width 360-1440px.
+- Verified: Playwright geometry sweeps (control sizes, pane boxes,
+  scrollWidth-vs-clientWidth) across widths/view modes; tsc clean, unit 89/89,
+  `next build` green, full desktop e2e 37/39 (documented environmental
+  `nav-race` + cold-compile `history.spec`, passes warm). Committed `138631e`;
+  pushed to `origin/master`.
 
 PREVIOUS TURN (2026-09-04, team/project-scoped workspaces — commit `6846d88`):
 - User scope: "We should be able to create everything based on team wise" — a

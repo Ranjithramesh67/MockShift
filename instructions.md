@@ -234,6 +234,7 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M16 | Structured multipart/form-data parts — text + FILE rows in request editor + scratchpad; run sends real file bytes (ephemeral); save persists file reference only | done (this turn, pushed) |
 | M17 | Full mobile responsive UI + touch UX (off-canvas drawer nav, bottom-sheet modals, stacked card tables, compact editor) — 4 parallel agents | done (this turn, pushed) |
 | M18 | Team- and project-scoped workspaces — team-first grouped nav (`/api/teams/groups`) + Project Overview command center (members & access mgmt for admins AND project managers, workspace info panel, activity), self-service member role changes | done (this turn, pushed) |
+| M19 | Per-request undo/redo + back-to-previous — per-tab undo/redo history over working-copy edits (`request-undo`/`request-redo` toolbar buttons + global Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z with editable-focus guard) and `request-back` (activation-order nav stack; reopens closed tabs with unsaved work) | done (this turn, pushed) |
 
 ## M17 — Mobile responsive UI + touch UX (done)
 
@@ -307,6 +308,44 @@ were compacted (Send 44→36px and no longer full-width, inputs 42/40→34px,
 tabs/rows 40-46→34-38px, CodeMirror 40vh→32vh). Verified with Playwright
 geometry sweeps 1440→360px (no overflow, correct columns); desktop and all
 testids untouched. Docs: docs/SESSION.md §5.29.
+
+## M19 — Per-request undo/redo + back to previous request (done)
+
+Postman-style edit recovery on top of the M3/M6 working-copy model. Undo/redo
+is scoped to **working-copy edits only** (the DB is never touched; Save moves
+the baseline, so undoing past a save re-dirties the tab); Back follows the
+chronological activation order.
+
+- Store (`frontend/src/store/WorkspaceStore.tsx`): per-request undo/redo
+  stacks live in refs keyed by requestId (`editUndoRef`/`editRedoRef`) as full
+  `ApiRequest` snapshots, coalesced into steps by an 800ms burst timer
+  (`EDIT_BURST_MS`, `EDIT_HISTORY_LIMIT=100`) that resets on tab switch/
+  reactivation; a new edit clears that request's redo stack. `updateActiveRequest`
+  owns the burst logic and writes straight to `activeRequest`/ref. Back state
+  is a `navStackRef` of real active-request transitions recorded by an effect
+  (deduped; never on A→null; re-clicking an already-active tab never re-pushes).
+  `goBackRequest` switches to an open tab, else reopens a `closedTabs` entry
+  at its original index, else refetches via `selectRequest`; deleted requests
+  are skipped. History/back state clears on tab close, request delete,
+  workspace/collection switch, and workspace/team deletion. New context API:
+  `canUndoRequest`/`canRedoRequest`/`canGoBackRequest` +
+  `undoActiveRequest`/`redoActiveRequest`/`goBackRequest`.
+- UI: `RequestTabs.tsx` wraps the tab strip in `.request-tabs-bar`
+  (`data-testid="request-tabs-bar"`) with a leading `.request-nav-controls` group
+  (`request-back`, `request-undo`, `request-redo`; disabled at history ends);
+  new `BackIcon`/`UndoIcon`/`RedoIcon` in `icons.tsx`; sizing in
+  `globals.css` + `mobile.chrome.css`. All pre-existing tab/close/dirty-dot/
+  save testids and Ctrl+Q/Ctrl+Shift+Q reopen behavior unchanged.
+- Shortcuts: new `frontend/src/components/useRequestHistoryShortcuts.ts`
+  (capture-phase `window` keydown) maps Ctrl+Z→undo and Ctrl+Y / Ctrl+Shift+Z
+  →redo, firing only when focus is not in an editable element
+  (input/textarea/select/contentEditable/CodeMirror) so native editor undo is
+  preserved while typing.
+- e2e: `frontend/e2e/request-undo-redo-back.spec.ts` (4 tests, hermetic via
+  `/echo/...` mock URLs). Verified: `tsc --noEmit` clean, `npm test` 89/89,
+  `next build` green, full desktop e2e 41/43 (the two failures are the
+  documented environmental `assertions-runner` shared-mock ordering and
+  `nav-race`). Docs: docs/SESSION.md §5.30.
 
 ## M16 — Structured multipart/form-data parts (done)
 
