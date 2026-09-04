@@ -896,7 +896,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const ws = useWorkspace();
   const { user } = useAuth();
   const { dispatch } = useApp();
-  const { setView } = useNav();
+  const { view, setView } = useNav();
   const router = useRouter();
   const [rail, setRail] = useState<RailTab>('apis');
   const [collapsed, setCollapsed] = useState(false);
@@ -1010,7 +1010,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
       <nav className="rail" aria-label="Sidebar navigation">
         <button
           type="button"
-          className={`rail-button ${rail === 'apis' ? 'active' : ''}`}
+          className={`rail-button ${view === 'workspace' && rail === 'apis' ? 'active' : ''}`}
           data-testid="rail-apis"
           title="APIs & collections"
           aria-label="APIs & collections"
@@ -1024,13 +1024,14 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         </button>
         <button
           type="button"
-          className={`rail-button ${rail === 'teams' ? 'active' : ''}`}
+          className={`rail-button ${view === 'workspace' && rail === 'teams' ? 'active' : ''}`}
           data-testid="rail-teams"
           title="Teams"
           aria-label="Teams"
           onClick={() => {
             setRail('teams');
             setCollapsed(false);
+            goWorkspace();
           }}
         >
           <TeamIcon size={17} />
@@ -1038,7 +1039,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         <div className="rail-sep" />
         <Link
           href="/automations"
-          className="rail-button"
+          className={`rail-button ${view === 'automations' ? 'active' : ''}`}
           data-testid="rail-automations"
           title="Automations"
           aria-label="Automations"
@@ -1048,7 +1049,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         </Link>
         <Link
           href="/history"
-          className="rail-button"
+          className={`rail-button ${view === 'history' ? 'active' : ''}`}
           data-testid="rail-history"
           title="Run history"
           aria-label="Run history"
@@ -1059,7 +1060,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         {canManage && (
           <Link
             href="/manage"
-            className="rail-button"
+            className={`rail-button ${view === 'manage' ? 'active' : ''}`}
             data-testid="rail-manage"
             title="Manage"
             aria-label="Manage"
@@ -1071,7 +1072,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         {user?.role === 'ADMIN' && (
           <Link
             href="/admin"
-            className="rail-button"
+            className={`rail-button ${view === 'admin' ? 'active' : ''}`}
             data-testid="rail-admin"
             title="Admin"
             aria-label="Admin"
