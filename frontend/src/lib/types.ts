@@ -25,6 +25,18 @@ export interface KeyValueEntry {
   enabled: boolean;
 }
 
+export interface BodyFormPart {
+  id: string;
+  key: string;
+  enabled: boolean;
+  kind: 'text' | 'file';
+  value?: string; // text parts
+  fileName?: string; // file parts (persisted reference)
+  fileType?: string; // file parts (mime)
+  fileSize?: number; // file parts
+  data?: string; // transport-only base64 file bytes (NEVER persisted)
+}
+
 export type AssertionType = 'status' | 'jsonPath' | 'header' | 'responseTime';
 export type AssertionOperator = 'eq' | 'neq' | 'contains' | 'gt' | 'lt';
 
@@ -48,6 +60,7 @@ export interface ApiRequest {
   bodyType: BodyType;
   bodyJson: string | null; // serialized JSON/XML/form text shown in the editor
   bodyText?: string | null; // raw text body captured by cURL import
+  bodyParts?: BodyFormPart[]; // structured MULTIPART editor parts (UI falls back to bodyParts ?? [])
   contentType: RequestContentType;
   formula: string; // pre-request / pre-step sandbox formula
   apiType: ApiType;

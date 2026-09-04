@@ -1,6 +1,6 @@
 'use client';
 
-import type { Assertion } from './types';
+import type { Assertion, BodyFormPart } from './types';
 
 export type ApiType = 'REST' | 'SOAP' | 'GRAPHQL' | 'AUTH';
 export type WorkspaceVisibility = 'PRIVATE' | 'PUBLIC';
@@ -89,6 +89,7 @@ export interface RequestDetail {
   bodyType: string;
   bodyJson: string | null;
   bodyText: string | null;
+  bodyParts: BodyFormPart[];
   apiType: ApiType;
   formula: string;
   collectionId: string;
@@ -259,6 +260,8 @@ export const contentApi = {
     bodyType?: string;
     bodyJson?: unknown;
     bodyText?: string | null;
+    bodyParts?: BodyFormPart[];
+    id?: string;
     formula?: string;
     assertions?: Assertion[];
     apiType?: ApiType;

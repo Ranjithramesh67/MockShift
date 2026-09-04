@@ -5,6 +5,7 @@ import type { ApiRequest, ApiType, HttpMethod, RequestContentType } from '@/lib/
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { isCurlCommand, parseCurl } from '@/lib/curl';
+import { seedPartsFromLegacy } from '@/lib/multipartParts';
 import {
   METHODS,
   API_TYPES,
@@ -15,6 +16,7 @@ import {
   type BodyKind,
 } from '@/lib/requestForm';
 import { KeyValueRows } from './KeyValueRows';
+import { MultipartRows } from './MultipartRows';
 import { CodeEditor } from './CodeEditor';
 import { TabBar } from './TabBar';
 import { CodeGenModal } from './CodeGenModal';
@@ -101,6 +103,9 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           bodyJson: parsed.bodyJson ?? parsed.bodyText ?? null,
           bodyText: parsed.bodyText ?? null,
           contentType: parsed.contentType,
+          ...(parsed.bodyType === 'MULTIPART'
+            ? { bodyParts: seedPartsFromLegacy(parsed.bodyText ?? '') }
+            : {}),
         });
         dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'cURL parsed into the request.' });
         return;
@@ -117,11 +122,22 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
 
   const onBodyKindChange = (kind: BodyKind) => {
     const next = bodyTypeForKind(kind);
-    update({
-      bodyType: next.bodyType,
-      contentType: next.contentType,
-      bodyJson: kind === 'NONE' ? null : request.bodyJson ?? '',
-    });
+    if (kind === 'MULTIPART') {
+      update({
+        bodyType: next.bodyType,
+        contentType: next.contentType,
+        bodyJson: null,
+        bodyParts: request.bodyParts?.length
+          ? request.bodyParts
+          : seedPartsFromLegacy(request.bodyText ?? ''),
+      });
+    } else {
+      update({
+        bodyType: next.bodyType,
+        contentType: next.contentType,
+        bodyJson: kind === 'NONE' ? null : request.bodyJson ?? '',
+      });
+    }
   };
 
   const onSend = async () => {
@@ -279,6 +295,13 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
             </div>
             {bodyKind === 'NONE' ? (
               <div className="panel-empty">This request has no body.</div>
+            ) : bodyKind === 'MULTIPART' ? (
+              <MultipartRows
+                parts={request.bodyParts ?? []}
+                onChange={(parts) => update({ bodyParts: parts })}
+                files={ws.selectedFiles?.[request.id] ?? {}}
+                onFileChange={(partId, file) => ws.setFileForPart(request.id, partId, file)}
+              />
             ) : (
               <CodeEditor
                 value={request.bodyJson ?? ''}

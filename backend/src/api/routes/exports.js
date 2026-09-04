@@ -42,7 +42,7 @@ async function serializeCollection(collectionId) {
 
   const { rows: requests } = await query(
     `SELECT id, name, method, url, headers, query_params, body_type, body_json,
-            body_text, api_type, formula, assertions, folder_id
+            body_text, body_parts, api_type, formula, assertions, folder_id
        FROM api_requests
       WHERE collection_id = $1
       ORDER BY name`,
@@ -85,6 +85,7 @@ async function serializeCollection(collectionId) {
         bodyType: safe.body_type,
         bodyJson: safe.body_json ?? null,
         bodyText: safe.body_text ?? null,
+        bodyParts: Array.isArray(safe.body_parts) ? safe.body_parts : [],
         apiType: safe.api_type,
         formula: safe.formula || '',
         assertions: safe.assertions || [],
@@ -146,6 +147,32 @@ function cleanAssertions(value) {
   return value.filter((a) => a && typeof a === 'object');
 }
 
+function cleanBodyParts(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const p of value) {
+    if (!p || typeof p !== 'object') continue;
+    const key = cleanString(p.key, 200) ?? '';
+    if (!key) continue;
+    const kind = p.kind === 'file' ? 'file' : 'text';
+    const part = {
+      id: typeof p.id === 'string' && p.id ? p.id.slice(0, 100) : null,
+      key,
+      enabled: p.enabled !== false,
+      kind,
+    };
+    if (kind === 'file') {
+      part.fileName = cleanString(p.fileName, 500) ?? '';
+      part.fileType = cleanString(p.fileType, 200) ?? '';
+      part.fileSize = Number.isFinite(p.fileSize) ? Math.max(0, Math.floor(p.fileSize)) : 0;
+    } else {
+      part.value = cleanString(p.value, 200000) ?? '';
+    }
+    out.push(part);
+  }
+  return out;
+}
+
 function validateRequest(input, index) {
   if (!input || typeof input !== 'object') {
     return { error: `Request #${index + 1} is invalid` };
@@ -180,6 +207,7 @@ function validateRequest(input, index) {
       bodyType,
       bodyJson,
       bodyText,
+      bodyParts: bodyType === 'MULTIPART' ? cleanBodyParts(input.bodyParts) : [],
       formula,
       headers: cleanKvArray(input.headers),
       queryParams: cleanKvArray(input.queryParams),
@@ -282,8 +310,8 @@ router.post('/collections/import', async (req, res, next) => {
       const { rows: reqRows } = await client.query(
         `INSERT INTO api_requests
            (collection_id, folder_id, name, method, url, api_type, headers, query_params,
-            body_type, body_json, body_text, formula, assertions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            body_type, body_json, body_text, body_parts, formula, assertions)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING id, name, method, url, api_type`,
         [
           newCollection.id,
@@ -297,6 +325,7 @@ router.post('/collections/import', async (req, res, next) => {
           r.bodyType,
           r.bodyJson,
           r.bodyText,
+          r.bodyParts.length ? JSON.stringify(r.bodyParts) : null,
           r.formula,
           JSON.stringify(r.assertions),
         ]

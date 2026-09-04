@@ -357,7 +357,13 @@ function generateCurl(request) {
     parts.push('-H', shellQuote(`${header.key}: ${header.value}`));
   }
 
-  const hasBody = request.bodyType !== 'NONE' && !!request.bodyJson;
+  const activeMultipartParts = (request.bodyParts || []).filter(
+    (p) => p.enabled !== false && p.key
+  );
+  const isMultipartBody = request.bodyType === 'MULTIPART';
+  const hasBody =
+    request.bodyType !== 'NONE' &&
+    (isMultipartBody ? activeMultipartParts.length > 0 : !!request.bodyJson);
   if (hasBody) {
     const hasCt = (request.headers || []).some(
       (h) => h.enabled && h.key.toLowerCase() === 'content-type'
@@ -365,8 +371,14 @@ function generateCurl(request) {
     if (!hasCt && request.contentType) {
       parts.push('-H', shellQuote(`Content-Type: ${request.contentType}`));
     }
-    if (request.bodyType === 'MULTIPART') {
-      parts.push('--form-string', shellQuote(request.bodyJson));
+    if (isMultipartBody) {
+      for (const p of activeMultipartParts) {
+        if (p.kind === 'file') {
+          parts.push('--form', shellQuote(`${p.key}=@${p.fileName || 'file'}`));
+        } else {
+          parts.push('--form-string', shellQuote(`${p.key}=${p.value ?? ''}`));
+        }
+      }
     } else if (request.bodyType === 'JSON' || request.bodyType === 'FORM_URLENCODED') {
       parts.push('--data-raw', shellQuote(request.bodyJson));
     } else {

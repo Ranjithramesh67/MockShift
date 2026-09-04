@@ -366,7 +366,7 @@ router.post('/folders/:folderId/duplicate', async (req, res, next) => {
 
     const { rows: folderRequests } = await client.query(
       `SELECT id, collection_id, name, method, url, headers, query_params, body_type, body_json,
-              body_text, api_type, formula, assertions, folder_id
+              body_text, body_parts, api_type, formula, assertions, folder_id
          FROM api_requests WHERE folder_id = ANY($1::uuid[])`,
       [[...seen]]
     );
@@ -375,8 +375,8 @@ router.post('/folders/:folderId/duplicate', async (req, res, next) => {
       const { rows } = await client.query(
         `INSERT INTO api_requests
            (collection_id, name, method, url, api_type, headers, query_params, body_type,
-            body_json, body_text, formula, assertions, folder_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            body_json, body_text, body_parts, formula, assertions, folder_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING id, name, method, url, api_type, collection_id, folder_id`,
         [
           r.collection_id,
@@ -389,6 +389,7 @@ router.post('/folders/:folderId/duplicate', async (req, res, next) => {
           r.body_type,
           r.body_json,
           r.body_text,
+          r.body_parts ? JSON.stringify(r.body_parts) : null,
           r.formula,
           JSON.stringify(r.assertions || []),
           idMap.get(r.folder_id) || null,
@@ -453,7 +454,7 @@ router.get('/requests/:requestId', async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
-              api_type, collection_id, folder_id, formula, assertions
+              body_parts, api_type, collection_id, folder_id, formula, assertions
          FROM api_requests WHERE id = $1`,
       [req.params.requestId]
     );
@@ -482,6 +483,7 @@ router.get('/requests/:requestId', async (req, res, next) => {
         bodyType: request.body_type,
         bodyJson: request.body_json,
         bodyText: request.body_text,
+        bodyParts: request.body_parts || [],
         apiType: request.api_type,
         collectionId: request.collection_id,
         folderId: request.folder_id ?? null,
@@ -527,6 +529,7 @@ router.put('/requests/:requestId', async (req, res, next) => {
       body_type: b.bodyType,
       body_json: b.bodyJson,
       body_text: b.bodyText,
+      body_parts: b.bodyParts,
       formula: b.formula,
       assertions: b.assertions,
       folder_id: b.folderId === undefined ? undefined : b.folderId || null,
@@ -538,8 +541,8 @@ router.put('/requests/:requestId', async (req, res, next) => {
       if (col === 'method' && !HTTP_METHODS.includes(value)) continue;
       if (col === 'api_type' && !API_TYPES.includes(value)) continue;
       if (col === 'body_type' && !BODY_TYPES.includes(value)) continue;
-      if (col === 'headers' || col === 'query_params' || col === 'assertions') {
-        params.push(JSON.stringify(value));
+      if (col === 'headers' || col === 'query_params' || col === 'assertions' || col === 'body_parts') {
+        params.push(value === null ? null : JSON.stringify(value));
       } else {
         params.push(value);
       }
@@ -584,7 +587,7 @@ router.post('/requests/:requestId/duplicate', async (req, res, next) => {
     const { requestId } = req.params;
     const { rows } = await query(
       `SELECT id, collection_id, name, method, url, headers, query_params, body_type, body_json,
-              body_text, api_type, formula, assertions, folder_id
+              body_text, body_parts, api_type, formula, assertions, folder_id
          FROM api_requests WHERE id = $1`,
       [requestId]
     );
@@ -597,8 +600,8 @@ router.post('/requests/:requestId/duplicate', async (req, res, next) => {
     const { rows: created } = await query(
       `INSERT INTO api_requests
          (collection_id, name, method, url, api_type, headers, query_params, body_type,
-          body_json, body_text, formula, assertions, folder_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          body_json, body_text, body_parts, formula, assertions, folder_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id, name, method, url, api_type, collection_id, folder_id`,
       [
         source.collection_id,
@@ -611,6 +614,7 @@ router.post('/requests/:requestId/duplicate', async (req, res, next) => {
         source.body_type,
         source.body_json,
         source.body_text,
+        source.body_parts ? JSON.stringify(source.body_parts) : null,
         source.formula,
         JSON.stringify(source.assertions || []),
         source.folder_id,
@@ -656,7 +660,7 @@ router.post('/requests/:requestId/run', async (req, res, next) => {  try {
 // ------------------------------------------------------------ Ephemeral runs
 router.post('/runs', async (req, res, next) => {
   try {
-    const { collectionId } = req.body || {};
+    const { collectionId, id } = req.body || {};
     if (collectionId) {
       const projectId = await projectOfCollection(collectionId);
       if (!projectId) return res.status(404).json({ error: 'Collection not found' });
@@ -665,6 +669,14 @@ router.post('/runs', async (req, res, next) => {
       }
     }
     const result = await runInMemoryRequest(req.body || {}, req.user.id);
+    // When the ephemeral run targets an existing request (multipart file sends
+    // carry file bytes the stored-run endpoint cannot), persist history against
+    // that request and fire the usual ON_REQUEST / ON_RUN_FAILURE events so the
+    // run behaves exactly like a stored-request run.
+    if (id && req.body.persistHistory && result.runId) {
+      const projectId = await projectOfRequest(id);
+      if (projectId) await fireRequestRunEvents(id, projectId, result);
+    }
     res.json(result);
   } catch (err) {
     next(err);

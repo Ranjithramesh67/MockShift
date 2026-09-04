@@ -231,6 +231,7 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M13 | Drag-and-drop move: folder between nested folders | done (this turn) |
 | M14 | Rework scratchpad: full-width editor + save location picker | done (pushed `edff412`) |
 | M15 | Verify/fix pulled commit `7af6044` (Ctrl+Enter editors + formula helpers panel + admin Access tab) | done (this turn, pushed) |
+| M16 | Structured multipart/form-data parts — text + FILE rows in request editor + scratchpad; run sends real file bytes (ephemeral); save persists file reference only | done (this turn, pushed) |
 
 ## M14 — Rework scratchpad (done)
 
@@ -258,6 +259,21 @@ location picker (user decisions above):
 - e2e `frontend/e2e/scratchpad.spec.ts` rewritten for the new UI (open editor,
   method/url, send → response shown + no request created; save → picker asks
   name, pick collection + nested folder → request appears at that folder).
+
+## M16 — Structured multipart/form-data parts (done)
+
+Postman-style multipart parts in the request editor AND scratchpad: text rows
+plus a file picker per part. Running sends a real multipart/form-data body
+(file bytes are carried base64 in the ephemeral `POST /api/runs` payload — they
+are never stored); saving a MULTIPART request persists the parts array into the
+new `api_requests.body_parts` jsonb column (migration `012`), storing only the
+file reference (name/type/size). After a reload a file part shows
+"Re-choose a file to send". Design: `bodyParts` parts =
+`{ id, key, enabled, kind:'text'|'file', value?|fileName?/fileType?/fileSize? }`,
+`data` (base64) only ever appears on run payloads. Legacy raw-text MULTIPART
+requests keep their old path. See docs/SESSION.md §5.26 for the full file-by-file
+breakdown. Verified: backend test:api 63, jest 47, test:api:unit 49; frontend
+tsc clean + 89 unit tests.
 
 ## M15 — Verify/fix pulled remote commit `7af6044` (done)
 

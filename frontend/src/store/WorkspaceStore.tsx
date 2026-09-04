@@ -26,9 +26,15 @@ import {
   type UserRole,
   type Workspace,
 } from '@/lib/api';
-import type { ApiRequest, Assertion, BodyType, RequestContentType } from '@/lib/types';
+import type { ApiRequest, Assertion, BodyFormPart, BodyType, RequestContentType } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
 import { openTab, closeTab, insertTab } from '@/lib/tabs';
+import {
+  normalizeParts,
+  seedPartsFromLegacy,
+  stripTransportData,
+  readFileAsBase64,
+} from '@/lib/multipartParts';
 
 function contentTypeForBodyType(bt: string): RequestContentType {
   switch (bt) {
@@ -55,15 +61,23 @@ export function toEditorRequest(d: {
   bodyType?: string;
   bodyJson?: unknown;
   bodyText?: string | null;
+  bodyParts?: BodyFormPart[];
   apiType?: ApiType;
   formula?: string;
   assertions?: Assertion[];
 }): ApiRequest {
+  const isMultipart = (d.bodyType || 'NONE') === 'MULTIPART';
   let bodyJson: string | null = null;
-  if (d.bodyJson !== undefined && d.bodyJson !== null) {
-    bodyJson = typeof d.bodyJson === 'string' ? d.bodyJson : JSON.stringify(d.bodyJson, null, 2);
-  } else if (d.bodyText) {
-    bodyJson = d.bodyText;
+  if (!isMultipart) {
+    if (d.bodyJson !== undefined && d.bodyJson !== null) {
+      bodyJson = typeof d.bodyJson === 'string' ? d.bodyJson : JSON.stringify(d.bodyJson, null, 2);
+    } else if (d.bodyText) {
+      bodyJson = d.bodyText;
+    }
+  }
+  let bodyParts = normalizeParts(d.bodyParts);
+  if (isMultipart && bodyParts.length === 0 && typeof d.bodyText === 'string' && d.bodyText.length > 0) {
+    bodyParts = seedPartsFromLegacy(d.bodyText);
   }
   return {
     id: d.id,
@@ -74,6 +88,7 @@ export function toEditorRequest(d: {
     queryParams: d.queryParams ?? [],
     bodyType: (d.bodyType || 'NONE') as BodyType,
     bodyJson,
+    bodyParts,
     contentType: contentTypeForBodyType(d.bodyType || 'NONE'),
     formula: d.formula ?? '',
     apiType: (d.apiType || 'REST') as ApiType,
@@ -105,6 +120,10 @@ export function toServerPatch(r: ApiRequest): Record<string, unknown> {
       patch.bodyJson = null;
       patch.bodyText = null;
     }
+  } else if (r.bodyType === 'MULTIPART') {
+    patch.bodyParts = stripTransportData(r.bodyParts ?? []);
+    patch.bodyJson = null;
+    patch.bodyText = null;
   } else {
     patch.bodyText = r.bodyJson ?? null;
     patch.bodyJson = null;
@@ -119,6 +138,7 @@ const DIRTY_FIELDS = [
   'queryParams',
   'bodyType',
   'bodyJson',
+  'bodyParts',
   'formula',
   'assertions',
 ] as const;
@@ -151,6 +171,8 @@ interface WorkspaceState {
   collectionRun: CollectionRunResult | null;
   collectionRunRunning: boolean;
   requestRunning: boolean;
+  selectedFiles: Record<string, Record<string, File>>;
+  setFileForPart: (requestId: string, partId: string, file: File | null) => void;
 
   openRequestIds: string[];
   activeRequestId: string | null;
@@ -175,6 +197,7 @@ interface WorkspaceState {
     bodyType?: string;
     bodyJson?: unknown;
     bodyText?: string | null;
+    bodyParts?: BodyFormPart[];
     formula?: string;
     assertions?: Assertion[];
     apiType?: ApiType;
@@ -242,6 +265,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // True while a single request (saved, working copy or scratchpad) is being
   // executed through the run pipeline — drives the send/execution loader.
   const [requestRunning, setRequestRunning] = useState(false);
+  // Picked browser File objects for multipart file parts, keyed by request id
+  // then part id. Files are never part of ApiRequest or the DB — they live here
+  // in memory so they survive tab switches and are re-read at send time.
+  const [selectedFiles, setSelectedFiles] = useState<Record<string, Record<string, File>>>({});
   const requestRunningRef = useRef(false);
   // Guards selectRequest against out-of-order responses: each selection bumps
   // the sequence and records the target id; a fetch that resolves after a newer
@@ -368,6 +395,21 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setActiveRequest((prev) => (prev ? { ...prev, ...patch } : prev));
   }, []);
 
+  const setFileForPart = useCallback((requestId: string, partId: string, file: File | null) => {
+    setSelectedFiles((prev) => {
+      if (!file) {
+        const requestMap = prev[requestId];
+        if (!requestMap) return prev;
+        const nextRequestMap = { ...requestMap };
+        delete nextRequestMap[partId];
+        const next = { ...prev, [requestId]: nextRequestMap };
+        if (Object.keys(nextRequestMap).length === 0) delete next[requestId];
+        return next;
+      }
+      return { ...prev, [requestId]: { ...(prev[requestId] ?? {}), [partId]: file } };
+    });
+  }, []);
+
   const saveActiveRequest = useCallback(async () => {
     if (!activeRequest) return;
     await contentApi.updateRequest(activeRequest.id, toServerPatch(activeRequest));
@@ -422,6 +464,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       });
       setBaselines((b) => {
         const next = { ...b };
+        delete next[requestId];
+        return next;
+      });
+      // Drop any in-memory picked multipart files for this request so they are
+      // not resurrected if the tab is re-opened for a different request.
+      setSelectedFiles((prev) => {
+        if (!(requestId in prev)) return prev;
+        const next = { ...prev };
         delete next[requestId];
         return next;
       });
@@ -483,8 +533,55 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     requestRunningRef.current = true;
     setRequestRunning(true);
     try {
+      const req = activeRequest;
+      const parts = req.bodyParts ?? [];
+      const enabledFileParts = parts.filter((p) => p.enabled !== false && p.key && p.kind === 'file');
       let result: RunResult;
-      if (isDirty) {
+      if (req.bodyType === 'MULTIPART' && enabledFileParts.length > 0) {
+        // Multipart with file parts: pick the in-memory File per part and embed
+        // the bytes (base64) into the run payload only — never persisted.
+        const files = selectedFiles[req.id] ?? {};
+        for (const p of enabledFileParts) {
+          if (!files[p.id]) {
+            throw new Error(`Select a file for multipart part "${p.key}" before sending.`);
+          }
+        }
+        const transportParts: BodyFormPart[] = [];
+        for (const p of parts) {
+          if (p.enabled === false) {
+            transportParts.push({ ...p });
+            continue;
+          }
+          if (p.kind === 'file') {
+            const file = files[p.id]!;
+            const data = await readFileAsBase64(file);
+            transportParts.push({
+              ...p,
+              fileName: file.name,
+              fileType: file.type || 'application/octet-stream',
+              fileSize: file.size,
+              data,
+            });
+          } else {
+            transportParts.push({ ...p });
+          }
+        }
+        result = await contentApi.runEphemeral({
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+          queryParams: req.queryParams,
+          bodyType: 'MULTIPART',
+          bodyJson: null,
+          bodyParts: transportParts,
+          formula: req.formula,
+          assertions: req.assertions,
+          apiType: req.apiType,
+          collectionId: activeCollectionId,
+          id: req.id,
+          persistHistory: !isDirty,
+        });
+      } else if (isDirty) {
         result = await contentApi.runEphemeral({
           method: activeRequest.method,
           url: activeRequest.url,
@@ -492,6 +589,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           queryParams: activeRequest.queryParams,
           bodyType: activeRequest.bodyType,
           bodyJson: activeRequest.bodyJson,
+          bodyParts:
+            activeRequest.bodyType === 'MULTIPART'
+              ? stripTransportData(activeRequest.bodyParts ?? [])
+              : [],
           formula: activeRequest.formula,
           assertions: activeRequest.assertions,
           apiType: activeRequest.apiType,
@@ -509,7 +610,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       requestRunningRef.current = false;
       setRequestRunning(false);
     }
-  }, [activeRequest, isDirty, activeCollectionId]);
+  }, [activeRequest, isDirty, activeCollectionId, selectedFiles]);
 
   // M8: scratchpad — execute an in-memory request shape (e.g. a pasted cURL)
   // via POST /api/runs without creating or saving a request. No history row.
@@ -522,6 +623,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       bodyType?: string;
       bodyJson?: unknown;
       bodyText?: string | null;
+      bodyParts?: BodyFormPart[];
       formula?: string;
       assertions?: Assertion[];
       apiType?: ApiType;
@@ -710,6 +812,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       delete next[requestId];
       return next;
     });
+    setSelectedFiles((prev) => {
+      if (!(requestId in prev)) return prev;
+      const next = { ...prev };
+      delete next[requestId];
+      return next;
+    });
     if (tree) {
       setTree({ ...tree, requests: tree.requests.filter((r) => r.id !== requestId) });
     }
@@ -847,6 +955,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       collectionRun,
       collectionRunRunning,
       requestRunning,
+      selectedFiles,
+      setFileForPart,
       openRequestIds,
       activeRequestId,
       requestCopies,
@@ -892,7 +1002,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       loading, error, workspaces, teams, activeWorkspaceId, activeWorkspaceRole, tree,
       activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
       requestRuns,
-      collectionRun, collectionRunRunning, requestRunning,
+      collectionRun, collectionRunRunning, requestRunning, selectedFiles, setFileForPart,
       openRequestIds, activeRequestId, requestCopies,
       activateRequestTab, closeRequestTab, reopenLastClosedTab, isTabDirty,
       refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,

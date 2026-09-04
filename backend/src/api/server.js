@@ -22,7 +22,9 @@ const { runWorkflow, syncAllSchedules } = require('./workflowService');
 
 function createApp() {
   const app = express();
-  app.use(express.json({ limit: '2mb' }));
+  // 25 MB cap: multipart file sends carry base64 file bytes inside the JSON
+  // run payload (the runner reconstructs a real multipart body upstream).
+  app.use(express.json({ limit: '25mb' }));
 
   app.get('/api/health', (req, res) => {
     res.json({ ok: true, service: 'apihub-api' });

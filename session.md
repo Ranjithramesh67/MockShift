@@ -1,15 +1,57 @@
 # MockShift — Session State
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
 
 ## Current
 
-Step: fix slow page loads when navigating via the sidebar (rail pages).
-Status: COMPLETE — frontend switched from `next dev` to a production
-`next start` server (built + running); pushed doc note.
+Step: Postman-style structured MULTIPART bodies — text + FILE parts end-to-end
+(request editor, scratchpad, runner, persistence, exports/shares/redaction).
+Status: COMPLETE — all gates green, committed and pushed to `origin/master`.
+
+THIS TURN (2026-09-04, structured multipart file parts):
+- User scope (chosen in session): build Postman-style multipart parts (text
+  rows + file picker) end-to-end; **persist file references too** (name/mime/
+  size metadata only — file bytes are never stored server-side, re-picked per
+  Send after reload). Wire/JSON contract frozen: field `bodyParts`, part =
+  `{ id, key, enabled, kind: 'text'|'file', value?, fileName?, fileType?,
+  fileSize?, data? }`; `data` (base64 bytes) appears only in ephemeral run
+  payloads, never persisted.
+- Backend: migration `db/migrations/012_request_body_parts.sql` adds
+  `api_requests.body_parts jsonb`; `runner.js` builds a real native `FormData`
+  body from parts (10 MB/file, 20 MB total, `{{var}}` substitution, compact
+  summary in snapshots/history, never raw bytes); `content.js` persists/
+  returns `body_parts`, copies it on request/folder duplicates, and links
+  history + ON_REQUEST/ON_RUN_FAILURE events for ephemeral file sends via
+  `POST /api/runs` when payload carries `id` + `persistHistory:true`;
+  `exports.js`/`shares.js` round-trip `body_parts` (import sanitises via
+  `cleanBodyParts`); `redact.js` redacts text-part values; `server.js` JSON
+  cap raised 2 MB → 25 MB (base64 file bytes ride in the run payload).
+- Frontend: new `MultipartRows.tsx` parts editor (text/file kind toggle, key/
+  value or file picker, enable checkbox, remove/add, persisted-reference
+  display); `RequestConfigurator` + `ScratchpadWorkspace` render it for
+  MULTIPART and seed parts from pasted legacy `k=v` cURL bodies;
+  `WorkspaceStore` keeps `selectedFiles` (requestId → partId → File) with
+  `setFileForPart`, multipart-aware dirty tracking / save patch /
+  `runActiveRequest` (reads files as base64 into the ephemeral run payload);
+  `runScratchpad` + `scratchDraftDraft` pass `bodyParts`; `curl.js`
+  `generateCurl` emits `--form-string`/`--form` from parts; new lib
+  `multipartParts.js` (part factory/normalise/strip/legacy-seed/base64) +
+  unit tests.
+- **Metadata-sync fix (coordinator, after agent review):** `MultipartRows`
+  now also writes `fileName`/`fileType`/`fileSize` into the part via `onChange`
+  when a file is picked/cleared, so **Save persists the file reference** —
+  previously only the in-memory `File` map was updated and a saved file part
+  carried empty metadata after reload. One central spot covers both the request
+  editor and the scratchpad.
+- Legacy raw-text MULTIPART requests (no `body_parts`) keep the old text path;
+  a stored request with a file part 400s on `POST /requests/:id/run` by design
+  (bytes aren't stored) — file sends always go through the ephemeral run.
+- Verification: backend `npm run test:api` 63/63, `npm test` 47/47,
+  `npm run test:api:unit` 49/49; frontend `npx tsc --noEmit` clean,
+  `npm test` 89/89 (incl. new multipart/curl/scratchpad-draft tests).
 
 THIS TURN (2026-09-03, sidebar page-load slowness fix):
 - User: "why it is taking more time to load the pages in sidebar? check and fix
