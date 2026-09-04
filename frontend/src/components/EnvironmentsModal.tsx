@@ -292,62 +292,64 @@ export function EnvironmentsModal({ open, onClose }: { open: boolean; onClose: (
             )}
           </div>
           {drafts.length === 0 && <p className="hint">No variables in this environment.</p>}
-          <table className="env-vars-table">
-            <thead>
-              <tr>
-                <th>Key</th>
-                <th>Value</th>
-                <th>Secret</th>
-                {canEdit && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {drafts.map((d, i) => (
-                <tr key={i}>
-                  <td>
-                    <input
-                      className="text-input"
-                      data-testid="var-key"
-                      value={d.key}
-                      placeholder="e.g. BASE_URL"
-                      disabled={!canEdit}
-                      onChange={(e) => patchDraft(i, { key: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="text-input"
-                      data-testid="var-value"
-                      type={d.isSecret ? 'password' : 'text'}
-                      value={d.value}
-                      placeholder={d.isSecret ? '••••••••' : 'e.g. https://api.example.com'}
-                      disabled={!canEdit}
-                      onChange={(e) => patchDraft(i, { value: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        data-testid="var-secret"
-                        checked={d.isSecret}
-                        disabled={!canEdit}
-                        onChange={(e) => patchDraft(i, { isSecret: e.target.checked })}
-                      />
-                      <span>Secret</span>
-                    </label>
-                  </td>
-                  {canEdit && (
-                    <td>
-                      <button type="button" className="icon-button danger" title="Remove variable" aria-label="Remove variable" data-testid="var-remove" onClick={() => removeDraft(i)}>
-                        ✕
-                      </button>
-                    </td>
-                  )}
+          <div className="table-scroll">
+            <table className="env-vars-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Value</th>
+                  <th>Secret</th>
+                  {canEdit && <th />}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {drafts.map((d, i) => (
+                  <tr key={i}>
+                    <td>
+                      <input
+                        className="text-input"
+                        data-testid="var-key"
+                        value={d.key}
+                        placeholder="e.g. BASE_URL"
+                        disabled={!canEdit}
+                        onChange={(e) => patchDraft(i, { key: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="text-input"
+                        data-testid="var-value"
+                        type={d.isSecret ? 'password' : 'text'}
+                        value={d.value}
+                        placeholder={d.isSecret ? '••••••••' : 'e.g. https://api.example.com'}
+                        disabled={!canEdit}
+                        onChange={(e) => patchDraft(i, { value: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          data-testid="var-secret"
+                          checked={d.isSecret}
+                          disabled={!canEdit}
+                          onChange={(e) => patchDraft(i, { isSecret: e.target.checked })}
+                        />
+                        <span>Secret</span>
+                      </label>
+                    </td>
+                    {canEdit && (
+                      <td>
+                        <button type="button" className="icon-button danger" title="Remove variable" aria-label="Remove variable" data-testid="var-remove" onClick={() => removeDraft(i)}>
+                          ✕
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {canEdit && (
             <div className="modal-actions">
               <button type="button" className="primary-button" data-testid="save-variables" disabled={busy} onClick={saveVariables}>

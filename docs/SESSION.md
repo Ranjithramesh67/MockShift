@@ -23,9 +23,9 @@ state, what has already been done, and how to continue without redoing work.
 | PostgreSQL     | 5432   | `pg_ctlcluster 15 main start` (root)                                |
 | Redis          | 6379   | `redis-server --daemonize yes`                                      |
 | Backend API    | 3001   | `cd backend && PORT=3001 node src/api/server.js`                    |
-| Frontend (prod) | 3000   | `next build` then `cd frontend && npx next start -p 3000` (no HMR) — see §5.25 |
+| Frontend (dev/prod) | 3000   | dev: `cd frontend && npm run dev` (HMR); prod: `next build` then `npx next start -p 3000` (no HMR) — see §5.25 |
 | Mock upstream  | 3999   | `cd backend && node scripts/mock-upstream.js`                       |
-| Preview        | tunnel | https://3000-1807d442a88c3aec.monkeycode-ai.live (from port 3000)   |
+| Preview        | tunnel | https://3000-d996ae6ab8ef93e4.monkeycode-ai.live (from port 3000)   |
 
 Backend env required for the dev server / tests:
 
@@ -73,6 +73,74 @@ the live DB:
   adds `api_requests.formula text NOT NULL DEFAULT ''`.
 
 ## 5. What was done in this session (chronological)
+
+### 5.27 Full mobile-responsive UI + touch UX — 4 parallel agents (this turn)
+
+User scope: "Make it full mobile responsive ui and better UX as well. Use
+parallel agents to achieve that and test." The app was desktop-only: every
+style lives in a single `frontend/app/globals.css` (4548 lines) and the
+Playwright suite runs at 1280px, so desktop >900px must not change. Plan:
+each agent appended media-query-only rules (`max-width:900px`/`640px` +
+a `min-width:901px` reset for new DOM) to an exclusive NEW CSS file, and got a
+disjoint TSX file list. Ownership — `mobile.chrome.css` + shell TSX (Agent 1),
+`mobile.editor.css` + RequestConfigurator/ScratchpadWorkspace (Agent 2),
+`mobile.views.css` + Admin/Manage/History views (Agent 3), `mobile.modals.css`
++ EnvironmentsModal + share page (Agent 4). `app/layout.tsx` imports them
+after globals in that order. No existing className/data-testid was renamed;
+structural JSX additions are hidden at desktop by the ≥901px reset block.
+
+- Agent 1 (chrome/nav): hamburger (`MenuIcon` in `icons.tsx`) + off-canvas
+  drawer. `TopBar` takes optional `drawerOpen`/`onToggleDrawer` and renders
+  `.mobile-drawer-toggle` (`aria-controls="app-sidebar"`); `AppShell` holds
+  `navOpen` (Escape closes, body scroll-lock, `.sidebar-backdrop`);
+  `Sidebar` gained optional `onRequestClose` and its modals moved out of the
+  `<aside>`. CSS: ≤900px `.sidebar` is `position:fixed; top:52px;
+  translateX(-102%)` and slides in on `.app.sidebar-drawer-open`; width forced
+  `!important` over the inline resize style; `.sidebar-panel-hidden{display:
+  flex}` shows the API tree in the drawer from top-level views; resizer /
+  rail-collapse hidden; top-bar text actions become 40px icon targets; tab
+  strips scroll on one line.
+- Agent 2 (editor): `.request-bar-actions` `display:contents` wrappers in
+  `RequestConfigurator` + `ScratchpadWorkspace` (desktop DOM unchanged).
+  ≤900px the split panes stack (touch divider, `touch-action:none`); ≤640px
+  method+URL wrap with full-width 44px Send; KV and Multipart rows restack
+  (checkbox top-left, value below key) with ≥40px targets; CodeMirror gets a
+  usable height.
+- Agent 3 (views): `AdminView`/`ManageView`/`HistoryView` tables wrapped in
+  additive `.table-wrap` (+ `.table-stack` where phone-card conversion is
+  wanted) and every cell got a `data-label`; ≤640px `td::before { content:
+  attr(data-label) }` renders rows as labelled cards with a full-width action
+  strip and `overflow-wrap:anywhere`; wide tables scroll; Automations +
+  WorkflowBuilder handled CSS-only; the overview grid collapses via
+  `minmax(148px,1fr)`.
+- Agent 4 (modals/auth/share): `EnvironmentsModal` and the public share page
+  (`app/s/[token]/page.tsx`) kv tables wrapped in `.table-scroll`; the share
+  page gained an "Open in API Hub" `next/link` (`data-testid=share-open-app`).
+  ≤640px modals render as bottom sheets (overlay `align-items:flex-end`,
+  `100dvh`+`vh` fallback, full-width, `max-height:92dvh`, rounded top,
+  `env(safe-area-inset-bottom)`, sticky header, contained internal scroll,
+  `overscroll-behavior:contain`); ≤900px modal cap `calc(100vw - 24px)`;
+  inputs ≥42px (48px auth) at 16px to stop iOS zoom; `.modal-actions` become
+  sticky full-width rows.
+- **Coordinator fixes on merge:** (a) verified each agent's diff stayed within
+  its ownership (no overlaps, no `globals.css`/layout edits by agents,
+  additive-only); (b) drawer UX bug caught by the 390px smoke test — browsing
+  (workspace chips, collection expand, APIs/Teams rails) closed the drawer
+  because `goWorkspace()` called `onRequestClose`; fixed by removing it there
+  and closing only on request select via a new `onRequestClose` prop on
+  `CollectionsTree` (`onSelectRequest`), keeping the existing close-on-top-
+  level-rail behaviour.
+- Verification: `npx tsc --noEmit` clean, `npm test` 89/89, `npm run build`
+  green; served CSS bundle contains the new rules; mobile smoke at 390px
+  (temp spec, not committed): no horizontal overflow, drawer opens/keeps-open
+  on workspace/chip, closes on request select, editor fits + Send reachable.
+  Desktop e2e (1280px): three runs against `next start` 37/38 and one against
+  `npm run dev` 35/38 — a DIFFERENT spec flakes each run on 5s waits / mock
+  upstream state / persistence races; every flake passes in isolation on a
+  fresh `reset:db`+`seed:dev`, i.e. environmental, not a code regression.
+  Prereqs to run e2e in this environment: `npx playwright install chromium`
+  + `install-deps chromium`, frontend on `npm run dev` :3000 (the config's
+  `reuseExistingServer` target), freshly started `mock-upstream.js`.
 
 ### 5.26 Structured multipart/form-data body parts (text + files) — pushed
 
@@ -655,6 +723,12 @@ final M9 wrap-up per user instruction.
 
 ## 6. Verification performed
 
+- Mobile-responsive UI (this turn, §5.27): frontend `tsc --noEmit` clean,
+  `npm test` 89/89, `next build` green, 390px smoke passed (no overflow,
+  drawer open→browse→request-select close, editor fits). Desktop e2e at
+  1280px: 37/38 across three `next start` runs and 35/38 on one `npm run dev`
+  run; each run flakes a different spec on timing/mock-state (see §8) — no
+  consistent failing spec.
 - Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
   the mock, `GET /requests/:id` returns the formula, Run dispatches
   `{"amount":19.99,"userId":2}`, upstream echoes `userId: 2`,
@@ -674,8 +748,9 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-None — the structured multipart body-parts feature (§5.26) is committed and
-pushed on `master`; working tree clean.
+None — the mobile-responsive UI turn (§5.27) and the structured multipart
+body-parts feature (§5.26) are committed and pushed on `master`; working tree
+clean.
 
 ## 8. Known issues / notes for the next agent
 
@@ -712,6 +787,18 @@ pushed on `master`; working tree clean.
   frontend does in `runActiveRequest`. The DB `body_parts` column (migration
   `012_request_body_parts.sql`) is additive; run `psql … -f db/migrations/012…`
   against any existing Aiven DB before deploying the backend.
+- **Desktop e2e suite is environment-flaky, not product-flaky (mobile turn,
+  §5.27):** running the full Playwright suite (serial, 1280px) here fails a
+  *different* single spec on each run — 5s `toBeVisible`/`toContainText`
+  waits after network actions, `mock-upstream.js` in-memory state polluted by
+  earlier specs (e.g. `send-working-copy` expects `posts/2` pristine), or a
+  create/save not yet visible in a re-fetched list. Every such spec passes in
+  isolation on a fresh `reset:db` + `seed:dev`. Before a run: fresh-reset the
+  DB, (re)start `mock-upstream.js`, and serve the frontend with `npm run dev`
+  on :3000 (the config's webServer reuses it; running `next start` there makes
+  dev-mode timing assumptions wrong). A fresh environment also needs
+  `npx playwright install chromium` and `npx playwright install-deps chromium`
+  — Chromium and its OS libs are not preinstalled.
 
 ## 9. How to continue
 

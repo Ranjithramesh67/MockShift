@@ -1,21 +1,24 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { shareApi, type SharedRequestView } from '@/lib/api';
 
 function kvTable(rows: Array<{ key: string; value: string }>) {
   if (!rows.length) return <p className="hint">None</p>;
   return (
-    <table className="env-vars-table">
-      <tbody>
-        {rows.map((row, i) => (
-          <tr key={`${row.key}-${i}`}>
-            <td>{row.key}</td>
-            <td>{row.value}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="table-scroll">
+      <table className="env-vars-table">
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={`${row.key}-${i}`}>
+              <td>{row.key}</td>
+              <td>{row.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -118,6 +121,10 @@ export default function SharedRequestPage({ params }: { params: Promise<{ token:
 
             <h3>Latest response</h3>
             {responsePreview(share)}
+
+            <Link href="/" className="share-open-cta" data-testid="share-open-app">
+              Open in API Hub
+            </Link>
           </div>
         </main>
       )}

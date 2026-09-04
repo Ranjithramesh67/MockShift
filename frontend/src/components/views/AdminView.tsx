@@ -233,76 +233,78 @@ function UsersTab({ users, currentUserId, busy, onPatch }: {
   onPatch: (u: AdminUser, change: { role?: UserRole; isActive?: boolean }) => Promise<void>;
 }) {
   return (
-    <table className="admin-table" data-testid="admin-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Role</th>
-          <th>Status</th>
-          <th>Projects</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {users.map((u) => (
-          <tr key={u.id} data-testid={`admin-user-${u.email}`}>
-            <td>
-              <div className="admin-user-cell">
-                <span className="admin-avatar">{u.name.charAt(0).toUpperCase()}</span>
-                <div>
-                  <div className="admin-user-name">{u.name}</div>
-                  <div className="admin-user-email">{u.email}</div>
-                </div>
-              </div>
-            </td>
-            <td>
-              <select
-                className="compact-select"
-                value={u.role}
-                disabled={u.id === currentUserId || busy}
-                data-testid={`admin-role-${u.email}`}
-                onChange={(e) => onPatch(u, { role: e.target.value as UserRole })}
-              >
-                <option value="ADMIN">ADMIN</option>
-                <option value="MANAGER">MANAGER</option>
-                <option value="EDITOR">EDITOR</option>
-                <option value="VIEWER">VIEWER</option>
-              </select>
-            </td>
-            <td>
-              <span className={`vis-badge ${u.is_active ? 'vis-active' : 'vis-inactive'}`}>
-                {u.is_active ? 'active' : 'inactive'}
-              </span>
-            </td>
-            <td>
-              {u.projects && u.projects.length > 0 ? (
-                <div className="admin-project-chips" data-testid={`admin-projects-${u.email}`}>
-                  {u.projects.map((p) => (
-                    <span key={p.id} className={`admin-project-chip ${p.kind === 'manager' ? 'is-manager' : ''}`} title={`${p.kind === 'manager' ? 'Manager' : 'Member'} of ${p.name}`}>
-                      {p.name}
-                      <span className="admin-project-role">{p.kind === 'manager' ? 'MANAGER' : p.role}</span>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <span className="hint">—</span>
-              )}
-            </td>
-            <td>
-              <button
-                type="button"
-                className="ghost-button small"
-                disabled={u.id === currentUserId || busy}
-                data-testid={`admin-toggle-${u.email}`}
-                onClick={() => onPatch(u, { isActive: !u.is_active })}
-              >
-                {u.is_active ? 'Deactivate' : 'Activate'}
-              </button>
-            </td>
+    <div className="table-wrap table-stack">
+      <table className="admin-table" data-testid="admin-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Projects</th>
+            <th>Actions</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {users.map((u) => (
+            <tr key={u.id} data-testid={`admin-user-${u.email}`}>
+              <td data-label="Name">
+                <div className="admin-user-cell">
+                  <span className="admin-avatar">{u.name.charAt(0).toUpperCase()}</span>
+                  <div>
+                    <div className="admin-user-name">{u.name}</div>
+                    <div className="admin-user-email">{u.email}</div>
+                  </div>
+                </div>
+              </td>
+              <td data-label="Role">
+                <select
+                  className="compact-select"
+                  value={u.role}
+                  disabled={u.id === currentUserId || busy}
+                  data-testid={`admin-role-${u.email}`}
+                  onChange={(e) => onPatch(u, { role: e.target.value as UserRole })}
+                >
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="MANAGER">MANAGER</option>
+                  <option value="EDITOR">EDITOR</option>
+                  <option value="VIEWER">VIEWER</option>
+                </select>
+              </td>
+              <td data-label="Status">
+                <span className={`vis-badge ${u.is_active ? 'vis-active' : 'vis-inactive'}`}>
+                  {u.is_active ? 'active' : 'inactive'}
+                </span>
+              </td>
+              <td data-label="Projects">
+                {u.projects && u.projects.length > 0 ? (
+                  <div className="admin-project-chips" data-testid={`admin-projects-${u.email}`}>
+                    {u.projects.map((p) => (
+                      <span key={p.id} className={`admin-project-chip ${p.kind === 'manager' ? 'is-manager' : ''}`} title={`${p.kind === 'manager' ? 'Manager' : 'Member'} of ${p.name}`}>
+                        {p.name}
+                        <span className="admin-project-role">{p.kind === 'manager' ? 'MANAGER' : p.role}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="hint">—</span>
+                )}
+              </td>
+              <td>
+                <button
+                  type="button"
+                  className="ghost-button small"
+                  disabled={u.id === currentUserId || busy}
+                  data-testid={`admin-toggle-${u.email}`}
+                  onClick={() => onPatch(u, { isActive: !u.is_active })}
+                >
+                  {u.is_active ? 'Deactivate' : 'Activate'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

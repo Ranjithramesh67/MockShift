@@ -316,75 +316,79 @@ export function ManageView() {
               As a manager you can view users in your organisation. Role changes are managed by administrators.
             </p>
           )}
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id} data-testid={`manage-user-${u.email}`}>
-                  <td>
-                    <div className="admin-user-cell">
-                      <span className="admin-avatar">{u.name.charAt(0).toUpperCase()}</span>
-                      <div>
-                        <div className="admin-user-name">{u.name}</div>
-                        <div className="admin-user-email">{u.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="role-badge">{u.role}</span>
-                  </td>
-                  <td>
-                    <span className={`vis-badge ${u.is_active ? 'vis-active' : 'vis-inactive'}`}>
-                      {u.is_active ? 'active' : 'inactive'}
-                    </span>
-                  </td>
-                  <td className="hint">{fmtDate(u.created_at)}</td>
+          <div className="table-wrap table-stack">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Joined</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id} data-testid={`manage-user-${u.email}`}>
+                    <td data-label="Name">
+                      <div className="admin-user-cell">
+                        <span className="admin-avatar">{u.name.charAt(0).toUpperCase()}</span>
+                        <div>
+                          <div className="admin-user-name">{u.name}</div>
+                          <div className="admin-user-email">{u.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td data-label="Role">
+                      <span className="role-badge">{u.role}</span>
+                    </td>
+                    <td data-label="Status">
+                      <span className={`vis-badge ${u.is_active ? 'vis-active' : 'vis-inactive'}`}>
+                        {u.is_active ? 'active' : 'inactive'}
+                      </span>
+                    </td>
+                    <td className="hint" data-label="Joined">{fmtDate(u.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {tab === 'projects' && (
         <div data-testid="manage-projects-section">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Workspace</th>
-                <th>Collections</th>
-                <th>Requests</th>
-                <th>Role</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((p) => (
-                <tr key={p.id} data-testid={`manage-project-${p.name}`}>
-                  <td className="admin-user-name">{p.name}</td>
-                  <td className="hint">{p.workspace_name}</td>
-                  <td>{p.collections}</td>
-                  <td>{p.requests}</td>
-                  <td>
-                    {p.is_manager ? <span className="vis-badge access-badge">MANAGER</span> : <span className="hint">—</span>}
-                  </td>
-                  <td>
-                    <button type="button" className="ghost-button small" data-testid={`open-project-${p.name}`} onClick={() => openProject(p.id)}>
-                      Details
-                    </button>
-                  </td>
+          <div className="table-wrap table-stack">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Workspace</th>
+                  <th>Collections</th>
+                  <th>Requests</th>
+                  <th>Role</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {projects.map((p) => (
+                  <tr key={p.id} data-testid={`manage-project-${p.name}`}>
+                    <td className="admin-user-name" data-label="Project">{p.name}</td>
+                    <td className="hint" data-label="Workspace">{p.workspace_name}</td>
+                    <td data-label="Collections">{p.collections}</td>
+                    <td data-label="Requests">{p.requests}</td>
+                    <td data-label="Role">
+                      {p.is_manager ? <span className="vis-badge access-badge">MANAGER</span> : <span className="hint">—</span>}
+                    </td>
+                    <td>
+                      <button type="button" className="ghost-button small" data-testid={`open-project-${p.name}`} onClick={() => openProject(p.id)}>
+                        Details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {projectDetail && (
             <div className="modal-overlay" data-testid="project-detail-modal" onClick={() => setProjectDetail(null)}>
@@ -482,102 +486,108 @@ export function ManageView() {
       )}
 
       {tab === 'teams' && (
-        <table className="admin-table" data-testid="manage-teams-section">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Members</th>
-              <th>Org</th>
-            </tr>
-          </thead>
-          <tbody>
-            {teams.map((t) => (
-              <tr key={t.id}>
-                <td className="admin-user-name">{t.name}</td>
-                <td>{t.members}</td>
-                <td className="hint">{t.organization_id ?? '—'}</td>
-              </tr>
-            ))}
-            {teams.length === 0 && (
+        <div className="table-wrap">
+          <table className="admin-table" data-testid="manage-teams-section">
+            <thead>
               <tr>
-                <td colSpan={3} className="hint">
-                  No teams.
-                </td>
+                <th>Name</th>
+                <th>Members</th>
+                <th>Org</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {teams.map((t) => (
+                <tr key={t.id}>
+                  <td className="admin-user-name">{t.name}</td>
+                  <td>{t.members}</td>
+                  <td className="hint">{t.organization_id ?? '—'}</td>
+                </tr>
+              ))}
+              {teams.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="hint">
+                    No teams.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {tab === 'audit' && (
-        <table className="admin-table" data-testid="manage-audit-section">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Entity</th>
-              <th>Detail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map((l) => (
-              <tr key={l.id}>
-                <td className="hint">{fmtDate(l.created_at)}</td>
-                <td>{l.actor_email ?? 'system'}</td>
-                <td>
-                  <span className="vis-badge access-badge">{l.action}</span>
-                </td>
-                <td className="hint">
-                  {l.entity_type}
-                  {l.entity_id ? ` · ${l.entity_id.slice(0, 8)}` : ''}
-                </td>
-                <td className="hint">{l.detail ? JSON.stringify(l.detail) : '—'}</td>
-              </tr>
-            ))}
-            {logs.length === 0 && (
+        <div className="table-wrap table-stack">
+          <table className="admin-table" data-testid="manage-audit-section">
+            <thead>
               <tr>
-                <td colSpan={5} className="hint">
-                  No audit entries yet.
-                </td>
+                <th>Time</th>
+                <th>Actor</th>
+                <th>Action</th>
+                <th>Entity</th>
+                <th>Detail</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {logs.map((l) => (
+                <tr key={l.id}>
+                  <td className="hint" data-label="Time">{fmtDate(l.created_at)}</td>
+                  <td data-label="Actor">{l.actor_email ?? 'system'}</td>
+                  <td data-label="Action">
+                    <span className="vis-badge access-badge">{l.action}</span>
+                  </td>
+                  <td className="hint" data-label="Entity">
+                    {l.entity_type}
+                    {l.entity_id ? ` · ${l.entity_id.slice(0, 8)}` : ''}
+                  </td>
+                  <td className="hint" data-label="Detail">{l.detail ? JSON.stringify(l.detail) : '—'}</td>
+                </tr>
+              ))}
+              {logs.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="hint">
+                    No audit entries yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {tab === 'history' && (
-        <table className="admin-table" data-testid="manage-history-section">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Name</th>
-              <th>Trigger</th>
-              <th>Status</th>
-              <th>User</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((r) => (
-              <tr key={r.id}>
-                <td className="hint">{fmtDate(r.started_at)}</td>
-                <td>{r.name ?? '—'}</td>
-                <td className="hint">{r.trigger}</td>
-                <td>
-                  <span className={`vis-badge ${r.status === 'SUCCESS' ? 'vis-active' : 'vis-inactive'}`}>{r.status}</span>
-                </td>
-                <td className="hint">{r.user_email ?? 'system'}</td>
-              </tr>
-            ))}
-            {runs.length === 0 && (
+        <div className="table-wrap table-stack">
+          <table className="admin-table" data-testid="manage-history-section">
+            <thead>
               <tr>
-                <td colSpan={5} className="hint">
-                  No runs yet.
-                </td>
+                <th>Time</th>
+                <th>Name</th>
+                <th>Trigger</th>
+                <th>Status</th>
+                <th>User</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id}>
+                  <td className="hint" data-label="Time">{fmtDate(r.started_at)}</td>
+                  <td data-label="Name">{r.name ?? '—'}</td>
+                  <td className="hint" data-label="Trigger">{r.trigger}</td>
+                  <td data-label="Status">
+                    <span className={`vis-badge ${r.status === 'SUCCESS' ? 'vis-active' : 'vis-inactive'}`}>{r.status}</span>
+                  </td>
+                  <td className="hint" data-label="User">{r.user_email ?? 'system'}</td>
+                </tr>
+              ))}
+              {runs.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="hint">
+                    No runs yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {tab === 'settings' && (
@@ -589,65 +599,67 @@ export function ManageView() {
             user, trigger, status, duration and assertion results stay visible in run history and the audit log. Runs
             inside the window are never touched. Only workspace admins can change a workspace setting.
           </p>
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Workspace</th>
-                <th>Retention (days)</th>
-                <th>Change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workspaces.map((w) => {
-                const isAdmin = w.role === 'ADMIN';
-                const days = retentionDays[w.id];
-                return (
-                  <tr key={w.id}>
-                    <td className="admin-user-name">
-                      {w.name}
-                      <span className="hint"> · {isAdmin ? 'admin' : 'read-only'}</span>
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min={7}
-                        step={1}
-                        disabled={!isAdmin || savingRetention}
-                        aria-label={`Retention days for ${w.name}`}
-                        value={days ?? ''}
-                        onChange={(e) =>
-                          setRetentionDays((prev) => ({ ...prev, [w.id]: Number(e.target.value) }))
-                        }
-                        className="retention-input"
-                      />
-                    </td>
-                    <td>
-                      {isAdmin ? (
-                        <button
-                          type="button"
-                          className="primary-button"
-                          disabled={savingRetention || !Number.isInteger(days) || days < 7}
-                          data-testid={`save-retention-${w.id}`}
-                          onClick={() => saveRetention(w.id)}
-                        >
-                          Save
-                        </button>
-                      ) : (
-                        <span className="hint">—</span>
-                      )}
+          <div className="table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Workspace</th>
+                  <th>Retention (days)</th>
+                  <th>Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {workspaces.map((w) => {
+                  const isAdmin = w.role === 'ADMIN';
+                  const days = retentionDays[w.id];
+                  return (
+                    <tr key={w.id}>
+                      <td className="admin-user-name">
+                        {w.name}
+                        <span className="hint"> · {isAdmin ? 'admin' : 'read-only'}</span>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={7}
+                          step={1}
+                          disabled={!isAdmin || savingRetention}
+                          aria-label={`Retention days for ${w.name}`}
+                          value={days ?? ''}
+                          onChange={(e) =>
+                            setRetentionDays((prev) => ({ ...prev, [w.id]: Number(e.target.value) }))
+                          }
+                          className="retention-input"
+                        />
+                      </td>
+                      <td>
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            className="primary-button"
+                            disabled={savingRetention || !Number.isInteger(days) || days < 7}
+                            data-testid={`save-retention-${w.id}`}
+                            onClick={() => saveRetention(w.id)}
+                          >
+                            Save
+                          </button>
+                        ) : (
+                          <span className="hint">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {workspaces.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="hint">
+                      No workspaces available.
                     </td>
                   </tr>
-                );
-              })}
-              {workspaces.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="hint">
-                    No workspaces available.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </main>

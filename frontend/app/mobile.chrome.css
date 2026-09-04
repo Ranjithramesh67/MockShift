@@ -1,0 +1,290 @@
+/* ==========================================================================
+   Mobile responsive overrides — Agent 1: App chrome & navigation
+   (TopBar / Sidebar / AppShell / TabBar / RequestTabs / ToastHost).
+
+   Only append responsive rules here. NEVER edit app/globals.css.
+   Breakpoints: <= 900px tablet, <= 640px phone.
+   Wrap every override in a media query. Keep desktop (>900px) untouched.
+   Do NOT redefine selectors that live outside your namespace (e.g. .modal-*,
+   .split-pane, .manage-*, .workflow-*). Your namespace: .app, .app-body,
+   .main-area, .top-bar, .brand, .sidebar, .rail, .sidebar-panel,
+   .tab-bar, .request-tabs, .user-menu, .bell-*, .views-*, .toast-*.
+   ========================================================================== */
+
+/* ==========================================================================
+   <= 900px — tablets & phones: off-canvas sidebar drawer + compact top bar
+   ========================================================================== */
+@media (max-width: 900px) {
+  /* Kill any horizontal document scroll (the off-canvas drawer must not
+     stretch the page) and use the dynamic viewport height so the mobile
+     address bar does not make the shell jump. */
+  body {
+    overflow-x: hidden;
+  }
+  body.sidebar-drawer-open {
+    overflow: hidden;
+  }
+  .app {
+    height: 100vh; /* fallback */
+    height: 100dvh;
+  }
+
+  /* ---- Top bar: compact, never overflows horizontally -------------------- */
+  .top-bar {
+    gap: 8px;
+    padding: 0 8px;
+  }
+  .brand {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 8px;
+  }
+  .brand-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .brand-env {
+    display: none;
+  }
+
+  /* Hamburger / menu button (hidden again on desktop by the reset block). */
+  .mobile-drawer-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    margin-left: -4px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--speed) var(--ease), background var(--speed) var(--ease);
+  }
+  .mobile-drawer-toggle:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+  .mobile-drawer-toggle:active {
+    color: var(--accent);
+    background: var(--bg-panel-2);
+  }
+
+  /* Collapse the text-labelled top-bar actions (view menu, Import cURL,
+     Test cURL) into icon-only 40px touch targets. Only the direct top-level
+     trigger buttons are compacted; the dropdown panels they open are left
+     untouched (child combinator keeps .bell-dropdown/.user-dropdown/.views-
+     dropdown contents intact). */
+  .top-bar-actions {
+    gap: 4px;
+  }
+  .top-bar-actions > .views-menu > .ghost-button,
+  .top-bar-actions > .ghost-button {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0; /* collapses the visible text label, icons remain */
+  }
+  .top-bar-actions > .bell-wrap > .ghost-button.icon-only {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+
+  /* User chip shrinks to an avatar-only pill with a 40px target. */
+  .top-bar .user-chip {
+    min-height: 40px;
+    padding: 5px;
+    gap: 0;
+  }
+  .top-bar .user-chip .user-name,
+  .top-bar .user-chip .role-badge {
+    display: none;
+  }
+
+  /* ---- Off-canvas sidebar drawer ------------------------------------------ */
+  /* The sidebar no longer reserves 296px of layout width: it becomes a fixed
+     overlay that slides in from the left above the main content. The width is
+     forced with !important to beat the inline style used for resizing. When
+     closed it is pushed fully off-canvas, inert (no focus / no pointer
+     events). */
+  .sidebar,
+  .sidebar.sidebar-rail-only {
+    position: fixed;
+    top: 52px;
+    bottom: 0;
+    left: 0;
+    width: min(88vw, 340px) !important;
+    min-width: 0;
+    height: auto;
+    z-index: 45;
+    border-right: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-102%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.24s var(--ease), visibility 0s linear 0.24s;
+  }
+  .app.sidebar-drawer-open .sidebar,
+  .app.sidebar-drawer-open .sidebar.sidebar-rail-only {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+    transition: transform 0.24s var(--ease), visibility 0s linear 0s;
+  }
+
+  /* Drawer backdrop covers everything below the 52px top bar so the top bar
+     (hamburger) stays reachable while the drawer is open. */
+  .sidebar-backdrop {
+    position: fixed;
+    top: 52px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 44;
+    background: rgba(5, 8, 6, 0.62);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  /* Resizing and rail-collapse are desktop interactions; hide them inside the
+     drawer. */
+  .sidebar-resizer {
+    display: none;
+  }
+  .sidebar .rail-toggle {
+    display: none;
+  }
+
+  /* In a drawer the workspace panel is always shown so the drawer is usable
+     even when it was opened from a rail-only top-level view
+     (automations / manage / admin / history). */
+  .sidebar-panel-hidden {
+    display: flex;
+  }
+
+  /* Slightly wider rail for comfortable touch targets inside the drawer. */
+  .sidebar .rail {
+    width: 52px;
+    padding: 10px 4px;
+  }
+  .sidebar .rail-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* ---- Tab strips: one line, swipeable, unobtrusive scrollbars ------------- */
+  .tab-bar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .tab-bar .tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .request-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+  }
+  .request-tabs::-webkit-scrollbar {
+    height: 3px;
+  }
+  .request-tabs::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .request-tabs::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.3);
+    border-radius: 3px;
+  }
+  .request-tab {
+    flex: 0 0 auto;
+  }
+  .request-tab-select {
+    min-height: 34px;
+  }
+  .request-tab-close {
+    width: 26px;
+    height: 26px;
+    margin: 2px 4px 0 0;
+    font-size: 16px;
+  }
+}
+
+/* ==========================================================================
+   <= 640px — phones: tighten further
+   ========================================================================== */
+@media (max-width: 640px) {
+  .top-bar {
+    padding: 0 6px;
+  }
+  .top-bar-actions {
+    gap: 2px;
+  }
+
+  .sidebar,
+  .sidebar.sidebar-rail-only {
+    width: min(90vw, 320px) !important;
+  }
+  .sidebar-panel {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .request-tab {
+    max-width: 62vw;
+  }
+  .request-tab-name {
+    max-width: 40vw;
+  }
+  .request-tab-select {
+    min-height: 38px;
+  }
+
+  /* Toasts: keep readable on small screens and respect the bottom safe area. */
+  .toast {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 24px);
+  }
+
+  /* The view-layout dropdown can sit near the middle of a narrow phone and
+     would otherwise spill off the left edge; make it a full-width sheet just
+     under the top bar instead. */
+  .views-menu .views-dropdown {
+    position: fixed;
+    top: 52px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    min-width: 0;
+  }
+}
+
+/* ==========================================================================
+   >= 901px — desktop reset
+   Everything mobile-only added above lives in @media (max-width: ...) so the
+   desktop layout is untouched by cascade; this block just neutralises the few
+   structural JSX additions (drawer toggle + backdrop) that exist in the DOM
+   at every viewport size.
+   ========================================================================== */
+@media (min-width: 901px) {
+  .mobile-drawer-toggle {
+    display: none !important;
+  }
+  .sidebar-backdrop {
+    display: none !important;
+  }
+}

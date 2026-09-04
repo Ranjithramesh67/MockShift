@@ -110,12 +110,13 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
   );
 }
 
-function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRunCollection, onOpenMockServer, onOpenImportExport, collapsed, onToggleCollapsed }: {
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAccess, onNavigate, onRequestClose, onRunCollection, onOpenMockServer, onOpenImportExport, collapsed, onToggleCollapsed }: {
   onOpenCreate: (kind: CreateKind, collectionId?: string, folderId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
   onRequestAccess: (project: { id: string; name: string }) => void;
   onNavigate: () => void;
+  onRequestClose?: () => void;
   onRunCollection: (collectionId: string, collectionName: string) => void;
   onOpenMockServer: (project: { id: string; name: string }) => void;
   onOpenImportExport: () => void;
@@ -187,6 +188,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onRequestAcc
     dispatch({ type: 'SELECT_REQUEST', id });
     ws.selectRequest(id).catch(() => undefined);
     onNavigate();
+    onRequestClose?.();
   };
 
   const startRename = (kind: 'request' | 'folder', id: string, name: string) => {
@@ -892,7 +894,13 @@ function TeamsPanel({ onManage }: { onManage: () => void }) {
   );
 }
 
-export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
+export function Sidebar({
+  panelHidden = false,
+  onRequestClose,
+}: {
+  panelHidden?: boolean;
+  onRequestClose?: () => void;
+}) {
   const ws = useWorkspace();
   const { user } = useAuth();
   const { dispatch } = useApp();
@@ -1002,11 +1010,13 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   return (
-    <aside
-      className={`sidebar ${railHidden ? 'sidebar-rail-only' : ''}`}
-      data-testid="sidebar"
-      style={railHidden ? undefined : { width }}
-    >
+    <>
+      <aside
+        id="app-sidebar"
+        className={`sidebar ${railHidden ? 'sidebar-rail-only' : ''}`}
+        data-testid="sidebar"
+        style={railHidden ? undefined : { width }}
+      >
       <nav className="rail" aria-label="Sidebar navigation">
         <button
           type="button"
@@ -1043,7 +1053,10 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
           data-testid="rail-automations"
           title="Automations"
           aria-label="Automations"
-          onClick={() => setView('automations')}
+          onClick={() => {
+            setView('automations');
+            onRequestClose?.();
+          }}
         >
           <BoltIcon size={17} />
         </Link>
@@ -1053,7 +1066,10 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
           data-testid="rail-history"
           title="Run history"
           aria-label="Run history"
-          onClick={() => setView('history')}
+          onClick={() => {
+            setView('history');
+            onRequestClose?.();
+          }}
         >
           <HistoryIcon size={17} />
         </Link>
@@ -1064,7 +1080,10 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
             data-testid="rail-manage"
             title="Manage"
             aria-label="Manage"
-            onClick={() => setView('manage')}
+            onClick={() => {
+              setView('manage');
+              onRequestClose?.();
+            }}
           >
             <ShieldIcon size={17} />
           </Link>
@@ -1076,7 +1095,10 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
             data-testid="rail-admin"
             title="Admin"
             aria-label="Admin"
-            onClick={() => setView('admin')}
+            onClick={() => {
+              setView('admin');
+              onRequestClose?.();
+            }}
           >
             <UserIcon size={17} />
           </Link>
@@ -1137,6 +1159,7 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
                 onOpenAuth={onOpenAuth}
                 onRequestAccess={(p) => setRequestingProject(p)}
                 onNavigate={goWorkspace}
+                onRequestClose={onRequestClose}
                 onRunCollection={onRunCollection}
                 onOpenMockServer={(p) => setMockProject(p)}
                 onOpenImportExport={() => setImportExportOpen(true)}
@@ -1166,73 +1189,6 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         )}
       </div>
 
-      {createKind && (
-        <CreateModal
-          kind={createKind}
-          collectionId={targetCollectionId ?? undefined}
-          folderId={targetFolderId ?? undefined}
-          onClose={() => setCreateKind(null)}
-        />
-      )}
-      {requestingProject && (
-        <div className="modal-overlay" data-testid="access-request-modal" onClick={() => setRequestingProject(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Request access</h2>
-            </div>
-            <div className="modal-body">
-              <p className="hint">
-                Request access to <strong>{requestingProject.name}</strong>. A project manager or admin
-                will review your request.
-              </p>
-              <div className="modal-form">
-                <label className="field">
-                  <span className="field-label">Reason (optional)</span>
-                  <textarea
-                    className="text-input"
-                    data-testid="access-request-reason"
-                    rows={3}
-                    placeholder="e.g. I need to view the mocked APIs for the payments team"
-                    value={accessReason}
-                    onChange={(e) => setAccessReason(e.target.value)}
-                  />
-                </label>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="ghost-button" data-testid="access-request-cancel" onClick={() => setRequestingProject(null)}>
-                Cancel
-              </button>
-              <button type="button" className="primary-button" data-testid="access-request-confirm" onClick={submitAccessRequest}>
-                Request access
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      <SharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} />
-      <TeamsModal open={teamsOpen} onClose={() => setTeamsOpen(false)} />
-      <EnvironmentsModal open={environmentsOpen} onClose={() => setEnvironmentsOpen(false)} />
-      <AuthProviderModal open={authOpen} onClose={() => setAuthOpen(false)} />
-      {mockProject && (
-        <MockServersModal
-          open
-          projectId={mockProject.id}
-          projectName={mockProject.name}
-          onClose={() => setMockProject(null)}
-        />
-      )}
-      <CollectionRunnerModal
-        open={runnerOpen}
-        running={ws.collectionRunRunning}
-        collectionName={runnerCollectionName}
-        result={ws.collectionRun}
-        onClose={() => {
-          setRunnerOpen(false);
-          ws.clearCollectionRun();
-        }}
-      />
-      <CollectionImportExportModal open={importExportOpen} onClose={() => setImportExportOpen(false)} />
       {!railHidden && (
         <div
           className="sidebar-resizer"
@@ -1244,5 +1200,74 @@ export function Sidebar({ panelHidden = false }: { panelHidden?: boolean }) {
         />
       )}
     </aside>
+
+    {createKind && (
+      <CreateModal
+        kind={createKind}
+        collectionId={targetCollectionId ?? undefined}
+        folderId={targetFolderId ?? undefined}
+        onClose={() => setCreateKind(null)}
+      />
+    )}
+    {requestingProject && (
+      <div className="modal-overlay" data-testid="access-request-modal" onClick={() => setRequestingProject(null)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2>Request access</h2>
+          </div>
+          <div className="modal-body">
+            <p className="hint">
+              Request access to <strong>{requestingProject.name}</strong>. A project manager or admin
+              will review your request.
+            </p>
+            <div className="modal-form">
+              <label className="field">
+                <span className="field-label">Reason (optional)</span>
+                <textarea
+                  className="text-input"
+                  data-testid="access-request-reason"
+                  rows={3}
+                  placeholder="e.g. I need to view the mocked APIs for the payments team"
+                  value={accessReason}
+                  onChange={(e) => setAccessReason(e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="ghost-button" data-testid="access-request-cancel" onClick={() => setRequestingProject(null)}>
+              Cancel
+            </button>
+            <button type="button" className="primary-button" data-testid="access-request-confirm" onClick={submitAccessRequest}>
+              Request access
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    <SharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} />
+    <TeamsModal open={teamsOpen} onClose={() => setTeamsOpen(false)} />
+    <EnvironmentsModal open={environmentsOpen} onClose={() => setEnvironmentsOpen(false)} />
+    <AuthProviderModal open={authOpen} onClose={() => setAuthOpen(false)} />
+    {mockProject && (
+      <MockServersModal
+        open
+        projectId={mockProject.id}
+        projectName={mockProject.name}
+        onClose={() => setMockProject(null)}
+      />
+    )}
+    <CollectionRunnerModal
+      open={runnerOpen}
+      running={ws.collectionRunRunning}
+      collectionName={runnerCollectionName}
+      result={ws.collectionRun}
+      onClose={() => {
+        setRunnerOpen(false);
+        ws.clearCollectionRun();
+      }}
+    />
+    <CollectionImportExportModal open={importExportOpen} onClose={() => setImportExportOpen(false)} />
+    </>
   );
 }

@@ -7,11 +7,84 @@ Last updated: 2026-09-04
 
 ## Current
 
-Step: Postman-style structured MULTIPART bodies — text + FILE parts end-to-end
-(request editor, scratchpad, runner, persistence, exports/shares/redaction).
-Status: COMPLETE — all gates green, committed and pushed to `origin/master`.
+Step: FULL mobile responsive UI + touch UX — phones/tablets end-to-end
+(off-canvas drawer navigation, bottom-sheet modals, stacked card tables,
+compact request editor) — delivered by 4 parallel agents.
+Status: COMPLETE — frontend gates green; desktop e2e green apart from
+environmental timing flakes; committed and pushed to `origin/master`.
 
-THIS TURN (2026-09-04, structured multipart file parts):
+THIS TURN (2026-09-04, mobile responsive UI via 4 parallel agents):
+- User scope: "Make it full mobile responsive ui and better UX as well. Use
+  parallel agents to achieve that and test." All desktop styles live in one
+  `app/globals.css` (4548 lines) with existing e2e at 1280px, so each agent
+  appended media-query-only overrides to an exclusive NEW file imported after
+  globals in `app/layout.tsx` (order: chrome → editor → views → modals), and
+  was given a disjoint TSX file list. Rule: no existing className/data-testid
+  renamed or removed; desktop (>900px) must stay pixel-identical (reset block
+  at `min-width:901px` hides the new DOM nodes). Agents only touched their own
+  files; coordinator merge diff verified clean.
+- Agent 1 — chrome/nav (`app/mobile.chrome.css`, `AppShell.tsx`, `TopBar.tsx`,
+  `Sidebar.tsx`, `icons.tsx`): hamburger (`MenuIcon`, `data-testid=
+  mobile-drawer-toggle`, aria-controls `app-sidebar`) + off-canvas drawer:
+  ≤900px `.sidebar` becomes `position:fixed; top:52px`, `translateX(-102%)` →
+  open via `.app.sidebar-drawer-open`, `.sidebar-backdrop`, Escape + backdrop
+  close, body scroll-lock while open; `.sidebar-panel-hidden{display:flex}`
+  so top-level views (automations/manage/admin/history) show the API tree in
+  the drawer; resizer/rail-collapse hidden ≤900; top-bar actions collapse to
+  40px icon targets; tab strips single-line scroll. Modals moved out of the
+  `<aside>` (it is `position:fixed` on mobile). Rail Links to top-level views
+  close the drawer via optional `onRequestClose` prop.
+  **Drawer UX fix (coordinator, caught by the 390px smoke test):** the drawer
+  must close when a request is chosen or a top-level view is opened, but stay
+  open while browsing (workspace chips, collection expand, APIs/Teams rails).
+  `goWorkspace()` no longer calls `onRequestClose`; instead `CollectionsTree`
+  gained an `onRequestClose` prop invoked in `onSelectRequest` only. Desktop
+  unaffected (prop optional/no-op).
+- Agent 2 — editor/scratchpad (`app/mobile.editor.css`, `RequestConfigurator
+  .tsx`, `ScratchpadWorkspace.tsx`): `.request-bar-actions` wrapper with
+  `style={{display:'contents'}}` (desktop DOM/layout identical); ≤900px
+  split-pane becomes stacked column with touch dividers; ≤640px method+URL
+  wrap, full-width 44px Send, KV/Multipart rows restack (check top-left,
+  value below key) with ≥40px targets, CodeMirror gets usable height.
+- Agent 3 — views (`app/mobile.views.css`, `AdminView.tsx`, `ManageView.tsx`,
+  `HistoryView.tsx`): tables wrapped in additive `.table-wrap .table-stack`
+  with per-cell `data-label`; ≤640px they become phone cards
+  (`td::before{content:attr(data-label)}`, action row full-width); overflow
+  tables scroll; Automations/WorkflowBuilder CSS-only; overview grid collapses
+  (`minmax(148px,1fr)`).
+- Agent 4 — modals/auth/share (`app/mobile.modals.css`, `EnvironmentsModal.
+  tsx`, `app/s/[token]/page.tsx`): variable tables wrapped in `.table-scroll`;
+  ≤640px modals become bottom sheets (overlay `align-items:flex-end`,
+  `100dvh`+`vh` fallback, full-width, `max-height:92dvh`, safe-area padding,
+  sticky headers, internal scroll); ≤900px modal cap `calc(100vw-24px)`;
+  inputs ≥42px (48px auth) with 16px font to stop iOS zoom; share page kv
+  table wrapped + "Open in API Hub" CTA (`data-testid=share-open-app`).
+- Verification:
+  - Frontend gates: `npx tsc --noEmit` clean; `npm test` 89/89.
+  - `npm run build` green (10 routes; `/` First Load JS 326 kB) — served CSS
+    bundle verified to contain the new mobile rules.
+  - Desktop e2e (Playwright, 1280px Desktop Chrome, serial): three prod-server
+    runs 37/38 and a dev-server run 35/38 — every run fails a *different*
+    spec on 5s waits / mock-state / persistence races (assertions-runner,
+    send-working-copy, scratchpad save, curl-import, history, nav-race), and
+    each failed spec passes alone on a fresh DB ⇒ environment flakiness, not a
+    regression. To run e2e here: fresh `reset:db`+`seed:dev`, freshly started
+    `mock-upstream.js`, frontend `npm run dev` on :3000 (suite reuses it), and
+    `npx playwright install chromium` + `install-deps chromium` (Chromium and
+    OS libs are absent from a fresh box).
+  - Mobile smoke (temp spec `frontend/.mobile-smoke/`, NOT committed): 390px
+    viewport — login has no horizontal overflow; drawer opens via hamburger,
+    workspace chip keeps it open, request click closes it, editor fits viewport
+    and Send is reachable. (This smoke test is what caught the drawer bug
+    above.) Cleaned from the repo after the run.
+- The app currently runs the responsive build: frontend `npm run dev` on :3000
+  (term_1788538358285_19), backend :3001 (term_1788538352528_18), mock
+  upstream :3999 (term_1788539497512_21); preview
+  https://3000-d996ae6ab8ef93e4.monkeycode-ai.live
+- Commit: see git log (this turn's mobile work, docs included) pushed to
+  `origin/master`.
+
+PREVIOUS TURN (2026-09-04, structured multipart file parts — commit `b9481c2`):
 - User scope (chosen in session): build Postman-style multipart parts (text
   rows + file picker) end-to-end; **persist file references too** (name/mime/
   size metadata only — file bytes are never stored server-side, re-picked per
@@ -52,6 +125,8 @@ THIS TURN (2026-09-04, structured multipart file parts):
 - Verification: backend `npm run test:api` 63/63, `npm test` 47/47,
   `npm run test:api:unit` 49/49; frontend `npx tsc --noEmit` clean,
   `npm test` 89/89 (incl. new multipart/curl/scratchpad-draft tests).
+- Commit `b9481c2` (24 files) pushed `eacdf84..b9481c2`; docs updated
+  (`docs/SESSION.md` §5.26, `instructions.md` M16); tree clean.
 
 THIS TURN (2026-09-03, sidebar page-load slowness fix):
 - User: "why it is taking more time to load the pages in sidebar? check and fix

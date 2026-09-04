@@ -191,57 +191,59 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           data-testid="url-input"
           onChange={(e) => onUrlChange(e.target.value)}
         />
-        <select
-          className="compact-select"
-          aria-label="API type"
-          data-testid="api-type-select"
-          value={request.apiType}
-          onChange={(e) => update({ apiType: e.target.value as ApiType })}
-        >
-          {API_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="primary-button"
-          data-testid="send-button"
-          onClick={onSend}
-          title={ws.requestRunning ? 'Running…' : 'Send (Ctrl+Enter)'}
-          style={actionBtn}
-          disabled={ws.requestRunning}
-        >
-          {ws.requestRunning ? <span className="spinner spinner-sm" /> : <SendIcon size={14} />}
-          Send
-        </button>
-        <button type="button" className="ghost-button" data-testid="save-request-button" onClick={onSave} style={actionBtn}>
-          <SaveIcon size={14} />
-          {ws.isDirty && (
-            <span
-              className="unsaved-dot"
-              data-testid="unsaved-dot"
-              title="You have unsaved changes"
-              aria-label="You have unsaved changes"
-            >
-              •
-            </span>
-          )}
-          Save
-        </button>
-        <button type="button" className="ghost-button" data-testid="codegen-open-button" onClick={onExportCode} style={actionBtn}>
-          <CodeIcon size={14} />
-          Code
-        </button>
-        <button type="button" className="ghost-button" data-testid="import-curl-button" onClick={onOpenCurl} style={actionBtn}>
-          <ImportIcon size={14} />
-          Import
-        </button>
-        <button type="button" className="ghost-button" data-testid="share-open-button" onClick={() => setShareOpen(true)} style={actionBtn}>
-          <ShareIcon size={14} />
-          Share
-        </button>
+        <div className="request-bar-actions" style={{ display: 'contents' }}>
+          <select
+            className="compact-select"
+            aria-label="API type"
+            data-testid="api-type-select"
+            value={request.apiType}
+            onChange={(e) => update({ apiType: e.target.value as ApiType })}
+          >
+            {API_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="primary-button"
+            data-testid="send-button"
+            onClick={onSend}
+            title={ws.requestRunning ? 'Running…' : 'Send (Ctrl+Enter)'}
+            style={actionBtn}
+            disabled={ws.requestRunning}
+          >
+            {ws.requestRunning ? <span className="spinner spinner-sm" /> : <SendIcon size={14} />}
+            Send
+          </button>
+          <button type="button" className="ghost-button" data-testid="save-request-button" onClick={onSave} style={actionBtn}>
+            <SaveIcon size={14} />
+            {ws.isDirty && (
+              <span
+                className="unsaved-dot"
+                data-testid="unsaved-dot"
+                title="You have unsaved changes"
+                aria-label="You have unsaved changes"
+              >
+                •
+              </span>
+            )}
+            Save
+          </button>
+          <button type="button" className="ghost-button" data-testid="codegen-open-button" onClick={onExportCode} style={actionBtn}>
+            <CodeIcon size={14} />
+            Code
+          </button>
+          <button type="button" className="ghost-button" data-testid="import-curl-button" onClick={onOpenCurl} style={actionBtn}>
+            <ImportIcon size={14} />
+            Import
+          </button>
+          <button type="button" className="ghost-button" data-testid="share-open-button" onClick={() => setShareOpen(true)} style={actionBtn}>
+            <ShareIcon size={14} />
+            Share
+          </button>
+        </div>
       </div>
 
       <TabBar

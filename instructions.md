@@ -232,33 +232,37 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M14 | Rework scratchpad: full-width editor + save location picker | done (pushed `edff412`) |
 | M15 | Verify/fix pulled commit `7af6044` (Ctrl+Enter editors + formula helpers panel + admin Access tab) | done (this turn, pushed) |
 | M16 | Structured multipart/form-data parts — text + FILE rows in request editor + scratchpad; run sends real file bytes (ephemeral); save persists file reference only | done (this turn, pushed) |
+| M17 | Full mobile responsive UI + touch UX (off-canvas drawer nav, bottom-sheet modals, stacked card tables, compact editor) — 4 parallel agents | done (this turn, pushed) |
 
-## M14 — Rework scratchpad (done)
+## M17 — Mobile responsive UI + touch UX (done)
 
-The M8 scratchpad modal was reworked into a full-width editor pane + a save
-location picker (user decisions above):
+Frontend is now responsive for phones/tablets while the desktop (>900px)
+layout is untouched. Delivered by four parallel agents, each appending
+media-query-only overrides (`max-width:900px` / `640px`) to its own new CSS
+file imported after `globals.css` in `app/layout.tsx` (order chrome → editor →
+views → modals) with a disjoint TSX file list:
 
-- `ScratchpadWorkspace.tsx` — full-width editor pane in the main area: method
-  select + URL input with cURL auto-parse (reuses `parseCurl`), tabs
-  Params/Headers/Body/Formula/Tests, explicit **Send** (ephemeral — nothing
-  saved) / **Save** / **Close** controls, response shown via `ResponsePane` in
-  a split below. Local draft state (no WS store wiring); Send →
-  `ws.runScratchpad(...)`; Save → open the picker.
-- `ScratchpadSaveModal.tsx` — save-location picker: required name field (no
-  silent auto-derive) + all collections in the current workspace with nested
-  folders as an indented tree; on confirm →
-  `contentApi.createRequest({collectionId,name,method,url,apiType,folderId})`
-  then `contentApi.updateRequest(id, patch)` (headers, queryParams, bodyType,
-  bodyJson/bodyText, formula, assertions), then `ws.reloadTree()` +
-  `ws.selectRequest(id)`.
-- `AppShell` renders `<ScratchpadWorkspace>` full-width instead of the modal
-  and closes it on sidebar request selection; `ScratchpadModal.tsx` removed
-  (`.scratchpad-preview` CSS dropped, `curl-input` kept).
-- New shared lib `frontend/src/lib/scratchpadDraft.js`
-  (`defaultScratchDraft`, `scratchDraftToRunInput`, `scratchDraftToServerPatch`).
-- e2e `frontend/e2e/scratchpad.spec.ts` rewritten for the new UI (open editor,
-  method/url, send → response shown + no request created; save → picker asks
-  name, pick collection + nested folder → request appears at that folder).
+- Chrome/nav: off-canvas sidebar drawer — hamburger in `TopBar`
+  (`mobile-drawer-toggle`), `AppShell` `navOpen` + backdrop + Escape/body
+  scroll-lock, `Sidebar` off-canvas ≤900px; top-level rails
+  (Automations/History/Manage/Admin) close the drawer; workspace chips /
+  collection expand / APIs & Teams rails keep it open; request select closes
+  it (`CollectionsTree.onSelectRequest` → new `onRequestClose` prop — the
+  drawer bug found by the 390px smoke test). Modals moved out of `<aside>`.
+- Editor: `.request-bar-actions` `display:contents` wrappers (desktop DOM
+  unchanged); stacked split-pane with touch dividers; ≤640px wrapped method+
+  URL with full-width Send; KV/Multipart rows restack with ≥40px targets.
+- Views: admin/manage/history tables wrapped in `.table-wrap(.table-stack)`
+  with `data-label` per cell → labelled cards ≤640px; wide tables scroll;
+  Automations/Workflow CSS-only; collapsible overview grid.
+- Modals/auth/share: bottom-sheet modals ≤640px (`100dvh`, safe-area, sticky
+  header/actions); input ≥42px/48px auth at 16px (no iOS zoom); `.table-scroll`
+  wrappers; share page "Open in API Hub" CTA (`share-open-app`).
+
+Verified: `tsc --noEmit` clean, `npm test` 89/89, `next build` green, 390px
+smoke passed; desktop e2e 1280px green except one environment-flaky spec per
+run (differs each run, passes alone — see docs/SESSION.md §5.27/§8). Full
+file-by-file breakdown in docs/SESSION.md §5.27.
 
 ## M16 — Structured multipart/form-data parts (done)
 
