@@ -2,7 +2,8 @@
 
 const { Router } = require('express');
 const { query } = require('../db');
-const { requireAuth, roleAtLeast } = require('../access');
+const { requireAuth, roleAtLeast, getWorkspaceRole } = require('../access');
+const { listWorkspaces } = require('./workspaces');
 
 const router = Router();
 router.use(requireAuth);
@@ -42,6 +43,55 @@ router.get('/', async (req, res, next) => {
       teams.push({ ...t, members: await teamWithMembers(t.id), myRole: await teamRole(req.user.id, t.id) });
     }
     res.json({ teams });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Team-scoped grouping for navigation: teams the user participates in (as a
+// member, or as an org admin) each with the workspaces shared to that team,
+// followed by an "other" bucket holding the user's remaining workspaces
+// (direct membership / public) that no participating team shares.
+router.get('/groups', async (req, res, next) => {
+  try {
+    const { rows: teams } = await query(
+      `SELECT DISTINCT t.id, t.name, t.organization_id, o.name AS organization_name
+         FROM teams t
+         JOIN organizations o ON o.id = t.organization_id
+        WHERE EXISTS (SELECT 1 FROM team_members tm
+                       WHERE tm.team_id = t.id AND tm.user_id = $1)
+           OR EXISTS (SELECT 1 FROM organization_members om
+                       WHERE om.org_id = t.organization_id
+                         AND om.user_id = $1 AND om.role = 'ADMIN')
+        ORDER BY t.name`,
+      [req.user.id]
+    );
+
+    const groupedIds = new Set();
+    const groups = [];
+    for (const t of teams) {
+      const myRole = await teamRole(req.user.id, t.id);
+      const { rows: wsRows } = await query(
+        `SELECT w.id, w.name, w.visibility, w.organization_id, o.name AS organization_name
+           FROM workspaces w
+           JOIN workspace_teams wt ON wt.workspace_id = w.id
+           JOIN organizations o ON o.id = w.organization_id
+          WHERE wt.team_id = $1
+          ORDER BY w.name`,
+        [t.id]
+      );
+      const workspaces = [];
+      for (const w of wsRows) {
+        groupedIds.add(w.id);
+        const role = await getWorkspaceRole(req.user.id, w.id);
+        workspaces.push({ ...w, role });
+      }
+      groups.push({ ...t, myRole, workspaces });
+    }
+
+    const all = await listWorkspaces(req.user.id);
+    const other = all.filter((w) => !groupedIds.has(w.id));
+    res.json({ groups, other });
   } catch (err) {
     next(err);
   }

@@ -74,6 +74,98 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.28 Team- and project-scoped workspaces (this turn)
+
+User scope: "We should be able to create everything based on team wise." A
+member of a team (e.g. EMEA) with access to that team's projects (e.g. ats,
+ayq) should only work inside those; an admin must be able to assign a user to
+a project; opening a project should surface its users, its workspace, and
+access levels. Clarification answers that shaped the design: Team = the top
+grouping (open EMEA → its projects); "sub projects" = the project's workspace
+as an info panel; the project overview is a full command center (members +
+access, content, activity, settings controls); access management is done by
+admins AND project managers. The existing org → teams → workspaces → projects
+schema already supported this — nothing was missing data-wise, only the UX
+never surfaced teams or made the project the thing you "open".
+
+Backend (`routes/projects.js`, `routes/teams.js`, `routes/workspaces.js`):
+- `GET /api/teams/groups` — the user's teams (as team member OR org admin)
+  each with workspaces shared to that team (with the caller's workspace role),
+  plus `other` = accessible workspaces not shared by any of their teams
+  (direct membership / public). `listWorkspaces()` was exported from
+  `workspaces.js` and reused. Placed in `teams.js` (only `requireAuth`) so all
+  members can build the grouped nav.
+- `GET /api/projects/:projectId/overview` — member-readable (`requireProjectRead`):
+  project + workspace/organization info, `myAccess{level,isManager}` +
+  `canManage` (MANAGER/ADMIN level), content counts (collections/folders/
+  requests/automations/workflows + `has_mock_server`), managers (grantor +
+  granted_at) and members (role + grantor), and the 8 most recent project
+  runs. Lives in `projects.js`, NOT under `/manage` whose router gate
+  `requireManagerOrAdmin` would exclude pure project managers.
+- Project-scoped membership management gated by effective access ≥ MANAGER
+  (`requireProjectManager` — works for real project managers, org admins and
+  platform admins; VIEWER/EDITOR members get 403): `POST /api/projects/:projectId/members`
+  (upsert member; role restricted to EDITOR|VIEWER to prevent self-elevation),
+  `PATCH /api/projects/:projectId/members/:userId` (change role),
+  `DELETE /api/projects/:projectId/members/:userId` (remove member; managers
+  are protected), `GET /api/projects/:projectId/org-users` (org users not yet
+  on the project for the add-member picker). Every mutation writes an
+  `audit_logs` row (`grant_project_access` / `update_project_member_role` /
+  `revoke_project_access`). Admin grant endpoints under `/api/admin` are
+  unchanged.
+
+Frontend:
+- `WorkspaceStore`: new `groups` (from `teamApi.groups()` fetched in `refresh()`),
+  `overview` / `overviewLoading` / `overviewError`, `selectProjectOverview()`
+  (seq-guarded against out-of-order responses; clears request-tab state when
+  first opening, refreshes in place when the same project is reopened) and
+  `closeProjectOverview()`. Overview is cleared by selectWorkspace /
+  selectCollection / selectRequest / reloadTree / workspace create+delete.
+- `Sidebar` → `WorkspaceChips` now renders team sections
+  (`workspace-group-head`, `data-testid="team-group-<name>"`, member count from
+  the teams store) above each team's chips, then "Other workspaces", with a
+  flat fallback when the user has no groups; every pre-existing testid and the
+  chip markup are byte-identical (single `renderChip`), so `workspace-*`,
+  `delete-workspace-*`, `new-workspace` still behave the same. Project rows
+  (`CollectionsTree`) gained an `onOpenProject` affordance: the
+  `.tree-project-name` label is now a button (only when `p.can_access`) that
+  calls `goWorkspace()` + `SET_TAB request` + `selectProjectOverview`; the
+  `mock-server-*` icon and `request-access-*` button are untouched and still
+  work for non-members. Projects that the user can't access keep a plain label
+  + PENDING badge + request-access button exactly as before.
+- New `ProjectOverview.tsx` (rendered from `AppShell.WorkspaceArea` instead of
+  the request editor only while no request tab is open): tabs Overview (stat
+  tiles for counts + Workspace info card: workspace · organization ·
+  visibility), Members & Access (combined managers/members table with role
+  badges; for `canManage` users an org-user picker (`add-member-user`),
+  per-member role `<select>` `role-<email>` and `remove-member-<email>`, each
+  mutation refreshing the overview in place), and Activity (recent runs).
+  Header shows project name, its workspace·org badge, and the viewer's role;
+  `close-project-overview` returns to the normal empty editor state.
+- `globals.css` gained ~325 lines of `.workspace-group-*`, `.tree-project-head`
+  and `.project-overview`/`.po-*` styles using existing design tokens. All
+  media-query mobile CSS is untouched.
+
+Verification:
+- Backend curl matrix on :3001: `/teams/groups` correctly groups a workspace
+  under a freshly created "EMEA" team and removes it from `other`; overview
+  returns counts + PM manager + Dev member + recent runs; a VIEWER member gets
+  `canManage:false` and 403 on member routes; a project MANAGER adds/changes/
+  removes member roles (MANAGER role rejected with 400) and gets the
+  org-user picker. `node --check` clean.
+- Frontend gates: `tsc --noEmit` clean, `npm test` 89/89, `next build` green,
+  globals.css brace-balanced.
+- E2E: new `frontend/e2e/project-overview.spec.ts` (idempotent team create +
+  share → grouped chips → open overview → tiles/workspace card → Members tab
+  shows PM + MANAGER + add picker → Activity → close returns to editor).
+  Full suite = 25 specs / 39 tests → **37 passed, 2 failed**
+  (`nav-race`, `send-working-copy`). Both failures were reproduced identically
+  on the clean pre-change baseline (`git stash push -u`, re-run, `pop`) and
+  `send-working-copy` passes in isolation on a fresh seed + fresh mock
+  upstream ⇒ environmental flakes (see §8), not regressions.
+- Runs on :3000/:3001/:3999; preview
+  https://3000-d996ae6ab8ef93e4.monkeycode-ai.live
+
 ### 5.27 Full mobile-responsive UI + touch UX — 4 parallel agents (this turn)
 
 User scope: "Make it full mobile responsive ui and better UX as well. Use
@@ -748,9 +840,9 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-None — the mobile-responsive UI turn (§5.27) and the structured multipart
-body-parts feature (§5.26) are committed and pushed on `master`; working tree
-clean.
+None — the team/project-scoped workspace turn (§5.28), the mobile-responsive
+UI turn (§5.27) and the structured multipart body-parts feature (§5.26) are
+committed and pushed on `master`; working tree clean.
 
 ## 8. Known issues / notes for the next agent
 
@@ -799,6 +891,23 @@ clean.
   dev-mode timing assumptions wrong). A fresh environment also needs
   `npx playwright install chromium` and `npx playwright install-deps chromium`
   — Chromium and its OS libs are not preinstalled.
+- **Team/project scoping turn (§5.28) — e2e still exhibits the same two
+  environmental flakes** (`nav-race` stays on `/manage` after rail-apis;
+  `send-working-copy` gets `posts/2 not found` when mock-upstream state was
+  polluted by earlier specs). Full-suite result this turn: 37/39. Both were
+  reproduced on the clean pre-change baseline (`git stash push -u` → run →
+  `git stash pop`), and `send-working-copy` passes alone after a fresh seed +
+  fresh `mock-upstream.js` — so they are NOT regressions of the team/project
+  work. The new `e2e/project-overview.spec.ts` is hermetic (deletes any prior
+  "E2E Team" before re-creating it) and passed. Suite is now 25 specs / 39
+  tests.
+- **Navigation model decision (team-first)**: keep the existing schema; teams
+  (`GET /api/teams/groups`) group the sidebar's workspace chips, and clicking a
+  project name opens its command center (`GET /api/projects/:id/overview`).
+  Member-role mutations for projects are self-service for anyone with effective
+  MANAGER+ access on that project (`requireProjectManager`); global MANAGER
+  role is NOT required, so pure project managers work. Role changes are limited
+  to EDITOR/VIEWER (no self-promotion to MANAGER/ADMIN via the UI).
 
 ## 9. How to continue
 

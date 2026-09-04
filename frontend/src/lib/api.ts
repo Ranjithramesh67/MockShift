@@ -5,6 +5,90 @@ import type { Assertion, BodyFormPart } from './types';
 export type ApiType = 'REST' | 'SOAP' | 'GRAPHQL' | 'AUTH';
 export type WorkspaceVisibility = 'PRIVATE' | 'PUBLIC';
 export type UserRole = 'ADMIN' | 'MANAGER' | 'EDITOR' | 'VIEWER';
+export type MemberRole = 'EDITOR' | 'VIEWER';
+
+// ----------------------------------------------------------------- Team groups
+// Grouped workspace navigation: workspaces the user can access, bucketed by the
+// teams that share them. `other` holds accessible workspaces not shared by any
+// team the user belongs to.
+export interface GroupWorkspace {
+  id: string;
+  name: string;
+  visibility: WorkspaceVisibility;
+  organization_id: string;
+  organization_name: string;
+  role: UserRole | null;
+}
+
+export interface TeamGroup {
+  id: string;
+  name: string;
+  organization_id: string;
+  organization_name: string;
+  myRole: UserRole | null;
+  workspaces: GroupWorkspace[];
+}
+
+export interface TeamGroupsResponse {
+  groups: TeamGroup[];
+  other: GroupWorkspace[];
+}
+
+// ---------------------------------------------------------- Project overview
+export interface OverviewProject {
+  id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name: string;
+  workspace_visibility: WorkspaceVisibility;
+  organization_id: string;
+  organization_name: string;
+}
+
+export interface OverviewPerson {
+  id: string;
+  email: string;
+  name: string;
+  role: MemberRole | 'MANAGER';
+  granted_at: string | null;
+  grantor_name: string | null;
+}
+
+export interface ProjectOverviewCounts {
+  collections: number;
+  folders: number;
+  requests: number;
+  automations: number;
+  workflows: number;
+  has_mock_server: boolean;
+}
+
+export interface OverviewRecentRun {
+  id: string;
+  status: string;
+  trigger: string;
+  started_at: string;
+  finished_at: string | null;
+  request_name: string | null;
+  workflow_name: string | null;
+  user_name: string | null;
+}
+
+export interface ProjectOverview {
+  project: OverviewProject;
+  myAccess: { level: string; isManager: boolean };
+  canManage: boolean;
+  counts: ProjectOverviewCounts;
+  managers: OverviewPerson[];
+  members: OverviewPerson[];
+  recentRuns: OverviewRecentRun[];
+}
+
+export interface ProjectOrgUser {
+  id: string;
+  name: string;
+  email: string;
+}
 
 export interface User {
   id: string;
@@ -225,6 +309,7 @@ export const workspaceApi = {
 
 export const teamApi = {
   list: () => apiFetch<{ teams: Team[] }>('/api/teams'),
+  groups: () => apiFetch<TeamGroupsResponse>('/api/teams/groups'),
   create: (input: { name: string; organizationId?: string }) => apiFetch<{ team: Team }>('/api/teams', { method: 'POST', body: input }),
   delete: (teamId: string) => apiFetch(`/api/teams/${teamId}`, { method: 'DELETE' }),
   invite: (teamId: string, email: string, role: UserRole) =>
@@ -287,6 +372,27 @@ export const folderApi = {
   update: (folderId: string, patch: { name?: string; parentId?: string | null }) =>
     apiFetch<{ folder: Folder }>(`/api/folders/${folderId}`, { method: 'PUT', body: patch }),
   remove: (folderId: string) => apiFetch<{ ok: true }>(`/api/folders/${folderId}`, { method: 'DELETE' }),
+};
+
+// ----------------------------------------------------- Project command center
+// Project-level overview + membership management (self-service, not admin).
+export const projectApi = {
+  overview: (projectId: string) =>
+    apiFetch<ProjectOverview>(`/api/projects/${projectId}/overview`),
+  orgUsers: (projectId: string) =>
+    apiFetch<{ users: ProjectOrgUser[] }>(`/api/projects/${projectId}/org-users`),
+  addMember: (projectId: string, userId: string, role: MemberRole) =>
+    apiFetch<{ ok: true; role: MemberRole }>(`/api/projects/${projectId}/members`, {
+      method: 'POST',
+      body: { userId, role },
+    }),
+  setMemberRole: (projectId: string, userId: string, role: MemberRole) =>
+    apiFetch<{ ok: true; role: MemberRole }>(`/api/projects/${projectId}/members/${userId}`, {
+      method: 'PATCH',
+      body: { role },
+    }),
+  removeMember: (projectId: string, userId: string) =>
+    apiFetch<{ ok: true }>(`/api/projects/${projectId}/members/${userId}`, { method: 'DELETE' }),
 };
 
 // --------------------------------------------------------- Collection export

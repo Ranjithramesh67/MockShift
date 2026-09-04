@@ -4546,3 +4546,328 @@ body.is-col-dragging .sidebar {
   text-align: center;
   margin-right: 2px;
 }
+
+/* ==========================================================================
+   Project overview (command center) + grouped workspace navigation
+   ========================================================================== */
+
+/* --- Sidebar: team-grouped workspace chips ------------------------------ */
+.workspace-chips.grouped {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.workspace-chips.grouped .workspace-chip.new {
+  align-self: flex-start;
+}
+
+.workspace-chips.grouped > .hint {
+  padding-left: 4px;
+}
+
+.workspace-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  min-width: 0;
+}
+
+.workspace-group-head.other {
+  margin-top: 4px;
+}
+
+.workspace-group-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-group-sub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  opacity: 0.8;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.workspace-group-count {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.workspace-group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 2px;
+}
+
+/* --- Sidebar: project name row opens the overview ------------------------ */
+.tree-project-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.tree-project-head .tree-project-name {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  border: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.tree-project-head .tree-project-name:hover {
+  color: var(--text-muted);
+  background: var(--bg-hover);
+}
+
+/* --- Project overview ---------------------------------------------------- */
+.project-overview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.project-overview-head {
+  padding: 18px 20px 6px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.project-overview-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.project-overview-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.po-loc-badge {
+  font-size: 10px;
+  background: rgba(88, 166, 255, 0.12);
+  color: #7cb8ff;
+}
+
+.po-close {
+  margin-left: auto;
+}
+
+.project-overview-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.project-overview-sub strong {
+  color: var(--text);
+}
+
+.po-error {
+  margin: 8px 0 0;
+}
+
+.project-overview-body {
+  padding: 16px 20px 28px;
+}
+
+.po-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.po-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.po-tile-icon {
+  display: inline-flex;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
+.po-tile-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.po-tile-value {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+}
+
+.po-tile-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.po-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  max-width: 640px;
+}
+
+.po-card .manage-section-title {
+  margin: 0 0 10px;
+}
+
+.po-kv {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.po-kv:last-child {
+  border-bottom: none;
+}
+
+.po-kv-label {
+  width: 120px;
+  flex-shrink: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.po-kv-value {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.po-add-member {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.po-role-select {
+  min-width: 108px;
+}
+
+.po-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.po-table th,
+.po-table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.po-table th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  font-weight: 700;
+  background: var(--bg-panel-2);
+}
+
+.po-table td {
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.po-table tr:last-child td {
+  border-bottom: none;
+}
+
+.po-actions-col {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.po-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.po-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.po-person-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.po-person-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.po-person-email {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+

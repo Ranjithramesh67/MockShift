@@ -12,6 +12,7 @@ import React, {
 import {
   contentApi,
   folderApi,
+  projectApi,
   teamApi,
   workspaceApi,
   type ApiType,
@@ -20,8 +21,10 @@ import {
   type CollectionRunResult,
   type ContentTree,
   type Folder,
+  type ProjectOverview,
   type RunResult,
   type Team,
+  type TeamGroupsResponse,
   type TeamMember,
   type UserRole,
   type Workspace,
@@ -158,6 +161,10 @@ interface WorkspaceState {
   error: string | null;
   workspaces: Workspace[];
   teams: Team[];
+  groups: TeamGroupsResponse | null;
+  overview: ProjectOverview | null;
+  overviewLoading: boolean;
+  overviewError: string | null;
   activeWorkspaceId: string | null;
   activeWorkspaceRole: UserRole | null;
   tree: ContentTree | null;
@@ -227,6 +234,8 @@ interface WorkspaceState {
   saveAuthProvider: (provider: AuthProvider) => Promise<void>;
   testAuthProvider: () => Promise<{ resolvedHeader: { headerKey: string; headerValue: string } | null; tokenResponse: string } | null>;
   reloadTree: () => Promise<void>;
+  selectProjectOverview: (project: { id: string; name: string }) => Promise<void>;
+  closeProjectOverview: () => void;
 
   inviteToTeam: (teamId: string, email: string, role: UserRole) => Promise<TeamMember[]>;
   shareWorkspace: (workspaceId: string, teamId: string, role: UserRole) => Promise<void>;
@@ -241,6 +250,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [groups, setGroups] = useState<TeamGroupsResponse | null>(null);
+  const [overview, setOverview] = useState<ProjectOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [activeWorkspaceRole, setActiveWorkspaceRole] = useState<UserRole | null>(null);
   const [tree, setTree] = useState<ContentTree | null>(null);
@@ -277,10 +290,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const selectSeqRef = useRef(0);
   const selectTargetRef = useRef<string | null>(null);
 
+  // Grouped workspace nav is auxiliary: a failure here degrades to the flat
+  // workspace list rather than failing whatever orchestration called it.
+  const loadGroups = useCallback(async () => {
+    try {
+      const grp = await teamApi.groups();
+      setGroups(grp);
+    } catch {
+      setGroups(null);
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     if (!user) {
       setWorkspaces([]);
       setTeams([]);
+      setGroups(null);
       setLoading(false);
       return;
     }
@@ -295,7 +320,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+    await loadGroups();
+  }, [user, loadGroups]);
 
   useEffect(() => {
     refresh();
@@ -311,6 +337,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const selectWorkspace = useCallback(async (workspaceId: string) => {
     setError(null);
     selectSeqRef.current += 1; // invalidate any in-flight request selection
+    setOverview(null);
+    setOverviewError(null);
     setActiveWorkspaceId(workspaceId);
     setActiveRequest(null);
     setActiveRequestId(null);
@@ -339,6 +367,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const selectCollection = useCallback(async (collectionId: string, collectionName: string) => {
     selectSeqRef.current += 1; // invalidate any in-flight request selection
+    setOverview(null);
+    setOverviewError(null);
     setActiveCollectionId(collectionId);
     setActiveCollectionName(collectionName);
     setActiveRequest(null);
@@ -363,6 +393,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     // that resolves afterwards will be discarded below.
     const seq = ++selectSeqRef.current;
     selectTargetRef.current = requestId;
+    // Opening a request always leaves the project overview.
+    setOverview(null);
+    setOverviewError(null);
     // Restore the last stored response for this request if one exists.
     setLastRun(requestRuns[requestId] ?? null);
     if (openRequestIds.includes(requestId)) {
@@ -669,11 +702,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const createWorkspace = useCallback(async (name: string, visibility?: Workspace['visibility']) => {
+    setOverview(null);
+    setOverviewError(null);
     const { workspace } = await workspaceApi.create({ name, visibility });
     const updated = await workspaceApi.list();
     setWorkspaces(updated.workspaces);
+    await loadGroups();
     await selectWorkspace(workspace.id);
-  }, [selectWorkspace]);
+  }, [selectWorkspace, loadGroups]);
 
   const createCollection = useCallback(async (name: string) => {
     if (!tree) return;
@@ -860,6 +896,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const deleteWorkspace = useCallback(async (workspaceId: string) => {
     selectSeqRef.current += 1; // invalidate any in-flight request selection
+    setOverview(null);
+    setOverviewError(null);
     await workspaceApi.remove(workspaceId);
     if (activeWorkspaceId === workspaceId) {
       setActiveWorkspaceId(null);
@@ -879,10 +917,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
     const updated = await workspaceApi.list();
     setWorkspaces(updated.workspaces);
+    await loadGroups();
     if (activeWorkspaceId === workspaceId && updated.workspaces.length > 0) {
       await selectWorkspace(updated.workspaces[0].id);
     }
-  }, [activeWorkspaceId, selectWorkspace]);
+  }, [activeWorkspaceId, selectWorkspace, loadGroups]);
 
   const deleteTeam = useCallback(async (teamId: string) => {
     await teamApi.delete(teamId);
@@ -917,9 +956,53 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const reloadTree = useCallback(async () => {
     if (!activeWorkspaceId) return;
+    setOverview(null);
+    setOverviewError(null);
     const t = await workspaceApi.content(activeWorkspaceId);
     setTree(t);
   }, [activeWorkspaceId]);
+
+  // Project overview (command center). Clears any open request/collection
+  // selection so the main area can show the overview, but never reloads
+  // workspace content. Refreshing an already-open overview skips the clearing
+  // and loading reset so the members/activity UI can re-render in place.
+  const selectProjectOverview = useCallback(
+    async (project: { id: string; name: string }) => {
+      const seq = ++selectSeqRef.current;
+      setError(null);
+      if (!(overview && overview.project.id === project.id)) {
+        setOverviewLoading(true);
+        setOverview(null);
+        setOverviewError(null);
+        setActiveRequest(null);
+        setActiveRequestId(null);
+        setOpenRequestIds([]);
+        setRequestCopies({});
+        setBaselines({});
+        setClosedTabs([]);
+        setLastRun(null);
+        setRequestRuns({});
+      }
+      setOverviewError(null);
+      try {
+        const data = await projectApi.overview(project.id);
+        if (selectSeqRef.current !== seq) return;
+        setOverview(data);
+      } catch (err) {
+        if (selectSeqRef.current !== seq) return;
+        setOverviewError(err instanceof Error ? err.message : 'Failed to load project overview');
+      } finally {
+        if (selectSeqRef.current === seq) setOverviewLoading(false);
+      }
+    },
+    [overview]
+  );
+
+  const closeProjectOverview = useCallback(() => {
+    setOverview(null);
+    setOverviewError(null);
+    setOverviewLoading(false);
+  }, []);
 
   const inviteToTeam = useCallback(async (teamId: string, email: string, role: UserRole) => {
     const { members } = await teamApi.invite(teamId, email, role);
@@ -942,6 +1025,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       error,
       workspaces,
       teams,
+      groups,
+      overview,
+      overviewLoading,
+      overviewError,
       activeWorkspaceId,
       activeWorkspaceRole,
       tree,
@@ -994,12 +1081,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       saveAuthProvider,
       testAuthProvider,
       reloadTree,
+      selectProjectOverview,
+      closeProjectOverview,
       inviteToTeam,
       shareWorkspace,
       unshareWorkspace,
     }),
     [
-      loading, error, workspaces, teams, activeWorkspaceId, activeWorkspaceRole, tree,
+      loading, error, workspaces, teams, groups, overview, overviewLoading, overviewError,
+      activeWorkspaceId, activeWorkspaceRole, tree,
       activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
       requestRuns,
       collectionRun, collectionRunRunning, requestRunning, selectedFiles, setFileForPart,
@@ -1010,7 +1100,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       createWorkspace, createCollection, createRequest,
       createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, moveFolder, duplicateRequest, duplicateFolder,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
-      loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree, inviteToTeam, shareWorkspace, unshareWorkspace,
+      loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree,
+      selectProjectOverview, closeProjectOverview,
+      inviteToTeam, shareWorkspace, unshareWorkspace,
     ]
   );
 
