@@ -7,17 +7,27 @@ Last updated: 2026-09-04
 
 ## Current
 
-Step: PER-REQUEST UNDO/REDO + BACK TO PREVIOUS REQUEST — every open request
-tab gets its own undo/redo history over working-copy edits (never touches the
-DB), exposed as `request-back` / `request-undo` / `request-redo` buttons on
-the tab bar plus global Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z shortcuts that no-op
-while focus is in any editable field (native editor undo untouched).
-Status: COMPLETE — tsc clean, 89/89 unit, `next build` green, new e2e spec
-4/4, full desktop e2e 41/43 with only the two documented environmental flakes
-(`assertions-runner` shared-mock ordering, `nav-race`); committed and pushed
-to `origin/master`.
+Step: NOT STARTED — two new portals planned below; no code written yet.
+Status: AWAITING GO — the plan is recorded in `## Pending — Two subscription
+portals`; open decisions are listed in `## Blocked / needs answer from
+Ranjith`. This turn is docs-only (record plan in session.md + push). Work
+begins once Ranjith says GO and answers the open questions.
 
-THIS TURN (2026-09-04, per-request undo/redo + back to previous request):
+THIS TURN (2026-09-04, plan two subscription portals — docs only):
+- Pulled latest code (HEAD `58a478b`, incl. `3b6ac59` per-request undo/redo,
+  ProjectOverview, multipart parts, mobile CSS). Working tree clean.
+- Recorded a segmented pending plan for two portals in `## Pending — Two
+  subscription portals` below:
+  - Portal A — public subscription showcase + purchase website.
+  - Portal B — internal subscription management portal with RBAC.
+- Existing RBAC base confirmed: `role` enum (`ADMIN`/`MANAGER`/`EDITOR`/
+  `VIEWER`), `users.role` global role (002/003) + per-scope memberships
+  (`workspace_members`, `team_members`, org roles), guard middleware in
+  `backend/src/api/access.js` (`ROLE_RANK`, `requireGlobalRole`), RLS on
+  content tables, `app.role_at`/`workspace_role` SQL helpers.
+- No source changes and no tests this turn (docs only).
+
+PREVIOUS TURN (2026-09-04, per-request undo/redo + back to previous request):
 - Scope: per-request Undo/Redo toolbar buttons with global Ctrl+Z / Ctrl+Y /
   Ctrl+Shift+Z shortcuts, plus a "Back to previous request" button. Confirmed
   scope: undo/redo covers working-copy edits ONLY — the DB is never touched;
@@ -613,7 +623,24 @@ Folders added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collec
 
 ## Blocked / needs answer from Ranjith
 
-- (none)
+Open questions for the TWO-SUBSCRIPTION-PORTAL plan (see `## Pending — Two
+subscription portals`). Work starts after these are answered + GO is given:
+- Q1 **Subscriptions to what?** Is Portal A selling access/seats to THIS API
+  Hub product (plans like free/pro/team), or a generic SaaS catalog unrelated
+  to API Hub? What are the initial plans + pricing/currencies/billing cycles?
+- Q2 **Architecture** (X1): extend the current Next.js app with a public
+  `/plans` + `/checkout` + self-service area and a `/admin/*` management group
+  (recommended — single port/proxy), or a separate portal codebase?
+- Q3 **Payments**: real gateway (which one — Stripe/etc.) with live/sandbox
+  keys, or mock/manual invoicing first (recommended start) with webhooks added
+  later?
+- Q4 **Subscriber identity**: reuse existing `users` (auto-create on checkout,
+  default role EDITOR/VIEWER) or introduce a separate `customers` entity?
+- Q5 **Portal B RBAC roles**: ok to use portal roles ADMIN / MANAGER / SUPPORT /
+  VIEWER built on the existing `role` enum + `access.js` middleware, with
+  granular permissions (view-only vs manage vs suspend/refund)?
+- Q6 **Scope of the first milestone**: recommend A1 + B1 + X1 (data model +
+  RBAC foundation + architecture) before any UI.
 
 ## Working rules
 
@@ -655,7 +682,47 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
 - **Restart the backend after adding/changing routes** — a stale process serves old handlers.
 - **Full e2e run needs a freshly reset + seeded DB and mock upstream on :3999** — other specs
   leave requests in "Mock API Demo", so "Requests: 8" in assertions-runner.spec.ts breaks otherwise.
-- **Never run `next build` while `next dev` is live on the same `.next` dir** (clobbers dev chunks).
+   - **Never run `next build` while `next dev` is live on the same `.next` dir** (clobbers dev chunks).
+
+## Pending — Two subscription portals (recorded 2026-09-04, NOT started)
+
+Feature request from Ranjith: build TWO portals —
+**Portal A** = public "website" for subscription showcase + purchase
+(pricing/plans page, checkout, subscriber self-service), and
+**Portal B** = internal management portal for subscription users/details with
+**RBAC**. Recorded here as segments so each can be its own micro-task/session.
+Awaiting GO + answers to the open questions below.
+
+### Portal A — public subscription showcase + purchase website (customer-facing)
+
+| Seg | Deliverable |
+|---|---|
+| A1 | Plan/catalog data model + API: `plans` (name, features, price, billing cycle, trial days, active/published) — migration `012` (next free number), public read endpoints, RBAC-scoped admin CRUD |
+| A2 | Showcase UI: landing + plans/pricing pages rendered from the catalog (public, no login), responsive |
+| A3 | Subscriber identity: decide reuse of `users` vs a new `customers` entity; signup/account creation at checkout |
+| A4 | Purchase/checkout flow: pick plan → billing/contact info → create subscription + order → confirmation page |
+| A5 | Subscriber self-service: "My subscription" area — current plan, status, invoices, change/cancel |
+| A6 | Payment integration + webhooks + receipts (provider-dependent; see open questions) |
+
+### Portal B — subscription management portal (internal, RBAC)
+
+| Seg | Deliverable |
+|---|---|
+| B1 | RBAC design: portal roles (proposal: ADMIN / MANAGER / SUPPORT / VIEWER) mapped to existing `role` infra or a new enum; Express guard middleware + RLS policies; who may view/manage/suspend/refund |
+| B2 | Dashboard & metrics: KPIs (active subscriptions, MRR, trials, expiring soon, churn), list views with filters |
+| B3 | Subscriber/subscription management: search/list/detail of users + their subscriptions + orders; lifecycle actions (activate, suspend, cancel, upgrade/downgrade, refund) |
+| B4 | Plan/catalog admin UI: create/edit/publish plans, prices, discounts/promo codes |
+| B5 | Audit trail + export: log every admin action (actor, action, target, before/after) with RBAC-scoped report/export |
+| B6 | Portal B UI shell + pages wired to B1–B5 |
+
+### Cross-cutting (decide in X1 before coding)
+
+| Seg | Deliverable |
+|---|---|
+| X1 | Architecture: extend the current Next.js app (public `/plans`, `/checkout`, self-service + `/admin/*` portal group, reusing auth/session/proxy) vs separate portals — **recommend extending the current app** (single preview port, shared store patterns) |
+| X2 | Frontend patterns: keep `data-testid`/`aria-label` hooks (e2e green), component/store structure consistent with existing `WorkspaceStore`-style providers |
+| X3 | DB: single new migration(s) `012+` covering plans/subscriptions/orders/invoices + RBAC/RLS; record applied migrations in the Environment note |
+
 
 ## Roadmap
 

@@ -74,6 +74,32 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.31 Pending plan: two subscription portals (recorded, docs only)
+
+No code — Ranjith asked to record a segmented pending plan for two new portals
+in `session.md`, then work once it is pushed. Added `## Pending — Two
+subscription portals` to session.md and populated `## Blocked / needs answer
+from Ranjith` with open questions (Q1–Q6):
+
+- **Portal A** — public subscription showcase + purchase website: segments A1
+  plan/catalog model+API (migration `012`), A2 showcase/pricing UI, A3
+  subscriber identity, A4 purchase/checkout flow, A5 self-service, A6 payment
+  integration + webhooks.
+- **Portal B** — internal subscription management portal with RBAC: segments
+  B1 RBAC design (roles ADMIN/MANAGER/SUPPORT/VIEWER on the existing `role`
+  enum + `access.js` guards + RLS), B2 dashboard/metrics, B3 subscriber &
+  subscription management + lifecycle actions, B4 plan/catalog admin UI, B5
+  audit trail + export, B6 portal UI shell.
+- Cross-cutting X1 architecture (recommend extending the current Next.js app:
+  public `/plans` + `/checkout` + `/admin/*` group, single preview port), X2
+  frontend hooks/patterns, X3 DB migration(s) `012+`.
+- Confirmed existing RBAC base: `role` enum (`ADMIN`/`MANAGER`/`EDITOR`/
+  `VIEWER`), `users.role` global role, per-scope memberships,
+  `backend/src/api/access.js` (`ROLE_RANK`, `requireGlobalRole`), RLS helpers
+  `app.role_at` / `app.workspace_role`.
+- Pulled latest master first (HEAD `58a478b`). Pushed docs update. No source
+  changes, no tests this turn.
+
 ### 5.30 Per-request undo/redo + back to previous request (this turn)
 
 User scope: per-request Undo/Redo toolbar buttons with global Ctrl+Z /
