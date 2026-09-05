@@ -7,7 +7,34 @@ Last updated: 2026-09-05
 
 ## Current
 
-Step: NEW API REQUEST DIALOG — FORM | CURL (this turn). Requested: the
+Step: DUPLICATE "(COPY)" NAMING + SIBLING-UNIQUE NAMES (this turn). Requested:
+duplicating must not keep the source name — copies get " (copy)" appended — and
+names must be unique among siblings: two requests in a folder (or collection
+root) and two folders under the same parent may never share a name.
+- Backend `backend/src/api/routes/content.js`: `pickUniqueName` +
+  sibling-scope lookups wired into request/folder create, rename + move (PUT)
+  and both duplicate endpoints. A duplicated request keeps its editor state
+  but is named "X (copy)", "X (copy) 2", …; a duplicated folder renames only
+  its root copy (interior folders/requests keep names under fresh parents).
+  Renaming or moving onto a taken sibling name auto-renames
+  ("Target" → "Target (copy)"). Comparison is case-insensitive.
+- Frontend: `WorkspaceStore.duplicateRequest/duplicateFolder` return the copy
+  name and `Sidebar` toasts `Duplicated "X (copy)"`; `renameRequest`,
+  `moveRequest`, `moveFolder` write the server-resolved name back into the
+  tree/active request so collision renames appear instantly.
+- Files: `backend/src/api/routes/content.js`, `backend/tests/
+  duplicate.integration.test.cjs`, `frontend/src/store/WorkspaceStore.tsx`,
+  `frontend/src/components/Sidebar.tsx`, `frontend/e2e/request-duplicate.spec.ts`.
+- Verification: backend API suite 64/64; `tsc --noEmit` clean; `npm test`
+  89/89; `next build` green; e2e `request-duplicate` 2/2 + regression batch
+  10/10 (create-request-form ×2, curl-import, request-tabs ×4, dirty-dot,
+  folder-drag-move, nav-normal). DB reseeded after the integration suites
+  dropped/recreated the schema; backend :3001 and mock :3999 restarted.
+- Committed and pushed as `<commit-hash>`.
+
+PREVIOUS TURN (New API request dialog — Form | cURL — committed `1caf275`):
+
+Requested: the
 "New API request" dialog should either be a full form — Name + Type + Method +
 URL plus the fields relevant to the chosen method (Body for POST/PUT/PATCH,
 query params for GET/DELETE/HEAD/OPTIONS …) in a horizontal tab strip — or a

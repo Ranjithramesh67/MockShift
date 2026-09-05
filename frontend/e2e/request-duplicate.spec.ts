@@ -4,6 +4,8 @@ import { signupFreshUser } from './helpers';
 /**
  * M11: duplicate a request (context-menu button, Ctrl/Cmd+C) and duplicate a
  * folder (folder action button, Ctrl/Cmd+C) — including its whole subtree.
+ * Copies never keep the source name: each sibling gets an auto-uniquified
+ * " (copy)" / " (copy) N" suffix.
  */
 test('duplicate a request via context menu, Ctrl+C and not while typing', async ({ page }) => {
   const email = await signupFreshUser(page);
@@ -32,29 +34,35 @@ test('duplicate a request via context menu, Ctrl+C and not while typing', async 
   await page.getByTestId('workspace-My Workspace').click();
   await expect(page.getByTestId('sidebar')).toBeVisible();
 
-  const reqRows = page.getByTestId(`sidebar-request-${reqName}`);
-  await expect(reqRows).toHaveCount(1);
+  const original = page.getByTestId(`sidebar-request-${reqName}`);
+  const copy1 = page.getByTestId(`sidebar-request-${reqName} (copy)`);
+  const copy2 = page.getByTestId(`sidebar-request-${reqName} (copy) 2`);
+  await expect(original).toHaveCount(1);
 
-  // 1. Duplicate via the row context menu.
+  // 1. Duplicate via the row context menu → "Name (copy)".
   await page.getByTestId(`sidebar-row-${reqName}`).hover();
   await page.getByTestId(`request-options-${reqName}`).click();
   await page.getByTestId(`request-duplicate-${reqName}`).click();
-  await expect(page.getByTestId('toast')).toContainText(`Duplicated "${reqName}"`);
-  await expect(reqRows).toHaveCount(2);
+  await expect(page.getByTestId('toast')).toContainText(`Duplicated "${reqName} (copy)"`);
+  await expect(original).toHaveCount(1);
+  await expect(copy1).toHaveCount(1);
 
-  // 2. Select a row and duplicate it with Ctrl+C.
-  await reqRows.first().click();
+  // 2. Select the original and duplicate it with Ctrl+C → "Name (copy) 2".
+  await original.click();
   await expect(page.getByTestId('url-input')).toBeVisible();
   await expect(page.getByTestId(`sidebar-row-${reqName}`).first()).toHaveClass(/selected/);
   await page.waitForTimeout(200);
   await page.keyboard.press('Control+c');
-  await expect(reqRows).toHaveCount(3);
+  await expect(page.getByTestId('toast')).toContainText(`Duplicated "${reqName} (copy) 2"`);
+  await expect(copy2).toHaveCount(1);
 
   // 3. Ctrl+C while typing in an input must not duplicate.
   await page.getByTestId('url-input').click();
   await page.keyboard.press('Control+c');
   await page.waitForTimeout(300);
-  await expect(reqRows).toHaveCount(3);
+  await expect(original).toHaveCount(1);
+  await expect(copy1).toHaveCount(1);
+  await expect(copy2).toHaveCount(1);
 });
 
 test('duplicate a folder (with its requests) via the folder button and Ctrl+C', async ({ page }) => {
@@ -97,27 +105,34 @@ test('duplicate a folder (with its requests) via the folder button and Ctrl+C', 
   await page.getByTestId('workspace-My Workspace').click();
   await expect(page.getByTestId('sidebar')).toBeVisible();
 
-  const folderBtns = page.getByTestId(`folder-${folderName}`);
+  const originalFolder = page.getByTestId(`folder-${folderName}`);
+  const copyFolder1 = page.getByTestId(`folder-${folderName} (copy)`);
+  const copyFolder2 = page.getByTestId(`folder-${folderName} (copy) 2`);
   const innerRows = page.getByTestId(`sidebar-request-${innerName}`);
-  await expect(folderBtns).toHaveCount(1);
+  await expect(originalFolder).toHaveCount(1);
   await expect(innerRows).toHaveCount(1);
 
-  // 1. Duplicate the folder via its action menu — the request inside is
-  //    copied along with it (same names, so row count doubles).
+  // 1. Duplicate the folder via its action menu — the copy folder is named
+  //    "Name (copy)" and carries the same request inside (same inner name).
   await page.getByTestId(`folder-${folderName}`).hover();
   await page.getByTestId(`folder-options-${folderName}`).click();
   await page.getByTestId(`duplicate-folder-${folderName}`).click();
-  await expect(page.getByTestId('toast')).toContainText(`Duplicated "${folderName}"`);
-  await expect(folderBtns).toHaveCount(2);
+  await expect(page.getByTestId('toast')).toContainText(`Duplicated "${folderName} (copy)"`);
+  await expect(originalFolder).toHaveCount(1);
+  await expect(copyFolder1).toHaveCount(1);
   await expect(innerRows).toHaveCount(2);
 
-  // 2. Select the original folder and duplicate it with Ctrl+C.
-  await folderBtns.first().click();
+  // 2. Select the original folder and duplicate it with Ctrl+C → "Name (copy) 2".
+  await originalFolder.first().click();
   await expect(
-    page.locator('.tree-folder-row.selected', { has: folderBtns.first() })
+    page.locator('.tree-folder-row.selected', { has: originalFolder.first() })
   ).toHaveCount(1);
   await page.waitForTimeout(200);
   await page.keyboard.press('Control+c');
-  await expect(page.getByTestId('toast')).toContainText(`Duplicated "${folderName}"`);
-  await expect(folderBtns).toHaveCount(3);
+  await expect(page.getByTestId('toast')).toContainText(`Duplicated "${folderName} (copy) 2"`);
+  await expect(copyFolder2).toHaveCount(1);
+  // Selecting the original row toggled its subtree closed; reopen it so the
+  // three inner requests (one per folder copy) are all visible.
+  await originalFolder.first().click();
+  await expect(innerRows).toHaveCount(3);
 });

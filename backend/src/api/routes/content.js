@@ -14,6 +14,53 @@ const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'
 const BODY_TYPES = ['NONE', 'JSON', 'FORM_URLENCODED', 'MULTIPART', 'RAW_TEXT', 'GRAPHQL'];
 const API_TYPES = ['REST', 'SOAP', 'GRAPHQL', 'AUTH'];
 
+// ---- Sibling-unique names -------------------------------------------------
+// Requests are unique among their siblings inside a folder (folder_id NULL =
+// collection root); folders are unique among the folders sharing the same
+// parent (parent_id NULL = collection root). When a desired name collides we
+// auto-rename by appending " (copy)", then " (copy) 2", " (copy) 3", ...
+// Comparison is case-insensitive so "Login" and "login" collide.
+function pickUniqueName(desired, usedNames) {
+  const base = String(desired || '').trim();
+  const taken = new Set(usedNames.map((n) => String(n).toLowerCase()));
+  if (!taken.has(base.toLowerCase())) return base;
+  const copy = `${base} (copy)`;
+  if (!taken.has(copy.toLowerCase())) return copy;
+  for (let i = 2; i < 10000; i++) {
+    const candidate = `${copy} ${i}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${copy} ${Date.now()}`;
+}
+
+async function siblingRequestNames(collectionId, folderId, excludeRequestId, exec = query) {
+  const { rows } = await exec(
+    `SELECT name FROM api_requests
+      WHERE collection_id = $1 AND folder_id IS NOT DISTINCT FROM $2
+        AND ($3::uuid IS NULL OR id <> $3::uuid)`,
+    [collectionId, folderId, excludeRequestId || null]
+  );
+  return rows.map((r) => r.name);
+}
+
+async function siblingFolderNames(collectionId, parentId, excludeFolderId, exec = query) {
+  const { rows } = await exec(
+    `SELECT name FROM folders
+      WHERE collection_id = $1 AND parent_id IS NOT DISTINCT FROM $2
+        AND ($3::uuid IS NULL OR id <> $3::uuid)`,
+    [collectionId, parentId, excludeFolderId || null]
+  );
+  return rows.map((r) => r.name);
+}
+
+async function uniqueRequestName(collectionId, folderId, desired, excludeRequestId, exec) {
+  return pickUniqueName(desired, await siblingRequestNames(collectionId, folderId, excludeRequestId, exec));
+}
+
+async function uniqueFolderName(collectionId, parentId, desired, excludeFolderId, exec) {
+  return pickUniqueName(desired, await siblingFolderNames(collectionId, parentId, excludeFolderId, exec));
+}
+
 async function workspaceOfCollection(collectionId) {
   const { rows } = await query(
     `SELECT p.workspace_id FROM collections c JOIN projects p ON p.id = c.project_id WHERE c.id = $1`,
@@ -220,11 +267,12 @@ router.post('/folders', async (req, res, next) => {
         return res.status(400).json({ error: 'Parent folder must belong to the same collection' });
       }
     }
+    const folderName = await uniqueFolderName(collectionId, parentId || null, name, null);
     const { rows } = await query(
       `INSERT INTO folders (collection_id, name, parent_id)
        VALUES ($1, $2, $3)
        RETURNING id, name, collection_id, parent_id`,
-      [collectionId, String(name).trim(), parentId || null]
+      [collectionId, folderName, parentId || null]
     );
     res.status(201).json({ folder: rows[0] });
   } catch (err) {
@@ -236,34 +284,30 @@ router.put('/folders/:folderId', async (req, res, next) => {
   try {
     const { folderId } = req.params;
     const existing = await query(
-      `SELECT collection_id FROM folders WHERE id = $1`,
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE id = $1`,
       [folderId]
     );
-    if (existing.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
+    const current = existing.rows[0];
+    if (!current) return res.status(404).json({ error: 'Folder not found' });
     const projectId = await projectOfFolder(folderId);
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
 
     const b = req.body || {};
-    const sets = [];
-    const params = [folderId];
-    if (b.name !== undefined) {
-      params.push(String(b.name).trim());
-      sets.push(`name = $${params.length}`);
-    }
+    let nextParentId = current.parent_id;
     if (b.parentId !== undefined) {
-      const newParentId = b.parentId || null;
-      if (newParentId === folderId) {
+      nextParentId = b.parentId || null;
+      if (nextParentId === folderId) {
         return res.status(400).json({ error: 'A folder cannot be its own parent' });
       }
-      if (newParentId) {
-        const parentCollection = await collectionOfFolder(newParentId);
-        if (parentCollection !== existing.rows[0].collection_id) {
+      if (nextParentId) {
+        const parentCollection = await collectionOfFolder(nextParentId);
+        if (parentCollection !== current.collection_id) {
           return res.status(400).json({ error: 'Parent folder must belong to the same collection' });
         }
         // Cycle guard: walk ancestors of the new parent.
-        let cursor = newParentId;
+        let cursor = nextParentId;
         let guard = 0;
         while (cursor && guard < 1000) {
           if (cursor === folderId) {
@@ -274,7 +318,22 @@ router.put('/folders/:folderId', async (req, res, next) => {
           guard += 1;
         }
       }
-      params.push(newParentId);
+    }
+
+    let nextName = current.name;
+    if (b.name !== undefined) nextName = String(b.name).trim();
+
+    const sets = [];
+    const params = [folderId];
+    const parentChanged = b.parentId !== undefined && nextParentId !== current.parent_id;
+    const nameChanged = nextName !== current.name;
+    if (nameChanged || parentChanged) {
+      const resolved = await uniqueFolderName(current.collection_id, nextParentId, nextName, folderId);
+      params.push(resolved);
+      sets.push(`name = $${params.length}`);
+    }
+    if (parentChanged) {
+      params.push(nextParentId);
       sets.push(`parent_id = $${params.length}`);
     }
     if (sets.length) {
@@ -350,15 +409,23 @@ router.post('/folders/:folderId/duplicate', async (req, res, next) => {
     }
 
     await client.query('BEGIN');
+    const rootCopyName = await uniqueFolderName(
+      source.collection_id,
+      source.parent_id,
+      source.name,
+      null,
+      client.query.bind(client)
+    );
     const idMap = new Map();
     const createdFolders = [];
     for (const folder of subtree) {
       const newParentId = folder.id === source.id ? source.parent_id : idMap.get(folder.parent_id) || null;
+      const copyFolderName = folder.id === source.id ? rootCopyName : folder.name;
       const { rows } = await client.query(
         `INSERT INTO folders (collection_id, name, parent_id)
          VALUES ($1, $2, $3)
          RETURNING id, name, collection_id, parent_id`,
-        [folder.collection_id, folder.name, newParentId]
+        [folder.collection_id, copyFolderName, newParentId]
       );
       idMap.set(folder.id, rows[0].id);
       createdFolders.push(rows[0]);
@@ -426,6 +493,7 @@ router.post('/requests', async (req, res, next) => {
       return res.status(400).json({ error: 'Folder must belong to the same collection as the request' });
     }
 
+    const requestName = await uniqueRequestName(collectionId, folderId || null, name, null);
     const { rows } = await query(
       `INSERT INTO api_requests
          (collection_id, name, method, url, api_type, headers, query_params, body_type, assertions, folder_id)
@@ -433,7 +501,7 @@ router.post('/requests', async (req, res, next) => {
        RETURNING id, name, method, url, api_type, collection_id, folder_id`,
       [
         collectionId,
-        String(name).trim(),
+        requestName,
         HTTP_METHODS.includes(method) ? method : 'GET',
         url || '',
         API_TYPES.includes(apiType) ? apiType : 'REST',
@@ -503,11 +571,12 @@ router.put('/requests/:requestId', async (req, res, next) => {
   try {
     const { requestId } = req.params;
     const existing = await query(
-      `SELECT collection_id FROM api_requests WHERE id = $1`,
+      `SELECT id, name, collection_id, folder_id FROM api_requests WHERE id = $1`,
       [requestId]
     );
-    if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
-    const projectId = await projectOfCollection(existing.rows[0].collection_id);
+    const current = existing.rows[0];
+    if (!current) return res.status(404).json({ error: 'Request not found' });
+    const projectId = await projectOfCollection(current.collection_id);
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
@@ -515,12 +584,19 @@ router.put('/requests/:requestId', async (req, res, next) => {
     const b = req.body || {};
     if (b.folderId !== undefined) {
       const folderId = b.folderId || null;
-      if (folderId && (await collectionOfFolder(folderId)) !== existing.rows[0].collection_id) {
+      if (folderId && (await collectionOfFolder(folderId)) !== current.collection_id) {
         return res.status(400).json({ error: 'Folder must belong to the same collection as the request' });
       }
     }
+    // Renames and moves must keep the request unique among its new siblings.
+    let patch = b;
+    if (b.name !== undefined || b.folderId !== undefined) {
+      const targetFolderId = b.folderId === undefined ? current.folder_id : b.folderId || null;
+      const desiredName = b.name !== undefined ? String(b.name).trim() : current.name;
+      patch = { ...b, name: await uniqueRequestName(current.collection_id, targetFolderId, desiredName, requestId) };
+    }
     const fields = {
-      name: b.name,
+      name: patch.name,
       method: b.method,
       url: b.url,
       api_type: b.apiType,
@@ -581,7 +657,8 @@ router.delete('/requests/:requestId', async (req, res, next) => {
 });
 
 // Duplicate a request inside the same collection/folder, preserving all
-// editor state verbatim (same name, no suffix).
+// editor state verbatim. The copy gets a sibling-unique name: "X (copy)",
+// then "X (copy) 2", "X (copy) 3", ...
 router.post('/requests/:requestId/duplicate', async (req, res, next) => {
   try {
     const { requestId } = req.params;
@@ -597,6 +674,7 @@ router.post('/requests/:requestId/duplicate', async (req, res, next) => {
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
+    const copyName = await uniqueRequestName(source.collection_id, source.folder_id, source.name, null);
     const { rows: created } = await query(
       `INSERT INTO api_requests
          (collection_id, name, method, url, api_type, headers, query_params, body_type,
@@ -605,7 +683,7 @@ router.post('/requests/:requestId/duplicate', async (req, res, next) => {
        RETURNING id, name, method, url, api_type, collection_id, folder_id`,
       [
         source.collection_id,
-        source.name,
+        copyName,
         source.method,
         source.url,
         source.api_type,

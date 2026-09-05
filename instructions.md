@@ -236,6 +236,34 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M18 | Team- and project-scoped workspaces — team-first grouped nav (`/api/teams/groups`) + Project Overview command center (members & access mgmt for admins AND project managers, workspace info panel, activity), self-service member role changes | done (this turn, pushed) |
 | M19 | Per-request undo/redo + back-to-previous — per-tab undo/redo history over working-copy edits (`request-undo`/`request-redo` toolbar buttons + global Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z with editable-focus guard) and `request-back` (activation-order nav stack; reopens closed tabs with unsaved work) | done (this turn, pushed) |
 | M20 | New API request dialog — Form | cURL: full form (Name, Type, Method, URL + method-driven Params/Headers/Body horizontal tabs; Body for POST/PUT/PATCH, query params for GET etc.) or cURL paste with live parse preview; replaces old URL-field curl sniffing | done (this turn, pushed) |
+| M21 | Duplicate auto "(copy)" naming + sibling-unique names — duplicates become "X (copy)"/"X (copy) 2"; requests unique among same-folder siblings, folders unique among same-parent siblings (case-insensitive), auto-renamed on create/rename/move collisions instead of erroring | done (this turn, pushed) |
+
+## M21 — Duplicate auto "(copy)" naming + sibling-unique names (done)
+
+Duplicating a request or a folder root no longer keeps the source name, and
+no two siblings may share a name anywhere in the tree.
+
+- Suffix rule: a copy is named "X (copy)", then "X (copy) 2", "X (copy) 3",
+  …; comparison is case-insensitive ("Login" collides with "login").
+- Scope: a request collides only with requests in the same folder (folder_id
+  NULL = collection root); a folder collides only with folders under the same
+  parent (parent_id NULL = collection root). Interior folders/requests inside
+  a duplicated folder keep their names because they live under freshly
+  created parents.
+- Where it is enforced (`backend/src/api/routes/content.js`, all via the
+  `pickUniqueName`/`uniqueRequestName`/`uniqueFolderName` helpers): request &
+  folder create, request & folder PUT (rename + move), and both duplicate
+  endpoints. Collisions never error — the incoming name is transparently
+  auto-renamed.
+- Frontend: duplicate store calls return the copy name and toasts show
+  `Duplicated "X (copy)"`; rename/move refresh the tree/active request with
+  the server-resolved name so an auto-rename is visible immediately
+  (`WorkspaceStore.tsx`, `Sidebar.tsx`).
+- Tests: `backend/tests/duplicate.integration.test.cjs` (suffix + uniqueness
+  matrix), `frontend/e2e/request-duplicate.spec.ts` rewritten for copy rows
+  and toasts. Verified: API suite 64/64, `tsc --noEmit` clean, `npm test`
+  89/89, `next build` green, e2e 2/2 + regression batch 10/10. Docs:
+  docs/SESSION.md §5.33.
 
 ## M20 — New API request dialog: Form | cURL (done)
 

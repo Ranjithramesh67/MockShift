@@ -74,6 +74,41 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.33 Duplicate auto "(copy)" naming + sibling-unique names (this turn)
+
+Requested: duplicating must not keep the source name — the copy gets " (copy)"
+appended, and names must be unique among siblings: requests inside the same
+folder (or collection root) and folders inside the same parent folder can
+never share a name — case-insensitively. Every write path now auto-uniquifies
+instead of erroring.
+
+- **Backend** (`backend/src/api/routes/content.js`): a `pickUniqueName` helper
+  (base name, then " (copy)", then " (copy) 2", " (copy) 3", …) plus
+  `uniqueRequestName` / `uniqueFolderName` sibling-scope lookups. Wired into
+  `POST /requests`, `POST /folders`, `PUT /requests/:id` (rename + move),
+  `PUT /folders/:id` (rename + move), and both duplicate endpoints. A
+  duplicated request keeps the source's editor state but is named
+  "X (copy)"/"X (copy) 2"; a duplicated folder names only its root copy
+  "X (copy)"/… (interior folders and their requests keep names under the fresh
+  copied parents, whose scopes are unique). Moving/renaming onto a taken
+  sibling name transparently renames ("Target" → "Target (copy)").
+- **Frontend**: `WorkspaceStore.duplicateRequest/duplicateFolder` return the
+  copy's name so `Sidebar` toasts show it (`Duplicated "X (copy)"`);
+  `renameRequest` and `moveRequest`/`moveFolder` apply the server-resolved
+  name back to the tree (and to the active request) so a collision-triggered
+  rename is reflected immediately.
+- **Tests**: `backend/tests/duplicate.integration.test.cjs` updated for the
+  suffix behavior + new coverage (case-insensitive folder collisions, sub-
+  folder sibling scope vs other parents, request sibling scope, rename/move
+  onto taken names, numbered request/folder copy suffixes). E2E
+  `frontend/e2e/request-duplicate.spec.ts` rewritten for the copy naming
+  (asserts " (copy)" and " (copy) 2" rows + toasts, folder copies carry the
+  inner request).
+- **Verification**: backend API suite 64/64, `tsc --noEmit` clean, `npm test`
+  89/89, `next build` green. E2E: `request-duplicate` 2/2 plus regression
+  batch 10/10 (`create-request-form` ×2, `curl-import`, `request-tabs` ×4,
+  `dirty-dot`, `folder-drag-move`, `nav-normal`).
+
 ### 5.32 New API request dialog — Form | cURL (this turn)
 
 Rework of the "New API request" modal to match the requested shape: the dialog
@@ -972,6 +1007,13 @@ final M9 wrap-up per user instruction.
 
 ## 6. Verification performed
 
+- Duplicate "(copy)" naming + sibling-unique names turn (§5.33): backend API
+  suite 64/64 (`npm run test:api`, includes the updated duplicate tests),
+  frontend `tsc --noEmit` clean, `npm test` 89/89, `next build` green. E2E:
+  `request-duplicate` 2/2 and regression batch 10/10 (`create-request-form`
+  ×2, `curl-import`, `request-tabs` ×4, `dirty-dot`, `folder-drag-move`,
+  `nav-normal`). DB reseeded after the integration suites dropped/recreated
+  the schema.
 - New API request dialog Form | cURL turn (§5.32): frontend `tsc --noEmit`
   clean, `npm test` 89/89, `next build` green. New e2e spec
   `create-request-form` 2/2 (GET shows Params/Headers with no Body; POST adds
@@ -1011,17 +1053,18 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-New API request dialog Form | cURL turn (§5.32): `frontend/src/components/
-CreateModal.tsx` (rewritten request branch), `frontend/app/globals.css`,
-`frontend/e2e/create-request-form.spec.ts` (new) — plus
-`tsconfig.tsbuildinfo` churn (leave it). Committed and pushed on `master`
-alongside this docs update.
+Duplicate "(copy)" naming + sibling-unique names turn (§5.33):
+`backend/src/api/routes/content.js`, `backend/tests/
+duplicate.integration.test.cjs`, `frontend/src/store/WorkspaceStore.tsx`,
+`frontend/src/components/Sidebar.tsx`, `frontend/e2e/request-duplicate.spec.ts`
+— plus `tsconfig.tsbuildinfo` churn (leave it). Committed and pushed on
+`master` alongside this docs update.
 
-Prior to that, the per-request undo/redo + back-to-previous turn (§5.30), the
-portal landing/pricing turn (portal `A2`, see session.md), the team/project-
-scoped workspace turn (§5.28), the mobile-responsive UI turn (§5.27) and the
-structured multipart body-parts feature (§5.26) were committed and pushed on
-`master`.
+Prior to that, the New API request dialog Form | cURL turn (§5.32), the
+per-request undo/redo + back-to-previous turn (§5.30), the portal landing/
+pricing turn (portal `A2`, see session.md), the team/project-scoped workspace
+turn (§5.28), the mobile-responsive UI turn (§5.27) and the structured
+multipart body-parts feature (§5.26) were committed and pushed on `master`.
 
 ## 8. Known issues / notes for the next agent
 
