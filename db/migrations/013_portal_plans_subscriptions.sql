@@ -116,7 +116,8 @@ ALTER TABLE orders         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoices       ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY plans_select ON plans FOR SELECT
-  USING (status = 'PUBLISHED' OR app.portal_role() IS NOT NULL);
+  USING (status = 'PUBLISHED'
+         OR app.portal_role() IN ('ADMIN', 'MANAGER', 'SUPPORT', 'VIEWER'));
 CREATE POLICY plans_insert ON plans FOR INSERT
   WITH CHECK (app.portal_role() IN ('ADMIN', 'MANAGER'));
 CREATE POLICY plans_update ON plans FOR UPDATE
@@ -129,7 +130,8 @@ CREATE POLICY subscriptions_select ON subscriptions FOR SELECT
   USING (user_id = app.current_user_id()
          OR app.portal_role() IN ('ADMIN', 'MANAGER', 'SUPPORT', 'VIEWER'));
 CREATE POLICY subscriptions_insert ON subscriptions FOR INSERT
-  WITH CHECK (user_id = app.current_user_id() OR app.portal_role() IS NOT NULL);
+  WITH CHECK (user_id = app.current_user_id()
+              OR app.portal_role() IN ('ADMIN', 'MANAGER'));
 CREATE POLICY subscriptions_update ON subscriptions FOR UPDATE
   USING (app.portal_role() IN ('ADMIN', 'MANAGER'))
   WITH CHECK (app.portal_role() IN ('ADMIN', 'MANAGER'));
@@ -147,6 +149,12 @@ CREATE POLICY invoices_select ON invoices FOR SELECT
 CREATE POLICY invoices_update ON invoices FOR UPDATE
   USING (app.portal_role() IN ('ADMIN', 'MANAGER'))
   WITH CHECK (app.portal_role() IN ('ADMIN', 'MANAGER'));
+
+-- Portal RLS runs as app_user in db/tests (SET ROLE app_user); grant the
+-- same table privileges 011/012 use for later tables, plus execute on the new
+-- RLS helper.
+GRANT SELECT, INSERT, UPDATE, DELETE ON plans, subscriptions, orders, invoices TO app_user;
+GRANT EXECUTE ON FUNCTION app.portal_role() TO app_user;
 
 -- --------------------------------------- Placeholder plan catalog (INR)
 INSERT INTO plans (key, name, tagline, price_monthly, price_yearly, currency,
