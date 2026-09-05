@@ -104,7 +104,9 @@ function validatePayload(body) {
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT ${PLAN_COLUMNS} FROM plans ORDER BY sort_order, created_at`
+      `SELECT ${PLAN_COLUMNS} FROM plans ORDER BY sort_order, created_at`,
+      [],
+      { userId: req.user.id }
     );
     res.json({ plans: rows });
   } catch (err) {
@@ -116,7 +118,7 @@ router.get('/:id', async (req, res, next) => {
   try {
     const { rows } = await query(`SELECT ${PLAN_COLUMNS} FROM plans WHERE id = $1`, [
       req.params.id,
-    ]);
+    ], { userId: req.user.id });
     if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
     res.json({ plan: rows[0] });
   } catch (err) {
@@ -152,7 +154,8 @@ router.post('/', requirePortalRole('MANAGER'), async (req, res, next) => {
         out.status ?? 'DRAFT',
         JSON.stringify(out.limits ?? {}),
         JSON.stringify(out.features ?? []),
-      ]
+      ],
+      { userId: req.user.id }
     );
     res.status(201).json({ plan: rows[0] });
   } catch (err) {
@@ -180,7 +183,8 @@ router.put('/:id', requirePortalRole('MANAGER'), async (req, res, next) => {
     const { rows } = await query(
       `UPDATE plans SET ${setSql}, updated_at = now()
         WHERE id = $1 RETURNING ${PLAN_COLUMNS}`,
-      [req.params.id, ...values]
+      [req.params.id, ...values],
+      { userId: req.user.id }
     );
     if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
     res.json({ plan: rows[0] });
@@ -196,7 +200,7 @@ router.delete('/:id', requirePortalRole('ADMIN'), async (req, res, next) => {
   try {
     const { rows } = await query(`DELETE FROM plans WHERE id = $1 RETURNING id`, [
       req.params.id,
-    ]);
+    ], { userId: req.user.id });
     if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
     res.json({ ok: true, deleted: rows[0].id });
   } catch (err) {

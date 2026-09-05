@@ -1,21 +1,39 @@
 # MockShift — Session State
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
 
 ## Current
 
-Step: NOT STARTED — milestone `A1+B1+X1` (first foundation milestone) is
-scoped below; no code written yet.
-Status: AWAITING GO — decisions Q1–Q6 answered and recorded in
-`## Pending — Two subscription portals`; everything else under
-`## Blocked / needs answer from Ranjith`. Start milestone `A1+B1+X1` (scaffold
-separate portal codebase + plans/catalog model+migration `012` + Portal B RBAC
-on existing role infra) as soon as Ranjith says GO.
+Step: IN PROGRESS — milestone `A1+B1+X1` (two subscription portals, first
+foundation milestone). Scaffold committed as `71b2488` ("portal structure
+initiate and in-progress"): new `portal/` codebase (own Express 5 backend on
+:3102 + own Next 14 frontend on :3002 proxying `/api` → :3102), migration
+`013_portal_plans_subscriptions.sql` (plans/subscriptions/orders/invoices +
+SUPPORT role + RLS + placeholder INR plans incl. Ranjith's Free/Starter/Pro/
+Team/Enterprise), portal RBAC (`portal/backend/src/portalAccess.js` + route
+guards), plans admin CRUD, public catalog read API, summary counts, and a
+Portal A showcase page rendering the public catalog.
 
-THIS TURN (2026-09-04, plan two subscription portals — docs only):
+NOTE: migration is `013` (NOT `012` as the original plan said — `012` was
+already used by `012_request_body_parts.sql`). Environment note below now
+records migration `013` applied and `014` as next free.
+
+Leftover being finished this turn:
+- Repo hygiene: portal build caches (`portal/frontend/.next/**`,
+  `*.tsbuildinfo`) were committed by `71b2488` (root `.gitignore` only ignored
+  `frontend/.next`). Add `portal/.gitignore` and untrack the artifacts.
+- B1 RLS tightening: `plans_select` currently reads `app.portal_role() IS NOT
+  NULL`, which lets a platform EDITOR (not a portal role) read DRAFT rows via
+  RLS even though the API matrix denies EDITOR. Align RLS to the endpoint
+  matrix (ADMIN/MANAGER/SUPPORT/VIEWER).
+- Reconcile this file (migration numbering, ports, stack decisions, seed rows)
+  and record verification state.
+
+THIS TURN was preceded by (2026-09-04, plan two subscription portals — docs
+only):
 - Pulled latest code (HEAD `58a478b`, incl. `3b6ac59` per-request undo/redo,
   ProjectOverview, multipart parts, mobile CSS). Working tree clean.
 - Recorded a segmented pending plan for two portals in `## Pending — Two
@@ -630,13 +648,12 @@ Folders added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collec
   generic standalone catalog; separate portal codebase; mock/manual invoicing;
   reuse existing `users`; Portal B roles ADMIN/MANAGER/SUPPORT/VIEWER on
   existing role infra; first milestone = A1+B1+X1).
-- Awaiting **GO to start milestone `A1+B1+X1`**. Before coding, two minor
-  inputs are needed (can be decided by the agent at start if Ranjith prefers):
-  - Portal stack + location: reuse the repo's Express 5 + Next 14 stack in a
-    new `portal/` folder with its own backend + frontend (recommended), or a
-    different stack? Which ports?
-  - Initial `plans` seed rows for the catalog (first milestone only needs the
-    model + admin CRUD, so placeholders fine until Portal A2 showcase).
+- ~~Awaiting GO to start milestone `A1+B1+X1`~~ — GO given 2026-09-05; milestone
+  is IN PROGRESS (scaffold `71b2488` + finishing turn). Stack/ports were
+  decided at start by the milestone agent: reuse the repo's Express 5 + Next 14
+  stack in a new `portal/` folder — backend :3102 (`PORT=3102`), frontend :3002
+  (`next dev -p 3002`, rewrites `/api` → `127.0.0.1:3102`). Seed rows shipped
+  inside migration `013` (Free/Starter/Pro/Team/Enterprise, INR).
 
 ## Working rules
 
@@ -673,8 +690,15 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
   boss1785867669@test.io/bosspass123 (ADMIN) · pm1785867669@test.io/pmpass1234 (MANAGER) ·
   dev1785867669@test.io/devpass123 (EDITOR).
 - **Migrations are not auto-applied** — after `seed:dev`, apply yours manually via psql;
-  `db/tests/run.sh` applies all of them. Use the next free migration number (012 next) and record
-  it here.
+  `db/tests/run.sh` applies all of them. Applied through `013_portal_plans_subscriptions.sql`
+  (portal milestone A1+B1; added `SUPPORT` role + plans/subscriptions/orders/invoices + seeds).
+  Next free number: 014.
+- **Portal (two subscription portals)**: backend `cd portal/backend && PORT=3102 npm start`
+  (port 3102, reuses main backend DB + session scheme via `src/shared.js`); frontend
+  `cd portal/frontend && npm run dev` (port 3002, rewrites `/api` → `127.0.0.1:3102`). Portal A
+  = public catalog (`/api/public/plans`, no auth); Portal B = management behind RBAC
+  (`/api/plans` CRUD, `/api/portal/summary`, `/api/me`). See
+  `portal/backend/src/portalAccess.js` for the role matrix.
 - **Restart the backend after adding/changing routes** — a stale process serves old handlers.
 - **Full e2e run needs a freshly reset + seeded DB and mock upstream on :3999** — other specs
   leave requests in "Mock API Demo", so "Requests: 8" in assertions-runner.spec.ts breaks otherwise.
@@ -700,10 +724,14 @@ Decisions (answered by Ranjith 2026-09-04):
   EDITOR/VIEWER), same DB cluster/`apihub`.
 - **Q5** Portal B roles **ADMIN / MANAGER / SUPPORT / VIEWER** on the existing
   `role` enum infra (`users.role`, memberships, `access.js`); SUPPORT is new —
-  add to enum in migration `012`.
+  added to the enum in migration `013` (not `012` — 012 was already used by
+  `012_request_body_parts.sql`).
 - **Q6** **First milestone = A1 + B1 + X1 foundation** (see below).
 
-Current: AWAITING GO to start milestone `A1+B1+X1` (plan below).
+Current: IN PROGRESS — milestone `A1+B1+X1` started 2026-09-05 (scaffold
+`71b2488`). Code committed: X1 scaffold + A1 model/API + B1 RBAC. Remaining:
+hygiene (untrack portal build caches), RLS tightening, verification, this-file
+reconciliation.
 
 ### First milestone — A1 + B1 + X1 (data model + RBAC + architecture)
 
@@ -711,19 +739,24 @@ Scope when GO is given:
 - **X1**: scaffold separate portal codebase (new `portal/` dir: its own
   Express/Next(?) backend + frontend per repo conventions; own port + proxy
   wiring for preview; confirm stack with Ranjith or reuse repo's Express 5 +
-  Next 14 stack).
+  Next 14 stack). — DONE: `portal/backend` (Express 5, :3102) +
+  `portal/frontend` (Next 14, :3002, rewrites `/api` → :3102).
 - **A1**: `plans`/catalog data model + public read API + admin CRUD — migration
   `012` (next free number) on the same `apihub` DB (plans/subscriptions/orders/
   invoices + SUPPORT role added to enum), reusing `db/migrations` numbering.
+  — DONE as migration `013` (012 was taken); public read in
+  `portal/backend/src/routes/publicCatalog.js`, admin CRUD in `routes/plans.js`.
 - **B1**: Portal B RBAC — role gate middleware (extend pattern from
   `backend/src/api/access.js`), RLS policies for the new tables, endpoint
   matrix (ADMIN full / MANAGER ops / SUPPORT read-mostly / VIEWER read-only).
+  — DONE: `portal/backend/src/portalAccess.js` + RLS policies in migration
+  `013`.
 
 ### Portal A — public subscription showcase + purchase website (customer-facing)
 
 | Seg | Deliverable |
 |---|---|
-| A1 | Plan/catalog data model + API: `plans` (name, features, price, billing cycle, trial days, active/published) — migration `012` (next free number), public read endpoints, RBAC-scoped admin CRUD |
+| A1 | Plan/catalog data model + API: `plans` (name, features, price, billing cycle, trial days, active/published) — migration `013` (DONE; 012 was taken by request-body parts), public read endpoints, RBAC-scoped admin CRUD — DONE |
 | A2 | Showcase UI: landing + plans/pricing pages rendered from the catalog (public, no login), responsive |
 | A3 | Subscriber identity — DECIDED: reuse existing `users`, auto-create on checkout (default EDITOR/VIEWER) |
 | A4 | Purchase/checkout flow: pick plan → billing/contact info → create subscription + order → confirmation page |
@@ -747,7 +780,7 @@ Scope when GO is given:
 |---|---|
 | X1 | Architecture — DECIDED: separate portal codebase (not in the current Next app). Scaffold `portal/` with its own frontend + backend (stack + ports TBD at start of milestone) |
 | X2 | Frontend patterns: keep `data-testid`/`aria-label` hooks (e2e green), component/store structure consistent with existing `WorkspaceStore`-style providers |
-| X3 | DB: single new migration(s) `012+` covering plans/subscriptions/orders/invoices + RBAC/RLS; record applied migrations in the Environment note |
+| X3 | DB: single new migration(s) `012+` covering plans/subscriptions/orders/invoices + RBAC/RLS; record applied migrations in the Environment note — DONE as migration `013` |
 
 
 ## Roadmap

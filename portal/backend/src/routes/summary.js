@@ -23,7 +23,9 @@ router.get('/summary', async (req, res, next) => {
          (SELECT count(*) FROM orders)                                        AS orders,
          (SELECT count(*) FROM orders WHERE status = 'PAID')                  AS paid_orders,
          (SELECT count(*) FROM invoices)                                      AS invoices,
-         (SELECT count(*) FROM invoices WHERE status = 'PAID')                AS paid_invoices`
+         (SELECT count(*) FROM invoices WHERE status = 'PAID')                AS paid_invoices`,
+      [],
+      { userId: req.user.id }
     );
     res.json({ scope: 'portal', role: req.user.role, counts: rows[0] });
   } catch (err) {
