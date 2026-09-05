@@ -1,0 +1,16 @@
+{
+  "name": "@apihub-portal/backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Subscription portal backend (Portal A public catalog + Portal B management, RBAC)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
