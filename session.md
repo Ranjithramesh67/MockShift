@@ -45,6 +45,9 @@ cURL paste. Confirmed approach: a segmented Form | cURL switch in the dialog.
   (term_1788633952808_43). Previews:
   https://3000-d996ae6ab8ef93e4.monkeycode-ai.live and
   https://3002-d996ae6ab8ef93e4.monkeycode-ai.live
+- Committed and pushed as `1caf275` ("feat(modal): New API request dialog
+  Form | cURL with method-driven tabs"), 6 files +614/−90, working tree
+  clean except `frontend/tsconfig.tsbuildinfo`.
 
 PREVIOUS TURN (Portal A — landing/product page; the main-app turns are below
 in this file and in docs/SESSION.md):
