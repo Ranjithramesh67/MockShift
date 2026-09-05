@@ -30,7 +30,9 @@ root) and two folders under the same parent may never share a name.
   10/10 (create-request-form ×2, curl-import, request-tabs ×4, dirty-dot,
   folder-drag-move, nav-normal). DB reseeded after the integration suites
   dropped/recreated the schema; backend :3001 and mock :3999 restarted.
-- Committed and pushed as `<commit-hash>`.
+- Committed and pushed as `7f59e25` ("feat(content): duplicate '(copy)' naming
+  + sibling-unique names"), 8 files +394/−88; working tree clean except
+  `frontend/tsconfig.tsbuildinfo`.
 
 PREVIOUS TURN (New API request dialog — Form | cURL — committed `1caf275`):
 
