@@ -240,8 +240,8 @@ interface WorkspaceState {
   renameRequest: (requestId: string, name: string) => Promise<void>;
   moveRequest: (requestId: string, folderId: string | null) => Promise<void>;
   moveFolder: (folderId: string, parentId: string | null) => Promise<void>;
-  duplicateRequest: (requestId: string) => Promise<void>;
-  duplicateFolder: (folderId: string) => Promise<void>;
+  duplicateRequest: (requestId: string) => Promise<{ name: string }>;
+  duplicateFolder: (folderId: string) => Promise<{ name: string }>;
 
   deleteRequest: (requestId: string) => Promise<void>;
   deleteCollection: (collectionId: string) => Promise<void>;
@@ -1001,33 +1001,38 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const renameRequest = useCallback(async (requestId: string, name: string) => {
     const { request } = await contentApi.updateRequest(requestId, { name });
+    const resolvedName = request.name ?? name;
     if (activeRequest?.id === requestId) {
-      setActiveRequest((prev) => (prev ? { ...prev, name } : prev));
+      setActiveRequest((prev) => (prev ? { ...prev, name: resolvedName } : prev));
     }
     if (tree) {
       setTree({
         ...tree,
-        requests: tree.requests.map((r) => (r.id === requestId ? { ...r, name: request.name ?? name } : r)),
+        requests: tree.requests.map((r) => (r.id === requestId ? { ...r, name: resolvedName } : r)),
       });
     }
   }, [tree, activeRequest]);
 
   const moveRequest = useCallback(async (requestId: string, folderId: string | null) => {
-    await contentApi.updateRequest(requestId, { folderId });
+    const { request } = await contentApi.updateRequest(requestId, { folderId });
     if (tree) {
       setTree({
         ...tree,
-        requests: tree.requests.map((r) => (r.id === requestId ? { ...r, folder_id: folderId } : r)),
+        requests: tree.requests.map((r) =>
+          r.id === requestId ? { ...r, folder_id: folderId, name: request.name ?? r.name } : r
+        ),
       });
     }
   }, [tree]);
 
   const moveFolder = useCallback(async (folderId: string, parentId: string | null) => {
-    await folderApi.update(folderId, { parentId });
+    const { folder } = await folderApi.update(folderId, { parentId });
     if (tree) {
       setTree({
         ...tree,
-        folders: tree.folders.map((f) => (f.id === folderId ? { ...f, parent_id: parentId } : f)),
+        folders: tree.folders.map((f) =>
+          f.id === folderId ? { ...f, parent_id: parentId, name: folder.name ?? f.name } : f
+        ),
       });
     }
   }, [tree]);
@@ -1038,6 +1043,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const exists = tree.requests.some((r) => r.id === request.id);
       setTree({ ...tree, requests: exists ? tree.requests : [...tree.requests, request] });
     }
+    return { name: request.name };
   }, [tree]);
 
   const duplicateFolder = useCallback(async (folderId: string) => {
@@ -1051,6 +1057,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         requests: [...tree.requests, ...requests.filter((r) => !requestIds.has(r.id))],
       });
     }
+    return { name: folders[0]?.name ?? '' };
   }, [tree]);
 
   const deleteRequest = useCallback(async (requestId: string) => {

@@ -223,17 +223,15 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
       const tag = target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
       e.preventDefault();
-      const row =
-        ws.tree?.requests.find((r) => r.id === selectedRow.id) ??
-        ws.tree?.folders.find((f) => f.id === selectedRow.id);
-      const name = row?.name;
       const action =
         selectedRow.kind === 'request'
           ? ws.duplicateRequest(selectedRow.id)
           : ws.duplicateFolder(selectedRow.id);
       action
-        .then(() => {
-          if (name) dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${name}"` });
+        .then(({ name: copyName }) => {
+          if (copyName) {
+            dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${copyName}"` });
+          }
         })
         .catch((err) => {
           dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' });
@@ -491,8 +489,8 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
               onClick={() => {
                 setMenuFor(null);
                 ws.duplicateRequest(r.id)
-                  .then(() =>
-                    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${r.name}"` })
+                  .then(({ name: copyName }) =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${copyName}"` })
                   )
                   .catch((err) =>
                     dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
@@ -629,16 +627,16 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
               <button
                 type="button"
                 data-testid={`duplicate-folder-${folder.name}`}
-                onClick={() => {
-                  setMenuFor(null);
-                  ws.duplicateFolder(folder.id)
-                    .then(() =>
-                      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${folder.name}"` })
-                    )
-                    .catch((err) =>
-                      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
-                    );
-                }}
+              onClick={() => {
+                setMenuFor(null);
+                ws.duplicateFolder(folder.id)
+                  .then(({ name: copyName }) =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${copyName}"` })
+                  )
+                  .catch((err) =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
+                  );
+              }}
               >
                 <CopyIcon size={13} />
                 Duplicate
