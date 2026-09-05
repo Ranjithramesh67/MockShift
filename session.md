@@ -7,6 +7,48 @@ Last updated: 2026-09-05
 
 ## Current
 
+Step: NEW API REQUEST DIALOG — FORM | CURL (this turn). Requested: the
+"New API request" dialog should either be a full form — Name + Type + Method +
+URL plus the fields relevant to the chosen method (Body for POST/PUT/PATCH,
+query params for GET/DELETE/HEAD/OPTIONS …) in a horizontal tab strip — or a
+cURL paste. Confirmed approach: a segmented Form | cURL switch in the dialog.
+- Form mode: Name (optional, auto-derived `METHOD host`) + Type
+  (REST/SOAP/GraphQL/Auth) + Method select + URL, then the Params | Headers |
+  Body tabs in `create-request-tabs`. Params and Headers are always present;
+  Body appears only for body-carrying methods (POST/PUT/PATCH) and is the
+  default tab for GraphQL/SOAP/Auth (selecting a non-REST type auto-switches a
+  body-less method to POST). Body has a JSON/XML/Raw type selector
+  (`create-body-type`); GraphQL saves `bodyType: GRAPHQL`. Params/Headers use
+  the shared `KeyValueRows` (testids `create-params-*`/`create-headers-*`).
+- cURL mode: `create-curl-input` textarea with a live `create-curl-preview`
+  (METHOD + url while typing); on Create the command is parsed with the shared
+  `parseCurl` and the saved request is pre-filled with method/url/query
+  params/headers/body. The URL field no longer sniffs curl (that is now the
+  cURL tab's job), and the pre-existing top-bar "Import cURL" flow is
+  unchanged.
+- Both modes create through `contentApi.createRequest` + `updateRequest`
+  (persisting headers/queryParams/bodyType/bodyJson/contentType), then
+  `reloadTree` + `selectRequest` — same path the old curl auto-detect used.
+  Files: `frontend/src/components/CreateModal.tsx` (rewritten request branch),
+  `app/globals.css` (`.create-mode-tabs`, `.create-method-url`,
+  `.create-request-tabs`, `.create-body-input`, `.create-curl-*` + ≤640px
+  stack), new `frontend/e2e/create-request-form.spec.ts` (2 tests).
+- Verification: `npx tsc --noEmit` clean; `npm test` 89/89; `next build`
+  green; new e2e 2/2 (GET shows Params/Headers without Body; POST adds Body
+  tab; persisted request keeps method/url/params/body — and cURL mode
+  pre-fills a saved request). Regression batch 12/12 (`curl-import`,
+  `request-tabs` ×4, `dirty-dot`, `request-duplicate` ×2, `folder-drag-move`,
+  `nav-normal`, + the 2 new).
+- Running now: main frontend :3000 (term_1788635305043_45), main backend
+  :3001 (term_1788544342120_23), mock :3999 (term_1788554330931_36), portal
+  backend :3102 (term_1788633886949_42), portal frontend :3002
+  (term_1788633952808_43). Previews:
+  https://3000-d996ae6ab8ef93e4.monkeycode-ai.live and
+  https://3002-d996ae6ab8ef93e4.monkeycode-ai.live
+
+PREVIOUS TURN (Portal A — landing/product page; the main-app turns are below
+in this file and in docs/SESSION.md):
+
 Step: COMPLETE — Portal A `A2` (showcase UI polish, light flat SaaS). Ranjith
 picked A2 and kept the seeded placeholder pricing (INR). Code landed as
 `0c9cb6d` ("feat(portal): A2 public landing + pricing UI"), pushed to
