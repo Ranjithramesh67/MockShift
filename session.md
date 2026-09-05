@@ -7,33 +7,81 @@ Last updated: 2026-09-05
 
 ## Current
 
-Step: IN PROGRESS — milestone `A1+B1+X1` (two subscription portals, first
-foundation milestone). Scaffold committed as `71b2488` ("portal structure
-initiate and in-progress"): new `portal/` codebase (own Express 5 backend on
-:3102 + own Next 14 frontend on :3002 proxying `/api` → :3102), migration
-`013_portal_plans_subscriptions.sql` (plans/subscriptions/orders/invoices +
-SUPPORT role + RLS + placeholder INR plans incl. Ranjith's Free/Starter/Pro/
-Team/Enterprise), portal RBAC (`portal/backend/src/portalAccess.js` + route
-guards), plans admin CRUD, public catalog read API, summary counts, and a
-Portal A showcase page rendering the public catalog.
+Step: COMPLETE — milestone `A1+B1+X1` (two subscription portals, first
+foundation milestone). Code landed as `71b2488` ("portal structure initiate
+and in-progress") + `26d68f4` ("inprogress continuation" — finished the
+leftover hygiene + RLS tightening), both pushed to `origin/master`. This turn
+reconciled this file and recorded the verification state (leftover #3).
 
-NOTE: migration is `013` (NOT `012` as the original plan said — `012` was
-already used by `012_request_body_parts.sql`). Environment note below now
-records migration `013` applied and `014` as next free.
+What is complete (code at HEAD `26d68f4`):
+- X1 — separate portal codebase: new `portal/` folder with its own Express 5
+  backend (`portal/backend`, :3102) and Next 14 frontend (`portal/frontend`,
+  :3002, rewrites `/api` → 127.0.0.1:3102). The backend reuses the main
+  backend's DB pool + cookie-session auth by importing
+  `backend/src/api/{db,authLib,access,routes/auth}` from `shared.js` (no
+  crypto/session drift). Repo hygiene done: `portal/.gitignore` added and the
+  build caches that `71b2488` had committed (`portal/frontend/.next/**`,
+  `*.tsbuildinfo`) are untracked.
+- A1 — catalog model + API. Migration `013_portal_plans_subscriptions.sql`
+  (013, NOT 012 — 012 was already used by `012_request_body_parts.sql`; next
+  free number 014): adds global role `SUPPORT` to the `role` enum, tables
+  `plans`/`subscriptions`/`orders`/`invoices` (FKs, status enums, indexes),
+  RLS helper `app.portal_role()`, and seeds the five INR plans Ranjith
+  specified 2026-09-04 (Free/Starter/Pro/Team/Enterprise — all PUBLISHED,
+  machine-readable `limits` + marketing `features`). Portal A public read API:
+  `portal/backend/src/routes/publicCatalog.js` (`GET /api/public/plans`,
+  `/api/public/plans/:key` — PUBLISHED only, no auth, admin columns never
+  exposed). Portal B admin CRUD: `portal/backend/src/routes/plans.js` (list/
+  read VIEWER+, create/update MANAGER+, delete ADMIN; full payload validation;
+  409 on duplicate key and on delete of a referenced plan).
+- B1 — Portal B RBAC. `portal/backend/src/portalAccess.js` documents the
+  endpoint matrix and ships `roleAtLeast` + `requirePortalRole(minRole)`
+  middleware over the existing global `role` enum (SUPPORT added in 013):
+  ADMIN(4) / MANAGER(3) / SUPPORT(2) / VIEWER(1); platform EDITOR is NOT a
+  portal role and is denied. `server.js` mounts `/api/health`, reused
+  `/api/auth`, `/api/me` (session user + `portalRole` or null), `/api/public`,
+  and RBAC-guarded `/api/plans` + `/api/portal/summary`. `summary.js` returns
+  plan/subscription/order/invoice counts (VIEWER+). RLS policies in 013 mirror
+  the matrix; `26d68f4` tightened `plans_select`/`subscriptions_insert` to
+  portal roles only (no DRAFT leakage to non-portal roles), added `app_user`
+  grants for db/tests, and plans.js/summary.js now pass `{ userId }` into the
+  shared `query()` helper so RLS identity (`app.current_user_id()` /
+  `app.portal_role()`) resolves per request.
+- Portal A showcase slice (working preview page, NOT the full A2 milestone):
+  `portal/frontend` renders a "Subscription Hub" landing + pricing page
+  (`app/page.tsx`, `app/globals.css`, `src/components/CatalogPreview.tsx`)
+  reading the public catalog client-side with INR formatting, loading/error
+  states, and `data-plan-key` hooks. A2 polish / A4 checkout / A5 self-service
+  and all of Portal B's UI (B2–B6) remain later milestones.
 
-Leftover being finished this turn:
-- Repo hygiene: portal build caches (`portal/frontend/.next/**`,
-  `*.tsbuildinfo`) were committed by `71b2488` (root `.gitignore` only ignored
-  `frontend/.next`). Add `portal/.gitignore` and untrack the artifacts.
-- B1 RLS tightening: `plans_select` currently reads `app.portal_role() IS NOT
-  NULL`, which lets a platform EDITOR (not a portal role) read DRAFT rows via
-  RLS even though the API matrix denies EDITOR. Align RLS to the endpoint
-  matrix (ADMIN/MANAGER/SUPPORT/VIEWER).
-- Reconcile this file (migration numbering, ports, stack decisions, seed rows)
-  and record verification state.
+Verification recorded this turn (2026-09-05):
+- Migration `013` applied cleanly to the local dev `apihub` DB — 5 seed plans
+  present, `SUPPORT` in the role enum. `node --check` clean on all six portal
+  backend files.
+- Portal backend boots on :3102 (shared `AUTH_SECRET=dev-secret` + local PG
+  env): `/api/health` OK; `/api/public/plans` returns the 5 PUBLISHED plans,
+  `/api/public/plans/pro` returns the Pro plan (internal columns stripped).
+- Live RBAC matrix using the seeded demo users (boss=ADMIN, pm=MANAGER,
+  dev=EDITOR, each logged in via the portal `/api/auth` = same session
+  scheme): `/api/me` → `portalRole` ADMIN/MANAGER/null. No-auth → 401 on
+  `/api/plans` and `/api/portal/summary`. dev(EDITOR) → 403 on both, incl. a
+  POST. ADMIN/MANAGER plan list/read → 200. MANAGER create → 201; MANAGER
+  delete → 403, ADMIN delete → 200 (a throwaway plan was created then deleted,
+  DB left at the 5 seed rows). Invalid payload → 400. `/api/portal/summary`
+  → correct counts (plans 5, subscriptions/orders/invoices 0).
+- Portal frontend `next build` green after a fresh `npm install`
+  (Next 14.2.35; route prerendered static). `portal/frontend/.next` and both
+  portal `node_modules` are gitignored.
+- Running now: main backend :3001 (term_1788589812510_5), main frontend :3000
+  (term_1788589817373_6), mock upstream :3999 (term_1788589806646_4), portal
+  backend :3102 (term_1788590436000_7, new this turn).
 
-THIS TURN was preceded by (2026-09-04, plan two subscription portals — docs
-only):
+Next (AWAITING Ranjith): pick the next portal segment — A2 showcase polish /
+A4 purchase+checkout / B2 management dashboard — and confirm real plan
+pricing. See `## Pending — Two subscription portals` below.
+
+This milestone was preceded by (2026-09-04, plan two subscription portals —
+docs only):
 - Pulled latest code (HEAD `58a478b`, incl. `3b6ac59` per-request undo/redo,
   ProjectOverview, multipart parts, mobile CSS). Working tree clean.
 - Recorded a segmented pending plan for two portals in `## Pending — Two
@@ -648,12 +696,14 @@ Folders added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collec
   generic standalone catalog; separate portal codebase; mock/manual invoicing;
   reuse existing `users`; Portal B roles ADMIN/MANAGER/SUPPORT/VIEWER on
   existing role infra; first milestone = A1+B1+X1).
-- ~~Awaiting GO to start milestone `A1+B1+X1`~~ — GO given 2026-09-05; milestone
-  is IN PROGRESS (scaffold `71b2488` + finishing turn). Stack/ports were
-  decided at start by the milestone agent: reuse the repo's Express 5 + Next 14
-  stack in a new `portal/` folder — backend :3102 (`PORT=3102`), frontend :3002
+- ~~Awaiting GO to start milestone `A1+B1+X1`~~ — GO given 2026-09-05;
+  milestone COMPLETE (commits `71b2488` + `26d68f4`, verified this turn — see
+  `## Current`). Stack/ports as decided at start: repo's Express 5 + Next 14
+  in a new `portal/` folder — backend :3102 (`PORT=3102`), frontend :3002
   (`next dev -p 3002`, rewrites `/api` → `127.0.0.1:3102`). Seed rows shipped
   inside migration `013` (Free/Starter/Pro/Team/Enterprise, INR).
+- AWAITING Ranjith: choose the next portal segment (A2 showcase polish / A4
+  purchase+checkout / B2 management dashboard) + confirm real plan pricing.
 
 ## Working rules
 
