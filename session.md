@@ -7,6 +7,50 @@ Last updated: 2026-09-05
 
 ## Current
 
+Step: COMPLETE — Portal A `A2` (showcase UI polish, light flat SaaS). Ranjith
+picked A2 and kept the seeded placeholder pricing (INR). Code landed as
+`0c9cb6d` ("feat(portal): A2 public landing + pricing UI"), pushed to
+`origin/master`.
+- What changed (4 files, +1051/−153): `portal/frontend/app/page.tsx` rewritten
+  into a full landing page — sticky nav w/ anchor links + "Public preview"
+  tag, hero (eyebrow, headline, lede, CTA pair), `#pricing` (renders
+  CatalogPreview), `#features` (3 value-prop cards w/ inline SVG icons),
+  `#faq` (5 native `<details>/<summary>` items), final CTA band on dark
+  primary + footer. All copy is hand-written marketing text; no hardcoded
+  plan rows anywhere.
+- `app/globals.css` fully re-themed to a light, flat SaaS design system on
+  CSS variables (paper background `#f8fafc`, sky accent, soft borders,
+  pill buttons, `--shadow-pop` cards), responsive grid
+  (`repeat(auto-fit, minmax(210px,1fr))`, single column + Pro-first ordering
+  ≤640px), skeleton shimmer keyframes, focus-visible rings, and a
+  `prefers-reduced-motion` guard. `app/layout.tsx` themeColor flipped
+  `#0a0d0a` → `#f8fafc`.
+- `src/components/CatalogPreview.tsx` (unchanged data contract): catalog
+  driven from `GET /api/public/plans` (PUBLISHED only). Kept/verified hooks —
+  `data-plan-key` per card, `data-testid=choose-<key>`, `purchase-notice`,
+  `plans-loading`. Billing toggle swaps monthly/yearly from the seeded
+  `price_monthly`/`price_yearly`; yearly shows a per-card "Save 17% with
+  yearly billing" line (computed — seed is 12×monthly vs yearly ≈ 16.7%) and
+  the toggle's ~17% badge; "Free" stays `₹0`; "Enterprise" (null prices,
+  CUSTOM cycle) renders a "Custom"/"Contact sales" card with no trial badge;
+  "Pro" carries the "Most popular" badge + accent CTA. CTA clicks fire a
+  transient "…checkout opens with the purchase flow (Portal A, A4)" notice —
+  no dead buttons. Error state shows a retry button; loading shows 5
+  skeleton cards.
+- Verification (this turn): `npx tsc --noEmit` clean; `next build` green
+  (Next 14.2.35, `/` + `/_not-found` static). Playwright chromium (installed
+  this turn via the repo's `frontend/node_modules` playwright) swept the live
+  page at 375/768/1024/1440 — zero horizontal overflow, no console/page
+  errors at any width; all 5 PUBLISHED plans render with correct prices.
+  Functional check: Monthly ₹0/₹99/₹299/₹799/Custom → Yearly
+  ₹0/₹990/₹2,990/₹7,990/yr with "Save 17%" on the three paid plans and the
+  "Most popular" badge on Pro; clicking Pro's CTA shows the A4 notice.
+- Running now (unchanged): portal backend :3102 (term_1788597066227_8),
+  portal frontend :3002 (term_1788597068228_9); main backend :3001
+  (term_1788516303621_4), main frontend :3000 (term_1788516311828_5), mock
+  upstream :3999 (term_1788516301621_3). Preview:
+  https://3002-c7402a4a2dd54ad1.monkeycode-ai.live
+
 Step: COMPLETE — milestone `A1+B1+X1` (two subscription portals, first
 foundation milestone). Code landed as `71b2488` ("portal structure initiate
 and in-progress") + `26d68f4` ("inprogress continuation" — finished the
@@ -702,8 +746,10 @@ Folders added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collec
   in a new `portal/` folder — backend :3102 (`PORT=3102`), frontend :3002
   (`next dev -p 3002`, rewrites `/api` → `127.0.0.1:3102`). Seed rows shipped
   inside migration `013` (Free/Starter/Pro/Team/Enterprise, INR).
-- AWAITING Ranjith: choose the next portal segment (A2 showcase polish / A4
-  purchase+checkout / B2 management dashboard) + confirm real plan pricing.
+- A2 showcase polish COMPLETE this turn (`0c9cb6d`, pushed — see `## Current`).
+- AWAITING Ranjith: pick the next portal segment — A4 purchase+checkout /
+  B2 management dashboard (real plan pricing still optional; the INR seed is
+  used as placeholder marketing copy).
 
 ## Working rules
 
