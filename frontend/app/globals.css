@@ -4927,3 +4927,83 @@ body.is-col-dragging .sidebar {
   color: var(--text-muted);
 }
 
+/* ---- New API request modal: Form | cURL ---------------------------------- */
+.create-mode-tabs {
+  margin-top: -2px;
+}
+
+.create-method-url {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.create-method-url .auth-field {
+  gap: 5px;
+}
+
+.create-method-url .method-field {
+  flex: 0 0 132px;
+}
+
+.create-method-url .url-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.create-request-tabs {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--bg-panel-2);
+}
+
+.create-request-tabs .tab-bar {
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.create-body-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.create-body-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.create-curl-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.create-curl-preview {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+@media (max-width: 640px) {
+  .create-method-url {
+    flex-direction: column;
+  }
+
+  .create-method-url .method-field {
+    flex: none;
+    width: 100%;
+  }
+}
+
+

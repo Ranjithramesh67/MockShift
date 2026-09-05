@@ -74,6 +74,45 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.32 New API request dialog — Form | cURL (this turn)
+
+Rework of the "New API request" modal to match the requested shape: the dialog
+is now either a full form (Name + Type + Method + URL, plus the fields that
+belong to the chosen method shown as horizontal tabs) or a cURL paste. The
+modal is opened from a collection's `new-request-<name>` button.
+
+- **Form | cURL switch.** A segmented `modal-tabs` control at the top of the
+  request dialog (`data-testid=create-mode-form` / `create-mode-curl`), Form
+  active by default.
+- **Form mode** (`frontend/src/components/CreateModal.tsx`): shared Name
+  (optional — auto-derived `METHOD host`) and Type (REST/SOAP/GraphQL/Auth)
+  fields, then Method + URL, then a `create-request-tabs` panel with the app's
+  standard `TabBar` (testids `create-tab-params` / `create-tab-headers` /
+  `create-tab-body`). Params and Headers always appear; Body only appears for
+  body-carrying methods (POST/PUT/PATCH). Selecting a non-REST type
+  (SOAP/GraphQL/Auth) auto-switches a body-less method to POST so the Body tab
+  is available; GraphQL saves `bodyType: GRAPHQL`. Params/Headers reuse the
+  shared `KeyValueRows` (`create-params-*`/`create-headers-*`); Body uses a
+  JSON/XML/Raw type selector (`create-body-type`) + a mono textarea
+  (`create-body-input`).
+- **cURL mode**: a `create-curl-input` textarea with a live `create-curl-
+  preview` (METHOD + URL) and Create-time `parseCurl`, so the saved request is
+  pre-filled with method/url/query params/headers/body. The URL field no
+  longer sniffs curl (that moved to the cURL tab); the pre-existing top-bar
+  "Import cURL" flow is untouched.
+- **Create path**: both modes go through `contentApi.createRequest` +
+  `updateRequest` (persisting headers/queryParams/bodyType/bodyJson/
+  contentType) then `reloadTree` + `selectRequest`, replacing the old
+  "curl in URL field" special case in `onSubmit`. Styling in `app/globals.css`
+  (`.create-mode-tabs`, `.create-method-url`, `.create-request-tabs`,
+  `.create-body-input`, `.create-curl-hint`/`.create-curl-preview`, ≤640px
+  method/URL stack). New e2e `frontend/e2e/create-request-form.spec.ts`
+  (2 tests).
+- **Verification**: `npx tsc --noEmit` clean; `npm test` 89/89; `next build`
+  green; new spec 2/2; regression batch 12/12 — `curl-import`, `request-tabs`
+  (×4), `dirty-dot`, `request-duplicate` (×2), `folder-drag-move`,
+  `nav-normal`, plus the 2 new tests.
+
 ### 5.31 Pending plan: two subscription portals (recorded, docs only)
 
 No code — Ranjith asked to record a segmented pending plan for two new portals
@@ -933,6 +972,13 @@ final M9 wrap-up per user instruction.
 
 ## 6. Verification performed
 
+- New API request dialog Form | cURL turn (§5.32): frontend `tsc --noEmit`
+  clean, `npm test` 89/89, `next build` green. New e2e spec
+  `create-request-form` 2/2 (GET shows Params/Headers with no Body; POST adds
+  the Body tab; persisted request keeps method/url/query params/body — and
+  cURL mode pre-fills a saved request). Regression batch 12/12:
+  `curl-import`, `request-tabs` ×4, `dirty-dot`, `request-duplicate` ×2,
+  `folder-drag-move`, `nav-normal`, plus the 2 new.
 - Undo/redo/back turn (§5.30): frontend `tsc --noEmit` clean, `npm test`
   89/89, `next build` green. Full desktop e2e (26 specs / 43 tests) on a fresh
   reset+seed DB and fresh mock-upstream: **41 passed, 2 failed** — the two
@@ -965,15 +1011,17 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-Per-request undo/redo + back-to-previous turn (§5.30): `WorkspaceStore.tsx`,
-`RequestTabs.tsx`, `icons.tsx`, `globals.css`, `mobile.chrome.css` + new
-`useRequestHistoryShortcuts.ts` and `e2e/request-undo-redo-back.spec.ts`
-(plus `tsconfig.tsbuildinfo` churn — leave it). Committed and pushed on
-`master` alongside this docs update.
+New API request dialog Form | cURL turn (§5.32): `frontend/src/components/
+CreateModal.tsx` (rewritten request branch), `frontend/app/globals.css`,
+`frontend/e2e/create-request-form.spec.ts` (new) — plus
+`tsconfig.tsbuildinfo` churn (leave it). Committed and pushed on `master`
+alongside this docs update.
 
-Prior to that, the team/project-scoped workspace turn (§5.28), the
-mobile-responsive UI turn (§5.27) and the structured multipart body-parts
-feature (§5.26) were committed and pushed on `master`.
+Prior to that, the per-request undo/redo + back-to-previous turn (§5.30), the
+portal landing/pricing turn (portal `A2`, see session.md), the team/project-
+scoped workspace turn (§5.28), the mobile-responsive UI turn (§5.27) and the
+structured multipart body-parts feature (§5.26) were committed and pushed on
+`master`.
 
 ## 8. Known issues / notes for the next agent
 

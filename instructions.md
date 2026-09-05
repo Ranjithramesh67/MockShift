@@ -235,6 +235,32 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M17 | Full mobile responsive UI + touch UX (off-canvas drawer nav, bottom-sheet modals, stacked card tables, compact editor) — 4 parallel agents | done (this turn, pushed) |
 | M18 | Team- and project-scoped workspaces — team-first grouped nav (`/api/teams/groups`) + Project Overview command center (members & access mgmt for admins AND project managers, workspace info panel, activity), self-service member role changes | done (this turn, pushed) |
 | M19 | Per-request undo/redo + back-to-previous — per-tab undo/redo history over working-copy edits (`request-undo`/`request-redo` toolbar buttons + global Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z with editable-focus guard) and `request-back` (activation-order nav stack; reopens closed tabs with unsaved work) | done (this turn, pushed) |
+| M20 | New API request dialog — Form | cURL: full form (Name, Type, Method, URL + method-driven Params/Headers/Body horizontal tabs; Body for POST/PUT/PATCH, query params for GET etc.) or cURL paste with live parse preview; replaces old URL-field curl sniffing | done (this turn, pushed) |
+
+## M20 — New API request dialog: Form | cURL (done)
+
+As requested, the "New API request" dialog is now a full form OR a cURL paste
+(segmented Form | cURL switch inside the modal).
+
+- Form mode: shared Name (optional — auto-derived `METHOD host`) + Type
+  (REST/SOAP/GraphQL/Auth) fields, then Method + URL, then a horizontal tab
+  strip (`create-tab-params` / `create-tab-headers` / `create-tab-body`) whose
+  Params and Headers rows are always available; the Body tab (JSON/XML/Raw
+  body-type select + mono textarea) appears only for body-carrying methods
+  (POST/PUT/PATCH) and is default-active for GraphQL/SOAP/Auth (a non-REST
+  type auto-switches a body-less method to POST; GraphQL saves
+  `bodyType: GRAPHQL`).
+- cURL mode: paste a command into `create-curl-input`; a live `create-curl-
+  preview` shows `METHOD URL`; on Create the shared `parseCurl` fills
+  method/url/query params/headers/body of the saved request. The old URL-field
+  curl sniffing is gone; the top-bar "Import cURL" flow is unchanged.
+- Files: `frontend/src/components/CreateModal.tsx` (rewritten request branch),
+  `frontend/app/globals.css` (create-modal styles), new
+  `frontend/e2e/create-request-form.spec.ts` (2 tests).
+- Verified: `tsc --noEmit` clean, `npm test` 89/89, `next build` green, new
+  spec 2/2, regression batch 12/12 (`curl-import`, `request-tabs` ×4,
+  `dirty-dot`, `request-duplicate` ×2, `folder-drag-move`, `nav-normal`,
+  + the 2 new). Docs: docs/SESSION.md §5.32.
 
 ## M17 — Mobile responsive UI + touch UX (done)
 
