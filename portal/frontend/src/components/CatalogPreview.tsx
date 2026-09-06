@@ -175,7 +175,9 @@ export default function CatalogPreview() {
                     <div className="plan-save">Save {savePct}% with yearly billing</div>
                   )}
                   {plan.trial_days > 0 && (
-                    <div className="plan-trial">{plan.trial_days}-day free trial</div>
+                    <div className="plan-trial">
+                      +{plan.trial_days} days extra validity on your first recharge
+                    </div>
                   )}
                   <ul className="plan-features">
                     {plan.features.map((feature) => (

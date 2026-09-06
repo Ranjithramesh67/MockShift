@@ -3,6 +3,7 @@
 const { Router } = require('express');
 const { query } = require('../shared');
 const { access, requirePortalRole } = require('../portalAccess');
+const { logAudit } = require('../auditLog');
 
 const router = Router();
 
@@ -157,7 +158,16 @@ router.post('/', requirePortalRole('MANAGER'), async (req, res, next) => {
       ],
       { userId: req.user.id }
     );
-    res.status(201).json({ plan: rows[0] });
+    const created = rows[0];
+    await logAudit(req, {
+      action: 'plans.create',
+      targetType: 'plan',
+      targetId: created.id,
+      targetRef: created.key,
+      before: null,
+      after: created,
+    });
+    res.status(201).json({ plan: created });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Plan key already exists' });
     next(err);
@@ -180,6 +190,12 @@ router.put('/:id', requirePortalRole('MANAGER'), async (req, res, next) => {
     const values = fields.map((f) =>
       f === 'limits' || f === 'features' ? JSON.stringify(out[f]) : out[f]
     );
+    const { rows: beforeRows } = await query(
+      `SELECT ${PLAN_COLUMNS} FROM plans WHERE id = $1`,
+      [req.params.id],
+      { userId: req.user.id }
+    );
+    if (!beforeRows[0]) return res.status(404).json({ error: 'Plan not found' });
     const { rows } = await query(
       `UPDATE plans SET ${setSql}, updated_at = now()
         WHERE id = $1 RETURNING ${PLAN_COLUMNS}`,
@@ -187,6 +203,14 @@ router.put('/:id', requirePortalRole('MANAGER'), async (req, res, next) => {
       { userId: req.user.id }
     );
     if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
+    await logAudit(req, {
+      action: 'plans.update',
+      targetType: 'plan',
+      targetId: rows[0].id,
+      targetRef: rows[0].key,
+      before: beforeRows[0],
+      after: rows[0],
+    });
     res.json({ plan: rows[0] });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Plan key already exists' });
@@ -198,10 +222,24 @@ router.put('/:id', requirePortalRole('MANAGER'), async (req, res, next) => {
 // by ON DELETE RESTRICT in migration 013.
 router.delete('/:id', requirePortalRole('ADMIN'), async (req, res, next) => {
   try {
+    const { rows: targetRows } = await query(
+      `SELECT ${PLAN_COLUMNS} FROM plans WHERE id = $1`,
+      [req.params.id],
+      { userId: req.user.id }
+    );
+    if (!targetRows[0]) return res.status(404).json({ error: 'Plan not found' });
     const { rows } = await query(`DELETE FROM plans WHERE id = $1 RETURNING id`, [
       req.params.id,
     ], { userId: req.user.id });
     if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
+    await logAudit(req, {
+      action: 'plans.delete',
+      targetType: 'plan',
+      targetId: targetRows[0].id,
+      targetRef: targetRows[0].key,
+      before: targetRows[0],
+      after: null,
+    });
     res.json({ ok: true, deleted: rows[0].id });
   } catch (err) {
     if (err.code === '23503') {

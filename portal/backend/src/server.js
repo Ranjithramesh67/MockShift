@@ -6,6 +6,10 @@ const { roleAtLeast } = require('./portalAccess');
 const publicCatalogRouter = require('./routes/publicCatalog');
 const plansRouter = require('./routes/plans');
 const summaryRouter = require('./routes/summary');
+const dashboardRouter = require('./routes/dashboard');
+const subscribersRouter = require('./routes/subscribers');
+const promoCodesRouter = require('./routes/promoCodes');
+const auditRouter = require('./routes/audit');
 
 function createApp() {
   const app = express();
@@ -42,6 +46,10 @@ function createApp() {
   // Portal B — internal management endpoints behind RBAC.
   app.use('/api/plans', plansRouter);
   app.use('/api/portal', summaryRouter);
+  app.use('/api/dashboard', dashboardRouter);
+  app.use('/api/subscribers', subscribersRouter);
+  app.use('/api/promo-codes', promoCodesRouter);
+  app.use('/api/audit', auditRouter);
 
   app.use('/api', (req, res) => {
     res.status(404).json({ error: `Not found: ${req.method} ${req.path}` });
