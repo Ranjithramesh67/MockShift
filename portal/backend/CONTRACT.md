@@ -11,7 +11,12 @@ so frontend code calls **relative** `/api/...` URLs.
 
 Public checkout (mock gateway). Consumers stay unauthenticated; a shopper's
 account is auto-created during checkout (A3 decision, role EDITOR) and they are
-signed in via the same cookie session scheme. Free (₹0) plans activate
+signed in via the same cookie session scheme. A guest checkout additionally
+provisions the buyer the same way the main-app register path does — their own
+organization (`"<Name>'s Org"`, they join as its ADMIN), a PRIVATE
+`"My Workspace"` (ADMIN) and a `"Default Project"` — all in the checkout
+transaction, so a paying individual is never org-less and can create/use
+workspaces in the main app. Free (₹0) plans activate
 immediately (`requiresPayment:false`); paid plans hold a PENDING order + DRAFT
 invoice until the confirmation step marks them paid. The first-recharge bonus
 (`plans.trial_days`: Starter +5 / Pro +10 / Team +15) is awarded on the

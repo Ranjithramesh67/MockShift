@@ -262,7 +262,35 @@ router.post('/checkout', async (req, res, next) => {
            RETURNING id, email, name`,
           [email, await authLib.hashPassword(password), displayName, usernameValue]
         );
-        return rows[0].id;
+        const userId = rows[0].id;
+        // Give the individual buyer the same bootstrap the main-app register
+        // path provisions (backend/src/api/routes/auth.js): their own org +
+        // "My Workspace" + a Default Project, with them as org ADMIN — so a
+        // paying customer is never left org-less and unable to create or use
+        // workspaces in the main app.
+        const org = await client.query(
+          `INSERT INTO organizations (name, owner_id) VALUES ($1, $2) RETURNING id`,
+          [`${displayName}'s Org`, userId]
+        );
+        const orgId = org.rows[0].id;
+        await client.query(
+          `INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, 'ADMIN')`,
+          [orgId, userId]
+        );
+        const ws = await client.query(
+          `INSERT INTO workspaces (organization_id, name, visibility) VALUES ($1, $2, 'PRIVATE') RETURNING id`,
+          [orgId, 'My Workspace']
+        );
+        const wsId = ws.rows[0].id;
+        await client.query(
+          `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'ADMIN')`,
+          [wsId, userId]
+        );
+        await client.query(
+          `INSERT INTO projects (workspace_id, name) VALUES ($1, $2)`,
+          [wsId, 'Default Project']
+        );
+        return userId;
       });
     }
     if (!userId) return res.status(500).json({ error: 'Could not resolve account' });
