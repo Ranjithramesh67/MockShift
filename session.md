@@ -65,6 +65,20 @@ so the routes use `requireAuth` + owner guards — never portal RBAC):
   AccountLink → /account, sign-out to landing, /login wrong-creds error then
   real login → /account).
 
+Post-push follow-up (2026-09-06): provisioning fix — a guest Portal A checkout
+now also creates the buyer's own org (`"<Name>'s Org"`, org ADMIN) + PRIVATE
+`My Workspace` (ADMIN) + `Default Project`, mirroring the main-app register
+path (`backend/src/api/routes/auth.js`), so a paying individual is never
+org-less and can create workspaces. Detection of individual vs group stays
+model-free: an individual = org ADMIN/owner of a personal org (no other
+members); a group user = member of someone else's org/workspace via the
+invite flows. `publicCheckout.js` change only — no schema/migration.
+Verified: probe `/tmp/a5-provision-probe.cjs` ALL PASS (same session against
+main :3001 → `/api/auth/me` EDITOR, workspaces list `My Workspace` ADMIN,
+`POST /api/workspaces` 201); A4 + A5 matrices re-run ALL PASS; portal backend
+restarted (`term_1788731418612_71`); CONTRACT.md + docs/SESSION.md §5.41
+updated.
+
 Current demo/DB state: dev DB was reset + reseeded to the canonical demo
 baseline after the matrices/smoke (throwaway a5_*/pwacct_*/buyer1_* users
 removed; 9 demo subs — active 4 / trialing 1 / past_due 1 / suspended 1 /

@@ -357,6 +357,43 @@ never `requirePortalRole`.
     `buyer1_*` users gone, 9 demo subscriptions, the three 017 functions
     verified intact.
 
+### 5.41 Provisioning fix — checkout buyers get their own workspace (pushed, 2026-09-06)
+
+Follow-up to a product question: "if an individual user created an account
+and paid, how can they create a workspace, and how do we detect individual vs
+group users?" The code review found a real gap — normal main-app signups
+(`backend/src/api/routes/auth.js`) are bootstrapped with their own org +
+`"My Workspace"` + `Default Project`, but Portal A checkout
+(`publicCheckout.js`) inserted **only** the `users` row, and `POST /api/
+workspaces` requires an existing org membership where the caller holds org
+role ADMIN — so a paying individual could never create a workspace.
+
+- **Chosen model** (user picked auto-provision): a guest checkout now mirrors
+  the register bootstrap inside the same transaction that creates the user —
+  `organizations` `"<Name>'s Org"` (owner = the buyer) + `organization_members`
+  ADMIN, a PRIVATE `workspaces` `"My Workspace"` + `workspace_members` ADMIN,
+  and a `projects` `"Default Project"`. Account shape / 409s / bonus /
+  supersede semantics unchanged; no schema change (no name-uniqueness
+  constraints to worry about).
+- **Individual vs group** (design answer, no schema change): with every
+  self-provisioned account, an *individual* is simply the org ADMIN/owner of a
+  personal org — detectable as `organizations.owner_id = user_id` with no
+  other `organization_members` rows (or none on their org beyond them). A
+  *group user* is anyone who appears as a member of an org/workspace owned or
+  provisioned by someone else (added via the team/org invite flows). Global
+  `role` stays orthogonal (buyers are EDITOR; org role ADMIN comes from their
+  personal org). If a future A6 seat model needs an explicit discriminator, a
+  `users.account_kind` or subscription seat-type column would be the extension
+  point — not needed today.
+- **Verified**: syntax check clean; portal backend restarted
+  (`term_1788731418612_71`, PID 26534, health OK); live probe
+  `/tmp/a5-provision-probe.cjs` ALL PASS — guest Starter checkout + confirm
+  then, with the same session against the **main** backend :3001:
+  `/api/auth/me` → role EDITOR, `GET /api/workspaces` lists `My Workspace`
+  with role ADMIN, and `POST /api/workspaces` returns 201 (new workspace,
+  role ADMIN). A4 + A5 backend matrices re-run ALL PASS. CONTRACT.md documents
+  the provisioning. DB reseeded to the canonical demo baseline afterwards.
+
 ### 5.36 Workspaces sidebar scanability (this turn)
 
 Requested: WORKSPACES was hard to scan — the empty state still said
