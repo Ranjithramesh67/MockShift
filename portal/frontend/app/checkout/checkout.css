@@ -1,0 +1,421 @@
+/* ==========================================================================
+   Portal A (A4) — public checkout & payment-confirmation pages.
+   Rides the portal landing design tokens (dark green-black + mint) and the
+   global .btn pills. Classes are prefixed `ck-`.
+   ========================================================================== */
+
+.ck {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.ck-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(10, 13, 10, 0.82);
+  backdrop-filter: blur(10px);
+}
+
+.ck-nav-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 22px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ck-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.ck-brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0a0d0a;
+  background: var(--accent-grad);
+}
+
+.ck-pill {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(124, 242, 156, 0.18);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.ck-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.ck-nav-links a:hover {
+  color: var(--text);
+}
+
+.ck-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 44px 22px 72px;
+}
+
+.ck-foot {
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 22px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+/* --------------------------------------------------------------- structure */
+
+.ck-shell {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.ck-head {
+  margin-bottom: 26px;
+}
+
+.ck-back {
+  display: inline-block;
+  margin-bottom: 14px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+.ck-back:hover {
+  color: var(--accent);
+}
+
+.ck-title {
+  font-size: 30px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.ck-sub {
+  font-size: 18px;
+  font-weight: 650;
+  margin-bottom: 8px;
+}
+
+.ck-lede {
+  color: var(--text-muted);
+  max-width: 60ch;
+}
+
+.ck-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.ck-summary {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-xl);
+  padding: 20px;
+  position: sticky;
+  top: 82px;
+}
+
+.ck-summary-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+.ck-summary-name {
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.ck-summary-cycle {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ck-summary-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.ck-summary-price-row strong {
+  font-size: 20px;
+  color: var(--text);
+}
+
+.ck-summary-bonus {
+  margin-top: 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(124, 242, 156, 0.16);
+  border-radius: var(--r-md);
+  padding: 9px 11px;
+}
+
+.ck-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-xl);
+  padding: 26px;
+}
+
+.ck-loading {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-xl);
+}
+
+/* ------------------------------------------------------------------- forms */
+
+.ck-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.ck-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+.ck-field input {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: 15px;
+  padding: 11px 13px;
+  transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+}
+
+.ck-field input::placeholder {
+  color: var(--text-faint);
+}
+
+.ck-field input:focus {
+  outline: none;
+  border-color: rgba(124, 242, 156, 0.55);
+  box-shadow: 0 0 0 3px rgba(124, 242, 156, 0.12);
+}
+
+.ck-hint {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.ck-fine {
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
+
+.ck-error {
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  color: #ffb4ae;
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  font-size: 13.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ck-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ck-link:hover {
+  color: var(--accent-hover);
+}
+
+.ck-notice {
+  border-radius: var(--r-md);
+  padding: 10px 13px;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+
+.ck-notice-ok {
+  background: rgba(124, 242, 156, 0.09);
+  border: 1px solid rgba(124, 242, 156, 0.18);
+}
+
+.ck-notice-ok span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* -------------------------------------------------------------- details / */
+
+.ck-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.ck-detail > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.ck-detail dt {
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+.ck-detail dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.ck-detail-compact {
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.ck-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.ck-badge-ok {
+  color: var(--ok);
+  background: rgba(63, 185, 80, 0.12);
+  border-color: rgba(63, 185, 80, 0.28);
+}
+
+.ck-result-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 800;
+  color: #0a0d0a;
+  background: var(--accent-grad);
+  margin-bottom: 18px;
+  box-shadow: var(--accent-glow);
+}
+
+.ck-bonus-note {
+  background: var(--accent-soft);
+  border: 1px solid rgba(124, 242, 156, 0.16);
+  color: var(--accent);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 4px 0 16px;
+}
+
+.ck-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 760px) {
+  .ck-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ck-summary {
+    position: static;
+    order: 2;
+  }
+
+  .ck-main {
+    padding: 26px 16px 48px;
+  }
+
+  .ck-title {
+    font-size: 24px;
+  }
+
+  .ck-panel {
+    padding: 20px;
+  }
+
+  .ck-nav-links {
+    display: none;
+  }
+}

@@ -1,11 +1,63 @@
-# Portal B — Management App API Contract
+# Portal — API Contract
 
-Authoritative for the parallel B2–B6 build. Backend agents implement these
+Authoritative for the parallel builds. Backend agents implement these
 endpoints; frontend agents consume them. Deviate only if a genuine bug in this
 doc blocks you — and say so in your report.
 
 Base URL: the portal frontend rewrites `/api/*` → `http://127.0.0.1:3102/api/*`,
 so frontend code calls **relative** `/api/...` URLs.
+
+## Portal A — public purchase (A4, `routes/publicCheckout.js`, mounted `/api/public`)
+
+Public checkout (mock gateway). Consumers stay unauthenticated; a shopper's
+account is auto-created during checkout (A3 decision, role EDITOR) and they are
+signed in via the same cookie session scheme. Free (₹0) plans activate
+immediately (`requiresPayment:false`); paid plans hold a PENDING order + DRAFT
+invoice until the confirmation step marks them paid. The first-recharge bonus
+(`plans.trial_days`: Starter +5 / Pro +10 / Team +15) is awarded on the
+customer's **first paid order ever** by extending the subscription's initial
+`current_period_end`. Free orders are never created, so a Free signup never
+consumes the bonus.
+
+Shapes returned (consistent with Portal B where the same rows appear):
+- `order`: `{ id, status, billing_cycle, amount, currency, payment_method,
+  plan_key, plan_name, created_at }`
+- `invoice`: `{ id, number, amount, currency, status, issued_at, paid_at }`
+- `subscription`: `{ id, status, billing_cycle, plan: { id, key, name,
+  currency }, current_period_start, current_period_end, trial_ends_at,
+  cancel_at_period_end, cancelled_at, created_at }`
+- `account`: `{ id, name, email, created }`
+
+### `POST /api/public/checkout`
+Body: `{ planKey, billingCycle: 'MONTHLY'|'YEARLY', account?: { name, email,
+password } }`. `account` required when no session is present; ignored once a
+session is (a mismatched email → 409). Password ≥ 8 chars, email must be valid.
+
+- 404 unknown/archived plan; 400 invalid cycle or custom-priced (Enterprise)
+  plan; 409 email already registered (sign in instead) or the user already has
+  an ACTIVE/TRIALING subscription to the same plan.
+- Paid plans → `201 { ok, requiresPayment: true, order, invoice, bonus:
+  { firstRechargeEligible, days }, account }` (days = plan.trial_days when
+  eligible).
+- Free plans → `201 { ok, requiresPayment: false, subscription, account }`.
+- A newly created account is signed in (Set-Cookie on the response).
+
+### `POST /api/public/checkout/:orderId/confirm` (order owner)
+Simulates the gateway success webhook. Marks the order `PAID` and the linked
+invoice `PAID` (issued_at/paid_at now), creates the `ACTIVE` subscription with
+`current_period_start = now()` and `current_period_end = now() + cycle
+(1 month | 1 year) + bonus days`, and links `orders.subscription_id`.
+Idempotent: confirming an already-settled order returns `{ ok,
+alreadyProcessed: true, ... }`. 403 if the order belongs to another user; 409
+if the user is already ACTIVE/TRIALING on that plan.
+→ `{ ok, order, invoice, subscription, bonus: { firstRecharge, days } }`
+
+### `GET /api/public/orders/:orderId` (order owner)
+Lets the confirmation page reload after a refresh.
+→ `{ order, invoice, subscription, bonus }` (`subscription` null until paid;
+`bonus` present only for a PENDING order — `{ firstRechargeEligible, days }`).
+
+## Portal B — Management App API Contract
 
 ## Conventions
 

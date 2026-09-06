@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export type Plan = {
   id: string;
@@ -66,6 +67,7 @@ function SkeletonCard() {
 }
 
 export default function CatalogPreview() {
+  const router = useRouter();
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cycle, setCycle] = useState<Cycle>('MONTHLY');
@@ -88,6 +90,10 @@ export default function CatalogPreview() {
   const showNotice = (message: string) => {
     setNotice(message);
     window.setTimeout(() => setNotice(null), 4500);
+  };
+
+  const openCheckout = (planKey: string) => {
+    router.push(`/checkout?plan=${encodeURIComponent(planKey)}&cycle=${cycle}`);
   };
 
   if (error) {
@@ -192,11 +198,11 @@ export default function CatalogPreview() {
                     className={`plan-cta ${custom ? 'btn-outline' : popular ? '' : 'btn-ghost'}`}
                     data-testid={`choose-${plan.key}`}
                     onClick={() =>
-                      showNotice(
-                        custom
-                          ? 'Contact sales opens with the checkout flow (Portal A, A4).'
-                          : `${plan.name} checkout opens with the purchase flow (Portal A, A4).`
-                      )
+                      custom
+                        ? showNotice(
+                            'Enterprise uses custom pricing — contact sales via the email in the FAQ.'
+                          )
+                        : openCheckout(plan.key)
                     }
                   >
                     {custom ? 'Contact sales' : popular ? 'Get started' : `Choose ${plan.name}`}
@@ -206,8 +212,9 @@ export default function CatalogPreview() {
             })}
           </div>
           <p className="price-note">
-            Prices in INR, billed {cycle === 'YEARLY' ? 'annually' : 'monthly'}. Placeholder
-            catalog from migration 013 — checkout (Portal A) ships in a later milestone.
+            Prices in INR, billed {cycle === 'YEARLY' ? 'annually' : 'monthly'}. Your first
+            recharge of Starter, Pro or Team adds extra validity days automatically. Checkout is
+            live — the payment step is simulated for this demo (no real charge).
           </p>
         </>
       )}
