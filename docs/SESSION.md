@@ -432,6 +432,45 @@ and provisions the buyer's org + workspace.
   CLOSED (`term_1788732243308_74`) — real/preview deployments must never set
   `ALLOW_SELF_SIGNUP`.
 
+### 5.43 Planning: Profile & plan visibility + per-plan usage restrictions (2026-09-06, docs only)
+
+No code this turn. Ranjith asked two forward-looking product questions and
+explicitly requested **planning + splitting only** (recorded in `session.md`
+under two new `## Pending — …` sections; work proceeds one-by-one later with
+approval):
+
+1. **Profile & plan visibility** — "after login, where do I see which plan I'm
+   on?" The main API Hub app currently has no profile/plan surface (top-bar
+   user menu = initial + name + Sign out); plans/billing only exist on Portal
+   A `/account` (A5). Planned split **PR-1** backend profile surface + avatar
+   storage (`users.avatar_*`, `GET/PATCH /api/profile`,
+   `/api/profile/avatar|password`) → **PR-2** main-app `/profile` page
+   (details, predefined + uploaded avatar, subscription card, manage/change-
+   plan deep-links to the portal) → **PR-3** cross-app manage flow + top-bar
+   chip + usage bars later. Open decisions D1–D5 recorded (plan-less users'
+   entitlement, email read-only, avatar storage in DB bytea vs object store,
+   change-plan stays on Portal A checkout, badge/status surfacing).
+2. **Per-plan usage restrictions (Portal B)** — enforce per-subscription
+   limits (workspaces/projects/collections/teams/seats/storage/runs/…,
+   `null` = unlimited) across the product with an admin toggle to turn
+   restrictions OFF. The seed catalog already ships a few unused
+   `plans.limits` keys; nothing enforces them today. Planned split **L1**
+   limits model + Portal B config & master toggle + `entitlements.js`
+   resolver → **L2** workspace/project/collection creation gates (403
+   `plan_limit`) → **L3** teams/seats/public_sharing → **L4** runs budget
+   counter (+ storage placeholder, deferred since file bytes aren't
+   persisted) → **L5** usage bars/upsell on profile + Portal A `/account` →
+   **L6** toggle-off verification, tests, docs. Open decisions R1–R8 recorded
+   (counting scope = plan-owner's org pool, plan-less fallback to Free,
+   blocking UX, downgrade over-limit = block new only, runs window, storage
+   meaning, toggle + per-plan override semantics, Enterprise unlimited).
+   Suggested order: PR-1 → PR-2 → L1 → L2 → L3 → L4 → L5 → L6 → PR-3.
+- Also refreshed `session.md` stale lines while recording: Live-process
+  terminal ids corrected to current (`term_1788731418612_71` portal backend,
+  `term_1788732243308_74` main backend CLOSED), A5 marked DONE in the
+  two-portals pending matrix, and the top PENDING list now names both new
+  programmes.
+
 ### 5.36 Workspaces sidebar scanability (this turn)
 
 Requested: WORKSPACES was hard to scan — the empty state still said
