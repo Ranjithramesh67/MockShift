@@ -394,6 +394,44 @@ role ADMIN — so a paying individual could never create a workspace.
   role ADMIN). A4 + A5 backend matrices re-run ALL PASS. CONTRACT.md documents
   the provisioning. DB reseeded to the canonical demo baseline afterwards.
 
+### 5.42 Self-service signup gated to Portal A (pushed, 2026-09-06)
+
+Product bug/decision: "signup in API Hub creates an account without a payment
+page" — the main app's `POST /api/auth/signup` (+ `/signup` UI, "Create one"
+on the login page) let anyone mint a free-for-life EDITOR account with a
+workspace and never hit pricing. The accepted fix (user-confirmed scope:
+"Closed by default + test flag"): self-service account creation happens only
+through the Portal A plans/checkout flow, which selects a plan (Free or paid)
+and provisions the buyer's org + workspace.
+
+- **Backend** `backend/src/api/routes/auth.js`: new `selfServiceOpen()` — true
+  when `ALLOW_SELF_SIGNUP === '1'` (explicit test/dev opt-in) or the users
+  table is empty (very first account ever becomes platform ADMIN, preserving
+  fresh-install bootstrap). `POST /api/auth/signup` returns **403**
+  `"Self-service signup is closed — choose a plan on the API Hub plans page to
+  create your account"` when closed. New `GET /api/auth/signup-status` →
+  `{ open }` so the frontend can choose its UI. `backend/package.json`
+  `test:api` now runs under `ALLOW_SELF_SIGNUP=1`, so the 11 integration
+  suites + the e2e `signupFreshUser` helper keep working untouched.
+- **Frontend** `frontend/app/signup/page.tsx`: conditional client page — on
+  mount it checks `/api/auth/signup-status`; when signup is open (bootstrap /
+  flag env) it renders the original create-account form verbatim (all
+  `signup-*` testids and behaviour preserved); when closed it renders a
+  gateway card "Choose a plan to get started" with a CTA to the Portal A plans
+  page and keeps the sign-in link. New `frontend/src/lib/portalUrl.ts` exports
+  `PORTAL_PLANS_URL` = `NEXT_PUBLIC_PORTAL_URL` or `http://localhost:3002/#pricing`.
+  Login's "Create one" still targets `/signup`, which resolves to the gateway.
+- **Verified**: with the default (closed) backend, `/api/auth/signup-status` →
+  `{open:false}` and signup → 403; with `ALLOW_SELF_SIGNUP=1`, status →
+  `{open:true}`, signup 201 (EDITOR + `"Flag User's Org"` org ADMIN),
+  duplicate email → 409; e2e `create-request-form.spec.ts` 2/2 under the flag
+  (fresh-user API signup + workspace flows intact); UI smoke
+  `/tmp/gate-ui-smoke.cjs` 4/4 under the closed backend (gateway shown, no
+  form, plans CTA href points at the portal, sign-in link kept). DB reseeded to
+  the canonical demo baseline afterwards; the main backend is left running
+  CLOSED (`term_1788732243308_74`) — real/preview deployments must never set
+  `ALLOW_SELF_SIGNUP`.
+
 ### 5.36 Workspaces sidebar scanability (this turn)
 
 Requested: WORKSPACES was hard to scan — the empty state still said

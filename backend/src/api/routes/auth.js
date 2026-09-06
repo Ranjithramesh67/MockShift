@@ -18,6 +18,18 @@ const router = Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+async function selfServiceOpen() {
+  // Self-service signup is closed by default: accounts are created through the
+  // Portal A plans/checkout flow (which provisions the buyer's org +
+  // workspace). Exceptions: the empty-DB bootstrap (very first account ever
+  // becomes platform ADMIN) and an explicit opt-in (ALLOW_SELF_SIGNUP=1) for
+  // automated test/dev environments — real and preview deployments must never
+  // set that flag.
+  if (process.env.ALLOW_SELF_SIGNUP === '1') return true;
+  const { rows } = await query('SELECT COUNT(*)::int AS n FROM users');
+  return rows[0].n === 0;
+}
+
 async function userSummary(userId) {
   const user = await loadUserById(userId);
   if (!user) return null;
@@ -41,6 +53,12 @@ router.post('/signup', async (req, res, next) => {
     }
     if (!password || String(password).length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    if (!(await selfServiceOpen())) {
+      return res.status(403).json({
+        error:
+          'Self-service signup is closed — choose a plan on the API Hub plans page to create your account',
+      });
     }
     const displayName = (name || '').trim() || email.split('@')[0];
 
@@ -96,6 +114,16 @@ router.post('/signup', async (req, res, next) => {
     } finally {
       client.release();
     }
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Lets the main-app /signup page decide whether to show the create-account
+// form (open bootstrap / test opt-in) or a gateway to the Portal A plans page.
+router.get('/signup-status', async (req, res, next) => {
+  try {
+    res.json({ open: await selfServiceOpen() });
   } catch (err) {
     next(err);
   }

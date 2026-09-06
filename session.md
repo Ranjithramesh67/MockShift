@@ -79,6 +79,27 @@ main :3001 → `/api/auth/me` EDITOR, workspaces list `My Workspace` ADMIN,
 restarted (`term_1788731418612_71`); CONTRACT.md + docs/SESSION.md §5.41
 updated.
 
+Post-push follow-up 2 (2026-09-06): SELF-SERVE SIGNUP GATED — main-app
+`POST /api/auth/signup` no longer creates accounts out of the blue; that was
+the "signup creates an account without a payment page" hole. Now accounts are
+created through the Portal A plans/checkout flow only (Free or paid), which
+provisions the buyer's org + workspace. `auth.js`: `/api/auth/signup` returns
+403 ("choose a plan on the API Hub plans page…") unless `ALLOW_SELF_SIGNUP=1`
+(test/dev opt-in, set in `backend/package.json` `test:api`) or the DB has zero
+users (empty-DB ADMIN bootstrap). New `GET /api/auth/signup-status` →
+`{ open }` drives the UI. `frontend/app/signup/page.tsx` is now conditional:
+when closed it shows a gateway card ("Choose a plan to get started" → Portal A
+plans, `frontend/src/lib/portalUrl.ts` `NEXT_PUBLIC_PORTAL_URL`, default
+`http://localhost:3002/#pricing`); when open (flag env, e2e) the original
+create-account form renders unchanged (all `signup-*` testids kept). Login
+"Create one" still points at `/signup`, which resolves to the gateway.
+Verified: closed backend → status `{open:false}`, signup 403; flag backend →
+status `{open:true}`, signup 201 (EDITOR + "Flag User's Org" ADMIN org),
+duplicate 409; e2e `create-request-form` 2/2 under the flag (fresh-user signup
++ workspace flows intact); UI smoke `/tmp/gate-ui-smoke.cjs` 4/4 under the
+closed backend (gateway shown, no form, plans CTA href, sign-in link). DB
+reseeded; backend left running CLOSED (`term_1788732243308_74`).
+
 Current demo/DB state: dev DB was reset + reseeded to the canonical demo
 baseline after the matrices/smoke (throwaway a5_*/pwacct_*/buyer1_* users
 removed; 9 demo subs — active 4 / trialing 1 / past_due 1 / suspended 1 /
