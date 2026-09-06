@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import AccountLink from '@/components/AccountLink';
 import './checkout.css';
 
 export default function CheckoutLayout({ children }: { children: ReactNode }) {
@@ -16,6 +17,7 @@ export default function CheckoutLayout({ children }: { children: ReactNode }) {
           <nav className="ck-nav-links" aria-label="Checkout">
             <a href="/#pricing">Pricing</a>
             <a href="/#faq">FAQ</a>
+            <AccountLink className="ck-nav-signin" />
           </nav>
         </div>
       </header>

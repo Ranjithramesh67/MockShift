@@ -5,6 +5,7 @@ const { query, access, authRouter } = require('./shared');
 const { roleAtLeast } = require('./portalAccess');
 const publicCatalogRouter = require('./routes/publicCatalog');
 const publicCheckoutRouter = require('./routes/publicCheckout');
+const customerAccountRouter = require('./routes/customerAccount');
 const plansRouter = require('./routes/plans');
 const summaryRouter = require('./routes/summary');
 const dashboardRouter = require('./routes/dashboard');
@@ -44,6 +45,8 @@ function createApp() {
   // Portal A — public showcase/catalog endpoints (no auth).
   app.use('/api/public', publicCatalogRouter);
   app.use('/api/public', publicCheckoutRouter);
+  // Portal A — subscriber self-service (session auth, own data only).
+  app.use('/api/public/account', customerAccountRouter);
 
   // Portal B — internal management endpoints behind RBAC.
   app.use('/api/plans', plansRouter);

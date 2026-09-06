@@ -419,3 +419,19 @@
     display: none;
   }
 }
+
+/* Signed-in "My subscription" header link (A5). */
+.ck-nav-signin {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 13px;
+  border: 1px solid var(--accent-soft-2);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  transition: background var(--speed) var(--ease);
+}
+.ck-nav-signin:hover {
+  background: var(--accent-soft-2);
+}

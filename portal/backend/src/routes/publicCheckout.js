@@ -292,6 +292,9 @@ router.post('/checkout', async (req, res, next) => {
            RETURNING id`,
           [userId, plan.id, cycle]
         );
+        // A5 plan change: activating Free supersedes any other active plan the
+        // customer holds (paid -> free downgrade), keeping one current plan.
+        await client.query('SELECT app.supersede_subscriptions($1)', [rows[0].id]);
         return { kind: 'free', subscription: await fetchSubscriptionShapeTx(client, rows[0].id) };
       }
 
@@ -442,6 +445,10 @@ router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, n
         subscriptionId,
         orderId,
       ]);
+      // A5 plan change: confirming an order for a DIFFERENT plan moves the
+      // customer to it — every other ACTIVE/TRIALING subscription is cancelled
+      // immediately (migration 017), so one current plan always holds.
+      await client.query('SELECT app.supersede_subscriptions($1)', [subscriptionId]);
 
       return {
         subscription: await fetchSubscriptionShapeTx(client, subscriptionId),

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import CatalogPreview from '@/components/CatalogPreview';
+import AccountLink from '@/components/AccountLink';
 
 // The running API Hub app (login). Swap this when the preview host changes.
 const APP_URL = 'https://3000-a7f640d9151cb340.monkeycode-ai.live';
@@ -305,6 +306,7 @@ export default function Home() {
             <a href="#faq">FAQ</a>
           </nav>
           <div className="nav-actions">
+            <AccountLink className="btn btn-outline btn-sm" />
             <a className="btn btn-outline btn-sm" href={APP_URL} target="_blank" rel="noreferrer">
               <Icon name="external" size={14} /> Open app
             </a>

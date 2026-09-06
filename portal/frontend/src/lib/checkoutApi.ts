@@ -146,6 +146,54 @@ export async function signOut(): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------- A5 account
+
+export type AccountInvoice = {
+  id: string;
+  number: string;
+  amount: string;
+  currency: string;
+  status: 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID';
+  order_id: string;
+  billing_cycle: Cycle;
+  plan_key: string;
+  plan_name: string;
+  issued_at: string | null;
+  paid_at: string | null;
+  created_at: string;
+};
+
+export type AccountOverview = {
+  ok: true;
+  account: { id: string; name: string; email: string; role: string };
+  current: Subscription | null;
+  invoices: AccountInvoice[];
+  hasPaidOrders: boolean;
+};
+
+export type AccountActionResult = {
+  ok: true;
+  subscription: Subscription;
+};
+
+export async function fetchAccountOverview(): Promise<AccountOverview> {
+  return apiFetch<AccountOverview>('/api/public/account/overview');
+}
+
+export async function cancelSubscription(subscriptionId: string): Promise<AccountActionResult> {
+  return apiFetch<AccountActionResult>('/api/public/account/cancel', {
+    method: 'POST',
+    body: { subscriptionId },
+  });
+}
+
+export async function reactivateSubscription(subscriptionId: string): Promise<AccountActionResult> {
+  return apiFetch<AccountActionResult>('/api/public/account/reactivate', {
+    method: 'POST',
+    body: { subscriptionId },
+  });
+}
+
 const inr = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',

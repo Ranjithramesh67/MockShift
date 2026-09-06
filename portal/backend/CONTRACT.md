@@ -52,10 +52,51 @@ alreadyProcessed: true, ... }`. 403 if the order belongs to another user; 409
 if the user is already ACTIVE/TRIALING on that plan.
 → `{ ok, order, invoice, subscription, bonus: { firstRecharge, days } }`
 
+**Plan change (A5):** an account holds at most one current plan. Confirming an
+order for a **different** plan (or activating a free plan) supersedes every
+other ACTIVE/TRIALING subscription the customer holds — those rows are
+cancelled immediately (`status='CANCELLED'`, `cancelled_at=now()`, via
+`app.supersede_subscriptions()`) and the new one becomes current. Duplicate
+same-plan orders still 409.
+
 ### `GET /api/public/orders/:orderId` (order owner)
 Lets the confirmation page reload after a refresh.
 → `{ order, invoice, subscription, bonus }` (`subscription` null until paid;
 `bonus` present only for a PENDING order — `{ firstRechargeEligible, days }`).
+
+## Portal A — subscriber self-service (A5, `routes/customerAccount.js`, mounted `/api/public/account`)
+
+Session-auth owner-only surface for customers (their global role is EDITOR —
+deliberately not a portal role, so no `requirePortalRole` here). Identity is
+`app.current_user_id()` exactly like every other authenticated route; a user
+can only ever read/mutate their own rows.
+
+- Cancel and reactivate write `audit_log` rows (`subscriptions.self_cancel`,
+  `subscriptions.self_reactivate`, `subscriptions.self_superseded`) with the
+  customer as actor — visible to Portal B ops.
+- **Cancel is "at the end of the paid period"**: the row stays
+  ACTIVE/TRIALING, `cancel_at_period_end` flips to `true` (Stripe-style), it is
+  never cancelled mid-period. Reactivate undoes a scheduled cancellation.
+- The subscription/invoice `current_period_*` values here share the Portal A
+  shapes above.
+
+### `GET /api/public/account/overview` (session)
+Current subscription (newest non-terminal: ACTIVE/TRIALING preferred, else
+PAST_DUE/SUSPENDED; `null` when the customer has none) + newest-first invoice
+history (invoice fields plus `order_id`, `billing_cycle`, `plan_key`,
+`plan_name`) + account + `hasPaidOrders`.
+→ `{ ok, account: { id, name, email, role }, current: subscription|null,
+invoices: [...], hasPaidOrders }`
+
+### `POST /api/public/account/cancel` (session)
+Body: `{ subscriptionId }`. 404 unknown/not-yours; 409 unless the row is
+ACTIVE/TRIALING or if it is already scheduled to cancel.
+→ `{ ok, subscription }` (with `cancel_at_period_end: true`)
+
+### `POST /api/public/account/reactivate` (session)
+Body: `{ subscriptionId }`. Undo a scheduled cancellation. 404 unknown/
+not-yours; 409 unless `cancel_at_period_end` is currently `true`.
+→ `{ ok, subscription }` (with `cancel_at_period_end: false`)
 
 ## Portal B — Management App API Contract
 

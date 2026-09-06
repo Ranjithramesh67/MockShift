@@ -239,6 +239,124 @@ and do not consume the bonus).
   - Portal backend :3102 restarted after the router landed
     (`term_1788724214363_69`).
 
+### 5.40 Portal A A5 — subscriber self-service ("My subscription") (pushed, 2026-09-06)
+
+Built the signed-in subscriber self-service area on the portal stack
+(`portal/` Express 5 :3102 + Next 14 :3002, shared DB/session) so a customer
+who bought via A4 can view their current plan + invoice history and cancel /
+reactivate / change plan without contacting support. Because checkout
+accounts are global EDITOR (the A3/B1 decision — deliberately not portal
+roles), every endpoint is **session-based** (`requireAuth` + owner guards),
+never `requirePortalRole`.
+
+- **Design decisions** (confirmed with the user, 2026-09-06): cancel =
+  scheduled **at period end** (`cancel_at_period_end=true`, `cancelled_at=now()`;
+  undoing re-activates — Stripe-style); plan change = a normal A4 checkout of
+  the target plan whose confirmed order **supersedes** the old
+  ACTIVE/TRIALING subscription immediately; the page lives at
+  `app/account/` on the portal frontend behind a signed-in "My subscription"
+  header link.
+- **Migration** `db/migrations/017_portal_self_service.sql` (applied):
+  three SECURITY DEFINER functions owned by the migration role, all pinned to
+  `search_path = public, app, pg_temp` and `GRANT EXECUTE TO app_user`:
+  - `app.self_service_cancel_subscription(_subscription_id uuid)` — resolves
+    the caller via `app.current_user_id()` (42501 when absent), 42501/404 for
+    a sub that isn't the caller's (404 on missing/foreign), P0001 on a sub
+    that isn't ACTIVE/TRIALING (incl. free — never cancellable), else sets
+    `cancel_at_period_end = true, cancelled_at = now()`; writes audit
+    `subscriptions.self_cancel`.
+  - `app.self_service_reactivate_subscription(_subscription_id uuid)` — same
+    guards; 42501 unless `cancel_at_period_end` is already true; sets both
+    flags back (`cancel_at_period_end=false, cancelled_at=null`); audit
+    `subscriptions.self_reactivate`.
+  - `app.supersede_subscriptions(_except_sub_id uuid)` — for the caller,
+    marks CANCELLED (`cancelled_at = now()`) every other ACTIVE/TRIALING
+    subscription; audit `subscriptions.self_superseded` per sub.
+  Rationale (recorded in the file): the existing `subscriptions_update` RLS
+  policy is portal-roles-only and must not be widened to EDITOR customers
+  (they must never rewrite `plan_id`/`status`/amount columns), so the valid
+  owner + state transitions live inside pinned-identity functions that also
+  write the audit rows.
+- **Backend** — `portal/backend/src/routes/customerAccount.js` (mounted at
+  `/api/public/account` in `server.js`; reuses A4 shapes `SUB_COLUMNS`,
+  `toSubscriptionShape`, `toInvoiceShape`):
+  - `GET /api/public/account/overview` (session; the account's own row):
+    `{ account, current, invoices, hasPaidOrders }`. `current` is the newest
+    non-terminal subscription — ACTIVE/TRIALING preferred, else
+    PAST_DUE/SUSPENDED; `null` when none. `invoices` newest-first joined to
+    orders/plans for `order_id`, `billing_cycle`, `plan_key`, `plan_name`.
+  - `POST /api/public/account/cancel` `{ subscriptionId }` and
+    `POST /api/public/account/reactivate` `{ subscriptionId }` — an
+    `ownSubscription` guard resolves the row inside the caller's session
+    (404 unknown, 403 not yours) and rejects wrong-state via the SQL
+    functions' ERRCODEs → 409, then returns `{ subscription }` in the same
+    shape the overview uses.
+- **publicCheckout.js** supersede integration (the plan-change path): the
+  free-activation branch and the paid-order confirm transaction each now call
+  `app.supersede_subscriptions($1)` right after inserting the new sub, so a
+  Free downgrade or a different-plan confirmation cancels the prior current
+  sub inside the same client transaction (single-plan rule preserved —
+  duplicate-active 409s unchanged).
+- **CONTRACT.md**: new "Portal A — subscriber self-service (A5…)" section
+  (overview/cancel/reactivate request+response shapes, session+owner rules,
+  ERRCODE→HTTP mapping) and the A4 confirm section updated with the supersede
+  wording.
+- **Frontend** (`portal/frontend`):
+  - `src/lib/checkoutApi.ts`: `AccountOverview`, `AccountInvoice`,
+    `AccountActionResult` types + `fetchAccountOverview`, `cancelSubscription`,
+    `reactivateSubscription` (relative `/api/public/account/…`).
+  - `app/account/` — `layout.tsx`/`page.tsx` + `account.css` (scoped `.ac-`
+    dark design-token theme with `.ac-chip-*` status chips, plan card,
+    invoice list, media queries). `src/components/AccountView.tsx` (client):
+    loading/error/signed-out/ready; account + plan card (status chip, billing
+    cycle, renews-on, cancel-note when scheduled), cancel (confirm dialog) /
+    reactivate buttons, plan-switch accordion (fetches the catalog, filters
+    out the current plan, keeps both cycles, links into `/checkout?plan=…`),
+    invoice history with per-status chips, sign-out. Testids `account-*`.
+  - `app/login/` — `layout.tsx`/`page.tsx` + `src/components/LoginView.tsx`
+    (redirect param, default `/account`; testids `login-*`). Layout imports
+    the shared `../account/account.css` — the initial `./account.css` copy
+    bug 500'd `/login` and was fixed during verification.
+  - `src/components/AccountLink.tsx` — fetchMe-gated signed-in "My
+    subscription" header link; renders nothing without a session. Wired into
+    the landing `nav-actions` (`app/page.tsx`) and the checkout layout
+    (`app/checkout/layout.tsx` + `.ck-nav-signin` in `checkout.css`).
+  - A4's success-page CTA now reads "Go to My subscription" → `/account`.
+- **Verification**:
+  - Migration 017 applied; portal backend restarted
+    (`term_1788730661493_70`, PID 25431): `/api/health` OK, unauth
+    `/api/public/account/overview` → 401.
+  - Backend matrix `/tmp/a5-account-matrix.cjs` 27/27: guest Starter MONTHLY
+    checkout → confirm (+5 bonus, ≈33–38 d end); overview returns current
+    Starter ACTIVE + 1 PAID invoice + account email/role; reactivate on an
+    unscheduled sub → 409; cancel → flag true + cancel-note; double-cancel →
+    409; reactivate undoes; same-user Pro MONTHLY change → supersedes Starter,
+    no bonus (≈28–31 d); Free downgrade immediate; duplicate free → 409;
+    cross-user cancel → 403; a non-subscriber (seeded dev) → `current:null` +
+    empty invoices; reactivate on a cancelled sub → 409; duplicate-active
+    Starter → 409; malformed uuid → 400. Audit rows verified:
+    `subscriptions.self_cancel` ×2, `self_reactivate` ×2,
+    `self_superseded` ×4.
+  - A4 regression matrix `/tmp/a4-checkout-matrix.cjs` re-run ALL PASS after
+    the supersede-semantics change — its old T3 "duplicate Starter 409" was
+    out of date: that Starter had been superseded by Team in T2, so re-picking
+    it is now a valid plan change (201). T3 asserts the switch is allowed; the
+    duplicate-active-409 case is covered by the A5 matrix (S8/S12).
+  - Frontend `npx tsc --noEmit` clean. Playwright smoke
+    `/tmp/a5-account-smoke.cjs` 23/23 over the live :3002 dev server: signed-out
+    `/account` shows the sign-in empty state; a seeded Starter subscriber's
+    plan card (Starter / Active / renews-on / cancel button) + one invoice
+    row; cancel → cancel-note + success msg + reactivate button; reactivate →
+    note gone, still Active; switch accordion excludes Starter and offers
+    free + pro; invoice row shows `INV-…` + amount; checkout page shows the
+    signed-in AccountLink that navigates to `/account`; sign-out returns to
+    the landing; `/login` shows a wrong-password error then a successful
+    sign-in landing back on the account page.
+  - DB restored to the canonical demo baseline afterwards (`reset:db` +
+    `seed:dev` + `portal/db/seed-demo.sql`): throwaway `a5_*`/`pwacct_*`/
+    `buyer1_*` users gone, 9 demo subscriptions, the three 017 functions
+    verified intact.
+
 ### 5.36 Workspaces sidebar scanability (this turn)
 
 Requested: WORKSPACES was hard to scan — the empty state still said
