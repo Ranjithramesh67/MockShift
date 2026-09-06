@@ -94,7 +94,7 @@ A5 built on it: A4's success CTA now points at `/account`.
 
 PENDING (not this turn):
 - Portal A next (see `## Pending — Two subscription portals`): A6 payment
-  gateway + webhooks + receipts (later). A2 + A4 + A5 are/being done.
+  gateway + webhooks + receipts (later). A2 + A4 + A5 done (`ea64d44`).
 - "Send item to another user" accept/reject (see `## Pending — Send item to
   another user`) — planned, not started.
 - Main-app roadmap S4+ (personal API tokens, server-side POST /api/runs, CLI +
