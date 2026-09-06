@@ -236,7 +236,49 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M18 | Team- and project-scoped workspaces — team-first grouped nav (`/api/teams/groups`) + Project Overview command center (members & access mgmt for admins AND project managers, workspace info panel, activity), self-service member role changes | done (this turn, pushed) |
 | M19 | Per-request undo/redo + back-to-previous — per-tab undo/redo history over working-copy edits (`request-undo`/`request-redo` toolbar buttons + global Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z with editable-focus guard) and `request-back` (activation-order nav stack; reopens closed tabs with unsaved work) | done (this turn, pushed) |
 | M20 | New API request dialog — Form | cURL: full form (Name, Type, Method, URL + method-driven Params/Headers/Body horizontal tabs; Body for POST/PUT/PATCH, query params for GET etc.) or cURL paste with live parse preview; replaces old URL-field curl sniffing | done (this turn, pushed) |
-| M21 | Duplicate auto "(copy)" naming + sibling-unique names — duplicates become "X (copy)"/"X (copy) 2"; requests unique among same-folder siblings, folders unique among same-parent siblings (case-insensitive), auto-renamed on create/rename/move collisions instead of erroring | done (this turn, pushed) |
+| M21 | Duplicate auto "(copy)" naming + sibling-unique names — duplicates become "X (copy)"/"X (copy) 2"; requests unique among same-folder siblings, folders unique among same-parent siblings (case-insensitive), auto-renamed on create/rename/move collisions instead of erroring | done (pushed) |
+| M22 | Team invite: searchable org-user list instead of free-form email (`GET /api/teams/:id/org-users`, add by userId, TeamsModal picker) | done (this turn, not committed) |
+| M23 | Unique username for search / invite / add-to-team (hide email in picker) | done (this turn, not committed) |
+| M24 | Workspaces sidebar scanability — auto-select first/My Workspace, hide empty teams, Team vs workspace chrome, honest empty state | done (this turn, not committed) |
+
+## M24 — Workspaces sidebar scanability (done)
+
+WORKSPACES must not ask to pick a workspace that is already selected, and
+team names must not look like extra workspaces.
+
+- Login auto-selects `My Workspace` (else first workspace).
+- Empty teams omitted; grouped nav only when a team has workspaces.
+- Team headers: icon + “Team” label + name. Ungrouped leftovers labeled.
+- Empty state matches reality (create / open / loading). Testids kept.
+- Docs: docs/SESSION.md §5.36.
+
+## M23 — Unique username for search / invite / add-to-team (done)
+
+People are found and added by unique `username` so email need not be
+shown. Format: 3–30 chars, letter start, letters/numbers/underscores;
+unique case-insensitively.
+
+- Migration `014_user_username.sql`. Signup + admin create accept
+  `username` (derived from email if omitted).
+- Org-users picker returns `{ id, name, username }` (no email). Add by
+  `userId`, `username`, or `email`. TeamsModal displays `@username`.
+- Seed: boss / pmuser / dev. Docs: docs/SESSION.md §5.35.
+- Pending (not this turn): send request/folder/collection/project/workspace
+  to any user with accept/reject copy.
+
+## M22 — Team invite searchable org-user list (done)
+
+Teams & members no longer invites by typing an email. Team admins search
+people already known to the org (platform admins see every active user)
+and add them with EDITOR/VIEWER.
+
+- Backend: `GET /api/teams/:teamId/org-users` (team admin). `POST
+  /api/teams/:teamId/members` accepts `userId` or `email`.
+- Frontend: `TeamsModal.tsx` searchable list (`invite-email` kept as the
+  search box testid), `teamApi.orgUsers` / `addMember`. Modal refreshes
+  on open.
+- Tests: picker integration in `apiAuth.integration.test.cjs`; e2e
+  `frontend/e2e/team-invite-picker.spec.ts`. Docs: docs/SESSION.md §5.34.
 
 ## M21 — Duplicate auto "(copy)" naming + sibling-unique names (done)
 
