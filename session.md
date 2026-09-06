@@ -7,38 +7,53 @@ Last updated: 2026-09-06
 
 ## Current
 
-Step: PUSHED — the whole pre-push batch is on `master` (`3450823..01bd49a`,
-4 commits). Covers M22–M24 (username/team/sidebar), Portal B B2–B6 + demo/catalog
-follow-ups, and the Import-cURL unification.
+Step: PUSHED — Portal A `A4` (public purchase/checkout) is complete and on
+`master` (`87112ee..a1e02d4` feat + this docs commit). A customer's first
+paid order now actually grants the catalog's first-recharge bonus (+5/+10/+15
+extra validity days) by extending the new subscription's `current_period_end`.
 
-- `11e7bb8` feat(workspace): unique username (M23) + org-user team invite (M22)
-  + scanable workspaces sidebar (M24). Migration `014` + `username.js` allocator
-  (signup/admin create accept username), `GET /api/teams/:id/org-users` + add
-  member by userId/username/email, TeamsModal directory picker, @username in
-  member rows; sidebar auto-select, empty-team/empty-state honesty. Seeds:
-  boss/pmuser/dev. db test 14 + api/unit/integration tests green.
-- `4557873` feat(modal): Import cURL now opens the same New API request dialog
-  (`CreateModal initialMode="curl"`; CurlModal is a thin delegate). e2e
-  `curl-import` updated — curl-import + create-request-form 3/3 passed.
-- `685eea6` feat(portal): Portal B B2–B6 management app. Migration `015`
-  (audit_log + promo_codes + RLS), auditLog single write-point, routers
-  dashboard/subscribers/plans-audited/promo-codes/audit + CONTRACT + server
-  mounts, manage shell + pages + login, db test `15` (role matrix). Demo data
-  `seed-demo.sql`: first-recharge bonus catalog (free 0 / starter +5 / pro +10 /
-  team +15) + expiry-edge accounts c7–c9; B4a field relabeled "First-recharge
-  bonus days"; customer copy off the free-"trial" wording (schema trial_days,
-  TRIALING, dashboard trial metrics untouched).
-- `01bd49a` docs: milestone + turn records (docs/SESSION.md, session.md,
-  instructions.md).
+- `a1e02d4` feat(portal): Portal A A4 checkout flow. Backend
+  `portal/backend/src/routes/publicCheckout.js` (mounted under `/api/public`):
+  `POST /api/public/checkout` — guest → auto-creates the account + signs them
+  in (session cookie); free ₹0 activates immediately with NO order/invoice;
+  paid → PENDING order + DRAFT invoice `INV-YYYY-####`; 400 Enterprise custom
+  ("contact sales"); 409 duplicate active plan / existing-email-without-
+  session. `POST /api/public/checkout/:orderId/confirm` — owner-only,
+  idempotent ("Simulate successful payment"): marks order PAID + invoice
+  ISSUED→PAID and inserts an ACTIVE subscription with period end
+  `now() + interval '1 month'/'1 year' + make_interval(days => bonusDays)`
+  when this is the user's first paid order ever; links
+  `orders.subscription_id`. `GET /api/public/orders/:orderId` — owner-only,
+  order/invoice/subscription + first-recharge bonus preview on PENDING.
+  `query({ userId })` RLS identity from B3; `fetchSubscriptionShapeTx` reads
+  inside the caller's transaction. Migration `016_portal_checkout_rls.sql`
+  adds `orders_insert`/`invoices_insert` RLS INSERT policies (own user or
+  ADMIN/MANAGER). CONTRACT.md gained the authoritative Portal A
+  public-purchase section.
+- Frontend (`portal/frontend`, :3002): `app/checkout/*` (layout + step page +
+  confirm page + dark design-token `.ck-` theme CSS), `CheckoutView.tsx`
+  (account step inside checkout; create vs "Sign in instead" on 409;
+  free inline success), `CheckoutConfirmView.tsx` (PENDING shows bonus
+  preview + "Simulate successful payment" → success card w/ valid-through +
+  Paid badge; idempotent reload), `checkoutApi.ts` (fetch helpers + shared TS
+  types), and the landing pricing CTAs now open `/checkout?plan=…&cycle=…`
+  (`CatalogPreview.tsx`).
+- Verified: portal `tsc --noEmit` clean; Playwright smoke over :3002 16/16
+  (pro CTA nav, summary + ₹299 + "+10" badge, guest checkout → confirm bonus
+  preview + `INV-…`, simulate payment → success + reload idempotent, free
+  activation at ₹0, existing-email 409 + sign-in toggle, zero overflow @375);
+  backend matrix `/tmp/a4-checkout-matrix.cjs` all pass; migration 016 applied.
 
-Current demo/DB state: seed is idempotent; dev DB dashboard KPIs read
-expiringSoon 3 (Aarav +6d, Kabir today, Zoya tomorrow), trialsEndingSoon 1,
-active 4 / trialing 1 / past_due 1 / suspended 1 / cancelled 1 (9 demo subs).
+Current demo/DB state: dev DB was reset + reseeded to the canonical demo
+baseline after smoke/matrix runs — dashboard KPIs read expiringSoon 3 (Aarav
++6d, Kabir today, Zoya tomorrow), trialsEndingSoon 1, active 4 / trialing 1 /
+past_due 1 / suspended 1 / cancelled 1 (9 demo subs; plans free 0 / starter +5
+/ pro +10 / team +15 / enterprise 0).
 
-Live processes: portal backend :3102 `term_1788712238597_64`, portal frontend
-:3002 `term_1788633952808_43`, main backend :3001 `term_1788697988497_54`,
-main frontend :3000 `term_1788697990497_55`, mock :3999
-`term_1788637750561_47`.
+Live processes: portal backend :3102 `term_1788724214363_69` (restarted after
+the A4 router landed), portal frontend :3002 `term_1788633952808_43`, main
+backend :3001 `term_1788697988497_54`, main frontend :3000
+`term_1788697990497_55`, mock :3999 `term_1788637750561_47`.
 
 Portal demo logins: boss ADMIN / pm MANAGER / dev EDITOR (non-portal, 403 on
 portal) — passwords from `backend/scripts/seed-dev.js`; VIEWER smoke account
@@ -47,11 +62,10 @@ portal) — passwords from `backend/scripts/seed-dev.js`; VIEWER smoke account
 `frontend/.next.bak-1788661828/`; scratch DB `apihub_b5test` (harmless).
 
 PENDING (not this turn):
-- Portal A next (see `## Pending — Two subscription portals`): A4 purchase/
-  checkout flow — this is where the catalog's first-recharge bonus (+5/+10/+15
-  extra validity days) will actually be enforced on checkout (nothing applies
-  it today); then A5 subscriber self-service; A6 gateway/webhooks later. A2
-  showcase landing+pricing is done.
+- Portal A next (see `## Pending — Two subscription portals`): A5 subscriber
+  self-service ("My subscription" area — current plan/status, invoices,
+  change/cancel); A6 payment gateway + webhooks + receipts (later).
+  A2 showcase landing+pricing and A4 purchase/checkout are done.
 - "Send item to another user" accept/reject (see `## Pending — Send item to
   another user`) — planned, not started.
 - Main-app roadmap S4+ (personal API tokens, server-side POST /api/runs, CLI +
@@ -927,10 +941,10 @@ Folders added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collec
   in a new `portal/` folder — backend :3102 (`PORT=3102`), frontend :3002
   (`next dev -p 3002`, rewrites `/api` → `127.0.0.1:3102`). Seed rows shipped
   inside migration `013` (Free/Starter/Pro/Team/Enterprise, INR).
-- A2 showcase polish COMPLETE this turn (`0c9cb6d`, pushed — see `## Current`).
-- AWAITING Ranjith: pick the next portal segment — A4 purchase+checkout /
-  B2 management dashboard (real plan pricing still optional; the INR seed is
-  used as placeholder marketing copy).
+- A2 showcase polish COMPLETE (`0c9cb6d`), Portal B B2–B6 COMPLETE
+  (`685eea6`), A4 purchase/checkout COMPLETE (`a1e02d4`) — pushed; see
+  `## Current`. Remaining Portal A work = A5 subscriber self-service, then A6
+  gateway/webhooks (later).
 
 ## Working rules
 
@@ -967,8 +981,8 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
   boss1785867669@test.io/bosspass123 (ADMIN) · pm1785867669@test.io/pmpass1234 (MANAGER) ·
   dev1785867669@test.io/devpass123 (EDITOR).
 - **Migrations are not auto-applied** — after `seed:dev`, apply yours manually via psql;
-  `db/tests/run.sh` applies all of them. Applied through `014_user_username.sql`
-  (unique `users.username` for search/invite). Next free number: 015.
+  `db/tests/run.sh` applies all of them. Applied through `016_portal_checkout_rls.sql`
+  (Portal A checkout INSERT policies). Next free number: 017.
 - **Portal (two subscription portals)**: backend `cd portal/backend && PORT=3102 npm start`
   (port 3102, reuses main backend DB + session scheme via `src/shared.js`); frontend
   `cd portal/frontend && npm run dev` (port 3002, rewrites `/api` → `127.0.0.1:3102`). Portal A
@@ -1021,11 +1035,12 @@ Decisions (answered by Ranjith 2026-09-04):
   `012_request_body_parts.sql`).
 - **Q6** **First milestone = A1 + B1 + X1 foundation** (see below).
 
-Current: DONE (pushed `3450823..01bd49a`) — foundation `A1+B1+X1` and Portal B
-`B2–B6` are complete (see docs/SESSION.md §5.37). Remaining Portal work = Portal
-A purchase side: `A4` checkout flow (enforces the catalog's first-recharge
-bonus +5/+10/+15 validity days), `A5` subscriber self-service, `A6` gateway/
-webhooks (later). Portal A2 showcase landing+pricing is live.
+Current: Portal A `A4` COMPLETE (pushed `a1e02d4`; see `## Current` and
+docs/SESSION.md §5.39). Foundation `A1+B1+X1` and Portal B `B2–B6` are done
+(docs/SESSION.md §5.37). Remaining Portal A work = `A5` subscriber
+self-service, then `A6` gateway/webhooks (later). Portal A2 showcase
+landing+pricing is live; the catalog's first-recharge bonus (+5/+10/+15) is
+now enforced by the A4 checkout/confirm flow.
 
 ### First milestone — A1 + B1 + X1 (data model + RBAC + architecture)
 
@@ -1052,9 +1067,9 @@ Scope when GO is given:
 |---|---|
 | A1 | Plan/catalog data model + API: `plans` (name, features, price, billing cycle, trial days, active/published) — migration `013` (DONE; 012 was taken by request-body parts), public read endpoints, RBAC-scoped admin CRUD — DONE |
 | A2 | Showcase UI: landing + plans/pricing pages rendered from the catalog (public, no login), responsive — DONE (`portal/frontend`, live on :3002) |
-| A3 | Subscriber identity — DECIDED: reuse existing `users`, auto-create on checkout (default EDITOR/VIEWER) — wired when A4 ships |
-| A4 | Purchase/checkout flow: pick plan → billing/contact info → create subscription + order → confirmation page. First recharge must grant the catalog's bonus validity (+5/+10/+15 days on trial_days) |
-| A5 | Subscriber self-service: "My subscription" area — current plan, status, invoices, change/cancel |
+| A3 | Subscriber identity — DECIDED: reuse existing `users`, auto-create on checkout (default EDITOR/VIEWER) — DONE (wired into A4 checkout, 2026-09-06) |
+| A4 | Purchase/checkout flow: pick plan → billing/contact info → create subscription + order → confirmation page. First recharge must grant the catalog's bonus validity (+5/+10/+15 days on trial_days) — DONE (pushed `a1e02d4`; see docs/SESSION.md §5.39) |
+| A5 | Subscriber self-service: "My subscription" area — current plan, status, invoices, change/cancel — PENDING |
 | A6 | Payment integration + webhooks + receipts (provider-dependent; see open questions) |
 
 ### Portal B — subscription management portal (internal, RBAC)
