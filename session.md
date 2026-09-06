@@ -100,6 +100,41 @@ duplicate 409; e2e `create-request-form` 2/2 under the flag (fresh-user signup
 closed backend (gateway shown, no form, plans CTA href, sign-in link). DB
 reseeded; backend left running CLOSED (`term_1788732243308_74`).
 
+Profile & plan visibility — PR-1 backend DONE (2026-09-06, pushed `0c171f4`):
+migration `db/migrations/018_profile_avatar.sql` (applied) adds `users.avatar_key`
+(text preset), `avatar_data` (bytea upload), `avatar_type`, `avatar_updated_at`
+(preset and upload are mutually exclusive). New session-scoped main-backend route
+`backend/src/api/routes/profile.js` (mounted `/api/profile` in `server.js`,
+`requireAuth`, owner = self — no portal RBAC):
+- `GET /api/profile` → `{ ok, user(+avatar), organizations, subscription, plan_limits }`;
+  subscription resolution mirrors Portal A (`subscriptions` newest non-terminal,
+  ACTIVE/TRIALING first then PAST_DUE/SUSPENDED, joined to `plans` for plan
+  id/key/name/currency); `plan_limits` = that plan row's `limits` snapshot (null
+  when no subscription) — the hook for L5 usage bars later.
+- `PATCH /api/profile` — name (trim, ≤120) + username (`username.js` rules, 409 on
+  dup excluding self); email is read-only (400, D2); unknown/empty body 400.
+- `POST /api/profile/avatar` — `{ preset }` key (charset-validated) OR
+  `{ data: base64, mime }` upload (png/jpeg/gif/webp, ≤2 MB, preset cleared) OR
+  `{ remove: true }`; `GET /api/profile/avatar` serves the stored image
+  (Content-Type + private cache); returns/`user.avatar` shape in profile.
+- `POST /api/profile/password` — `{ current_password, new_password }`, verify
+  current (400 on wrong), new ≥8 chars (matches signup rule).
+Verified: matrix `/tmp/pr1-profile-matrix.cjs` ALL PASS (28 checks) — fresh guest
+Starter checkout + confirm on :3102 → same user on main :3001 shows ACTIVE
+starter + orgs + plan_limits; PATCH name+username persists; dup username 409;
+email/unknown/empty 400; avatar preset ↔ upload round-trip (image served, magic
+bytes OK), oversize 2 MB 400, remove clears + serve 404; password wrong-current/
+short 400, change OK then old password rejected + new logs in; unauth 401.
+Main backend restarted CLOSED (`term_1788732959373_75`).
+
+Notes for later segments: (a) the dev demo baseline's `plans.limits` are `{}`
+(`portal/db/seed-demo.sql` inserts plans WITHOUT the `limits` column and its
+`ON CONFLICT … DO UPDATE` only refreshes `trial_days` — the migration-013 limits
+never land in a fresh demo reseed), so the restrictions programme L1 must decide
+whether to add canonical limits to the demo seed; (b) throwaway `pr1_*@test.io`
+checkout accounts from the matrix are still in the DB (one with an ACTIVE starter
+sub) — cleanup pending explicit user OK per no-delete rule.
+
 Current demo/DB state: dev DB was reset + reseeded to the canonical demo
 baseline after the matrices/smoke (throwaway a5_*/pwacct_*/buyer1_* users
 removed; 9 demo subs — active 4 / trialing 1 / past_due 1 / suspended 1 /
@@ -108,7 +143,7 @@ the three 017 functions verified intact).
 
 Live processes: portal backend :3102 `term_1788731418612_71`, portal
 frontend :3002 `term_1788633952808_43`, main backend :3001
-`term_1788732243308_74` (running CLOSED — self-service signup gated; never set
+`term_1788732959373_75` (running CLOSED — self-service signup gated; never set
 `ALLOW_SELF_SIGNUP` here), main frontend :3000 `term_1788697990497_55`, mock
 :3999 `term_1788637750561_47`.
 
@@ -1109,11 +1144,13 @@ Decisions (answered by Ranjith 2026-09-04):
 
 Current: Portal A `A5` COMPLETE (pushed `ea64d44`; self-service /account, see
 `## Current` and docs/SESSION.md §5.40) + provisioning + signup gating follow-
-ups (`673623a`, `d48ce38`). Foundation `A1+B1+X1` and Portal B `B2–B6` are
+ups (`673623a`, `d48ce38`). Profile & plan visibility `PR-1` (backend profile
+surface + avatar storage) COMPLETE — see `## Current` block + docs/SESSION.md
+§5.44. Foundation `A1+B1+X1` and Portal B `B2–B6` are
 done (docs/SESSION.md §5.37). Remaining Portal A work = `A6` gateway/webhooks
-(later). New planned (not started) programmes building on this: a Profile &
-plan-visibility slice and per-plan usage restrictions — see the two new
-`## Pending — …` sections below.
+(later). New planned (not started) programmes building on this: the rest of the
+Profile & plan-visibility slice (PR-2 page, PR-3 polish) and per-plan usage
+restrictions — see the two new `## Pending — …` sections below.
 
 ### First milestone — A1 + B1 + X1 (data model + RBAC + architecture)
 
@@ -1165,7 +1202,7 @@ Scope when GO is given:
 | X3 | DB: single new migration(s) `012+` covering plans/subscriptions/orders/invoices + RBAC/RLS; record applied migrations in the Environment note — DONE as migration `013` |
 
 
-## Pending — Profile & plan visibility (planned 2026-09-06, NOT started)
+## Pending — Profile & plan visibility (planned 2026-09-06; PR-1 DONE, PR-2/PR-3 next)
 
 Requested by Ranjith: after login a user should be able to see which plan they
 are on and manage their account — personal details, profile picture (incl.
@@ -1197,11 +1234,12 @@ Open decisions (resolve at each segment start, add to the segment's plan):
   or inherit the org's paying plan? (Cross-cut with the restrictions
   programme below.) Recommended: org's paying plan wins for org-scoped
   usage; own Free otherwise.
-- D2 **Email editing**: read-only (recommended — login id) vs
-  change-with-reverification.
+- D2 **Email editing**: read-only (→ RESOLVED in PR-1: `PATCH /api/profile`
+  rejects email with 400) vs change-with-reverification.
 - D3 **Avatar**: predefined set (8–12 keys, rendered from bundled assets —
   always available, no upload needed) + optional upload. Upload storage:
-  DB `bytea` (`avatar_data` + content-type, cap ~2 MB) vs object store.
+  DB `bytea` (→ RESOLVED in PR-1: `avatar_data` bytea ≤ ~2 MB, served by
+  `GET /api/profile/avatar`) vs object store.
   Recommended: predefined keys first; upload stored in DB, served by a
   backend route; main + portal both render it.
 - D4 **Manage/change-plan UX**: profile card shows plan read-only with
@@ -1224,6 +1262,8 @@ Split (each a shippable micro-turn, proceed one by one with approval):
   clear upload), `POST /api/profile/password` (verify current → set new).
   Session-only (`requireAuth`, owner = self). `tsc`/`node --check` + curl
   matrix incl. avatar round-trip + password-change + username 409.
+  — DONE (2026-09-06, pushed `0c171f4`; matrix `/tmp/pr1-profile-matrix.cjs`
+  28/28; migration 018 applied; see `## Current` block).
 - **PR-2 — Profile page in the main app**: new `/profile` route + client
   view (main-app theme): Personal details form (name/username/email read-only
   + password change), avatar section (predefined grid + upload + remove),

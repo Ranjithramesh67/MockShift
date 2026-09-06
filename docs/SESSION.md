@@ -432,6 +432,57 @@ and provisions the buyer's org + workspace.
   CLOSED (`term_1788732243308_74`) — real/preview deployments must never set
   `ALLOW_SELF_SIGNUP`.
 
+### 5.44 Profile & plan visibility PR-1 — backend profile surface + avatar storage (pushed `0c171f4`, 2026-09-06)
+
+Ranjith approved starting the Profile & plan visibility programme with segment
+**PR-1** (the others stay planned — see `session.md`). Shipped the backend
+surface only; the `/profile` page is PR-2.
+
+- Migration `db/migrations/018_profile_avatar.sql` (applied manually — migrations
+  aren't auto-applied): `users.avatar_key text` (predefined preset, e.g.
+  `preset-3`), `avatar_data bytea` (uploaded image), `avatar_type text`, and
+  `avatar_updated_at timestamptz`. Preset key and upload are mutually exclusive
+  (setting one clears the other).
+- New `backend/src/api/routes/profile.js`, mounted at `/api/profile` in
+  `server.js`, behind `requireAuth`, owner = the authenticated user only (no
+  portal RBAC — checkout customers are global EDITOR). Endpoints:
+  - `GET /api/profile` → `{ ok, user(+avatar), organizations, subscription,
+    plan_limits }`. The subscription is the newest non-terminal row
+    (ACTIVE/TRIALING preferred, then PAST_DUE/SUSPENDED) joined to `plans`,
+    mirroring Portal A `/account/overview` resolution; `plan_limits` is that
+    plan row's `limits` snapshot (`null` when no subscription) — the future L5
+    usage-bar hook.
+  - `PATCH /api/profile` — name (trim ≤120) and/or username (validated via
+    `username.js` rules; 409 on another user's duplicate). Email is read-only
+    → 400 (decision D2 resolved). Unknown fields / empty body → 400.
+  - `POST /api/profile/avatar` — `{ preset }` (charset-validated key),
+    `{ data: base64, mime }` upload (png/jpeg/gif/webp only, ≤ 2 MB,
+    invalid/oversized → 400), or `{ remove: true }`.
+  - `GET /api/profile/avatar` — serves the uploaded image with its
+    Content-Type and a private cache header; 404 when only a preset is set.
+  - `POST /api/profile/password` — `{ current_password, new_password }`;
+    verifies current (wrong → 400 "Current password is incorrect"), new ≥ 8
+    chars (same rule as signup).
+- Verified with `/tmp/pr1-profile-matrix.cjs` — **28/28 ALL PASS** against the
+  live stack: a fresh guest checkout + `/confirm` on Portal A (:3102) creates an
+  ACTIVE Starter subscription, and the SAME account on the main backend (:3001)
+  then returns it via `GET /api/profile` with the Starter `plan_limits`
+  snapshot + the provisioned org; PATCH persists name+username; duplicate
+  username 409; email/unknown/empty/invalid 400; avatar preset → upload
+  round-trip (serve route returns the PNG magic bytes), 2 MB oversize 400,
+  remove clears + serve 404; password wrong-current/short 400, change OK,
+  old password rejected on re-login, new one works; unauthenticated 401.
+  `node --check` clean. Main backend restarted CLOSED
+  (`term_1788732959373_75`).
+- Findings for later segments: (a) the dev demo baseline's `plans.limits` are
+  `{}` because `portal/db/seed-demo.sql` inserts plans WITHOUT the `limits`
+  column and its `ON CONFLICT (key) DO UPDATE` only refreshes `trial_days` — so
+  the migration-013 limits never appear in a fresh demo reseed. The restrictions
+  programme L1 must decide whether to bake canonical limits into the demo seed.
+  (b) Throwaway `pr1_*@test.io` checkout accounts from the matrix (one holding
+  an ACTIVE Starter sub) remain in the dev DB; cleanup needs explicit user OK
+  per the no-delete guardrail.
+
 ### 5.43 Planning: Profile & plan visibility + per-plan usage restrictions (2026-09-06, docs only)
 
 No code this turn. Ranjith asked two forward-looking product questions and
