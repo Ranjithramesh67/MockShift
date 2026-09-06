@@ -74,6 +74,135 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
+### 5.37 Portal B management app B2–B6 (this turn, uncommitted)
+
+Built the full subscription-management console on the portal stack
+(`portal/` Express 5 on :3102 + Next 14 on :3002, RBAC via `portalAccess.js`,
+shared DB). Seven parallel agents implemented disjoint slices after the
+coordinator laid a shared foundation.
+
+- **Foundation**: migration `015_portal_audit_promo.sql` (`audit_log` +
+  `promo_codes`, RLS mirroring 013); `portal/backend/src/auditLog.js` (single
+  audit write-point); `portal/backend/CONTRACT.md` (authoritative API
+  contract); coordinator-owned FE chrome — `manage.css`, `ui.tsx`,
+  `ManageShell.tsx`, `portalApi.ts`; router stubs + mounts in `server.js`;
+  self-contained `portal/db/seed-demo.sql` (5 plans, 6 demo customers,
+  subscriptions/orders/invoices/promos/audit). Applied to dev DB.
+- **B2 dashboard** (`routes/dashboard.js`, `app/manage/dashboard/page.tsx`):
+  KPI summary + MRR/revenue30d (SQL numeric→string), per-plan counts,
+  recent subs/orders. VIEWER+.
+- **B3 subscribers** (`routes/subscribers.js`, list + `[id]` detail pages):
+  searchable list w/ status/plan filters (VIEWER list masks emails; SUPPORT+
+  sees them); detail w/ subscriptions/orders/invoices; MANAGER lifecycle
+  (activate/suspend/cancel/change-plan), ADMIN refund/void — all audited.
+  Mounted under `/api/subscribers/subscriptions|orders|invoices/…`.
+- **B4a plans** (`plans.js` audit wiring + `app/manage/plans/page.tsx`):
+  existing CRUD now logs `plans.create|update|delete`; full admin UI w/
+  create/edit modal + status transitions; dev EDITOR still 403.
+- **B4b promo codes** (`routes/promoCodes.js`, `app/manage/promo-codes/page.tsx`):
+  CRUD (VIEWER read, MANAGER write, ADMIN delete, 409 on used codes), audited.
+- **B5 audit** (`routes/audit.js`, `app/manage/audit/page.tsx`): filterable
+  list (SUPPORT+) + ADMIN CSV export w/ proper escaping + attachment headers.
+- **B6 shell** (`app/manage/layout.tsx`, `page.tsx`, `login/page.tsx`):
+  client route guard (MeResponse → ManageShell / denied card for non-portal
+  EDITOR / redirect to login), safe `next` param, portal sign-in.
+- **DB test** `db/tests/15_portal_b.sql`: schema/RLS/constraint assertions for
+  audit_log + promo_codes (ADMIN/MANAGER/SUPPORT/VIEWER matrix); full
+  `db/tests/run.sh` green.
+
+**Verification**: every BE agent self-tested on ephemeral ports; coordinator
+restarted :3102 and smoke-verified all endpoints — dashboard 200 w/ correct
+KPIs (MRR `1063.83`, revenue30d `897.00`), plans/subscribers/promo-codes/audit
+200, dev EDITOR 403 everywhere, VIEWER list emails `null`, VIEWER detail 403,
+pm CSV export 403 / boss 200 `text/csv` w/ correct headers; lifecycle
+suspend→activate + promo create/delete 200 and each wrote audit rows
+(`actor_role=ADMIN`, right `target_ref`). Frontend `tsc --noEmit` clean; every
+`/manage/*` route compiles and serves 200 on :3002. Removed `ptest` test
+residue from dev DB.
+- **Demo-data follow-up**: `portal/db/seed-demo.sql` now re-enforces the
+  per-plan first-recharge bonus on every run (`trial_days` upserted — Free ₹0
+  = 0, Starter = 5, Pro = 10, Team = 15 extra validity days on the first paid
+  recharge, Enterprise = 0/custom) and adds three
+  expiry-edge demo accounts without touching the original six customers:
+  c7 Meera (starter, period ended 10d ago), c8 Kabir (pro ACTIVE, renews
+  today 23:59), c9 Zoya (team ACTIVE, renews tomorrow). Applied to dev DB;
+  re-running the seed is safe. Dashboard KPIs now read expiringSoon = 3
+  (Aarav +6d, Kabir today, Zoya tomorrow), trialsEndingSoon = 1 (Rohan),
+  active 4 / trialing 1 / past_due 1 / suspended 1 / cancelled 1.
+- **Catalog copy follow-up**: the free-“trial” framing was dropped from
+  customer/admin-visible catalog copy — plan cards, pricing lede, FAQ and
+  final CTA now say Starter/Pro/Team add +5/+10/+15 extra validity days on
+  the customer's first recharge (B4a plan editor relabelled to “First-recharge
+  bonus days”). Schema column `plans.trial_days`, the TRIALING status and the
+  dashboard trial metrics were left untouched.
+
+### 5.36 Workspaces sidebar scanability (this turn)
+
+Requested: WORKSPACES was hard to scan — the empty state still said
+“Select a workspace…” while `My Workspace` was already highlighted, and
+team names (`E2E Picker Team`, `E2E Team`) looked like extra workspaces.
+
+- **Auto-select**: after login, `WorkspaceStore` opens `My Workspace` if
+  present, otherwise the first workspace. `selectWorkspace` now catches
+  load failures so the UI does not sit on “Loading collections…”.
+- **Empty teams hidden**: `WorkspaceChips` skips groups with no matching
+  workspaces. Grouped layout is used only when at least one team has a
+  workspace (empty teams no longer force an Ungrouped header).
+- **Team vs workspace chrome**: headers show a Team icon + “Team” label +
+  name (muted, not chip-like). Leftover chips sit under
+  “Workspaces / Ungrouped”.
+- **Honest empty state**: no workspaces → create CTA; workspaces exist
+  but none selected → “Open a workspace above…”; selected + tree loading
+  → “Loading collections…”.
+- **Tests**: `nav-normal` asserts `empty-state` is gone after login;
+  `project-overview` still uses `team-group-<name>` once a workspace is
+  shared. Testids unchanged.
+
+### 5.35 Unique username for search / invite / add-to-team
+
+Requested: add a unique username so people can be searched, invited, and
+added to a team without exposing email.
+
+- **Migration** `014_user_username.sql`: `users.username` NOT NULL, format
+  `^[A-Za-z][A-Za-z0-9_]{2,29}$`, unique on `lower(username)`. Backfills
+  existing rows from the email local-part.
+- **Create paths**: signup and admin create accept `username`; if omitted
+  the API derives one (`backend/src/api/username.js`) and uniquifies.
+  Seed accounts: boss / pmuser / dev. Session `/me` includes username.
+- **Teams**: `GET /api/teams/:id/org-users` returns `{ id, name, username }`
+  (no email). `POST .../members` accepts `userId`, `username`, or `email`.
+  TeamsModal searches/displays name + `@username`; members show
+  `Name (@username)`. `invite-email` testid kept.
+- **Tests**: `backend/src/api/__tests__/username.test.cjs`;
+  `db/tests/14_user_username.sql`; picker API + e2e updated to username.
+- **Pending (docs only)**: send request / sub-folder / folder / collection
+  / project / workspace to any user with accept/reject; accept copies into
+  the recipient's account. Recorded in `session.md`.
+
+### 5.34 Team invite searchable org-user list
+
+Requested: replace the team-invite email field with a searchable list of
+org users so members can be picked and added to a team.
+
+- **Backend** (`backend/src/api/routes/teams.js`): `GET /api/teams/:teamId/org-users`
+  (team admin). Non-admins see org members not already on the team;
+  platform ADMIN also sees every other active user because seeded accounts
+  each own a separate org. `POST /api/teams/:teamId/members` accepts
+  `userId` or `email` (`userId or email is required`).
+- **Frontend**: `TeamsModal.tsx` search-by-name/email list + role + Add
+  (`invite-email` kept on the search box). `teamApi.orgUsers` /
+  `teamApi.addMember`. Modal calls `ws.refresh()` on open so API-created
+  teams appear. Styles in `app/globals.css` (`.invite-picker`,
+  `.invite-user-list`) + mobile.modals.css.
+- **Tests**: `apiAuth.integration.test.cjs` (picker list, add-by-userId,
+  email fallback, 403 for non-members). E2E
+  `frontend/e2e/team-invite-picker.spec.ts` (boss searches Dev, adds as
+  VIEWER, candidate drops off the list).
+- **Verification**: `tsc --noEmit` clean, `npm test` 89/89, `next build`
+  green. Isolated picker API test 1/1; e2e picker 1/1; regression
+  `nav-normal` + `project-overview` 2/2. Isolated API test drops schema —
+  reseeded; frontend restarted after stale `.next`.
+
 ### 5.33 Duplicate auto "(copy)" naming + sibling-unique names (this turn)
 
 Requested: duplicating must not keep the source name — the copy gets " (copy)"
@@ -161,6 +290,12 @@ milestone = **A1+B1+X1 foundation** (catalog data model + API, Portal B RBAC,
 separate `portal/` scaffold). Open remaining inputs: portal stack/ports and
 initial plan seed rows. Push `2ed93be` recorded the plan; this docs entry was
 updated after the decision follow-up. No source changes, no tests.
+
+Status update (2026-09-06): foundation X1+A1+B1 and Portal B management
+segments B2–B6 are DONE (see §5.37); portal stack = Express 5 `:3102` +
+Next 14 `:3002`, plans seeded via `portal/db/seed-demo.sql`. Remaining portal
+segments: A2 checkout UX + A3 (Portal A purchase flow), A-side work and the
+X2 purchase patterns recorded in `session.md`.
 
 
 ### 5.30 Per-request undo/redo + back to previous request (this turn)
@@ -1007,6 +1142,20 @@ final M9 wrap-up per user instruction.
 
 ## 6. Verification performed
 
+- Workspaces sidebar scanability turn (§5.36): `tsc --noEmit` clean,
+  frontend `npm test` 89/89, e2e `nav-normal` + `project-overview` 2/2.
+  Skipped `next build` while `next dev` is live on `.next`.
+- Username for search/invite turn (§5.35): `tsc --noEmit` clean,
+  frontend `npm test` 89/89, backend `test:api:unit` 53/53 (incl. 4
+  username cases), `next build` green, `db/tests/run.sh` all pass
+  (incl. 14_user_username). Isolated picker API 1/1; e2e picker +
+  `nav-normal` + `project-overview` 3/3. Isolated API test drops schema
+  — reseeded; backend/frontend restarted.
+- Team invite searchable list turn (§5.34): frontend `tsc --noEmit` clean,
+  `npm test` 89/89, `next build` green. Isolated picker API test 1/1
+  (`team org-users picker…`); e2e `team-invite-picker` 1/1; regression
+  `nav-normal` + `project-overview` 2/2. Isolated API test drops schema —
+  reseeded; frontend restarted after stale `.next`.
 - Duplicate "(copy)" naming + sibling-unique names turn (§5.33): backend API
   suite 64/64 (`npm run test:api`, includes the updated duplicate tests),
   frontend `tsc --noEmit` clean, `npm test` 89/89, `next build` green. E2E:
@@ -1053,12 +1202,18 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-Duplicate "(copy)" naming + sibling-unique names turn (§5.33):
+Workspaces sidebar scanability turn (§5.36) plus username (§5.35) and
+team-invite picker (§5.34): Sidebar/WorkspaceStore/globals.css + e2e;
+migration `014_user_username.sql`, `backend/src/api/username.js`,
+auth/admin/teams/seed, TeamsModal/signup/AdminView, tests + docs. Not
+committed. Leave `frontend/tsconfig.tsbuildinfo`.
+
+Prior Duplicate "(copy)" naming + sibling-unique names turn (§5.33):
 `backend/src/api/routes/content.js`, `backend/tests/
 duplicate.integration.test.cjs`, `frontend/src/store/WorkspaceStore.tsx`,
 `frontend/src/components/Sidebar.tsx`, `frontend/e2e/request-duplicate.spec.ts`
 — plus `tsconfig.tsbuildinfo` churn (leave it). Committed and pushed on
-`master` alongside this docs update.
+`master` alongside that docs update.
 
 Prior to that, the New API request dialog Form | cURL turn (§5.32), the
 per-request undo/redo + back-to-previous turn (§5.30), the portal landing/

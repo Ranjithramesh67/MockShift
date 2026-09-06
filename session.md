@@ -1,13 +1,115 @@
 # MockShift — Session State
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
 
 ## Current
 
-Step: DUPLICATE "(COPY)" NAMING + SIBLING-UNIQUE NAMES (this turn). Requested:
+Step: PORTAL B MANAGEMENT APP B2..B6 — DONE (this turn). Seven parallel
+agents each owned a disjoint slice; coordinator laid the foundation and
+integrated. Full detail in docs/SESSION.md §5.37.
+
+- Foundation: migration `015_portal_audit_promo.sql` (audit_log +
+  promo_codes, RLS); `portal/backend/src/auditLog.js`; `CONTRACT.md`;
+  shared FE chrome (`ui.tsx`, `manage.css`, `ManageShell.tsx`,
+  `portalApi.ts`); router stubs+mounts in `server.js`; self-contained
+  `portal/db/seed-demo.sql` (applied). :3102 restarted with new routers.
+- B2 dashboard, B3 subscribers (+detail/lifecycle), B4a plans UI (audited),
+  B4b promo codes, B5 audit read/export, B6 shell/login/nav, db test
+  `15_portal_b.sql` (run.sh green) — all implemented by agents.
+- Verified on :3102: read endpoints 200 w/ correct KPI JSON (MRR/revenue
+  as strings), lifecycle + promo create/delete 200 and audited; RBAC —
+  dev EDITOR 403, VIEWER list emails null + detail 403, pm export 403 /
+  boss export 200 text/csv. Frontend `tsc --noEmit` clean; every
+  `/manage/*` page compiles + serves 200 on :3002.
+- Removed `ptest` plan/order test residue from dev DB.
+- Demo-data follow-up: `seed-demo.sql` re-enforces per-plan first-recharge
+  bonus (trial_days upsert — free 0, starter +5, pro +10, team +15 extra
+  validity days on the first paid recharge, enterprise 0/CUSTOM) and adds
+  three expiry-edge demo accounts (c7 Meera starter
+  EXPIRED ended 10d ago; c8 Kabir pro ACTIVE renews today 23:59; c9 Zoya
+  team ACTIVE renews tomorrow). Applied; idempotent re-run safe. KPIs now:
+  expiringSoon 3, trialsEndingSoon 1, active 4/trialing 1/past_due 1/
+  suspended 1/cancelled 1.
+- Catalog copy follow-up: dropped the free-"trial" wording customers/admins
+  see — plan cards, pricing lede, FAQ and final CTA now say Starter/Pro/Team
+  add +5/+10/+15 extra validity days on the first recharge (B4a editor label
+  "First-recharge bonus days"). Schema trial_days, TRIALING status and
+  dashboard trial metrics untouched.
+- Live processes: portal backend :3102 `term_1788712238597_64`, portal
+  frontend :3002 `term_1788633952808_43`, main backend :3001
+  `term_1788697988497_54`, main frontend :3000 `term_1788697990497_55`,
+  mock :3999 `term_1788637750561_47`.
+- Portal demo logins: boss ADMIN / pm MANAGER / dev EDITOR (non-portal,
+  403 on portal) — passwords from `backend/scripts/seed-dev.js`; VIEWER
+  smoke account `viewerb3@test.io` / `viewerpass123` (leave). Scratch DB
+  `apihub_b5test` left by B5 agent (harmless; drop later if desired).
+- Not committed (portal work + prior sidebar/username/team-invite turns).
+  Leave `frontend/tsconfig.tsbuildinfo`.
+
+PENDING (not this turn): Portal A purchase/checkout UX (A3), A-side and X2
+patterns; see docs/SESSION.md §5.31 + session history below.
+
+PREVIOUS TURN (Workspaces sidebar scanability — not committed):
+Step: WORKSPACES SIDEBAR SCANABILITY. Requested: stop showing
+“Select a workspace…” when one is already selected, and stop team headers
+from looking like workspaces.
+
+- Login auto-selects `My Workspace` (else first workspace) so collections
+  load without a click. Failed loads surface the error instead of a stuck
+  “Loading collections…” hint.
+- Empty teams are omitted from WORKSPACES. Grouped nav only appears when
+  at least one team actually has a workspace. Team headers are a quiet
+  “Team” label + name (not a workspace chip). Ungrouped leftovers sit
+  under “Workspaces / Ungrouped”.
+- Empty state is honest: no workspaces → create one; workspaces exist
+  but none open → “Open a workspace above…”; never “Select a workspace”
+  while a chip is already active.
+- Testids kept: `workspace-My Workspace`, `team-group-*`, `new-workspace`,
+  `empty-state`, `empty-new-workspace`.
+- Files: `frontend/src/components/Sidebar.tsx`,
+  `frontend/src/store/WorkspaceStore.tsx`, `frontend/app/globals.css`,
+  `frontend/e2e/nav-normal.spec.ts`, `frontend/e2e/project-overview.spec.ts`.
+- Verification: `tsc --noEmit` clean; frontend `npm test` 89/89; e2e
+  `nav-normal` + `project-overview` 2/2. Skipped `next build` while
+  `next dev` is live. Not committed. Leave `frontend/tsconfig.tsbuildinfo`.
+
+PREVIOUS TURN (Username for search / invite / add-to-team — not committed):
+
+Step: USERNAME FOR SEARCH / INVITE / ADD-TO-TEAM. Requested:
+add a unique username so people can be found and added to a team without
+exposing email.
+
+- Migration `014_user_username.sql`: `users.username` NOT NULL, format
+  `^[A-Za-z][A-Za-z0-9_]{2,29}$`, unique on `lower(username)`. Backfills
+  existing rows from the email local-part.
+- Signup + admin create require/accept `username`; if omitted the API
+  derives one from the email local-part and uniquifies. Helper
+  `backend/src/api/username.js`.
+- `GET /api/teams/:id/org-users` returns `{ id, name, username }` (no
+  email). `POST /api/teams/:id/members` accepts `userId`, `username`, or
+  `email`. Team member rows include username.
+- TeamsModal searches/displays name + `@username`; members show
+  `Name (@username)`. `invite-email` testid kept on the search box.
+  Seed usernames: boss / pmuser / dev.
+- Tests: `username.test.cjs` 4/4; `db/tests/run.sh` all pass (incl. 14);
+  picker API 1/1; e2e picker + `nav-normal` + `project-overview` 3/3.
+- Verification: `tsc --noEmit` clean; frontend `npm test` 89/89;
+  backend `test:api:unit` 53/53; `next build` green. Isolated picker
+  API test drops schema — reseeded. Backend :3001
+  `term_1788697988497_54`; frontend :3000 `term_1788697990497_55`.
+- Not committed. Leave `frontend/tsconfig.tsbuildinfo`.
+
+PREVIOUS TURN (Team invite searchable list — not committed with this
+turn): `GET /api/teams/:id/org-users`, add by userId, TeamsModal picker,
+click team name to open that team, people list hidden until typing.
+
+PREVIOUS TURN (Duplicate "(copy)" naming + sibling-unique names — committed
+`7f59e25` / docs `3450823`):
+
+Step: DUPLICATE "(COPY)" NAMING + SIBLING-UNIQUE NAMES. Requested:
 duplicating must not keep the source name — copies get " (copy)" appended — and
 names must be unique among siblings: two requests in a folder (or collection
 root) and two folders under the same parent may never share a name.
@@ -860,9 +962,8 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
   boss1785867669@test.io/bosspass123 (ADMIN) · pm1785867669@test.io/pmpass1234 (MANAGER) ·
   dev1785867669@test.io/devpass123 (EDITOR).
 - **Migrations are not auto-applied** — after `seed:dev`, apply yours manually via psql;
-  `db/tests/run.sh` applies all of them. Applied through `013_portal_plans_subscriptions.sql`
-  (portal milestone A1+B1; added `SUPPORT` role + plans/subscriptions/orders/invoices + seeds).
-  Next free number: 014.
+  `db/tests/run.sh` applies all of them. Applied through `014_user_username.sql`
+  (unique `users.username` for search/invite). Next free number: 015.
 - **Portal (two subscription portals)**: backend `cd portal/backend && PORT=3102 npm start`
   (port 3102, reuses main backend DB + session scheme via `src/shared.js`); frontend
   `cd portal/frontend && npm run dev` (port 3002, rewrites `/api` → `127.0.0.1:3102`). Portal A
@@ -873,6 +974,23 @@ after each step. If context budget (~70%) is reached: write a precise resume poi
 - **Full e2e run needs a freshly reset + seeded DB and mock upstream on :3999** — other specs
   leave requests in "Mock API Demo", so "Requests: 8" in assertions-runner.spec.ts breaks otherwise.
    - **Never run `next build` while `next dev` is live on the same `.next` dir** (clobbers dev chunks).
+
+## Pending — Send item to another user (accept / reject)
+
+Requested: any user should be able to send a request, sub-folder, folder,
+collection, project, or workspace to any other user. The recipient gets
+the send as a request they can **accept** or **reject**. On accept, a copy
+is created in the recipient's account (they own the copy; the sender keeps
+the original).
+
+Not started. Suggested shape when picked up:
+- New send/inbox table (pending / accepted / rejected) keyed by sender,
+  recipient (`username` lookup), and item type + id.
+- Recipient UI: inbox of pending sends with accept/reject.
+- Accept clones the subtree into the recipient's default (or chosen)
+  workspace/project, using existing duplicate helpers + sibling-unique
+  names.
+- Reject records the decision and notifies the sender.
 
 ## Pending — Two subscription portals (decisions made 2026-09-04)
 
