@@ -196,8 +196,8 @@ export default function CheckoutConfirmView() {
                 </p>
               )}
               <div className="ck-actions">
-                <a className="btn btn-primary" href="/#pricing">
-                  Back to pricing
+                <a className="btn btn-primary" href="/account">
+                  Go to My subscription
                 </a>
                 <a className="btn btn-ghost" href="/#product">
                   Explore features

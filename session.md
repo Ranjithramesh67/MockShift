@@ -7,53 +7,74 @@ Last updated: 2026-09-06
 
 ## Current
 
-Step: PUSHED — Portal A `A4` (public purchase/checkout) is complete and on
-`master` (`87112ee..a1e02d4` feat + this docs commit). A customer's first
-paid order now actually grants the catalog's first-recharge bonus (+5/+10/+15
-extra validity days) by extending the new subscription's `current_period_end`.
+Step: PUSHED — Portal A `A5` subscriber self-service ("My subscription") is
+complete and on `master`. Self-service endpoints under `/api/public/account`
+are session-based (checkout customers stay global EDITOR per the B1 decision,
+so the routes use `requireAuth` + owner guards — never portal RBAC):
 
-- `a1e02d4` feat(portal): Portal A A4 checkout flow. Backend
-  `portal/backend/src/routes/publicCheckout.js` (mounted under `/api/public`):
-  `POST /api/public/checkout` — guest → auto-creates the account + signs them
-  in (session cookie); free ₹0 activates immediately with NO order/invoice;
-  paid → PENDING order + DRAFT invoice `INV-YYYY-####`; 400 Enterprise custom
-  ("contact sales"); 409 duplicate active plan / existing-email-without-
-  session. `POST /api/public/checkout/:orderId/confirm` — owner-only,
-  idempotent ("Simulate successful payment"): marks order PAID + invoice
-  ISSUED→PAID and inserts an ACTIVE subscription with period end
-  `now() + interval '1 month'/'1 year' + make_interval(days => bonusDays)`
-  when this is the user's first paid order ever; links
-  `orders.subscription_id`. `GET /api/public/orders/:orderId` — owner-only,
-  order/invoice/subscription + first-recharge bonus preview on PENDING.
-  `query({ userId })` RLS identity from B3; `fetchSubscriptionShapeTx` reads
-  inside the caller's transaction. Migration `016_portal_checkout_rls.sql`
-  adds `orders_insert`/`invoices_insert` RLS INSERT policies (own user or
-  ADMIN/MANAGER). CONTRACT.md gained the authoritative Portal A
-  public-purchase section.
-- Frontend (`portal/frontend`, :3002): `app/checkout/*` (layout + step page +
-  confirm page + dark design-token `.ck-` theme CSS), `CheckoutView.tsx`
-  (account step inside checkout; create vs "Sign in instead" on 409;
-  free inline success), `CheckoutConfirmView.tsx` (PENDING shows bonus
-  preview + "Simulate successful payment" → success card w/ valid-through +
-  Paid badge; idempotent reload), `checkoutApi.ts` (fetch helpers + shared TS
-  types), and the landing pricing CTAs now open `/checkout?plan=…&cycle=…`
-  (`CatalogPreview.tsx`).
-- Verified: portal `tsc --noEmit` clean; Playwright smoke over :3002 16/16
-  (pro CTA nav, summary + ₹299 + "+10" badge, guest checkout → confirm bonus
-  preview + `INV-…`, simulate payment → success + reload idempotent, free
-  activation at ₹0, existing-email 409 + sign-in toggle, zero overflow @375);
-  backend matrix `/tmp/a4-checkout-matrix.cjs` all pass; migration 016 applied.
+- Migration `db/migrations/017_portal_self_service.sql` (applied): SECURITY
+  DEFINER functions `app.self_service_cancel_subscription(uuid)` (owner check,
+  ACTIVE/TRIALING only; sets `cancel_at_period_end=true`, `cancelled_at=now()`)
+  and `app.self_service_reactivate_subscription(uuid)` (undo); both pin
+  `search_path`, ERRCODEs (42501 no-session/not-yours, P0002 missing, P0001 bad
+  state), GRANT EXECUTE TO app_user. `app.supersede_subscriptions(_except_sub_
+  id)` marks CANCELLED immediately every other ACTIVE/TRIALING sub of the
+  caller (the change-confirm supersede path). Audit rows written inside the
+  functions: `subscriptions.self_cancel` / `self_reactivate` / `self_superseded`.
+  Rationale: the existing `subscriptions_update` RLS policy is portal-roles-only
+  and cannot be widened to EDITOR customers.
+- Backend `portal/backend/src/routes/customerAccount.js` (mounted at
+  `/api/public/account`, `server.js`): `GET /overview` — account row + newest
+  current sub (ACTIVE/TRIALING preferred) + newest-first invoices
+  (`order_id`/`billing_cycle`/`plan_key`/`plan_name` from orders/plans) +
+  `hasPaidOrders`. `POST /cancel` / `POST /reactivate` `{ subscriptionId }` —
+  ownSubscription guard (404 unknown, 403 not yours, 409 wrong state), then the
+  SQL function. Reuses A4 shapes (`SUB_COLUMNS`, `toSubscriptionShape`,
+  `toInvoiceShape`).
+- Plan change is deliberately NOT a new endpoint: confirming an A4 order for a
+  different plan (or activating Free) supersedes the old current sub instantly
+  — `publicCheckout.js` calls `app.supersede_subscriptions($1)` inside the
+  confirm/free-activation client transactions. Same-plan duplicates stay 409.
+- `portal/backend/CONTRACT.md` gained the A5 section + the A4-confirm
+  supersede wording.
+- Frontend (`portal/frontend`, :3002): `app/account/*` (page + layout + scoped
+  `.ac-` dark design-token theme incl. status chips + media queries),
+  `app/login/*` (layout/page; import is `../account/account.css` — the CSS
+  import bug that 500'd `/login` was fixed this turn), components
+  `AccountView.tsx` (loading/error/signed-out/ready; plan card with status
+  chip + renewal date + cancel-note; cancel/reactivate; plan-switch accordion
+  filtered to plans ≠ current, cycles preserved; invoice history; sign out),
+  `LoginView.tsx` (redirect default `/account`), `AccountLink.tsx`
+  (fetchMe-gated signed-in "My subscription" header link) wired into the
+  landing `nav-actions` + checkout layout; A4 success CTA → "Go to My
+  subscription" (`/account`); `checkoutApi.ts` account types/helpers.
+- Verified: migration 017 applied; portal backend restarted
+  (`term_1788730661493_70`, PID 25431; health + unauth-overview 401 OK);
+  backend matrix `/tmp/a5-account-matrix.cjs` 27/27 (guest Starter +5d bonus,
+  overview shapes, unscheduled-reactivate 409, cancel → double-cancel 409,
+  reactivate undo, Pro change supersedes Starter + no bonus, Free downgrade,
+  duplicate Free 409, cross-user 403, non-subscriber null overview + empty
+  invoices, cancelled-sub reactivate 409, duplicate-active 409, bad uuid 400)
+  + audit rows verified; A4 regression matrix re-run ALL PASS after the
+  supersede change (T3 now asserts a re-pick of a superseded plan is a 201
+  plan change; duplicate-active 409 lives in the A5 matrix); portal
+  `npx tsc --noEmit` clean; Playwright smoke `/tmp/a5-account-smoke.cjs`
+  ALL PASS (23 checks: signed-out sign-in CTA, plan card Starter/Active +
+  renewal + cancel, cancel → note + reactivate, reactivate undoes, switch
+  accordion excludes Starter + offers free/pro, invoice row, checkout
+  AccountLink → /account, sign-out to landing, /login wrong-creds error then
+  real login → /account).
 
 Current demo/DB state: dev DB was reset + reseeded to the canonical demo
-baseline after smoke/matrix runs — dashboard KPIs read expiringSoon 3 (Aarav
-+6d, Kabir today, Zoya tomorrow), trialsEndingSoon 1, active 4 / trialing 1 /
-past_due 1 / suspended 1 / cancelled 1 (9 demo subs; plans free 0 / starter +5
-/ pro +10 / team +15 / enterprise 0).
+baseline after the matrices/smoke (throwaway a5_*/pwacct_*/buyer1_* users
+removed; 9 demo subs — active 4 / trialing 1 / past_due 1 / suspended 1 /
+cancelled 1; plans free 0 / starter +5 / pro +10 / team +15 / enterprise 0;
+the three 017 functions verified intact).
 
-Live processes: portal backend :3102 `term_1788724214363_69` (restarted after
-the A4 router landed), portal frontend :3002 `term_1788633952808_43`, main
-backend :3001 `term_1788697988497_54`, main frontend :3000
-`term_1788697990497_55`, mock :3999 `term_1788637750561_47`.
+Live processes: portal backend :3102 `term_1788730661493_70` (restarted this
+turn), portal frontend :3002 `term_1788633952808_43`, main backend :3001
+`term_1788697988497_54`, main frontend :3000 `term_1788697990497_55`, mock
+:3999 `term_1788637750561_47`.
 
 Portal demo logins: boss ADMIN / pm MANAGER / dev EDITOR (non-portal, 403 on
 portal) — passwords from `backend/scripts/seed-dev.js`; VIEWER smoke account
@@ -61,11 +82,19 @@ portal) — passwords from `backend/scripts/seed-dev.js`; VIEWER smoke account
 `frontend/tsconfig.tsbuildinfo` unstaged + untracked
 `frontend/.next.bak-1788661828/`; scratch DB `apihub_b5test` (harmless).
 
+PREVIOUS TURN (Portal A — `A4` public purchase/checkout, pushed `a1e02d4`
+feat + docs `c3cf9b0`): full record in docs/SESSION.md + git. Highlights:
+`/api/public/checkout` guest auto-account + session (free ₹0 activates with NO
+order; paid → PENDING order + DRAFT `INV-YYYY-####`), `/confirm` owner-only +
+idempotent → order PAID + invoice PAID + ACTIVE sub whose `current_period_end`
+extends by the first-paid-order bonus (+5/+10/+15), `GET /orders/:id` reload,
+migration 016 insert policies, frontend `/checkout` + `/confirm` + landing
+CTAs (`checkout.css` `.ck-` theme), 16/16 Playwright smoke + backend matrix.
+A5 built on it: A4's success CTA now points at `/account`.
+
 PENDING (not this turn):
-- Portal A next (see `## Pending — Two subscription portals`): A5 subscriber
-  self-service ("My subscription" area — current plan/status, invoices,
-  change/cancel); A6 payment gateway + webhooks + receipts (later).
-  A2 showcase landing+pricing and A4 purchase/checkout are done.
+- Portal A next (see `## Pending — Two subscription portals`): A6 payment
+  gateway + webhooks + receipts (later). A2 + A4 + A5 are/being done.
 - "Send item to another user" accept/reject (see `## Pending — Send item to
   another user`) — planned, not started.
 - Main-app roadmap S4+ (personal API tokens, server-side POST /api/runs, CLI +
