@@ -2,9 +2,10 @@ import { test, expect, Page } from '@playwright/test';
 import { signupFreshUser } from './helpers';
 
 /**
- * Verifies that pasting a complex cURL command populates the request editor:
- * method, URL, query params, headers (including values containing colons) and
- * a JSON body with escaped quotes.
+ * Verifies that the "Import cURL" entry point opens the same model as
+ * "New API request" (its cURL tab), and that pasting a complex cURL command
+ * populates the request editor: method, URL, query params, headers (including
+ * values containing colons) and a JSON body with escaped quotes.
  */
 
 const COMPLEX_CURL = [
@@ -41,13 +42,15 @@ test('pasting a complex cURL command populates method, URL, headers and body', a
   await expect(page.getByTestId('new-collection-modal')).not.toBeVisible();
 
   await page.getByTestId('topbar-import-curl').click();
-  await expect(page.getByTestId('curl-modal')).toBeVisible();
-  await page.getByTestId('curl-paste-input').fill(COMPLEX_CURL);
-  await page.getByTestId('curl-import-confirm').click();
 
-  // The modal closes and a success toast confirms the import.
-  await expect(page.getByTestId('curl-modal')).not.toBeVisible();
-  await expect(page.getByTestId('toast')).toContainText('cURL imported');
+  // Import cURL reuses the New API request modal, opened on its cURL tab.
+  await expect(page.getByTestId('new-api-modal')).toBeVisible();
+  await expect(page.getByTestId('create-mode-curl')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('create-curl-input').fill(COMPLEX_CURL);
+  await page.getByTestId('create-submit').click();
+
+  // The modal closes and the imported request opens in the editor.
+  await expect(page.getByTestId('new-api-modal')).not.toBeVisible();
 
   // --- Method and URL -------------------------------------------------------
   await expect(page.getByTestId('method-select')).toHaveValue('POST');
