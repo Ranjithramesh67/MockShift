@@ -152,6 +152,93 @@ commits (this also clears the “uncommitted” labels on §5.34–§5.37):
 - `01bd49a` docs: milestone/turn records in docs/SESSION.md, session.md,
   instructions.md.
 
+### 5.39 Portal A A4 — public purchase/checkout with first-recharge bonus enforcement (pushed `a1e02d4`, 2026-09-06)
+
+Built the customer-facing purchase flow on the portal stack
+(`portal/` Express 5 :3102 + Next 14 :3002, shared DB/session): pick plan →
+account/billing step → PENDING order + DRAFT invoice → confirmation page whose
+"Simulate successful payment" activates the subscription. The catalog's
+first-recharge bonus (Starter +5 / Pro +10 / Team +15 extra validity days) is
+now actually granted — by extending the new subscription's initial
+`current_period_end` by `trial_days` when it is the customer's **first paid
+order ever** (no TRIALING status involved; free ₹0 activations create no order
+and do not consume the bonus).
+
+- **Backend** — `portal/backend/src/routes/publicCheckout.js` (mounted under
+  `/api/public` in `server.js`):
+  - `POST /api/public/checkout` (no auth required): a guest supplies
+    name/email/password in the account step → the user is auto-created (role
+    EDITOR per the A3 decision, username via the shared `username.js`
+    allocator) and signed in with a session cookie on the checkout response.
+    Free plan → subscription is created directly ACTIVE (no order/invoice).
+    Paid plans → PENDING order + DRAFT invoice (`INV-YYYY-####`,
+    `nextInvoiceNumber`). 400 for Enterprise custom plans ("contact sales");
+    409 for a duplicate active plan of the same key, and for an
+    existing-email checkout without a session ("an account with that email
+    already exists — sign in to continue"; a signed-in user whose account
+    email differs is told to sign out rather than silently purchasing under a
+    stranger's identity). Custom-price / quarterly / short-password shapes
+    validated.
+  - `POST /api/public/checkout/:orderId/confirm` (auth, owner-only,
+    idempotent): marks the order PAID and invoice ISSUED→PAID and inserts the
+    ACTIVE subscription with
+    `now() + interval '1 month' | '1 year' + make_interval(days => bonusDays)`
+    where `bonusDays = trial_days` only when `firstRechargeEligible`
+    (no earlier paid order on the account); later orders get +0 days.
+    Links `orders.subscription_id`. A concurrent duplicate active plan is
+    rejected with 409. Re-running on an already-confirmed order returns
+    `alreadyProcessed: true` without side effects.
+  - `GET /api/public/orders/:orderId` (auth, owner-only): order + invoice +
+    linked subscription, plus the bonus-eligibility preview while the order is
+    PENDING (drives the confirmation page's "+10 bonus days" note).
+  - Uses the B3 `query({ userId })` option pattern (`app.current_user_id`) for
+    per-request RLS identity and `fetchSubscriptionShapeTx` to read inside the
+    caller's transaction.
+- **Migration** `db/migrations/016_portal_checkout_rls.sql`: adds
+  `orders_insert` and `invoices_insert` RLS INSERT policies mirroring the
+  subscriptions policy (own user, or global ADMIN/MANAGER acting on behalf),
+  so checkout/confirm can write orders + invoices. Applied to the local dev
+  DB; `psql` verification showed the expected policy rows.
+- **CONTRACT.md**: new authoritative "Portal A — public purchase (checkout /
+  confirm / order read)" section — request/response shapes for
+  `order`/`invoice`/`subscription`/`account`, first-recharge bonus semantics,
+  the 404/400/403/409 rules and the idempotent-confirm contract.
+- **Frontend** (`portal/frontend`):
+  - `src/lib/checkoutApi.ts` — typed fetch helpers (`fetchPlans`, `checkout`,
+    `confirmOrder`, `fetchOrder`, `fetchMe`, `signIn`, `signOut`) + shared TS
+    types (`CatalogPlan`, `Order`, `Invoice`, `Subscription`,
+    `CheckoutResult`, `OrderStatusResult`, `Me`) + `formatMoney`/`formatDate`.
+  - `app/checkout/` — `layout.tsx` (brand + step nav), `page.tsx` +
+    `CheckoutView.tsx` (reads `?plan`/`?cycle`, loads plans + `/api/me`;
+    account step inside checkout with create vs sign-in mode; signed-in
+    sessions skip the account form; a 409 offers "Sign in instead"; free →
+    inline success, paid → redirect to `/checkout/confirm?order=…`);
+    `confirm/page.tsx` + `CheckoutConfirmView.tsx` (pending state shows the
+    bonus preview and a "Simulate successful payment" button; success shows
+    plan / valid-through / invoice date + Paid badge; reload is idempotent);
+    `checkout.css` dark design-token theme. Testids: `checkout-*`,
+    `confirm-*`.
+  - `src/components/CatalogPreview.tsx`: landing pricing plan CTAs now push
+    `/checkout?plan=…&cycle=…` (Enterprise keeps "Contact sales").
+- **Verification**:
+  - Backend matrix `/tmp/a4-checkout-matrix.cjs` (throwaway emails, 10 test
+    groups) all green: Starter MONTHLY first-order bonus +5 (period end ≈ 1
+    calendar month + 5 days) vs Team YEARLY second order +0; idempotent
+    re-confirm; cross-user order read/confirm 403; unauth confirm 401;
+    duplicate-plan 409; free-then-Pro bonus still +10; existing-email 409;
+    Enterprise 400.
+  - Frontend: `tsc --noEmit` clean; Playwright smoke over the live :3002 dev
+    server 16/16 (Pro CTA from the landing, summary ₹299 + "+10" badge, guest
+    checkout → confirm bonus preview + `INV-…`, simulate payment → success,
+    reload stays on success, free activation at ₹0, existing-email 409 surfaces
+    the sign-in toggle, no horizontal overflow at 375px).
+  - After the smoke/matrix runs the dev DB was reset and reseeded
+    (`reset:db` + `seed:dev` + `portal/db/seed-demo.sql`) back to the canonical
+    demo baseline — dashboard KPIs again read expiringSoon 3, trialsEndingSoon
+    1, active 4 / trialing 1 / past_due 1 / suspended 1 / cancelled 1.
+  - Portal backend :3102 restarted after the router landed
+    (`term_1788724214363_69`).
+
 ### 5.36 Workspaces sidebar scanability (this turn)
 
 Requested: WORKSPACES was hard to scan — the empty state still said
