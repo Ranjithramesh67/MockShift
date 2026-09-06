@@ -237,9 +237,10 @@ Testids to use: `scratchpad-workspace`, `scratchpad-method`, `scratchpad-url`,
 | M19 | Per-request undo/redo + back-to-previous — per-tab undo/redo history over working-copy edits (`request-undo`/`request-redo` toolbar buttons + global Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z with editable-focus guard) and `request-back` (activation-order nav stack; reopens closed tabs with unsaved work) | done (this turn, pushed) |
 | M20 | New API request dialog — Form | cURL: full form (Name, Type, Method, URL + method-driven Params/Headers/Body horizontal tabs; Body for POST/PUT/PATCH, query params for GET etc.) or cURL paste with live parse preview; replaces old URL-field curl sniffing | done (this turn, pushed) |
 | M21 | Duplicate auto "(copy)" naming + sibling-unique names — duplicates become "X (copy)"/"X (copy) 2"; requests unique among same-folder siblings, folders unique among same-parent siblings (case-insensitive), auto-renamed on create/rename/move collisions instead of erroring | done (pushed) |
-| M22 | Team invite: searchable org-user list instead of free-form email (`GET /api/teams/:id/org-users`, add by userId, TeamsModal picker) | done (this turn, not committed) |
-| M23 | Unique username for search / invite / add-to-team (hide email in picker) | done (this turn, not committed) |
-| M24 | Workspaces sidebar scanability — auto-select first/My Workspace, hide empty teams, Team vs workspace chrome, honest empty state | done (this turn, not committed) |
+| M22 | Team invite: searchable org-user list instead of free-form email (`GET /api/teams/:id/org-users`, add by userId, TeamsModal picker) | done (pushed `11e7bb8`) |
+| M23 | Unique username for search / invite / add-to-team (hide email in picker) | done (pushed `11e7bb8`) |
+| M24 | Workspaces sidebar scanability — auto-select first/My Workspace, hide empty teams, Team vs workspace chrome, honest empty state | done (pushed `11e7bb8`) |
+| M25 | Import cURL reuses the New API request dialog (same model, cURL tab) | done (pushed `4557873`) |
 
 ## M24 — Workspaces sidebar scanability (done)
 
