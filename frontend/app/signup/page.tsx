@@ -16,6 +16,7 @@ export default function SignupPage() {
   const router = useRouter();
   const { signup } = useAuth();
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,7 +31,7 @@ export default function SignupPage() {
     }
     setBusy(true);
     try {
-      await signup(email.trim(), password, name.trim());
+      await signup(email.trim(), password, name.trim(), username.trim());
       router.replace('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Signup failed');
@@ -83,6 +84,18 @@ export default function SignupPage() {
                 data-testid="signup-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <label className="auth-field">
+              <span>Username</span>
+              <input
+                type="text"
+                autoComplete="username"
+                placeholder="adalovelace"
+                data-testid="signup-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
               />
             </label>
             <label className="auth-field">

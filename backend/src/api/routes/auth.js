@@ -12,6 +12,7 @@ const {
   verifySession,
 } = require('../authLib');
 const { requireAuth, loadUserById } = require('../access');
+const { allocateUsername } = require('../username');
 
 const router = Router();
 
@@ -34,7 +35,7 @@ async function userSummary(userId) {
 
 router.post('/signup', async (req, res, next) => {
   try {
-    const { email, password, name } = req.body || {};
+    const { email, password, name, username } = req.body || {};
     if (!email || !EMAIL_RE.test(String(email))) {
       return res.status(400).json({ error: 'A valid email is required' });
     }
@@ -51,13 +52,15 @@ router.post('/signup', async (req, res, next) => {
     const client = await require('../db').pool.connect();
     try {
       await client.query('BEGIN');
+      const exec = (sql, params) => client.query(sql, params);
+      const usernameValue = await allocateUsername(exec, { username, email, name: displayName });
       // First user to ever sign up becomes the platform ADMIN (bootstrap).
       const userCount = await client.query('SELECT COUNT(*)::int AS n FROM users');
       const role = userCount.rows[0].n === 0 ? 'ADMIN' : 'EDITOR';
       const { rows } = await client.query(
-        `INSERT INTO users (email, password_hash, name, role)
-         VALUES ($1, $2, $3, $4) RETURNING id, email, name, role`,
-        [email, await hashPassword(password), displayName, role]
+        `INSERT INTO users (email, password_hash, name, role, username)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, email, name, role, username`,
+        [email, await hashPassword(password), displayName, role, usernameValue]
       );
       const userId = rows[0].id;
 

@@ -87,12 +87,14 @@ export interface ProjectOverview {
 export interface ProjectOrgUser {
   id: string;
   name: string;
-  email: string;
+  username: string;
+  email?: string;
 }
 
 export interface User {
   id: string;
   email: string;
+  username: string;
   name: string;
   role: UserRole;
   is_active: boolean;
@@ -121,7 +123,8 @@ export interface Workspace {
 
 export interface TeamMember {
   id: string;
-  email: string;
+  email?: string;
+  username: string;
   name: string;
   role: UserRole;
 }
@@ -279,7 +282,7 @@ export async function apiFetch<T = unknown>(
 }
 
 export const authApi = {
-  signup: (input: { email: string; password: string; name?: string }) =>
+  signup: (input: { email: string; password: string; name?: string; username?: string }) =>
     apiFetch<{ user: Session }>('/api/auth/signup', { method: 'POST', body: input }),
   login: (input: { email: string; password: string }) =>
     apiFetch<{ user: Session }>('/api/auth/login', { method: 'POST', body: input }),
@@ -312,8 +315,12 @@ export const teamApi = {
   groups: () => apiFetch<TeamGroupsResponse>('/api/teams/groups'),
   create: (input: { name: string; organizationId?: string }) => apiFetch<{ team: Team }>('/api/teams', { method: 'POST', body: input }),
   delete: (teamId: string) => apiFetch(`/api/teams/${teamId}`, { method: 'DELETE' }),
+  orgUsers: (teamId: string) =>
+    apiFetch<{ users: ProjectOrgUser[] }>(`/api/teams/${teamId}/org-users`),
   invite: (teamId: string, email: string, role: UserRole) =>
     apiFetch<{ members: TeamMember[] }>(`/api/teams/${teamId}/members`, { method: 'POST', body: { email, role } }),
+  addMember: (teamId: string, userId: string, role: UserRole) =>
+    apiFetch<{ members: TeamMember[] }>(`/api/teams/${teamId}/members`, { method: 'POST', body: { userId, role } }),
   setRole: (teamId: string, userId: string, role: UserRole) =>
     apiFetch<{ members: TeamMember[] }>(`/api/teams/${teamId}/members/${userId}`, { method: 'PATCH', body: { role } }),
   remove: (teamId: string, userId: string) =>
@@ -435,7 +442,7 @@ export const adminApi = {
   users: () => apiFetch<{ users: AdminUser[] }>('/api/admin/users'),
   patchUser: (userId: string, patch: { role?: UserRole; isActive?: boolean }) =>
     apiFetch(`/api/admin/users/${userId}`, { method: 'PATCH', body: patch }),
-  createUser: (input: { email: string; name: string; role: UserRole; password: string }) =>
+  createUser: (input: { email: string; name: string; username?: string; role: UserRole; password: string }) =>
     apiFetch<{ user: User }>('/api/admin/users', { method: 'POST', body: input }),
   access: () => apiFetch<AdminAccessOverview>('/api/admin/access'),
   grantProjectMember: (projectId: string, input: { userId: string; role: UserRole }) =>

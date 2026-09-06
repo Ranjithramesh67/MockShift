@@ -8,7 +8,7 @@ interface AuthState {
   user: User | null;
   organizations: Organization[];
   login: (email: string, password: string) => Promise<User>;
-  signup: (email: string, password: string, name: string) => Promise<User>;
+  signup: (email: string, password: string, name: string, username: string) => Promise<User>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -40,8 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return s.user.user;
   }, []);
 
-  const signup = useCallback(async (email: string, password: string, name: string) => {
-    const { user } = await authApi.signup({ email, password, name });
+  const signup = useCallback(async (email: string, password: string, name: string, username: string) => {
+    const { user } = await authApi.signup({ email, password, name, username });
     setSession(user);
     return user.user;
   }, []);

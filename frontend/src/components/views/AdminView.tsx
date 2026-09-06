@@ -30,7 +30,7 @@ export function AdminView() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', email: '', role: 'EDITOR' as UserRole, password: '' });
+  const [createForm, setCreateForm] = useState({ name: '', username: '', email: '', role: 'EDITOR' as UserRole, password: '' });
 
   const loadUsers = () => {
     if (!user) return;
@@ -81,9 +81,9 @@ export function AdminView() {
     setBusy(true);
     try {
       await adminApi.createUser(createForm);
-      setNotice(`User "${createForm.email}" created.`);
+      setNotice(`User "${createForm.username || createForm.email}" created.`);
       setCreateOpen(false);
-      setCreateForm({ name: '', email: '', role: 'EDITOR', password: '' });
+      setCreateForm({ name: '', username: '', email: '', role: 'EDITOR', password: '' });
       loadUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
@@ -170,6 +170,15 @@ export function AdminView() {
                   />
                 </label>
                 <label className="field">
+                  <span className="field-label">Username</span>
+                  <input
+                    className="text-input"
+                    data-testid="create-user-username"
+                    value={createForm.username}
+                    onChange={(e) => setCreateForm({ ...createForm, username: e.target.value })}
+                  />
+                </label>
+                <label className="field">
                   <span className="field-label">Email</span>
                   <input
                     className="text-input"
@@ -213,7 +222,7 @@ export function AdminView() {
                 type="button"
                 className="primary-button"
                 data-testid="create-user-confirm"
-                disabled={busy || !createForm.email || !createForm.name || createForm.password.length < 8}
+                disabled={busy || !createForm.email || !createForm.name || !createForm.username || createForm.password.length < 8}
                 onClick={createUser}
               >
                 Create
@@ -252,7 +261,7 @@ function UsersTab({ users, currentUserId, busy, onPatch }: {
                   <span className="admin-avatar">{u.name.charAt(0).toUpperCase()}</span>
                   <div>
                     <div className="admin-user-name">{u.name}</div>
-                    <div className="admin-user-email">{u.email}</div>
+                    <div className="admin-user-email">@{u.username}</div>
                   </div>
                 </div>
               </td>

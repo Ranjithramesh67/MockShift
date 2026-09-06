@@ -290,6 +290,14 @@
     min-height: 44px;
   }
 
+  .invite-user-list {
+    max-height: 220px;
+  }
+
+  .invite-user-option {
+    min-height: 44px;
+  }
+
   .share-url-row {
     flex-wrap: wrap;
     row-gap: 8px;

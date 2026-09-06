@@ -12,6 +12,8 @@ test('clicking a request while on the workspace keeps state and loads the reques
   await page.getByTestId('login-password').fill('bosspass123');
   await page.getByTestId('login-submit').click();
   await expect(page.getByTestId('sidebar')).toBeVisible();
+  await expect(page.getByTestId('workspace-My Workspace')).toBeVisible();
+  await expect(page.getByTestId('empty-state')).toHaveCount(0);
 
   await page.getByTestId('workspace-My Workspace').click();
   const req = page.getByTestId('sidebar-request-GET all posts');

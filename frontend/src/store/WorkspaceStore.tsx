@@ -439,20 +439,31 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setRequestRuns({});
     const ws = workspaces.find((w) => w.id === workspaceId);
     setActiveWorkspaceRole(ws?.role ?? null);
-    const t = await workspaceApi.content(workspaceId);
-    setTree(t);
-    setActiveCollectionId(t.collections[0]?.id ?? null);
-    setActiveCollectionName(t.collections[0]?.name ?? '');
-    setAuthProvider(null);
-    if (t.collections[0]) {
-      try {
-        const { authProvider: p } = await contentApi.getAuthProvider(t.collections[0].id);
-        setAuthProvider(p);
-      } catch {
-        setAuthProvider(null);
+    try {
+      const t = await workspaceApi.content(workspaceId);
+      setTree(t);
+      setActiveCollectionId(t.collections[0]?.id ?? null);
+      setActiveCollectionName(t.collections[0]?.name ?? '');
+      setAuthProvider(null);
+      if (t.collections[0]) {
+        try {
+          const { authProvider: p } = await contentApi.getAuthProvider(t.collections[0].id);
+          setAuthProvider(p);
+        } catch {
+          setAuthProvider(null);
+        }
       }
+    } catch (err) {
+      setTree(null);
+      setError(err instanceof Error ? err.message : 'Failed to load workspace');
     }
   }, [workspaces]);
+
+  useEffect(() => {
+    if (!user || loading || activeWorkspaceId || workspaces.length === 0) return;
+    const preferred = workspaces.find((w) => w.name === 'My Workspace') ?? workspaces[0];
+    selectWorkspace(preferred.id).catch(() => undefined);
+  }, [user, loading, activeWorkspaceId, workspaces, selectWorkspace]);
 
   const selectCollection = useCallback(async (collectionId: string, collectionName: string) => {
     selectSeqRef.current += 1; // invalidate any in-flight request selection
