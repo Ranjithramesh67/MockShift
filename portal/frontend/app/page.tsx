@@ -261,7 +261,7 @@ const FAQS = [
   },
   {
     q: 'Do I need a credit card to try a paid plan?',
-    a: 'No. Every paid plan starts with a 14-day free trial — no card required. When the trial ends you can subscribe or drop back to the Free plan without losing your data.',
+    a: 'No card is required to sign up — the Free plan is free to use forever. Paid plans do not come with a separate trial: instead, your first recharge of Starter, Pro or Team adds 5, 10 or 15 extra days of validity on top of the paid period. If a paid plan is not for you, you can always drop back to the Free plan without losing your data.',
   },
   {
     q: 'Can I really paste a cURL and start without saving?',
@@ -515,7 +515,8 @@ export default function Home() {
             <h2>Plans for every stage</h2>
             <p className="section-lede">
               From a single workspace to organisation-wide control — workspaces, projects,
-              seats and storage grow with your team. Every paid plan starts with a free trial.
+              seats and storage grow with your team. Your first recharge of Starter, Pro or
+              Team adds 5, 10 or 15 extra days of validity.
             </p>
           </div>
           <CatalogPreview />
@@ -544,7 +545,7 @@ export default function Home() {
           <h2>Ready to test your APIs on autopilot?</h2>
           <p>
             Start free today — paste your first cURL in under a minute. When your team grows,
-            pick a paid plan with a 14-day trial.
+            pick a paid plan and earn extra validity days on your first recharge.
           </p>
           <div className="hero-actions">
             <a className="btn btn-primary btn-lg" href="#pricing">
