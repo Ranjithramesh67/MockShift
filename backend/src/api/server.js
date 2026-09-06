@@ -2,6 +2,7 @@
 
 const express = require('express');
 const authRoutes = require('./routes/auth');
+const profileRoutes = require('./routes/profile');
 const adminRoutes = require('./routes/admin');
 const workspaceRoutes = require('./routes/workspaces');
 const environmentRoutes = require('./routes/environments');
@@ -61,6 +62,7 @@ function createApp() {
   });
 
   app.use('/api/auth', authRoutes);
+  app.use('/api/profile', profileRoutes);
   app.use('/api', shareRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/manage', manageRoutes);
