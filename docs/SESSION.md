@@ -74,7 +74,7 @@ the live DB:
 
 ## 5. What was done in this session (chronological)
 
-### 5.37 Portal B management app B2–B6 (this turn, uncommitted)
+### 5.37 Portal B management app B2–B6 (pushed `685eea6`, 2026-09-06)
 
 Built the full subscription-management console on the portal stack
 (`portal/` Express 5 on :3102 + Next 14 on :3002, RBAC via `portalAccess.js`,
@@ -135,6 +135,22 @@ residue from dev DB.
   the customer's first recharge (B4a plan editor relabelled to “First-recharge
   bonus days”). Schema column `plans.trial_days`, the TRIALING status and the
   dashboard trial metrics were left untouched.
+
+### 5.38 Batch push + Import-cURL unification (pushed `3450823..01bd49a`)
+
+Pushed the whole accumulated uncommitted batch to `origin/master` as four
+commits (this also clears the “uncommitted” labels on §5.34–§5.37):
+
+- `11e7bb8` feat(workspace): unique username (M23) + org-user team invite (M22)
+  + scanable workspaces sidebar (M24) — the §5.34–§5.36 work.
+- `4557873` feat(modal): Import cURL now opens the same New API request dialog
+  (`CreateModal initialMode="curl"`; `CurlModal` is a thin delegate to it), so
+  name/API-type/parse-preview all match new-request creation. `curl-import` e2e
+  rewritten to drive the shared modal; `curl-import` + `create-request-form`
+  pass 3/3, main-frontend `tsc --noEmit` clean.
+- `685eea6` feat(portal): Portal B B2–B6 (the §5.37 work).
+- `01bd49a` docs: milestone/turn records in docs/SESSION.md, session.md,
+  instructions.md.
 
 ### 5.36 Workspaces sidebar scanability (this turn)
 
