@@ -106,9 +106,10 @@ removed; 9 demo subs — active 4 / trialing 1 / past_due 1 / suspended 1 /
 cancelled 1; plans free 0 / starter +5 / pro +10 / team +15 / enterprise 0;
 the three 017 functions verified intact).
 
-Live processes: portal backend :3102 `term_1788730661493_70` (restarted this
-turn), portal frontend :3002 `term_1788633952808_43`, main backend :3001
-`term_1788697988497_54`, main frontend :3000 `term_1788697990497_55`, mock
+Live processes: portal backend :3102 `term_1788731418612_71`, portal
+frontend :3002 `term_1788633952808_43`, main backend :3001
+`term_1788732243308_74` (running CLOSED — self-service signup gated; never set
+`ALLOW_SELF_SIGNUP` here), main frontend :3000 `term_1788697990497_55`, mock
 :3999 `term_1788637750561_47`.
 
 Portal demo logins: boss ADMIN / pm MANAGER / dev EDITOR (non-portal, 403 on
@@ -128,6 +129,13 @@ CTAs (`checkout.css` `.ck-` theme), 16/16 Playwright smoke + backend matrix.
 A5 built on it: A4's success CTA now points at `/account`.
 
 PENDING (not this turn):
+- Profile & plan visibility (see `## Pending — Profile & plan visibility`):
+  after login, see the current plan, edit personal details, choose/upload an
+  avatar, manage/change the subscription — planned 2026-09-06, not started.
+- Per-plan usage restrictions (see `## Pending — Per-plan usage restrictions
+  (Portal B)`): enforce plan limits (workspaces/projects/collections/teams/
+  seats/storage/runs/…) with a Portal B switch to toggle restrictions off —
+  planned 2026-09-06, not started.
 - Portal A next (see `## Pending — Two subscription portals`): A6 payment
   gateway + webhooks + receipts (later). A2 + A4 + A5 done (`ea64d44`).
 - "Send item to another user" accept/reject (see `## Pending — Send item to
@@ -1099,12 +1107,13 @@ Decisions (answered by Ranjith 2026-09-04):
   `012_request_body_parts.sql`).
 - **Q6** **First milestone = A1 + B1 + X1 foundation** (see below).
 
-Current: Portal A `A4` COMPLETE (pushed `a1e02d4`; see `## Current` and
-docs/SESSION.md §5.39). Foundation `A1+B1+X1` and Portal B `B2–B6` are done
-(docs/SESSION.md §5.37). Remaining Portal A work = `A5` subscriber
-self-service, then `A6` gateway/webhooks (later). Portal A2 showcase
-landing+pricing is live; the catalog's first-recharge bonus (+5/+10/+15) is
-now enforced by the A4 checkout/confirm flow.
+Current: Portal A `A5` COMPLETE (pushed `ea64d44`; self-service /account, see
+`## Current` and docs/SESSION.md §5.40) + provisioning + signup gating follow-
+ups (`673623a`, `d48ce38`). Foundation `A1+B1+X1` and Portal B `B2–B6` are
+done (docs/SESSION.md §5.37). Remaining Portal A work = `A6` gateway/webhooks
+(later). New planned (not started) programmes building on this: a Profile &
+plan-visibility slice and per-plan usage restrictions — see the two new
+`## Pending — …` sections below.
 
 ### First milestone — A1 + B1 + X1 (data model + RBAC + architecture)
 
@@ -1133,7 +1142,7 @@ Scope when GO is given:
 | A2 | Showcase UI: landing + plans/pricing pages rendered from the catalog (public, no login), responsive — DONE (`portal/frontend`, live on :3002) |
 | A3 | Subscriber identity — DECIDED: reuse existing `users`, auto-create on checkout (default EDITOR/VIEWER) — DONE (wired into A4 checkout, 2026-09-06) |
 | A4 | Purchase/checkout flow: pick plan → billing/contact info → create subscription + order → confirmation page. First recharge must grant the catalog's bonus validity (+5/+10/+15 days on trial_days) — DONE (pushed `a1e02d4`; see docs/SESSION.md §5.39) |
-| A5 | Subscriber self-service: "My subscription" area — current plan, status, invoices, change/cancel — PENDING |
+| A5 | Subscriber self-service: "My subscription" area — current plan, status, invoices, change/cancel — DONE (pushed `ea64d44`; `app/account` + `/api/public/account`, docs/SESSION.md §5.40) |
 | A6 | Payment integration + webhooks + receipts (provider-dependent; see open questions) |
 
 ### Portal B — subscription management portal (internal, RBAC)
@@ -1154,6 +1163,170 @@ Scope when GO is given:
 | X1 | Architecture — DECIDED: separate portal codebase (not in the current Next app). Scaffold `portal/` with its own frontend + backend (stack + ports TBD at start of milestone) |
 | X2 | Frontend patterns: keep `data-testid`/`aria-label` hooks (e2e green), component/store structure consistent with existing `WorkspaceStore`-style providers |
 | X3 | DB: single new migration(s) `012+` covering plans/subscriptions/orders/invoices + RBAC/RLS; record applied migrations in the Environment note — DONE as migration `013` |
+
+
+## Pending — Profile & plan visibility (planned 2026-09-06, NOT started)
+
+Requested by Ranjith: after login a user should be able to see which plan they
+are on and manage their account — personal details, profile picture (incl.
+predefined avatars), subscription plan, etc. Today: the main API Hub app
+(top-bar user menu = initial + name + Sign out only) has NO profile or plan
+surfacing; plan/subscription/invoices live only on the Portal A frontend
+(`/account`, A5). This programme closes that gap. Plan-change stays on the
+Portal A checkout (single-plan supersede rule from A5); the profile page is
+the **view + manage entry point** after login.
+
+Home base to keep in mind while planning:
+- Users `users` table has no avatar column; `PATCH`-style self-service edit
+  endpoints do not exist for name/username (username rules in
+  `backend/src/api/username.js`; email is the login id).
+- Plan data is in portal tables (shared `apihub` DB): `plans.limits` jsonb,
+  `subscriptions` (status, billing_cycle, period, cancel_at_period_end) —
+  readable from the main backend; A5 `GET /api/public/account/overview`
+  already shapes this for the portal FE.
+- Main app placement hooks: top-bar `.user-menu` in
+  `frontend/src/components/TopBar.tsx`; cross-app link helper
+  `frontend/src/lib/portalUrl.ts` (`NEXT_PUBLIC_PORTAL_URL`, default
+  `http://localhost:3002`).
+- Current subscriptions are per-account (single-plan rule). Invited org
+  members / pre-gating accounts may have NO subscription of their own.
+
+Open decisions (resolve at each segment start, add to the segment's plan):
+- D1 **Entitlement source for plan-less users**: users with no own
+  subscription (invited org members, legacy accounts) — treat as Free limits,
+  or inherit the org's paying plan? (Cross-cut with the restrictions
+  programme below.) Recommended: org's paying plan wins for org-scoped
+  usage; own Free otherwise.
+- D2 **Email editing**: read-only (recommended — login id) vs
+  change-with-reverification.
+- D3 **Avatar**: predefined set (8–12 keys, rendered from bundled assets —
+  always available, no upload needed) + optional upload. Upload storage:
+  DB `bytea` (`avatar_data` + content-type, cap ~2 MB) vs object store.
+  Recommended: predefined keys first; upload stored in DB, served by a
+  backend route; main + portal both render it.
+- D4 **Manage/change-plan UX**: profile card shows plan read-only with
+  "Manage subscription"/"Change plan" deep-links into Portal A (`/account`,
+  `/checkout?plan=…&cycle=…`); after returning the profile refetches. No new
+  billing logic in the main app. Confirm whether a full inline change (no
+  leave-app) is wanted later.
+- D5 Which subscription states to surface in the main-app badge (Active /
+  Trial / Past due / Suspended / Cancel scheduled) and whether a small plan
+  chip also goes in the top bar next to the user menu.
+
+Split (each a shippable micro-turn, proceed one by one with approval):
+- **PR-1 — Backend profile surface + avatar storage**: migration `018`
+  (`users.avatar_key text`, `avatar_data bytea`, `avatar_type text`,
+  `updated_at`-style touch on avatar change) + self-service routes in the
+  main backend: `GET /api/profile` (user + orgs + resolved current
+  subscription + plan limits snapshot for later usage bars),
+  `PATCH /api/profile` (name, username — username.js rules, 409 on dup),
+  `POST /api/profile/avatar` (set predefined key OR upload base64 ≤ cap;
+  clear upload), `POST /api/profile/password` (verify current → set new).
+  Session-only (`requireAuth`, owner = self). `tsc`/`node --check` + curl
+  matrix incl. avatar round-trip + password-change + username 409.
+- **PR-2 — Profile page in the main app**: new `/profile` route + client
+  view (main-app theme): Personal details form (name/username/email read-only
+  + password change), avatar section (predefined grid + upload + remove),
+  subscription card (plan, status chip, cycle, renews-on/valid-through,
+  cancel-note; "Change plan" and "Manage subscription" links → portal).
+  Top-bar user-menu gains "Profile" (and avatar render). Plan-less users see
+  "No active plan — see plans" upsell card. `tsc`, Playwright smoke
+  (details edit persists, avatar pick + upload shows, plan card reflects a
+  seeded Starter subscriber, menu link opens /profile).
+- **PR-3 — Cross-app manage flow + polish**: from profile, "Change plan"
+  deep-links to Portal A checkout of another plan and back-refresh keeps the
+  new plan visible; top-bar plan chip (opt-in, D5); usage-bar section wired
+  once the restrictions programme lands (L5); responsive/375px + a11y pass.
+
+Dependency/order: PR-1 → PR-2 → PR-3. PR-* is independent of the restrictions
+programme except the final usage bars (needs L5). Suggest doing PR-1/PR-2
+before L-series so users can SEE their plan while limits start being enforced.
+
+
+## Pending — Per-plan usage restrictions (Portal B) (planned 2026-09-06, NOT started)
+
+Requested by Ranjith: Portal B configures limits per subscription package —
+workspace count, project count, team count, storage, runs count, collection
+count, and more — enforced across the product, WITH an option to toggle
+restrictions off (admin switch). The seed catalog already carries a few
+`plans.limits` keys (`workspaces`, `projects`, `storage_mb`, `public_sharing`,
+`seats`; `null` = unlimited) but nothing reads them today.
+
+Canonical limit key set (recommended; nullable = unlimited, additive keys are
+fine later):
+`workspaces`, `projects`, `collections`, `teams`, `seats` (org members),
+`storage_mb`, `runs_per_month`, `public_sharing` (bool). Folders/automations/
+workflows/share-links etc. can be added as later keys reusing the same engine.
+
+Open decisions (resolve at each segment start):
+- R1 **Counting scope** — who owns the usage: recommend limits are enforced
+  against the plan-owning account's ORG pool (usage = rows inside the org the
+  plan owner leads, incl. objects created by org members), NOT a per-user
+  personal quota; invited members create into the shared pool. Personal
+  "My Workspace" of a plan-less account = its own Free pool.
+- R2 **Plan-less users** fall back to the Free plan's limits (per D1 above);
+  if their org is covered by a paying member's plan, org-scoped counts use
+  that plan.
+- R3 **Blocking UX**: creation gates return **403 `plan_limit`**
+  `{ code, limit, usage, message, upgrade: true }`; frontend toast + upsell
+  link to change plan. Non-blocking warnings (usage bars, "n of m") live on
+  the profile page (L5) and Portal A `/account`.
+- R4 **Downgrade/over-limit handling**: when a confirmed plan change or admin
+  downgrade leaves the org over the new limits → block NEW creates only (no
+  forced deletion); surface an "over limit — upgrade or remove" banner.
+- R5 **Runs window**: calendar month (simpler, recommend first) vs
+  subscription-month aligned to `current_period_end`; needs a usage-counter
+  table + which actions count (editor Send / scratchpad / collection runner /
+  workflow runs — decide exact set).
+- R6 **Storage meaning**: request/file bytes are NOT persisted today (only
+  metadata), so hard `storage_mb` enforcement is deferred (L4 notes) — treat
+  as reserved entitlement (shown, not enforced) until a real upload/asset
+  store exists; run/count quotas are the hard gates first.
+- R7 **Toggle semantics**: "Restrictions OFF" = global admin switch
+  (portal_settings) that short-circuits every gate AND per-plan override
+  (e.g., Enterprise custom never enforced). Default ON for realism in
+  previews/demo; seeds unaffected (seeded via SQL, not create-routes).
+- R8 Enterprise/Custom = unlimited regardless of toggle state.
+
+Split (each a shippable micro-turn, proceed one by one with approval):
+- **L1 — Limits model + Portal B config & master toggle**: define canonical
+  key set/units (nullable) in CONTRACT; migration `018`/`019` for
+  `portal_settings` (`restrictions_enforced bool default true`) if needed;
+  Portal B plans editor (B4a page) gains a structured "Limits" editor
+  (numeric fields + public_sharing) and a per-plan "Enforce" override;
+  Portal B dashboard header gets the global "Enforce plan restrictions" ON/OFF
+  switch (MANAGER+). New main-backend lib `entitlements.js`:
+  `resolveLimits(userId, orgId?)` → effective limits honoring plan /
+  override / global toggle. Unit + live tests: resolver matrix across
+  plans/toggle/override/no-plan.
+- **L2 — Creation gates (workspaces / projects / collections)**: enforce
+  at `POST /api/workspaces`, `POST /api/projects`, collection create (nested
+  under project) in `backend/src/api/routes/*` — count usage inside the
+  resolved pool vs limit, 403 `plan_limit` when at/over. Covers the seeded
+  Free/Starter/Pro/Team numbers. Integration tests per object type + curl
+  matrix.
+- **L3 — Teams, seats, public_sharing**: team-count gate at team create;
+  `seats` enforcement at org/team member add (invite/upsert);
+  `public_sharing:false` blocks visibility PUBLIC / share-link creation.
+  Tests per action.
+- **L4 — Runs budget (+ storage placeholder)**: migration for usage counters
+  (`plan_usage` per subscription/period bucket or calendar-month rows);
+  decrement/deny at the run endpoints (R5 set); expose
+  `GET /api/profile/usage` (and Portal A overview). `storage_mb` remains
+  reserved/displayed only (R6) unless an asset store appears.
+- **L5 — Usage surfacing & upsell UX**: usage bars on the main-app profile
+  (x of y workspaces/projects/collections/teams/seats; runs left this month;
+  storage shown if defined) + Portal A `/account`; "over limit" banner (R4);
+  upsell "Change plan" deep-link. Needs PR-2 page + L1 resolver.
+- **L6 — Toggle off, demo & docs**: verify global switch OFF disables all
+  gates live (and per-plan override), preview/demo scenario notes, CONTRACT +
+  docs/SESSION.md records, `db/tests` additions for resolver+gates, e2e
+  smoke. Natural end-of-programme.
+
+Dependency/order: L1 → L2 → L3 → L4 (L4 partially parallel to L2/L3), L5
+needs PR-2 + L1, L6 last. R1/D1 scope decisions gate L1. Suggested global
+order once Ranjith picks: PR-1 → PR-2 → L1 → L2 → L3 → L4 → L5 → L6, then
+PR-3.
 
 
 ## Roadmap
