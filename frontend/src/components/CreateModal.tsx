@@ -42,12 +42,14 @@ export function CreateModal({
   defaultApiType = 'REST',
   collectionId,
   folderId,
+  initialMode,
   onClose,
 }: {
   kind: CreateKind;
   defaultApiType?: ApiType;
   collectionId?: string;
   folderId?: string;
+  initialMode?: CreateMode;
   onClose: () => void;
 }) {
   const ws = useWorkspace();
@@ -62,7 +64,7 @@ export function CreateModal({
   const [busy, setBusy] = useState(false);
 
   // Request-only: which source mode and which method-related tab is active.
-  const [mode, setMode] = useState<CreateMode>('form');
+  const [mode, setMode] = useState<CreateMode>(initialMode ?? 'form');
   const [formTab, setFormTab] = useState<FormTab>('params');
   const [curlText, setCurlText] = useState('');
   const [params, setParams] = useState<KeyValueEntry[]>([]);
