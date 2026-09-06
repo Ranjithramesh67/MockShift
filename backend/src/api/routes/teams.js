@@ -18,7 +18,7 @@ async function teamRole(userId, teamId) {
 
 async function teamWithMembers(teamId) {
   const { rows } = await query(
-    `SELECT tm.user_id AS id, u.email, u.name, tm.role
+    `SELECT tm.user_id AS id, u.email, u.username, u.name, tm.role
        FROM team_members tm JOIN users u ON u.id = tm.user_id
       WHERE tm.team_id = $1 ORDER BY u.name`,
     [teamId]
@@ -163,23 +163,70 @@ router.get('/:teamId/members', async (req, res, next) => {  try {
   }
 });
 
+// People who can be added to the team: members of the team's organization
+// who are not already on it. Platform admins also see every other active user
+// (seeded accounts live in per-user orgs, so a directory is needed to pick).
+router.get('/:teamId/org-users', async (req, res, next) => {
+  try {
+    const { teamId } = req.params;
+    const myRole = await teamRole(req.user.id, teamId);
+    if (!roleAtLeast(myRole, 'ADMIN')) return res.status(403).json({ error: 'Team admin required' });
+    const team = await query(`SELECT organization_id FROM teams WHERE id = $1`, [teamId]);
+    if (team.rows.length === 0) return res.status(404).json({ error: 'Team not found' });
+    const orgId = team.rows[0].organization_id;
+    const sql =
+      req.user.role === 'ADMIN'
+        ? `SELECT u.id, u.name, u.username
+             FROM users u
+            WHERE u.is_active = true
+              AND NOT EXISTS (SELECT 1 FROM team_members tm
+                               WHERE tm.team_id = $1 AND tm.user_id = u.id)
+            ORDER BY u.name`
+        : `SELECT u.id, u.name, u.username
+             FROM users u
+             JOIN organization_members om ON om.user_id = u.id
+            WHERE om.org_id = $2
+              AND u.is_active = true
+              AND NOT EXISTS (SELECT 1 FROM team_members tm
+                               WHERE tm.team_id = $1 AND tm.user_id = u.id)
+            ORDER BY u.name`;
+    const { rows } = await query(sql, req.user.role === 'ADMIN' ? [teamId] : [teamId, orgId]);
+    res.json({ users: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/:teamId/members', async (req, res, next) => {
   try {
     const { teamId } = req.params;
-    const { email, role } = req.body || {};
+    const { email, userId, username, role } = req.body || {};
     const myRole = await teamRole(req.user.id, teamId);
     if (!roleAtLeast(myRole, 'ADMIN')) return res.status(403).json({ error: 'Team admin required' });
-    if (!email) return res.status(400).json({ error: 'email is required' });
+    if (!userId && !email && !username) return res.status(400).json({ error: 'userId, username or email is required' });
 
     const memberRole = role === 'VIEWER' || role === 'EDITOR' ? role : 'EDITOR';
-    const target = await query('SELECT id FROM users WHERE email = $1', [email]);
-    if (target.rows.length === 0) {
-      return res.status(404).json({ error: `No user with email ${email}` });
+    let targetId = userId || null;
+    if (targetId) {
+      const target = await query('SELECT id FROM users WHERE id = $1', [targetId]);
+      if (target.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    } else if (username) {
+      const target = await query('SELECT id FROM users WHERE lower(username) = lower($1)', [String(username).trim()]);
+      if (target.rows.length === 0) {
+        return res.status(404).json({ error: `No user with username ${username}` });
+      }
+      targetId = target.rows[0].id;
+    } else {
+      const target = await query('SELECT id FROM users WHERE email = $1', [email]);
+      if (target.rows.length === 0) {
+        return res.status(404).json({ error: `No user with email ${email}` });
+      }
+      targetId = target.rows[0].id;
     }
     await query(
       `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
        ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-      [teamId, target.rows[0].id, memberRole]
+      [teamId, targetId, memberRole]
     );
     res.status(201).json({ members: await teamWithMembers(teamId) });
   } catch (err) {

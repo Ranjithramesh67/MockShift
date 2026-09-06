@@ -5,6 +5,7 @@ const { query } = require('../db');
 const { requireAuth, requireAdmin } = require('../access');
 const { hashPassword } = require('../authLib');
 const { logAudit } = require('../audit');
+const { allocateUsername } = require('../username');
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -222,7 +223,7 @@ router.delete('/workspaces/:workspaceId/members/:userId', async (req, res, next)
 
 router.post('/users', async (req, res, next) => {
   try {
-    const { email, name, role, password } = req.body || {};
+    const { email, name, role, password, username } = req.body || {};
     if (!email || !name || !password) {
       return res.status(400).json({ error: 'email, name and password are required' });
     }
@@ -240,11 +241,17 @@ router.post('/users', async (req, res, next) => {
       return res.status(409).json({ error: 'A user with that email already exists' });
     }
 
+    const usernameValue = await allocateUsername(query, {
+      username,
+      email: normalizedEmail,
+      name: String(name).trim(),
+    });
+
     const { rows } = await query(
-      `INSERT INTO users (email, password_hash, name, role)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, email, name, role, is_active, created_at`,
-      [normalizedEmail, await hashPassword(String(password)), String(name).trim() || normalizedEmail, roleValue]
+      `INSERT INTO users (email, password_hash, name, role, username)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, username, name, role, is_active, created_at`,
+      [normalizedEmail, await hashPassword(String(password)), String(name).trim() || normalizedEmail, roleValue, usernameValue]
     );
     await logAudit({
       actorId: req.user.id,
@@ -263,7 +270,7 @@ router.post('/users', async (req, res, next) => {
 router.get('/users', async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT u.id, u.email, u.name, u.role, u.is_active, u.created_at,
+      `SELECT u.id, u.email, u.username, u.name, u.role, u.is_active, u.created_at,
               COALESCE((
                 SELECT json_agg(x ORDER BY x.name)
                   FROM (

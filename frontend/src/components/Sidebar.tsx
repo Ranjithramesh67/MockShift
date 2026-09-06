@@ -93,8 +93,11 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
     </div>
   );
 
-  const grouped = !!ws.groups && (ws.groups.groups.length > 0 || ws.groups.other.length > 0);
   const availableIds = new Set(ws.workspaces.map((w) => w.id));
+  const nonEmptyGroups = (ws.groups?.groups ?? []).filter((g) =>
+    g.workspaces.some((w) => availableIds.has(w.id))
+  );
+  const grouped = nonEmptyGroups.length > 0;
 
   let body: React.ReactNode;
   if (!grouped) {
@@ -117,20 +120,22 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
       </>
     );
   } else {
-    const groups = ws.groups!.groups;
+    const groups = nonEmptyGroups;
     const accounted = new Set<string>();
     const sections: React.ReactNode[] = [];
     let chipCount = 0;
     for (const g of groups) {
       const chips = g.workspaces.filter((w) => availableIds.has(w.id));
+      if (chips.length === 0) continue;
       chips.forEach((w) => accounted.add(w.id));
       chipCount += chips.length;
       const team = ws.teams.find((t) => t.id === g.id);
       sections.push(
         <React.Fragment key={g.id}>
           <div className="workspace-group-head" data-testid={`team-group-${g.name}`}>
+            <TeamIcon size={11} />
+            <span className="workspace-group-label">Team</span>
             <span className="workspace-group-name">{g.name}</span>
-            <span className="workspace-group-sub">{g.organization_name}</span>
             {team && (
               <span className="workspace-group-count" title={`${team.members.length} members`}>
                 {team.members.length}
@@ -149,7 +154,9 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
       sections.push(
         <React.Fragment key="other">
           <div className="workspace-group-head other">
-            <span className="workspace-group-name">Other workspaces</span>
+            <WorkspaceIcon size={11} />
+            <span className="workspace-group-label">Workspaces</span>
+            <span className="workspace-group-name">Ungrouped</span>
           </div>
           <div className="workspace-group-chips">
             {otherChips.map((w) => renderChip(w))}
@@ -923,7 +930,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
   );
 }
 
-function TeamsPanel({ onManage }: { onManage: () => void }) {
+function TeamsPanel({ onManage, onOpenTeam }: { onManage: () => void; onOpenTeam: (teamId: string) => void }) {
   const ws = useWorkspace();
   return (
     <div className="sidebar-section">
@@ -944,28 +951,35 @@ function TeamsPanel({ onManage }: { onManage: () => void }) {
       {ws.error && <p className="auth-error">{ws.error}</p>}
       <ul className="sidebar-list team-list">
         {ws.teams.map((t) => (
-          <li key={t.id} className="team-card">
-            <div className="team-card-row">
-              <span className="team-avatar">
-                <TeamIcon size={14} />
-              </span>
-              <span className="team-card-name">{t.name}</span>
-              <span className="vis-badge team-count" title={`${t.members.length} members`}>
-                {t.members.length}
-              </span>
-            </div>
-            <div className="team-card-members">
-              {t.members.slice(0, 5).map((m) => (
-                <span key={m.id} className="member-chip" title={m.name || m.email}>
-                  {(m.name || m.email || '?').charAt(0).toUpperCase()}
+          <li key={t.id}>
+            <button
+              type="button"
+              className="team-card"
+              data-testid={`open-team-${t.name}`}
+              onClick={() => onOpenTeam(t.id)}
+            >
+              <div className="team-card-row">
+                <span className="team-avatar">
+                  <TeamIcon size={14} />
                 </span>
-              ))}
-              {t.members.length > 5 && (
-                <span className="member-chip more" title={`${t.members.length - 5} more members`}>
-                  +{t.members.length - 5}
+                <span className="team-card-name">{t.name}</span>
+                <span className="vis-badge team-count" title={`${t.members.length} members`}>
+                  {t.members.length}
                 </span>
-              )}
-            </div>
+              </div>
+              <div className="team-card-members">
+                {t.members.slice(0, 5).map((m) => (
+                  <span key={m.id} className="member-chip" title={m.username ? `${m.name} (@${m.username})` : m.name}>
+                    {(m.name || m.username || '?').charAt(0).toUpperCase()}
+                  </span>
+                ))}
+                {t.members.length > 5 && (
+                  <span className="member-chip more" title={`${t.members.length - 5} more members`}>
+                    +{t.members.length - 5}
+                  </span>
+                )}
+              </div>
+            </button>
           </li>
         ))}
         {!ws.loading && ws.teams.length === 0 && (
@@ -1006,6 +1020,7 @@ export function Sidebar({
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
+  const [managingTeamId, setManagingTeamId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authCollectionId, setAuthCollectionId] = useState<string | null>(null);
   const [environmentsOpen, setEnvironmentsOpen] = useState(false);
@@ -1269,26 +1284,41 @@ export function Sidebar({
                 collapsed={collectionsCollapsed}
                 onToggleCollapsed={() => setCollectionsCollapsed((v) => !v)}
               />
+            ) : ws.loading || (ws.activeWorkspaceId && !ws.tree && !ws.error) ? (
+              <p className="hint workspace-loading-hint">Loading collections…</p>
             ) : (
-              !ws.loading && (
-                <div className="empty-state" data-testid="empty-state">
-                  <CollectionIcon size={20} />
-                  <p>Select a workspace to browse its collections.</p>
-                  <button
-                    type="button"
-                    className="primary-button small"
-                    data-testid="empty-new-workspace"
-                    onClick={() => openCreate('workspace')}
-                  >
-                    <PlusIcon size={13} />
-                    New workspace
-                  </button>
-                </div>
-              )
+              <div className="empty-state" data-testid="empty-state">
+                <CollectionIcon size={20} />
+                {ws.workspaces.length === 0 ? (
+                  <>
+                    <p>No workspaces yet. Create one to add collections and requests.</p>
+                    <button
+                      type="button"
+                      className="primary-button small"
+                      data-testid="empty-new-workspace"
+                      onClick={() => openCreate('workspace')}
+                    >
+                      <PlusIcon size={13} />
+                      New workspace
+                    </button>
+                  </>
+                ) : (
+                  <p>Open a workspace above to see its collections.</p>
+                )}
+              </div>
             )}
           </>
         ) : (
-          <TeamsPanel onManage={() => setTeamsOpen(true)} />
+          <TeamsPanel
+            onManage={() => {
+              setManagingTeamId(null);
+              setTeamsOpen(true);
+            }}
+            onOpenTeam={(id) => {
+              setManagingTeamId(id);
+              setTeamsOpen(true);
+            }}
+          />
         )}
       </div>
 
@@ -1349,7 +1379,14 @@ export function Sidebar({
       </div>
     )}
     <SharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} />
-    <TeamsModal open={teamsOpen} onClose={() => setTeamsOpen(false)} />
+    <TeamsModal
+      open={teamsOpen}
+      teamId={managingTeamId}
+      onClose={() => {
+        setTeamsOpen(false);
+        setManagingTeamId(null);
+      }}
+    />
     <EnvironmentsModal open={environmentsOpen} onClose={() => setEnvironmentsOpen(false)} />
     <AuthProviderModal open={authOpen} onClose={() => setAuthOpen(false)} />
     {mockProject && (

@@ -12,7 +12,7 @@ function roleAtLeast(role, min) {
 
 async function loadUserById(userId) {
   const { rows } = await query(
-    `SELECT id, email, name, role, is_active, created_at
+    `SELECT id, email, username, name, role, is_active, created_at
        FROM users WHERE id = $1`,
     [userId]
   );

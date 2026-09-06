@@ -9,11 +9,11 @@ TRUNCATE test_results, run_history, workflow_chains, variables, environments,
   RESTART IDENTITY CASCADE;
 
 -- Users ---------------------------------------------------------------------
-INSERT INTO users (id, email, password_hash, name) VALUES
-  ('00000000-0000-0000-0000-000000000002', 'admin@example.com',  'x', 'Org Admin'),
-  ('00000000-0000-0000-0000-000000000003', 'editor@example.com', 'x', 'Workspace Editor'),
-  ('00000000-0000-0000-0000-000000000004', 'outsider@example.com','x', 'Viewer (no workspace)'),
-  ('00000000-0000-0000-0000-000000000005', 'insider@example.com', 'x', 'Viewer (workspace member)');
+INSERT INTO users (id, email, password_hash, name, username) VALUES
+  ('00000000-0000-0000-0000-000000000002', 'admin@example.com',  'x', 'Org Admin', 'admin'),
+  ('00000000-0000-0000-0000-000000000003', 'editor@example.com', 'x', 'Workspace Editor', 'editor'),
+  ('00000000-0000-0000-0000-000000000004', 'outsider@example.com','x', 'Viewer (no workspace)', 'outsider'),
+  ('00000000-0000-0000-0000-000000000005', 'insider@example.com', 'x', 'Viewer (workspace member)', 'insider');
 
 -- Organization ---------------------------------------------------------------
 INSERT INTO organizations (id, name, owner_id) VALUES

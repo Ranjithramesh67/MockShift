@@ -510,3 +510,70 @@ test('managers cannot see other projects they do not manage', async () => {
   const review = await manager.api('POST', `/api/manage/access-requests/${accessReq.json.accessRequest.id}/review`, { approve: true });
   assert.equal(review.status, 403);
 });
+
+test('team org-users picker lists candidates and add-by-userId works', async () => {
+  const admin = makeClient();
+  const login = await admin.api('POST', '/api/auth/login', { email: 'admin@test.io', password: 'adminpass123' });
+  if (login.status !== 200) {
+    const signupAdmin = await admin.api('POST', '/api/auth/signup', {
+      email: 'admin@test.io',
+      password: 'adminpass123',
+      name: 'Admin',
+    });
+    assert.equal(signupAdmin.status, 201);
+  }
+  const teamRes = await admin.api('POST', '/api/teams', { name: 'Picker Team' });
+  assert.equal(teamRes.status, 201);
+  const teamId = teamRes.json.team.id;
+
+  const stamp = Date.now();
+  const target = makeClient();
+  const targetEmail = `picker-${stamp}@test.io`;
+  const signup = await target.api('POST', '/api/auth/signup', {
+    email: targetEmail,
+    password: 'pickerpass123',
+    name: 'Picker Target',
+    username: `picker${stamp}`,
+  });
+  assert.equal(signup.status, 201);
+
+  const listed = await admin.api('GET', `/api/teams/${teamId}/org-users`);
+  assert.equal(listed.status, 200);
+  const hit = listed.json.users.find((u) => u.username === `picker${stamp}`);
+  assert.ok(hit, 'new user should appear in the picker');
+  assert.equal(hit.email, undefined);
+  assert.ok(!listed.json.users.some((u) => u.id === teamRes.json.team.members[0].id));
+
+  const missing = await admin.api('POST', `/api/teams/${teamId}/members`, { role: 'EDITOR' });
+  assert.equal(missing.status, 400);
+
+  const added = await admin.api('POST', `/api/teams/${teamId}/members`, { userId: hit.id, role: 'EDITOR' });
+  assert.equal(added.status, 201);
+  assert.ok(added.json.members.some((m) => m.username === `picker${stamp}` && m.role === 'EDITOR'));
+
+  const after = await admin.api('GET', `/api/teams/${teamId}/org-users`);
+  assert.ok(!after.json.users.some((u) => u.username === `picker${stamp}`));
+
+  const emailUser = makeClient();
+  const emailTwo = `picker-mail-${stamp}@test.io`;
+  const signupTwo = await emailUser.api('POST', '/api/auth/signup', {
+    email: emailTwo,
+    password: 'pickerpass123',
+    name: 'Picker Mail',
+    username: `pickermail${stamp}`,
+  });
+  assert.equal(signupTwo.status, 201);
+  const byUsername = await admin.api('POST', `/api/teams/${teamId}/members`, { username: `pickermail${stamp}`, role: 'VIEWER' });
+  assert.equal(byUsername.status, 201);
+  assert.ok(byUsername.json.members.some((m) => m.username === `pickermail${stamp}` && m.role === 'VIEWER'));
+
+  const stranger = makeClient();
+  const strangerSignup = await stranger.api('POST', '/api/auth/signup', {
+    email: `picker-out-${stamp}@test.io`,
+    password: 'pickerpass123',
+    name: 'Picker Out',
+  });
+  assert.equal(strangerSignup.status, 201);
+  const forbidden = await stranger.api('GET', `/api/teams/${teamId}/org-users`);
+  assert.equal(forbidden.status, 403);
+});

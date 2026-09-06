@@ -23,9 +23,9 @@ const { pool } = require('../src/api/db');
 const { hashPassword } = require('../src/api/authLib');
 
 const SEED_ACCOUNTS = [
-  { email: 'boss1785867669@test.io', password: 'bosspass123', name: 'Boss', role: 'ADMIN' },
-  { email: 'pm1785867669@test.io', password: 'pmpass1234', name: 'PM', role: 'MANAGER' },
-  { email: 'dev1785867669@test.io', password: 'devpass123', name: 'Dev', role: 'EDITOR' },
+  { email: 'boss1785867669@test.io', password: 'bosspass123', name: 'Boss', username: 'boss', role: 'ADMIN' },
+  { email: 'pm1785867669@test.io', password: 'pmpass1234', name: 'PM', username: 'pmuser', role: 'MANAGER' },
+  { email: 'dev1785867669@test.io', password: 'devpass123', name: 'Dev', username: 'dev', role: 'EDITOR' },
 ];
 
 const MOCK_BASE = process.env.MOCK_UPSTREAM_BASE || 'http://127.0.0.1:3999';
@@ -74,15 +74,15 @@ async function ensureUser(client, account) {
   const existing = await client.query('SELECT id FROM users WHERE email = $1', [account.email]);
   if (existing.rows.length > 0) {
     await client.query(
-      `UPDATE users SET name = $1, role = $2, password_hash = $3, is_active = true WHERE id = $4`,
-      [account.name, account.role, await hashPassword(account.password), existing.rows[0].id]
+      `UPDATE users SET name = $1, role = $2, password_hash = $3, username = $4, is_active = true WHERE id = $5`,
+      [account.name, account.role, await hashPassword(account.password), account.username, existing.rows[0].id]
     );
     return existing.rows[0].id;
   }
   const { rows } = await client.query(
-    `INSERT INTO users (email, password_hash, name, role)
-     VALUES ($1, $2, $3, $4) RETURNING id`,
-    [account.email, await hashPassword(account.password), account.name, account.role]
+    `INSERT INTO users (email, password_hash, name, role, username)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [account.email, await hashPassword(account.password), account.name, account.role, account.username]
   );
   return rows[0].id;
 }

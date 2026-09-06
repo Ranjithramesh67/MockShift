@@ -3,7 +3,8 @@ import { test, expect } from '@playwright/test';
 /**
  * Team-scoped workspace navigation + project command center:
  *  - creating a team and sharing a workspace to it groups that workspace under
- *    the team in the sidebar (team-group-<name> header, chip preserved)
+ *    the team in the sidebar (team-group-<name> header, chip preserved). Empty
+ *    teams stay off the workspace list.
  *  - clicking a project name in the tree opens the Project Overview
  *  - the overview shows the workspace info panel, member stat tiles, and the
  *    Members & Access tab with managers/members and admin grant controls.
