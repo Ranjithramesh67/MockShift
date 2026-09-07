@@ -522,9 +522,12 @@ failures were a Playwright login-page hydration race, not an app defect
 (resilient submit-retry loginFlow fixed it). Backend payload spot-checks match
 the `plan` shape described above (`reason: fallback_free`, `enforced: true`).
 
-**Follow-ups:** the agent throwaway accounts are held for the coordinator
-cleanup pass pending explicit user approval (per the no-delete rule). Docs:
-this record + session.md `## Current` refresh.
+**Follow-ups:** the agent throwaway accounts were deleted after explicit user
+approval (transactional, dependency-ordered psql cleanup — 6 users, 4 orgs incl.
+the three "PR2 Starter's Org"s + LiveG Org, 7 workspaces, 7 projects, 3
+subscriptions; verified 0 leftovers and the single `portal_settings` row intact
+with `restrictions_enforced = true`). Docs: this record + session.md `## Current`
+refresh.
 
 Two broken cross-app links surfaced once the apps were reached through the
 `.monkeycode-ai.live` preview hosts:
