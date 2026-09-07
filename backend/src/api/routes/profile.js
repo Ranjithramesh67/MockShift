@@ -24,6 +24,7 @@ const { query } = require('../db');
 const { requireAuth } = require('../access');
 const { hashPassword, verifyPassword } = require('../authLib');
 const { usernameError } = require('../username');
+const { resolveLimits, countPoolUsage, currentRunUsage } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -98,6 +99,23 @@ async function loadProfile(userId) {
   const subscription = subRows[0] ? toSubscriptionShape(subRows[0]) : null;
   const plan_limits = subRows[0] ? subRows[0].plan_limits : null;
 
+  // L5 — additive usage snapshot (never removes existing fields). Resolution is
+  // org-pool scoped: same resolver as the /usage endpoint.
+  const en = await resolveLimits(userId);
+  const usage = en.poolOrgId
+    ? await countPoolUsage(en.poolOrgId)
+    : { workspaces: 0, projects: 0, collections: 0, teams: 0, seats: 0 };
+  const runs = en.poolOrgId ? await currentRunUsage(en.poolOrgId) : 0;
+  const plan = {
+    key: en.planKey,
+    name: en.planName,
+    enforced: en.enforced,
+    reason: en.reason,
+    poolOrgId: en.poolOrgId,
+    limits: en.limits,
+    usage: { ...usage, runs },
+  };
+
   return {
     user: {
       id: row.id,
@@ -112,6 +130,7 @@ async function loadProfile(userId) {
     organizations: orgs,
     subscription,
     plan_limits,
+    plan,
   };
 }
 
@@ -121,6 +140,29 @@ async function respondProfile(userId, res) {
   res.json({ ok: true, ...profile });
 }
 
+// GET /api/profile/usage — resolved entitlement + live usage against the user's
+// org pool (L4/L5 usage bars). Pure read; never changes anything.
+router.get('/usage', async (req, res, next) => {
+  try {
+    const en = await resolveLimits(req.user.id);
+    const usage = en.poolOrgId
+      ? await countPoolUsage(en.poolOrgId)
+      : { workspaces: 0, projects: 0, collections: 0, teams: 0, seats: 0 };
+    const runs = en.poolOrgId ? await currentRunUsage(en.poolOrgId) : 0;
+    res.json({
+      ok: true,
+      plan: { key: en.planKey, name: en.planName },
+      enforced: en.enforced,
+      reason: en.reason,
+      poolOrgId: en.poolOrgId,
+      limits: en.limits,
+      usage: { ...usage, runs },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     await respondProfile(req.user.id, res);
@@ -128,7 +170,6 @@ router.get('/', async (req, res, next) => {
     next(err);
   }
 });
-
 router.patch('/', async (req, res, next) => {
   try {
     const body = req.body || {};

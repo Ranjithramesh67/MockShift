@@ -6,6 +6,7 @@ const { requireAuth, roleAtLeast, getProjectAccess, canReadWorkspace } = require
 const { runRequest, runInMemoryRequest, runTokenRequest } = require('../runner');
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
 const { fireWorkflowEvent } = require('../workflowService');
+const { checkCountGate, checkSeatGate, checkPublicSharingGate, chargeRuns, orgOfProject, orgOfCollection } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -241,6 +242,10 @@ router.post('/collections', async (req, res, next) => {
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
+    // L2 gate — collections are counted against the org pool plan.
+    const orgId = await orgOfProject(projectId);
+    const gate = await checkCountGate({ userId: req.user.id, orgId, key: 'collections' });
+    if (gate) return res.status(403).json(gate);
     const { rows } = await query(
       `INSERT INTO collections (project_id, name) VALUES ($1, $2) RETURNING id, name, project_id`,
       [projectId, String(name).trim()]
@@ -726,8 +731,13 @@ router.post('/requests/:requestId/run', async (req, res, next) => {  try {
       [requestId]
     );
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
-    const result = await runRequest(requestId, req.user.id);
     const projectId = await projectOfRequest(requestId);
+    const runCharge = await chargeRuns({
+      userId: req.user.id,
+      orgId: projectId ? await orgOfProject(projectId) : null,
+    });
+    if (!runCharge.ok) return res.status(403).json(runCharge.body);
+    const result = await runRequest(requestId, req.user.id);
     await fireRequestRunEvents(requestId, projectId, result);
     res.json(result);
   } catch (err) {
@@ -739,12 +749,24 @@ router.post('/requests/:requestId/run', async (req, res, next) => {  try {
 router.post('/runs', async (req, res, next) => {
   try {
     const { collectionId, id } = req.body || {};
+    let orgId = null;
     if (collectionId) {
       const projectId = await projectOfCollection(collectionId);
       if (!projectId) return res.status(404).json({ error: 'Collection not found' });
       if (!(await canReadProjectContent(req.user.id, projectId))) {
         return res.status(403).json({ error: 'No access to this collection' });
       }
+      orgId = await orgOfProject(projectId);
+    }
+    // Ephemeral runs that persist run_history are metered like stored-request
+    // runs (multipart file sends). Pure scratchpad sends (no history) are not.
+    if (id && req.body.persistHistory) {
+      const idProjectId = await projectOfRequest(id);
+      const runCharge = await chargeRuns({
+        userId: req.user.id,
+        orgId: idProjectId ? await orgOfProject(idProjectId) : orgId,
+      });
+      if (!runCharge.ok) return res.status(403).json(runCharge.body);
     }
     const result = await runInMemoryRequest(req.body || {}, req.user.id);
     // When the ephemeral run targets an existing request (multipart file sends
@@ -774,6 +796,16 @@ router.post('/collections/:collectionId/run', async (req, res, next) => {
       `SELECT id, name FROM api_requests WHERE collection_id = $1 ORDER BY name`,
       [collectionId]
     );
+    // L4 — a collection run executes every request in it; charge the whole
+    // batch up-front so an over-budget org is blocked before any HTTP call.
+    if (rows.length > 0) {
+      const runCharge = await chargeRuns({
+        userId: req.user.id,
+        orgId: await orgOfProject(projectId),
+        n: rows.length,
+      });
+      if (!runCharge.ok) return res.status(403).json(runCharge.body);
+    }
     const results = [];
     for (const r of rows) {
       try {

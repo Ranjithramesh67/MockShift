@@ -5,6 +5,7 @@ import './mobile.chrome.css';
 import './mobile.editor.css';
 import './mobile.views.css';
 import './mobile.modals.css';
+import './profile.css';
 import { AuthProvider } from '@/lib/auth';
 import { AppProvider } from '@/store/AppStore';
 import { WorkspaceProvider } from '@/store/WorkspaceStore';

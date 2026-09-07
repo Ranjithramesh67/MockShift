@@ -25,6 +25,35 @@ export function previewSiblingUrl(currentHost: string, targetPort: number): stri
   return `https://${targetPort}-${match[2]}`;
 }
 
+// Runtime-safe (browser) portal *origin* (no path). Used to build the cross-app
+// links on the profile page ("Manage subscription" -> /account, "Change plan"
+// -> /checkout?plan=&cycle=). Resolution order mirrors the module comment.
+export function portalOrigin(): string {
+  if (process.env.NEXT_PUBLIC_PORTAL_URL) {
+    try {
+      const u = new URL(process.env.NEXT_PUBLIC_PORTAL_URL);
+      u.hash = '';
+      u.search = '';
+      const base = u.origin + u.pathname;
+      return base.replace(/\/+$/, '') || u.origin;
+    } catch {
+      return process.env.NEXT_PUBLIC_PORTAL_URL;
+    }
+  }
+  if (typeof window !== 'undefined') {
+    const origin = previewSiblingUrl(window.location.host, PORTAL_DEV_PORT);
+    if (origin) return origin;
+  }
+  return `http://localhost:${PORTAL_DEV_PORT}`;
+}
+
+// Runtime-safe (browser) absolute URL on the Portal A origin, e.g.
+// portalUrlFor('/account') or portalUrlFor('/checkout?plan=starter&cycle=MONTHLY').
+export function portalUrlFor(path: string): string {
+  const origin = portalOrigin();
+  return origin + (path.startsWith('/') ? path : `/${path}`);
+}
+
 // Runtime-safe (browser): same as PORTAL_PLANS_URL unless we are on a
 // *.monkeycode-ai.live preview host, in which case the portal URL mirrors the
 // current session instead of pointing at localhost.

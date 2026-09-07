@@ -5,6 +5,7 @@ const { query } = require('../db');
 const { requireAuth, getWorkspaceRole, roleAtLeast } = require('../access');
 const { getRetentionDays, MIN_RETENTION_DAYS } = require('../retention');
 const { logAudit } = require('../audit');
+const { checkCountGate, checkPublicSharingGate } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -69,6 +70,19 @@ router.post('/', async (req, res, next) => {
       return res.status(403).json({ error: 'Organization admin access required' });
     }
 
+    // L2/L3 creation gates — the org pool's plan limits (403 plan_limit when
+    // at/over). PUBLIC workspaces also require the public_sharing entitlement.
+    // Workspace creation also auto-creates a "Default Project", so the project
+    // entitlement is checked here too.
+    const gate = await checkCountGate({ userId: req.user.id, orgId, key: 'workspaces' });
+    if (gate) return res.status(403).json(gate);
+    const projectGate = await checkCountGate({ userId: req.user.id, orgId, key: 'projects' });
+    if (projectGate) return res.status(403).json(projectGate);
+    if (vis === 'PUBLIC') {
+      const sharingGate = await checkPublicSharingGate({ userId: req.user.id, orgId });
+      if (sharingGate) return res.status(403).json(sharingGate);
+    }
+
     const client = await require('../db').pool.connect();
     try {
       await client.query('BEGIN');
@@ -112,8 +126,19 @@ router.patch('/:workspaceId', async (req, res, next) => {
       params.push(String(name).trim());
     }
     if (visibility) {
+      const newVis = visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE';
+      // L3 public_sharing gate — switching a workspace to PUBLIC requires the
+      // entitlement on the org pool plan.
+      if (newVis === 'PUBLIC') {
+        const { rows } = await query(`SELECT organization_id FROM workspaces WHERE id = $1`, [workspaceId]);
+        const orgId = rows[0]?.organization_id;
+        if (orgId) {
+          const sharingGate = await checkPublicSharingGate({ userId: req.user.id, orgId });
+          if (sharingGate) return res.status(403).json(sharingGate);
+        }
+      }
       sets.push(`visibility = $${params.length + 1}`);
-      params.push(visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE');
+      params.push(newVis);
     }
     if (sets.length === 0) return res.status(400).json({ error: 'Nothing to update' });
     await query(`UPDATE workspaces SET ${sets.join(', ')} WHERE id = $1`, params);

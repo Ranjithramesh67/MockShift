@@ -16,6 +16,7 @@ import {
   signOut,
   type AccountOverview,
   type CatalogPlan,
+  type PlanUsage,
   type Subscription,
 } from '@/lib/checkoutApi';
 
@@ -30,6 +31,22 @@ const STATUS_LABEL: Record<string, string> = {
 
 function cycleLabel(cycle: string): string {
   return cycle === 'YEARLY' ? 'Yearly' : 'Monthly';
+}
+
+// L5/L6 — "Plan usage" rows: live org-pool counters against the resolved
+// plan's caps. `limit === null` means the plan does not cap the resource.
+type UsageRow = { label: string; used: number; limit: number | null };
+function usageRows(plan: { limits: PlanUsage['limits']; usage: PlanUsage['usage'] }): UsageRow[] {
+  const L = plan.limits;
+  const U = plan.usage;
+  return [
+    { label: 'Workspaces', used: U.workspaces, limit: L.workspaces },
+    { label: 'Projects', used: U.projects, limit: L.projects },
+    { label: 'Collections', used: U.collections, limit: L.collections },
+    { label: 'Teams', used: U.teams, limit: L.teams },
+    { label: 'Seats', used: U.seats, limit: L.seats },
+    { label: 'API runs this month', used: U.runs, limit: L.runs_per_month },
+  ];
 }
 
 export default function AccountView() {
@@ -185,6 +202,9 @@ export default function AccountView() {
       ? current.billing_cycle
       : 'MONTHLY';
 
+  const planUsage = data?.plan ?? null;
+  const usageRowList = planUsage ? usageRows(planUsage) : null;
+
   return (
     <div className="ac" data-testid="account-view">
       {message ? (
@@ -327,6 +347,72 @@ export default function AccountView() {
               </div>
             ) : null}
           </section>
+
+          {planUsage && usageRowList ? (
+            <section className="ac-card" data-testid="account-plan-usage">
+              <div className="ac-sec-head">
+                <h2>Plan usage</h2>
+                <span
+                  className="ac-muted"
+                  style={{ fontSize: 12 }}
+                  data-testid="account-plan-enforced"
+                >
+                  {planUsage.enforced ? `Restrictions enforced · ${planUsage.name}` : 'Restrictions paused'}
+                </span>
+              </div>
+              {!planUsage.enforced ? (
+                <p className="ac-muted ac-none">
+                  Usage limits are not being enforced right now, so the bars below are informational.
+                </p>
+              ) : null}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {usageRowList.map((r) => {
+                  const limit = r.limit;
+                  const capped = limit !== null;
+                  const pct = capped && limit > 0 ? Math.min(100, Math.round((r.used / limit) * 100)) : 0;
+                  const over = capped && r.used > limit;
+                  return (
+                    <div key={r.label}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          marginBottom: 6,
+                          fontSize: 13,
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>{r.label}</span>
+                        <span className="ac-muted" style={{ fontSize: 13 }}>
+                          {r.used}
+                          {capped ? ` / ${r.limit}` : ` used`}
+                          {over ? ' — at the plan cap' : ''}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          height: 6,
+                          borderRadius: 999,
+                          background: 'rgba(148,163,184,0.3)',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: '100%',
+                            width: `${capped ? pct : 0}%`,
+                            background: over ? '#e5484d' : '#4f7cff',
+                            borderRadius: 999,
+                            transition: 'width 200ms ease',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
 
           <section className="ac-card" data-testid="account-invoices">
             <div className="ac-sec-head">

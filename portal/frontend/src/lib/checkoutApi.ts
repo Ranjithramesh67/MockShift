@@ -53,6 +53,34 @@ export type Subscription = {
 
 export type Account = { id: string; name: string; email: string; created: boolean };
 
+// L5/L6 — resolved per-plan entitlement + live org-pool usage counters surfaced
+// by /api/public/account/overview (additive; old clients ignore it).
+export type PlanUsage = {
+  key: string;
+  name: string;
+  enforced: boolean;
+  reason: string | null;
+  poolOrgId: string | null;
+  limits: {
+    workspaces: number | null;
+    projects: number | null;
+    collections: number | null;
+    teams: number | null;
+    seats: number | null;
+    storage_mb: number | null;
+    runs_per_month: number | null;
+    public_sharing: boolean | null;
+  };
+  usage: {
+    workspaces: number;
+    projects: number;
+    collections: number;
+    teams: number;
+    seats: number;
+    runs: number;
+  };
+};
+
 export type CheckoutAccountInput = { name: string; email: string; password: string };
 
 type CheckoutPaid = {
@@ -169,6 +197,7 @@ export type AccountOverview = {
   current: Subscription | null;
   invoices: AccountInvoice[];
   hasPaidOrders: boolean;
+  plan?: PlanUsage | null;
 };
 
 export type AccountActionResult = {

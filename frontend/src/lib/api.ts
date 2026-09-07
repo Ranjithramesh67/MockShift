@@ -864,3 +864,68 @@ export const shareApi = {
   get: (token: string) => apiFetch<{ share: SharedRequestView }>(`/api/shares/${token}`),
   revoke: (token: string) => apiFetch<{ ok: true }>(`/api/shares/${token}`, { method: 'DELETE' }),
 };
+
+// ---------------------------------------------------------------- Profile
+// PR-1 self-service profile surface (main backend :3001). The session-scoped
+// owner is always the authenticated user; subscriptions/plans are read-only.
+export interface ProfileAvatar {
+  preset_key: string | null;
+  uploaded: boolean;
+  mime: string | null;
+  updated_at: string | null;
+}
+
+export interface ProfileUser extends User {
+  avatar: ProfileAvatar;
+}
+
+export interface ProfileSubscription {
+  id: string;
+  status: string;
+  billing_cycle: string;
+  plan: { id: string; key: string; name: string; currency: string };
+  current_period_start: string | null;
+  current_period_end: string | null;
+  trial_ends_at: string | null;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
+  created_at: string;
+}
+
+// Restrictions programme (L1/L4/L5): additive entitlement snapshot resolved by
+// the main backend for the user's org pool. `usage` counts rows in the pool;
+// `limits` values are numbers or null (= unlimited); `enforced` reflects the
+// global switch + per-plan override. Optional so older backends stay valid.
+export interface PlanEntitlement {
+  key: string;
+  name: string;
+  enforced: boolean;
+  reason: string;
+  poolOrgId: string | null;
+  limits: Record<string, number | null>;
+  usage: Record<string, number>;
+}
+
+export interface Profile {
+  user: ProfileUser;
+  organizations: Organization[];
+  subscription: ProfileSubscription | null;
+  plan_limits: Record<string, unknown> | null;
+  // Restrictions programme: present once the backend resolver is live; drives
+  // the plan usage bars on /profile.
+  plan?: PlanEntitlement;
+}
+
+export const profileApi = {
+  get: () => apiFetch<Profile>('/api/profile'),
+  update: (input: { name?: string; username?: string }) =>
+    apiFetch<Profile>('/api/profile', { method: 'PATCH', body: input }),
+  setPreset: (preset: string) =>
+    apiFetch<{ ok: true; avatar: ProfileAvatar }>('/api/profile/avatar', { method: 'POST', body: { preset } }),
+  upload: (data: string, mime: string) =>
+    apiFetch<{ ok: true; avatar: ProfileAvatar }>('/api/profile/avatar', { method: 'POST', body: { data, mime } }),
+  removeAvatar: () =>
+    apiFetch<{ ok: true; avatar: ProfileAvatar }>('/api/profile/avatar', { method: 'POST', body: { remove: true } }),
+  changePassword: (input: { current_password: string; new_password: string }) =>
+    apiFetch<{ ok: true }>('/api/profile/password', { method: 'POST', body: input }),
+};
