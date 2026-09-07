@@ -51,11 +51,12 @@ coordinator seam reconciliation. Summary:
   the same canonical limits (merge on reseed).
 - Main backend restarted by Agent B with the new code and left healthy
   (`term_1788809673936_78` supersedes `term_1788732959373_75`); nothing
-  reseeded this turn. Throwaway rows left by the agents for coordinator
-  cleanup (pending user OK): `pr2smoke_1788808562609@test.io`,
-  `liveg_owner/_extra/_extra2_1788809651037@test.io` (+ their LiveG Org).
-  See also the two completion records in the `## Pending` sections and
-  docs/SESSION.md §5.46.
+  reseeded this turn. Agent-throwaway rows (`pr2smoke_*` ×3 incl. their
+  "PR2 Starter's Org" orgs, `liveg_owner/_extra/_extra2` + LiveG Org) were
+  deleted after user approval — transactional, dependency-ordered, 6 users /
+  4 orgs / 7 ws / 7 proj / 3 subs removed; verified 0 leftovers, portal_settings
+  row intact (`restrictions_enforced = true`). See also the two completion
+  records in the `## Pending` sections and docs/SESSION.md §5.46.
 
 PREVIOUS STEP (for narrative continuity) — PUSHED: Portal A `A5` subscriber
 self-service ("My subscription") is complete and on `master`. Self-service
@@ -211,12 +212,10 @@ EXCLUDED.limits`, so editor extras like `enforce`/`sso` survive reseeds). The
 throwaway `pr1_*@test.io` checkout accounts from the matrix were cleaned from the
 dev DB (user-confirmed psql DELETE, dependency order, transactional).
 
-Current demo/DB state: canonical baseline (12 demo users / 9 subs / 5 plans,
-free 0 / starter +5 / pro +10 / team +15 / enterprise 0; the three 017
-functions verified intact) PLUS this turn's agent throwaway accounts still
-present and awaiting cleanup approval (`pr2smoke_1788808562609@test.io`,
-`liveg_owner/_extra/_extra2_1788809651037@test.io` + a LiveG Org; none of them
-disturb the demo surface). Migrations 019/020 applied; `portal_settings`
+Current demo/DB state: canonical demo logins intact (dev/boss/pm + viewer);
+the agent throwaway accounts from this turn were removed (user-confirmed,
+transactional, dependency order) — verified 0 leftovers. Migrations 019/020
+applied; `portal_settings`
 `restrictions_enforced = true`; live `plans.limits` backfilled to canonical
 numbers (free/starter/pro have workspaces+projects+seats caps, public_sharing
 false for free/starter, nulls elsewhere; team/enterprise have null counts +
