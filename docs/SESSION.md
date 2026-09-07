@@ -480,8 +480,9 @@ surface only; the `/profile` page is PR-2.
   the migration-013 limits never appear in a fresh demo reseed. The restrictions
   programme L1 must decide whether to bake canonical limits into the demo seed.
   (b) Throwaway `pr1_*@test.io` checkout accounts from the matrix (one holding
-  an ACTIVE Starter sub) remain in the dev DB; cleanup needs explicit user OK
-  per the no-delete guardrail.
+  an ACTIVE Starter sub) remained in the dev DB; removed afterwards with
+  user-confirmed transactional psql DELETEs (dependency order) — demo baseline
+  restored to 12 users / 9 subs / 5 plans.
 
 ### 5.43 Planning: Profile & plan visibility + per-plan usage restrictions (2026-09-06, docs only)
 
