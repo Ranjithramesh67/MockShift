@@ -127,6 +127,31 @@ bytes OK), oversize 2 MB 400, remove clears + serve 404; password wrong-current/
 short 400, change OK then old password rejected + new logs in; unauth 401.
 Main backend restarted CLOSED (`term_1788732959373_75`).
 
+Cross-app URL fix (2026-09-06, pushed `149928f`): two broken cross-app links in
+the online preview —
+(a) Portal A landing "Open app"/"Sign in" (`portal/frontend/app/page.tsx`)
+hardcoded `APP_URL = 'https://3000-a7f640d9151cb340.monkeycode-ai.live'` (a
+STALE session host), and (b) the main app's signup gateway "See plans &
+pricing" CTA defaulted to `http://localhost:3002/#pricing`. Now both resolve
+the sibling app's origin from the current request host. New
+`portal/frontend/src/lib/appUrl.ts` (`apiHubAppUrl()`, server component reads
+the Host header via `next/headers`) and `frontend/src/lib/portalUrl.ts`
+(`portalPlansUrl()`, client): env override first (`NEXT_PUBLIC_APP_URL` /
+`NEXT_PUBLIC_PORTAL_URL`), then if the host matches
+`<port>-<session>.monkeycode-ai.live` derive the sibling as
+`<other-port>-<session>.monkeycode-ai.live` (previews for :3000/:3002 share the
+session hash), else fall back to `localhost:3000/:3002`. The portal landing is
+a server component so it computes once per request; the main-app signup page is
+a client component, so it SSR/hydrates the constant default and swaps to
+`portalPlansUrl()` in a mount effect (no hydration mismatch).
+Verified: `tsc --noEmit` clean in both apps; curl Host-header tests (preview
+host → `https://3000-<session>.monkeycode-ai.live`; `localhost:3002` →
+`http://localhost:3000`); Playwright over the LIVE preview hosts
+`/tmp/pr1-crossapp-url-check.cjs` ALL PASS — portal landing cross-app links
+point at the live main-app preview (no stale host, no localhost) and the signup
+gateway's `goto-plans` href resolves to the live portal preview
+`3002-<session>/#pricing` after hydration.
+
 Notes for later segments: (a) the dev demo baseline's `plans.limits` are `{}`
 (`portal/db/seed-demo.sql` inserts plans WITHOUT the `limits` column and its
 `ON CONFLICT … DO UPDATE` only refreshes `trial_days` — the migration-013 limits
