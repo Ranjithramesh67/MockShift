@@ -7,8 +7,59 @@ Last updated: 2026-09-06
 
 ## Current
 
-Step: PUSHED — Portal A `A5` subscriber self-service ("My subscription") is
-complete and on `master`. Self-service endpoints under `/api/public/account`
+Step: PROFILE PAGE (PR-2/PR-3) + PER-PLAN USAGE RESTRICTIONS (L1–L6) DONE —
+pushed `16e7a98` (feat) in one commit after a parallel-agent dispatch + a
+coordinator seam reconciliation. Summary:
+
+- Two parallel agents ran (disjoint file trees, no commits): **Agent A** built
+  the main-app profile page — `frontend/app/profile/page.tsx` + `profile.css`,
+  `src/components/{ProfilePage,AvatarPresets,UserAvatar}.tsx`, `src/lib/
+  profile.ts` (`useProfile`), `api.ts` Profile types + `profileApi`,
+  `portalUrl.ts` helpers, `TopBar.tsx` "Profile" menu entry + avatar chip,
+  `layout.tsx` css import. **Agent B** built the restrictions engine —
+  `backend/src/api/entitlements.js` (`resolveLimits`/`countPoolUsage`/
+  `chargeRuns`/gates), migrations `019_plan_restrictions_settings.sql` +
+  `020_plan_usage_counter.sql` (applied), gates in the main routes
+  (workspaces/projects/collections→content/teams/shares/workflows/exports/
+  manage/admin), portal settings API `portal/backend/src/routes/settings.js`
+  (mounted `/api/portal/settings`), Portal B plans "Limits" editor + global
+  "Enforce plan restrictions" switch
+  (`portal/frontend/app/manage/plans/page.tsx`), usage bars on Portal A
+  `/account` (`AccountView.tsx` + `checkoutApi.ts`), and canonical
+  `plans.limits` in `portal/db/seed-demo.sql`.
+- **Coordinator seam fix (this session)**: Agent A's `PlanUsage` expected a
+  `profile.usage` ARRAY, but Agent B's `GET /api/profile` (routes/profile.js
+  `loadProfile`) returns an additive `plan: { key, name, enforced, reason,
+  poolOrgId, limits: {…8 canonical keys}, usage: { workspaces, projects,
+  collections, teams, seats, runs } }`. `ProfilePage.tsx` `PlanUsage` now
+  renders straight off `profile.plan` (limit `null` = used-count only; numeric
+  draws a meter; used>limit shows an amber/red "over limit" badge; section
+  hidden when `plan` is absent). `Profile` type (`api.ts`) replaced the
+  `usage?: unknown` placeholder with `plan?: PlanEntitlement`; the old
+  `hasUsage` helper was removed from `profile.ts` (inline check instead);
+  `profile.css` gained `.profile-usage-over` / `.over` styles.
+- Verified: `tsc --noEmit` clean (main + portal); frontend `npm test` 89/89;
+  `node --check` clean on every touched backend route; live Playwright
+  `/tmp/pr3-usage-smoke.cjs` 6/6 ×2 over :3000 (plan-less dev → Free fallback
+  usage bars workspaces 1/1 + projects 1/1 + seats 1/1; boss FREE-sub →
+  Subscription block + usage section). Agent B's own live gate matrix
+  `/tmp/l2-gates-live.cjs` 18/18 (Free blocks ws/project/seats/public-share
+  403 `plan_limit`; Starter/Pro upgrades unblock; R4 upsert allowed at
+  capacity; Enterprise exempt; global toggle verified ON with canonical
+  limits). Migrations 019/020 applied; live `plans.limits` backfilled to
+  canonical numbers with `restrictions_enforced=true`; seed file now carries
+  the same canonical limits (merge on reseed).
+- Main backend restarted by Agent B with the new code and left healthy
+  (`term_1788809673936_78` supersedes `term_1788732959373_75`); nothing
+  reseeded this turn. Throwaway rows left by the agents for coordinator
+  cleanup (pending user OK): `pr2smoke_1788808562609@test.io`,
+  `liveg_owner/_extra/_extra2_1788809651037@test.io` (+ their LiveG Org).
+  See also the two completion records in the `## Pending` sections and
+  docs/SESSION.md §5.46.
+
+PREVIOUS STEP (for narrative continuity) — PUSHED: Portal A `A5` subscriber
+self-service ("My subscription") is complete and on `master`. Self-service
+endpoints under `/api/public/account`
 are session-based (checkout customers stay global EDITOR per the B1 decision,
 so the routes use `requireAuth` + owner guards — never portal RBAC):
 
@@ -152,26 +203,31 @@ point at the live main-app preview (no stale host, no localhost) and the signup
 gateway's `goto-plans` href resolves to the live portal preview
 `3002-<session>/#pricing` after hydration.
 
-Notes for later segments: (a) the dev demo baseline's `plans.limits` are `{}`
-(`portal/db/seed-demo.sql` inserts plans WITHOUT the `limits` column and its
-`ON CONFLICT … DO UPDATE` only refreshes `trial_days` — the migration-013 limits
-never land in a fresh demo reseed), so the restrictions programme L1 must decide
-whether to add canonical limits to the demo seed; (b) the throwaway
-`pr1_*@test.io` checkout accounts from the matrix were cleaned from the dev DB
-(user-confirmed psql DELETE, dependency order, transactional) — baseline back to
-12 users / 9 subs / 5 plans.
+Notes for later segments: the demo-seed `plans.limits` gap noted in the PR-1
+turn (seed inserts had no `limits` column, so migration-013 numbers never landed
+on a reseed) was FIXED this turn — `portal/db/seed-demo.sql` now inserts the
+full `limits` jsonb per plan and merges on conflict (`limits = plans.limits ||
+EXCLUDED.limits`, so editor extras like `enforce`/`sso` survive reseeds). The
+throwaway `pr1_*@test.io` checkout accounts from the matrix were cleaned from the
+dev DB (user-confirmed psql DELETE, dependency order, transactional).
 
-Current demo/DB state: dev DB was reset + reseeded to the canonical demo
-baseline after the matrices/smoke (throwaway a5_*/pwacct_*/buyer1_* users
-removed; 9 demo subs — active 4 / trialing 1 / past_due 1 / suspended 1 /
-cancelled 1; plans free 0 / starter +5 / pro +10 / team +15 / enterprise 0;
-the three 017 functions verified intact).
+Current demo/DB state: canonical baseline (12 demo users / 9 subs / 5 plans,
+free 0 / starter +5 / pro +10 / team +15 / enterprise 0; the three 017
+functions verified intact) PLUS this turn's agent throwaway accounts still
+present and awaiting cleanup approval (`pr2smoke_1788808562609@test.io`,
+`liveg_owner/_extra/_extra2_1788809651037@test.io` + a LiveG Org; none of them
+disturb the demo surface). Migrations 019/020 applied; `portal_settings`
+`restrictions_enforced = true`; live `plans.limits` backfilled to canonical
+numbers (free/starter/pro have workspaces+projects+seats caps, public_sharing
+false for free/starter, nulls elsewhere; team/enterprise have null counts +
+sso/saml/sla flags).
 
 Live processes: portal backend :3102 `term_1788731418612_71`, portal
 frontend :3002 `term_1788633952808_43`, main backend :3001
-`term_1788732959373_75` (running CLOSED — self-service signup gated; never set
-`ALLOW_SELF_SIGNUP` here), main frontend :3000 `term_1788697990497_55`, mock
-:3999 `term_1788637750561_47`.
+`term_1788809673936_78` (Agent B restart carrying entitlements.js + the usage
+gates + profile `plan`/`/usage`; running CLOSED — self-service signup gated;
+never set `ALLOW_SELF_SIGNUP` here), main frontend :3000
+`term_1788697990497_55`, mock :3999 `term_1788637750561_47`.
 
 Portal demo logins: boss ADMIN / pm MANAGER / dev EDITOR (non-portal, 403 on
 portal) — passwords from `backend/scripts/seed-dev.js`; VIEWER smoke account
@@ -192,11 +248,13 @@ A5 built on it: A4's success CTA now points at `/account`.
 PENDING (not this turn):
 - Profile & plan visibility (see `## Pending — Profile & plan visibility`):
   after login, see the current plan, edit personal details, choose/upload an
-  avatar, manage/change the subscription — planned 2026-09-06, not started.
+  avatar, manage/change the subscription — PR-1 → PR-3 DONE (pushed `0c171f4` +
+  `16e7a98`), incl. usage bars (L5) wired off `profile.plan`.
 - Per-plan usage restrictions (see `## Pending — Per-plan usage restrictions
   (Portal B)`): enforce plan limits (workspaces/projects/collections/teams/
   seats/storage/runs/…) with a Portal B switch to toggle restrictions off —
-  planned 2026-09-06, not started.
+  L1–L6 DONE (pushed `16e7a98`); Portal B dashboard toggle + plans limits
+  editor shipped; global toggle ON in demo.
 - Portal A next (see `## Pending — Two subscription portals`): A6 payment
   gateway + webhooks + receipts (later). A2 + A4 + A5 done (`ea64d44`).
 - "Send item to another user" accept/reject (see `## Pending — Send item to
@@ -1228,7 +1286,15 @@ Scope when GO is given:
 | X3 | DB: single new migration(s) `012+` covering plans/subscriptions/orders/invoices + RBAC/RLS; record applied migrations in the Environment note — DONE as migration `013` |
 
 
-## Pending — Profile & plan visibility (planned 2026-09-06; PR-1 DONE, PR-2/PR-3 next)
+## Pending — Profile & plan visibility (planned 2026-09-06; PR-1 → PR-3 DONE, pushed `0c171f4` + `16e7a98`)
+
+COMPLETED (see docs/SESSION.md §5.44/§5.46 and the `## Current` block): PR-1
+backend profile surface + avatar storage (`0c171f4`), PR-2 profile page in the
+main app (`/profile`, personal details + avatar presets/upload + password +
+subscription card + upsell for plan-less), and PR-3 cross-app manage flow +
+polish (change-plan/manage deep-links → Portal A; usage-bar section wired to
+`profile.plan` once L5 landed). Remaining text below is the original plan for
+context; the section-level items PR-1..PR-3 are all shipped.
 
 Requested by Ranjith: after login a user should be able to see which plan they
 are on and manage their account — personal details, profile picture (incl.
@@ -1309,7 +1375,17 @@ programme except the final usage bars (needs L5). Suggest doing PR-1/PR-2
 before L-series so users can SEE their plan while limits start being enforced.
 
 
-## Pending — Per-plan usage restrictions (Portal B) (planned 2026-09-06, NOT started)
+## Pending — Per-plan usage restrictions (Portal B) (planned 2026-09-06; L1–L6 DONE, pushed `16e7a98`)
+
+COMPLETED (see docs/SESSION.md §5.46 and the `## Current` block): `entitlements.js`
+resolver + count/seats/public-share/run gates + migrations 019/020 applied,
+Portal B plans limits editor + global toggle, Portal A `/account` usage bars,
+canonical seed limits, live gate matrix 18/18, coordinator-reconciled usage
+bars on the main profile page. Remaining text below is the original plan for
+context; L1–L6 shipped. Demo note: because the demo catalog now carries real
+limits and `restrictions_enforced = true`, plan-less demo users are Free-limited
+(a 2nd workspace create 403s by design — Portal B toggle can switch all gates
+off).
 
 Requested by Ranjith: Portal B configures limits per subscription package —
 workspace count, project count, team count, storage, runs count, collection
