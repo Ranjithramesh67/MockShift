@@ -1,9 +1,7 @@
 import type { ReactNode } from 'react';
 import CatalogPreview from '@/components/CatalogPreview';
 import AccountLink from '@/components/AccountLink';
-
-// The running API Hub app (login). Swap this when the preview host changes.
-const APP_URL = 'https://3000-a7f640d9151cb340.monkeycode-ai.live';
+import { apiHubAppUrl } from '@/lib/appUrl';
 
 type IconName =
   | 'edit'
@@ -289,6 +287,9 @@ const FAQS = [
 /* ------------------------------------------------------------------ page */
 
 export default function Home() {
+  // Sibling main-app origin for the current request (env override, or the
+  // *.monkeycode-ai.live preview sibling, or localhost:3000 in local dev).
+  const appUrl = apiHubAppUrl();
   return (
     <div className="site">
       <header className="site-nav">
@@ -307,7 +308,7 @@ export default function Home() {
           </nav>
           <div className="nav-actions">
             <AccountLink className="btn btn-outline btn-sm" />
-            <a className="btn btn-outline btn-sm" href={APP_URL} target="_blank" rel="noreferrer">
+            <a className="btn btn-outline btn-sm" href={appUrl} target="_blank" rel="noreferrer">
               <Icon name="external" size={14} /> Open app
             </a>
             <a className="btn btn-primary btn-sm" href="#pricing">
@@ -337,7 +338,7 @@ export default function Home() {
             <a className="btn btn-outline btn-lg" href="#product">
               Meet the product
             </a>
-            <a className="btn btn-ghost btn-lg" href={APP_URL} target="_blank" rel="noreferrer">
+            <a className="btn btn-ghost btn-lg" href={appUrl} target="_blank" rel="noreferrer">
               Open app <Icon name="external" size={16} />
             </a>
           </div>
@@ -553,7 +554,7 @@ export default function Home() {
             <a className="btn btn-primary btn-lg" href="#pricing">
               See plans &amp; pricing
             </a>
-            <a className="btn btn-outline btn-lg" href={APP_URL} target="_blank" rel="noreferrer">
+            <a className="btn btn-outline btn-lg" href={appUrl} target="_blank" rel="noreferrer">
               Open API Hub <Icon name="external" size={16} />
             </a>
           </div>
@@ -570,7 +571,7 @@ export default function Home() {
             <a href="#product">Product</a>
             <a href="#pricing">Pricing</a>
             <a href="#faq">FAQ</a>
-            <a href={APP_URL} target="_blank" rel="noreferrer">
+            <a href={appUrl} target="_blank" rel="noreferrer">
               Sign in
             </a>
           </nav>

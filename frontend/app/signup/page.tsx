@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { PORTAL_PLANS_URL } from '@/lib/portalUrl';
+import { PORTAL_PLANS_URL, portalPlansUrl } from '@/lib/portalUrl';
 import { BoltIcon, CheckIcon, LockIcon, TeamIcon } from '@/components/icons';
 
 const FEATURES = [
@@ -25,6 +25,13 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // SSR/hydration render the constant default; after mount we resolve the real
+  // portal origin (env override or the *.monkeycode-ai.live preview sibling).
+  const [plansHref, setPlansHref] = useState<string>(PORTAL_PLANS_URL);
+
+  useEffect(() => {
+    setPlansHref(portalPlansUrl());
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -106,7 +113,7 @@ export default function SignupPage() {
               </p>
               <a
                 className="primary-button auth-submit"
-                href={PORTAL_PLANS_URL}
+                href={plansHref}
                 data-testid="goto-plans"
               >
                 See plans &amp; pricing
