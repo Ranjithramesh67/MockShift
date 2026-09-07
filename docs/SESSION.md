@@ -432,6 +432,43 @@ and provisions the buyer's org + workspace.
   CLOSED (`term_1788732243308_74`) — real/preview deployments must never set
   `ALLOW_SELF_SIGNUP`.
 
+### 5.45 Cross-app URL fix for the online preview (pushed `149928f`, 2026-09-06)
+
+Two broken cross-app links surfaced once the apps were reached through the
+`.monkeycode-ai.live` preview hosts:
+
+1. **Portal A landing → main app**: `portal/frontend/app/page.tsx` had a module
+   constant `APP_URL = 'https://3000-a7f640d9151cb340.monkeycode-ai.live'` — a
+   stale, session-scoped preview host from an earlier turn. Every "Open app" /
+   "Open API Hub" / "Sign in" CTA pointed at a dead host.
+2. **Main app → Portal A**: the signup gateway's "See plans & pricing" CTA used
+   `PORTAL_PLANS_URL`, which defaults to `http://localhost:3002/#pricing` — in
+   the preview a click landed on the viewer's own machine.
+
+Fix — each app resolves the sibling app's origin from the current request host,
+with an env override first and a localhost dev fallback last:
+
+- New `portal/frontend/src/lib/appUrl.ts` — `apiHubAppUrl()` reads the `Host`
+  header via `next/headers` (the portal landing is a server component) and, when
+  the host matches `<port>-<session>.monkeycode-ai.live`, returns the sibling at
+  `<3000>-<session>.monkeycode-ai.live`; `NEXT_PUBLIC_APP_URL` overrides;
+  otherwise `http://localhost:3000`. `app/page.tsx` now computes
+  `const appUrl = apiHubAppUrl()` per request instead of the hardcoded constant.
+- `frontend/src/lib/portalUrl.ts` — kept `PORTAL_PLANS_URL` (env override +
+  localhost default) and added `portalPlansUrl()`, which returns the sibling
+  `3002-<session>.monkeycode-ai.live/#pricing` when `window.location.host` is a
+  `.monkeycode-ai.live` preview host. The main-app signup page is a client
+  component, so it initialises state to the constant (identical on SSR and
+  hydration — no hydration mismatch) and swaps to `portalPlansUrl()` in a mount
+  `useEffect`.
+- Verified: `npx tsc --noEmit` clean in both apps; curl Host-header simulation
+  against `:3002` (preview host → `https://3000-<session>…`, `localhost:3002` →
+  `http://localhost:3000`); Playwright `/tmp/pr1-crossapp-url-check.cjs` against
+  the LIVE preview hosts ALL PASS (portal landing cross-app anchors all target
+  the live main-app preview, no stale host, no localhost; signup gateway
+  `goto-plans` href resolves to `https://3002-<session>.monkeycode-ai.live/#pricing`
+  after hydration).
+
 ### 5.44 Profile & plan visibility PR-1 — backend profile surface + avatar storage (pushed `0c171f4`, 2026-09-06)
 
 Ranjith approved starting the Profile & plan visibility programme with segment
