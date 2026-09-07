@@ -432,7 +432,99 @@ and provisions the buyer's org + workspace.
   CLOSED (`term_1788732243308_74`) — real/preview deployments must never set
   `ALLOW_SELF_SIGNUP`.
 
-### 5.45 Cross-app URL fix for the online preview (pushed `149928f`, 2026-09-06)
+### 5.46 Profile page (PR-2/PR-3) + per-plan usage restrictions (L1–L6) — parallel agents + seam fix (pushed `16e7a98`, 2026-09-06)
+
+Ranjith approved two programmes back to back: finish the Profile & plan
+visibility programme (PR-2 profile page, PR-3 cross-app manage + usage bars) and
+run the whole per-plan usage restrictions programme (Portal B limits enforced
+product-wide with an admin off switch). Both were dispatched to two parallel
+agents with disjoint file ownership (Agent A = `frontend/` only; Agent B =
+`backend/`, `db/migrations/019|020`, `portal/**`), then reconciled by the
+coordinator and shipped as a single commit `16e7a98`.
+
+**Agent A — profile page (PR-2 surface + PR-3 deep links):**
+
+- `frontend/app/profile/page.tsx` + `frontend/app/profile.css` (main-app theme,
+  responsive ≤900/≤640), client `frontend/src/components/ProfilePage.tsx`
+  (personal details form, avatar preset grid + upload/remove, password change,
+  subscription card with plan chip + status + cycle + cancel-note + upsell card
+  for plan-less users, plan usage bars) plus `AvatarPresets.tsx`,
+  `UserAvatar.tsx`, `frontend/src/lib/profile.ts` (`useProfile`), Profile types
+  + `profileApi` in `src/lib/api.ts`, cross-app link helpers in `portalUrl.ts`.
+- `frontend/src/components/TopBar.tsx` gained a "Profile" menu entry + avatar
+  chip; `frontend/app/layout.tsx` imports `profile.css`.
+- Deep links "Manage subscription" / "Change plan" → Portal A `/account` /
+  checkout via the sibling-host resolution (`portalPlansUrl()`), matching the
+  PR-1 cross-app URL fix.
+- Agent A verification: `tsc` clean, 89/89 unit, Playwright `/tmp/pr2-profile-smoke.cjs`
+  27 PASS ×3 incl. a 375 px responsive pass. Left `pr2smoke_1788808562609@test.io`.
+
+**Agent B — restrictions engine (L1–L6):**
+
+- `backend/src/api/entitlements.js` — org-pool resolver. Canonical keys
+  (nullable = unlimited): `workspaces, projects, collections, teams, seats,
+  storage_mb (reserved, not enforced), runs_per_month, public_sharing`.
+  Semantics: usage counts against an ORG pool whose covering plan = newest
+  non-terminal subscription of any member (R1); plan-less accounts fall back to
+  Free on their own personal-org pool (R2); `enforced` = global
+  `portal_settings.restrictions_enforced` AND not exempt (per-plan
+  `enforce:false` override, and Enterprise/custom never limited — R7/R8);
+  gates return uniform 403 `plan_limit { code, key, limit, usage, upgrade }`
+  bodies (R3); only NEW creates are blocked, never edits/deletes/upserts of
+  already-seated members (R4).
+- Migrations `db/migrations/019_plan_restrictions_settings.sql`
+  (`portal_settings.restrictions_enforced bool default true` + RLS) and
+  `020_plan_usage_counter.sql` (`plan_usage` calendar-month buckets per org)
+  — both applied. Runs are calendar-month (R5), charged atomically through
+  `chargeRuns()` (FOR UPDATE on the bucket; rollback → 403 when enforced and
+  over; always counted so bars stay honest).
+- Gates wired into `backend/src/api/routes/{workspaces,projects,content,
+  teams,shares,workflows,exports,manage,admin}.js`; `GET /api/profile/usage`
+  resolver endpoint added and `GET /api/profile` (`routes/profile.js
+  loadProfile`) now carries the additive `plan` entitlement snapshot.
+- Portal B: `portal/backend/src/routes/settings.js` (mounted
+  `/api/portal/settings`, VIEWER+ GET / MANAGER+ PUT) for the global switch;
+  `portal/frontend/app/manage/plans/page.tsx` gains a structured Limits editor
+  + per-plan "Enforce" override + the dashboard global toggle; Portal A
+  `AccountView.tsx` + `checkoutApi.ts` show usage bars on `/account`.
+- `portal/db/seed-demo.sql` now inserts canonical `limits` jsonb per plan and
+  merges on conflict (`limits = plans.limits || EXCLUDED.limits`), fixing the
+  demo-reseed gap found in the PR-1 turn. Live DB backfilled to the same
+  numbers with `restrictions_enforced = true`.
+- Agent B verification: live matrix `/tmp/l2-gates-live.cjs` 18/18 (Free blocks
+  workspace/project/seats/public-share creates with 403 `plan_limit`; Starter/
+  Pro upgrades unblock; R4 upsert at capacity allowed; Enterprise exempt; run
+  cap blocks the 2nd run; settings GET/PUT verified). Left throwaways
+  `liveg_owner/_extra/_extra2_1788809651037@test.io` + a LiveG Org. Restarted
+  the main backend with the new code (`term_1788809673936_78`, health OK,
+  running CLOSED).
+
+**Coordinator seam fix** — Agent A's `PlanUsage` had been written against a
+`profile.usage` ARRAY placeholder, while Agent B's profile route returns
+`plan: { key, name, enforced, reason, poolOrgId, limits: {8 keys}, usage:
+{workspaces, projects, collections, teams, seats, runs} }`. The main page now
+consumes the backend shape directly: `ProfilePage.tsx` `PlanUsage` renders rows
+for the counted keys, draws a meter only for numeric limits (`null` = unlimited
+→ used-count), shows an amber "over limit" badge when `used > limit` at an
+enforced limit, and stays hidden when `plan` is absent (defensive for older
+backends). `frontend/src/lib/api.ts` replaced `usage?: unknown` with the typed
+`plan?: PlanEntitlement`; the stub `hasUsage` helper in `src/lib/profile.ts`
+was removed (inline presence check); `profile.css` gained the
+`.profile-usage-over` badge + `.over` row styles.
+
+**Verification (coordinator):** `tsc --noEmit` clean in main + portal
+frontends; `node --check` clean across every touched backend route; main
+frontend unit tests 89/89; Playwright `/tmp/pr3-usage-smoke.cjs` 6/6 ×2 against
+the live :3000 preview — plan-less dev renders Free-fallback bars (workspaces
+1/1, projects 1/1, seats 1/1), boss (ACTIVE Free sub) shows the Subscription
+block plus the usage section. Smoke run confirmed the earlier intermittent
+failures were a Playwright login-page hydration race, not an app defect
+(resilient submit-retry loginFlow fixed it). Backend payload spot-checks match
+the `plan` shape described above (`reason: fallback_free`, `enforced: true`).
+
+**Follow-ups:** the agent throwaway accounts are held for the coordinator
+cleanup pass pending explicit user approval (per the no-delete rule). Docs:
+this record + session.md `## Current` refresh.
 
 Two broken cross-app links surfaced once the apps were reached through the
 `.monkeycode-ai.live` preview hosts:
