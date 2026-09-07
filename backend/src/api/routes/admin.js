@@ -6,6 +6,7 @@ const { requireAuth, requireAdmin } = require('../access');
 const { hashPassword } = require('../authLib');
 const { logAudit } = require('../audit');
 const { allocateUsername } = require('../username');
+const { checkSeatGate, orgOfProject, orgOfWorkspace } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -73,6 +74,9 @@ router.post('/projects/:projectId/members', async (req, res, next) => {
     ]);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    const orgId = await orgOfProject(projectId);
+    const seatGate = await checkSeatGate({ userId: req.user.id, orgId, targetUserId: userId });
+    if (seatGate) return res.status(403).json(seatGate);
     await query(
       `INSERT INTO project_members (project_id, user_id, role, granted_by)
        VALUES ($1, $2, $3, $4)
@@ -180,6 +184,9 @@ router.post('/workspaces/:workspaceId/members', async (req, res, next) => {
     ]);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (workspace.rows.length === 0) return res.status(404).json({ error: 'Workspace not found' });
+    const wsOrgId = await orgOfWorkspace(workspaceId);
+    const wsSeatGate = await checkSeatGate({ userId: req.user.id, orgId: wsOrgId, targetUserId: userId });
+    if (wsSeatGate) return res.status(403).json(wsSeatGate);
     await query(
       `INSERT INTO workspace_members (workspace_id, user_id, role)
        VALUES ($1, $2, $3)

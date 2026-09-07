@@ -1,0 +1,658 @@
+/* ==========================================================================
+   Profile page (self-service /profile in the MAIN app).
+
+   Namespace: .profile-* plus shared avatar pieces (.user-avatar-img,
+   .preset-avatar). Imported last from app/layout.tsx so its rules win ties
+   with app/globals.css. Breakpoints mirror the mobile sheets: <=900px tablet,
+   <=640px phone.
+   ========================================================================== */
+
+/* ---- Preset avatars (bundled visuals, backend stores only the key) ------- */
+.preset-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  color: rgba(9, 15, 12, 0.62);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    inset 0 -5px 12px rgba(0, 0, 0, 0.24);
+  user-select: none;
+}
+
+.preset-avatar svg {
+  display: block;
+  width: 55%;
+  height: 55%;
+}
+
+/* Uploaded avatar image inside the round .user-avatar disc. */
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 50%;
+}
+
+.user-avatar .preset-avatar {
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   Profile screen shell
+   ========================================================================== */
+.profile-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1000px 480px at 85% -10%, rgba(124, 242, 156, 0.06), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(74, 222, 128, 0.05), transparent 55%);
+}
+
+.profile-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 16px;
+  background: rgba(19, 23, 34, 0.85);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.profile-topbar-brand:hover {
+  filter: brightness(1.1);
+}
+
+.profile-topbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
+.profile-topbar-title {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.profile-topbar-user {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.profile-topbar-name {
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Content column ------------------------------------------------------ */
+.profile-main {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 28px 20px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 2px 4px;
+}
+
+.profile-head-text {
+  min-width: 0;
+}
+
+.profile-head-text h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.profile-head-meta {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  word-break: break-word;
+}
+
+/* ---- Cards --------------------------------------------------------------- */
+.profile-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-card-title {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  font-weight: 700;
+}
+
+.profile-section-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Shared inline status / error line. */
+.profile-msg {
+  margin: 0;
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+  font-size: 12.5px;
+}
+
+.profile-msg-ok {
+  background: rgba(63, 185, 80, 0.12);
+  border: 1px solid rgba(63, 185, 80, 0.4);
+  color: var(--ok);
+}
+
+.profile-msg-err {
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.4);
+  color: var(--err);
+}
+
+.profile-error {
+  margin: 24px auto;
+  max-width: 480px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.profile-error p {
+  margin: 0;
+}
+
+/* ---- Personal details / password forms ----------------------------------- */
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.profile-field {
+  gap: 6px;
+}
+
+.profile-field-hint {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.profile-field input[readonly] {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.profile-form-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   Subscription card
+   ========================================================================== */
+.profile-sub-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-sub-plan {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.profile-sub-plan-name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.profile-plan-key {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+/* Status chips */
+.profile-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.profile-status-active {
+  background: rgba(63, 185, 80, 0.14);
+  border: 1px solid rgba(63, 185, 80, 0.45);
+  color: var(--ok);
+}
+
+.profile-status-trial {
+  background: rgba(88, 166, 255, 0.14);
+  border: 1px solid rgba(88, 166, 255, 0.45);
+  color: var(--info);
+}
+
+.profile-status-past-due {
+  background: rgba(210, 153, 34, 0.14);
+  border: 1px solid rgba(210, 153, 34, 0.45);
+  color: var(--warn);
+}
+
+.profile-status-suspended {
+  background: rgba(248, 81, 73, 0.14);
+  border: 1px solid rgba(248, 81, 73, 0.45);
+  color: var(--err);
+}
+
+.profile-status-neutral {
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+}
+
+.profile-cancel-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: rgba(210, 153, 34, 0.1);
+  border: 1px dashed rgba(210, 153, 34, 0.5);
+  color: var(--warn);
+}
+
+.profile-sub-details {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-sub-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border-soft);
+}
+
+.profile-sub-row:last-child {
+  border-bottom: none;
+}
+
+.profile-sub-row dt {
+  color: var(--text-muted);
+  font-size: 12px;
+  width: 130px;
+  flex-shrink: 0;
+}
+
+.profile-sub-row dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.profile-cancel-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--warn);
+  background: rgba(210, 153, 34, 0.08);
+  border-radius: var(--r-md);
+  padding: 8px 11px;
+}
+
+.profile-sub-hint {
+  margin: -4px 0 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.profile-sub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ---- Upsell card (plan-less user) ---------------------------------------- */
+.profile-upsell-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.profile-upsell-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 560px;
+}
+
+.profile-upsell-text strong {
+  color: var(--text);
+}
+
+.profile-upsell-body .primary-button {
+  align-self: flex-start;
+}
+
+/* ==========================================================================
+   Avatar section
+   ========================================================================== */
+.profile-avatar-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.profile-avatar-preview {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.profile-avatar-frame .user-avatar {
+  box-shadow:
+    0 0 0 3px var(--bg-panel-2),
+    0 0 0 4px var(--border),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.profile-avatar-kind {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.profile-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(6, auto);
+  gap: 12px;
+  justify-content: start;
+}
+
+.profile-preset {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  padding: 3px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    border-color var(--speed) var(--ease),
+    transform var(--speed) var(--ease),
+    filter var(--speed) var(--ease);
+}
+
+.profile-preset:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.profile-preset.selected {
+  border-color: var(--accent);
+  box-shadow: var(--accent-glow);
+}
+
+.profile-preset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.profile-preset-check {
+  position: absolute;
+  bottom: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+.profile-avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.profile-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+label.profile-avatar-upload-label {
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   Usage bars (rendered when the backend entitlement snapshot is present)
+   ========================================================================== */
+.profile-usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-usage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.profile-usage-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-usage-label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.profile-usage-value {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-usage-over {
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #b3261e;
+  background: rgba(179, 38, 30, 0.1);
+  border: 1px solid rgba(179, 38, 30, 0.35);
+  border-radius: 20px;
+}
+
+.profile-usage-row.over .profile-usage-value {
+  color: #b3261e;
+  font-weight: 600;
+}
+
+.profile-usage-track {
+  height: 8px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.profile-usage-fill {
+  display: block;
+  height: 100%;
+  border-radius: 20px;
+  background: var(--accent-grad);
+  transition: width 0.4s var(--ease);
+}
+
+.profile-usage-fill.full {
+  background: linear-gradient(135deg, #f7c24b 0%, #d29922 60%, #a06f0e 100%);
+}
+
+.profile-usage-row.over .profile-usage-fill {
+  background: linear-gradient(135deg, #e57368 0%, #c0392b 60%, #96281b 100%);
+}
+
+/* ==========================================================================
+   Responsive: <= 900px
+   ========================================================================== */
+@media (max-width: 900px) {
+  .profile-main {
+    padding: 22px 16px 48px;
+  }
+}
+
+/* ==========================================================================
+   Responsive: <= 640px phones
+   ========================================================================== */
+@media (max-width: 640px) {
+  .profile-topbar {
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .profile-topbar-title {
+    display: none;
+  }
+
+  .profile-topbar-name {
+    display: none;
+  }
+
+  .profile-head {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .profile-head-text h1 {
+    font-size: 18px;
+  }
+
+  .profile-main {
+    padding: 18px 12px 40px;
+  }
+
+  .profile-card {
+    padding: 16px;
+  }
+
+  .profile-sub-plan-name {
+    font-size: 16px;
+  }
+
+  .profile-sub-row {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .profile-sub-row dt {
+    width: auto;
+  }
+
+  .profile-preset-grid {
+    grid-template-columns: repeat(4, auto);
+    gap: 10px;
+    justify-content: start;
+  }
+
+  .profile-preset {
+    width: 48px;
+    height: 48px;
+  }
+}

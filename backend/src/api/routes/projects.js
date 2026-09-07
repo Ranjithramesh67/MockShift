@@ -9,6 +9,7 @@ const {
   roleAtLeast,
 } = require('../access');
 const { logAudit } = require('../audit');
+const { checkSeatGate } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -248,6 +249,9 @@ router.post('/projects/:projectId/members', requireProjectManager, async (req, r
     if (isManager.rows.length > 0) {
       return res.status(409).json({ error: 'User is already a project manager' });
     }
+    const orgId = await require('../entitlements').orgOfProject(projectId);
+    const seatGate = await checkSeatGate({ userId: req.user.id, orgId, targetUserId: userId });
+    if (seatGate) return res.status(403).json(seatGate);
     await query(
       `INSERT INTO project_members (project_id, user_id, role, granted_by)
        VALUES ($1, $2, $3, $4)

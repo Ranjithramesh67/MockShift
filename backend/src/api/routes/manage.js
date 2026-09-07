@@ -200,6 +200,13 @@ router.post('/access-requests/:requestId/review', requireReviewer, async (req, r
       [status, req.user.id, requestId]
     );
     if (approve) {
+      const orgId = await require('../entitlements').orgOfProject(request.project_id);
+      const seatGate = await require('../entitlements').checkSeatGate({
+        userId: req.user.id,
+        orgId,
+        targetUserId: request.user_id,
+      });
+      if (seatGate) return res.status(403).json(seatGate);
       await query(
         `INSERT INTO project_members (project_id, user_id, role, granted_by)
          VALUES ($1, $2, $3, $4)

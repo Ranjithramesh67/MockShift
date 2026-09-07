@@ -5,6 +5,7 @@ const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth, getProjectAccess, roleAtLeast } = require('../access');
 const { logAudit } = require('../audit');
+const { checkPublicSharingGate } = require('../entitlements');
 
 const router = Router();
 
@@ -41,6 +42,10 @@ router.post('/requests/:requestId/share', requireAuth, async (req, res, next) =>
     let { rows } = await query(`SELECT id, token, created_at FROM request_shares WHERE request_id = $1`, [requestId]);
     let share = rows[0];
     if (!share) {
+      // L3 public_sharing gate — share links expose the request publicly.
+      const orgId = await require('../entitlements').orgOfProject(projectId);
+      const sharingGate = await checkPublicSharingGate({ userId: req.user.id, orgId });
+      if (sharingGate) return res.status(403).json(sharingGate);
       ({ rows } = await query(
         `INSERT INTO request_shares (request_id, token, created_by)
          VALUES ($1, $2, $3)

@@ -5,6 +5,7 @@ const { query, pool } = require('../db');
 const { requireAuth, getProjectAccess, roleAtLeast } = require('../access');
 const { logAudit } = require('../audit');
 const { redactRequestRecord } = require('../redact');
+const { checkCountGate, orgOfProject } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -236,6 +237,8 @@ router.post('/collections/import', async (req, res, next) => {
     if (!(await canWriteProject(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
+    const importGate = await checkCountGate({ userId: req.user.id, orgId: await orgOfProject(projectId), key: 'collections' });
+    if (importGate) return res.status(403).json(importGate);
     const collectionName = cleanString(name || collection?.name, 500);
     if (!collectionName) return res.status(400).json({ error: 'Collection name is required' });
     if (!collection || typeof collection !== 'object' || !Array.isArray(collection.requests)) {

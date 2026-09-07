@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth, roleAtLeast, getWorkspaceRole } = require('../access');
 const { listWorkspaces } = require('./workspaces');
+const { checkCountGate, checkSeatGate } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -117,6 +118,9 @@ router.post('/', async (req, res, next) => {
     );
     if (inOrg.rows.length === 0) return res.status(403).json({ error: 'Not a member of that organization' });
 
+    const teamGate = await checkCountGate({ userId: req.user.id, orgId, key: 'teams' });
+    if (teamGate) return res.status(403).json(teamGate);
+
     const client = await require('../db').pool.connect();
     try {
       await client.query('BEGIN');
@@ -223,6 +227,14 @@ router.post('/:teamId/members', async (req, res, next) => {
       }
       targetId = target.rows[0].id;
     }
+    // L3 seats gate — adding a brand-new distinct person to the org pool.
+    const teamOrg = await query(`SELECT organization_id FROM teams WHERE id = $1`, [teamId]);
+    const seatGate = await checkSeatGate({
+      userId: req.user.id,
+      orgId: teamOrg.rows[0]?.organization_id,
+      targetUserId: targetId,
+    });
+    if (seatGate) return res.status(403).json(seatGate);
     await query(
       `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
        ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,

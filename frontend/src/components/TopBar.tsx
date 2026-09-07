@@ -3,9 +3,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { useProfile } from '@/lib/profile';
 import { useApp } from '@/store/AppStore';
 import type { ViewMode } from '@/lib/types';
 import { notificationApi, type Notification } from '@/lib/api';
+import { UserAvatar } from './UserAvatar';
 import {
   ImportIcon,
   LayoutIcon,
@@ -19,6 +21,7 @@ import {
   CheckIcon,
   PlayIcon,
   MenuIcon,
+  UserIcon,
 } from './icons';
 
 const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string; icon: typeof LayoutIcon }> = [
@@ -132,11 +135,19 @@ export function TopBar({
   onToggleDrawer?: () => void;
 }) {
   const { user, logout } = useAuth();
+  const { profile: profileData } = useProfile();
   const { state, dispatch } = useApp();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewsOpen, setViewsOpen] = useState(false);
   const viewsRef = useRef<HTMLDivElement | null>(null);
+
+  const avatar = profileData?.user?.avatar ?? null;
+
+  const goProfile = () => {
+    setMenuOpen(false);
+    router.push('/profile');
+  };
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
@@ -243,13 +254,29 @@ export function TopBar({
             onClick={() => setMenuOpen((v) => !v)}
             aria-expanded={menuOpen}
           >
-            <span className="user-avatar">{user?.name?.charAt(0).toUpperCase() ?? '?'}</span>
+            <UserAvatar avatar={avatar} name={user?.name ?? ''} size={24} />
             <span className="user-name">{user?.name}</span>
             <span className="role-badge">{user?.role}</span>
           </button>
           {menuOpen && (
             <div className="user-dropdown" data-testid="user-dropdown">
-              <div className="user-dropdown-email">{user?.email}</div>
+              <div className="user-dropdown-head">
+                <UserAvatar avatar={avatar} name={user?.name ?? ''} size={32} />
+                <div className="user-dropdown-meta">
+                  <span className="user-dropdown-name">{user?.name}</span>
+                  <span className="user-dropdown-email">{user?.email}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="ghost-button"
+                data-testid="profile-menu-item"
+                onClick={goProfile}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <UserIcon size={14} />
+                Profile
+              </button>
               <button
                 type="button"
                 className="ghost-button"

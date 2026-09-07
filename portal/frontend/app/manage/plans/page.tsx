@@ -56,7 +56,38 @@ type PlanForm = {
   trialDays: string;
   sortOrder: string;
   status: PlanStatus;
+  limits: Record<string, string>;
+  publicSharing: boolean;
+  enforce: boolean;
 };
+
+// Canonical per-plan usage limit keys surfaced in the editor (Portal B usage
+// restrictions). Blank numeric fields are stored as null (unlimited).
+const LIMIT_KEYS: Array<{ key: string; label: string; hint: string }> = [
+  { key: 'workspaces', label: 'Workspaces', hint: 'Per organization' },
+  { key: 'projects', label: 'Projects', hint: 'Across the org workspaces' },
+  { key: 'collections', label: 'Collections', hint: 'API collections' },
+  { key: 'teams', label: 'Teams', hint: 'Org teams' },
+  { key: 'seats', label: 'Seats', hint: 'Distinct people with access' },
+  { key: 'storage_mb', label: 'Storage (MB)', hint: 'Reserved — not enforced' },
+  { key: 'runs_per_month', label: 'Runs / month', hint: 'Metered API runs' },
+];
+
+function emptyLimits(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const { key } of LIMIT_KEYS) out[key] = '';
+  return out;
+}
+
+function limitsFromRow(row: PlanRow | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  const src = row?.limits && typeof row.limits === 'object' ? (row.limits as Record<string, unknown>) : {};
+  for (const { key } of LIMIT_KEYS) {
+    const v = src[key];
+    out[key] = typeof v === 'number' && Number.isFinite(v) ? String(v) : '';
+  }
+  return out;
+}
 
 const DEFAULT_FORM: PlanForm = {
   key: '',
@@ -70,6 +101,9 @@ const DEFAULT_FORM: PlanForm = {
   trialDays: '0',
   sortOrder: '0',
   status: 'DRAFT',
+  limits: emptyLimits(),
+  publicSharing: false,
+  enforce: true,
 };
 
 function errMsg(err: unknown): string {
@@ -103,10 +137,31 @@ function validateForm(f: PlanForm): string | null {
   if (!Number.isInteger(Number(f.sortOrder))) return 'Sort order must be an integer';
   if (f.billingCycles.length === 0) return 'Select at least one billing cycle';
   if (!STATUSES.includes(f.status)) return 'Invalid status';
+  for (const { key, label } of LIMIT_KEYS) {
+    const raw = (f.limits[key] ?? '').trim();
+    if (raw === '') continue;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) {
+      return `${label} must be a non-negative integer (or blank for unlimited)`;
+    }
+  }
   return null;
 }
 
-function buildPayload(f: PlanForm) {
+// Fold the editor's canonical fields into a complete `limits` object. Existing
+// unknown keys on the plan row are preserved so saves never drop extras.
+function buildLimits(f: PlanForm, base: Record<string, unknown> | null): Record<string, unknown> {
+  const limits: Record<string, unknown> = { ...(base ?? {}) };
+  for (const { key } of LIMIT_KEYS) {
+    const raw = (f.limits[key] ?? '').trim();
+    limits[key] = raw === '' ? null : Number(raw);
+  }
+  limits.public_sharing = f.publicSharing;
+  limits.enforce = f.enforce;
+  return limits;
+}
+
+function buildPayload(f: PlanForm, base: Record<string, unknown> | null) {
   return {
     key: f.key.trim(),
     name: f.name.trim(),
@@ -119,7 +174,26 @@ function buildPayload(f: PlanForm) {
     trialDays: Number(f.trialDays),
     sortOrder: Number(f.sortOrder),
     status: f.status,
+    limits: buildLimits(f, base),
   };
+}
+
+// Compact catalog summary of the stored canonical caps.
+function limitSummary(limits: unknown): string {
+  if (!limits || typeof limits !== 'object') return '—';
+  const l = limits as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof l.workspaces === 'number') parts.push(`${l.workspaces} ws`);
+  if (typeof l.projects === 'number') parts.push(`${l.projects} proj`);
+  if (typeof l.collections === 'number') parts.push(`${l.collections} coll`);
+  if (typeof l.teams === 'number') parts.push(`${l.teams} teams`);
+  if (typeof l.seats === 'number') parts.push(`${l.seats} seat${l.seats === 1 ? '' : 's'}`);
+  if (typeof l.runs_per_month === 'number') parts.push(`${l.runs_per_month} runs/mo`);
+  if (typeof l.storage_mb === 'number') parts.push(`${l.storage_mb} MB`);
+  const sharing = l.public_sharing === true ? 'public ok' : l.public_sharing === false ? 'no public' : null;
+  if (sharing) parts.push(sharing);
+  const base = parts.length ? parts.join(' · ') : 'unlimited';
+  return l.enforce === false ? `${base} · not enforced` : base;
 }
 
 function priceLabel(value: string | null, cycles: string[], currency: string): string {
@@ -135,6 +209,9 @@ export default function PlansPage() {
   const [plans, setPlans] = useState<PlanRow[] | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const [restrictions, setRestrictions] = useState<boolean | null>(null);
+  const [restrictionsBusy, setRestrictionsBusy] = useState(false);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<PlanRow | null>(null);
@@ -165,6 +242,12 @@ export default function PlansPage() {
         setRole(me.portalRole);
         if (can(me.portalRole, 'VIEWER')) {
           await refreshPlans();
+          try {
+            const s = await apiFetch<{ settings: { restrictions_enforced: boolean } }>('/api/portal/settings');
+            if (!cancelled) setRestrictions(s.settings.restrictions_enforced);
+          } catch {
+            // Optional surface — plan editing remains usable without it.
+          }
         }
       } catch (err) {
         if (!cancelled) setPageError(errMsg(err));
@@ -186,6 +269,7 @@ export default function PlansPage() {
 
   function openEdit(plan: PlanRow) {
     setEditing(plan);
+    const planLimits = plan.limits && typeof plan.limits === 'object' ? (plan.limits as Record<string, unknown>) : {};
     setForm({
       key: plan.key,
       name: plan.name ?? '',
@@ -198,6 +282,9 @@ export default function PlansPage() {
       trialDays: String(plan.trial_days ?? 0),
       sortOrder: String(plan.sort_order ?? 0),
       status: plan.status,
+      limits: limitsFromRow(plan),
+      publicSharing: planLimits.public_sharing === true,
+      enforce: planLimits.enforce !== false,
     });
     setFormError(null);
     setEditorOpen(true);
@@ -210,6 +297,14 @@ export default function PlansPage() {
 
   function setField(field: keyof PlanForm, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function setLimit(key: string, value: string) {
+    setForm((f) => ({ ...f, limits: { ...f.limits, [key]: value } }));
+  }
+
+  function setFlag(flag: 'publicSharing' | 'enforce', value: boolean) {
+    setForm((f) => ({ ...f, [flag]: value }));
   }
 
   function toggleCycle(cycle: string) {
@@ -231,7 +326,7 @@ export default function PlansPage() {
     setSaving(true);
     setFormError(null);
     try {
-      const payload = buildPayload(form);
+      const payload = buildPayload(form, editing ? editing.limits : null);
       if (editing) {
         await apiFetch(`/api/plans/${editing.id}`, { method: 'PUT', body: payload });
       } else {
@@ -267,6 +362,22 @@ export default function PlansPage() {
       await refreshPlans();
     } catch (err) {
       setActionError(errMsg(err));
+    }
+  }
+
+  async function onToggleRestrictions(next: boolean) {
+    setActionError(null);
+    setRestrictionsBusy(true);
+    try {
+      const s = await apiFetch<{ settings: { restrictions_enforced: boolean } }>('/api/portal/settings', {
+        method: 'PUT',
+        body: { restrictions_enforced: next },
+      });
+      setRestrictions(s.settings.restrictions_enforced);
+    } catch (err) {
+      setActionError(errMsg(err));
+    } finally {
+      setRestrictionsBusy(false);
     }
   }
 
@@ -308,6 +419,7 @@ export default function PlansPage() {
                 <th>Monthly</th>
                 <th>Yearly</th>
                 <th>Billing cycles</th>
+                <th>Usage limits</th>
                 <th>First-recharge bonus</th>
                 <th>Order</th>
                 <th>Created</th>
@@ -336,6 +448,11 @@ export default function PlansPage() {
                           {cycle}
                         </Badge>
                       ))}
+                    </span>
+                  </td>
+                  <td>
+                    <span className="pm-cell-sub" style={{ whiteSpace: 'nowrap' }}>
+                      {limitSummary(plan.limits)}
                     </span>
                   </td>
                   <td>{plan.trial_days > 0 ? `+${plan.trial_days} days validity` : '—'}</td>
@@ -411,6 +528,45 @@ export default function PlansPage() {
       {actionError ? (
         <div style={{ marginBottom: 18 }}>
           <Alert kind="error">{actionError}</Alert>
+        </div>
+      ) : null}
+
+      {role && canRead && !meLoading ? (
+        <div style={{ marginBottom: 18 }} data-testid="restrictions-card">
+          <Card
+            title="Usage restrictions"
+            actions={
+              restrictions === false ? <Badge tone="warn">Paused</Badge> : <Badge tone="ok">Enforcing</Badge>
+            }
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {restrictions === false ? (
+                <Alert kind="info">
+                  Per-plan usage limits are paused globally. Workspace, project, collection, team, seat,
+                  public-sharing and run gates are <strong>not enforced</strong> until this is turned back on.
+                </Alert>
+              ) : (
+                <p className="pm-hint" style={{ margin: 0 }}>
+                  Master switch for the per-plan usage gates (Portal B). When ON, every org is limited by its
+                  covering plan&apos;s limits below. Enterprise and custom plans stay exempt.
+                </p>
+              )}
+              {canManage ? (
+                <label className="pm-check" style={{ paddingTop: 2 }}>
+                  <input
+                    type="checkbox"
+                    data-testid="restrictions-toggle"
+                    checked={restrictions !== false}
+                    disabled={restrictionsBusy}
+                    onChange={(e) => onToggleRestrictions(e.target.checked)}
+                  />
+                  Enforce per-plan usage restrictions
+                </label>
+              ) : (
+                <span className="pm-hint">MANAGER or ADMIN access is required to change enforcement.</span>
+              )}
+            </div>
+          </Card>
         </div>
       ) : null}
 
@@ -594,6 +750,68 @@ export default function PlansPage() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  <div
+                    style={{
+                      borderTop: '1px solid rgba(148,163,184,0.3)',
+                      paddingTop: 14,
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span
+                      className="pm-label"
+                      style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+                    >
+                      Usage limits &amp; restrictions
+                    </span>
+                    <p className="pm-hint" style={{ margin: '2px 0 0' }}>
+                      An organization is limited by these caps (Portal B gates). Blank a field for unlimited;
+                      enterprise / custom plans are always exempt.
+                    </p>
+                  </div>
+                  <div className="pm-form-grid">
+                    {LIMIT_KEYS.map(({ key, label, hint }) => (
+                      <div className="pm-field" key={key}>
+                        <label className="pm-label" htmlFor={`plan-lim-${key}`}>
+                          {label}
+                        </label>
+                        <input
+                          id={`plan-lim-${key}`}
+                          className="pm-input"
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={form.limits[key] ?? ''}
+                          onChange={(e) => setLimit(key, e.target.value)}
+                          placeholder="unlimited"
+                        />
+                        <p className="pm-hint">{hint}</p>
+                      </div>
+                    ))}
+                    <div className="pm-field">
+                      <span className="pm-label">Public sharing</span>
+                      <label className="pm-check" style={{ paddingTop: 2 }}>
+                        <input
+                          type="checkbox"
+                          checked={form.publicSharing}
+                          onChange={(e) => setFlag('publicSharing', e.target.checked)}
+                        />
+                        Allow public workspaces &amp; share links
+                      </label>
+                    </div>
+                    <div className="pm-field">
+                      <span className="pm-label">Plan override</span>
+                      <label className="pm-check" style={{ paddingTop: 2 }}>
+                        <input
+                          type="checkbox"
+                          checked={form.enforce}
+                          onChange={(e) => setFlag('enforce', e.target.checked)}
+                        />
+                        Enforce limits on this plan (off = plan is exempt)
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -10,6 +10,7 @@ const {
 const { runWorkflow } = require('../workflowService');
 const { logAudit } = require('../audit');
 const { redactSnapshot } = require('../redact');
+const { chargeRuns, orgOfProject } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -151,6 +152,11 @@ router.post('/workflows/:workflowId/run', async (req, res, next) => {
     if (!(await canReadProject(req.user.id, wf.project_id))) {
       return res.status(403).json({ error: 'No access to this project' });
     }
+    const runCharge = await chargeRuns({
+      userId: req.user.id,
+      orgId: await orgOfProject(wf.project_id),
+    });
+    if (!runCharge.ok) return res.status(403).json(runCharge.body);
     const runId = await runWorkflow({ workflowId: wf.id, trigger: 'MANUAL', userId: req.user.id });
     await logAudit({
       actorId: req.user.id,

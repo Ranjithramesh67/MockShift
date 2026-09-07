@@ -18,20 +18,36 @@
 -- validity days granted on top of the paid period when the customer makes
 -- their first paid recharge (Free ₹0 plan has no bonus). Re-running enforces
 -- the canonical catalog values even when the rows already exist.
+--
+-- `limits` carries the machine-readable per-plan usage caps consumed by the
+-- restrictions engine (backend/src/api/entitlements.js). Canonical keys
+-- (null = unlimited): workspaces, projects, collections, teams, seats
+-- (distinct people in the org pool), storage_mb (reserved, not enforced),
+-- runs_per_month, public_sharing. The INSERT carries the full limits column
+-- (migration 013 default '{}' would otherwise wipe the numbers); ON CONFLICT
+-- MERGES the canonical numbers over any stored limits so editor-added extras
+-- (enforce / sso / saml / sla / future keys) survive a reseed.
 INSERT INTO plans (key, name, tagline, description, price_monthly, price_yearly,
-                   currency, billing_cycles, trial_days, sort_order, status)
+                   currency, billing_cycles, trial_days, sort_order, status, limits)
 VALUES
   ('free',  'Free',       'For hobbyists and quick experiments', NULL,
-    0,     0,     'INR', ARRAY['MONTHLY','YEARLY'], 0,  10, 'PUBLISHED'),
+    0,     0,     'INR', ARRAY['MONTHLY','YEARLY'], 0,  10, 'PUBLISHED',
+    '{"workspaces":1,"projects":1,"collections":null,"teams":null,"seats":1,"storage_mb":200,"runs_per_month":null,"public_sharing":false}'::jsonb),
   ('starter','Starter',   'For solo builders shipping real work', NULL,
-    99,    990,   'INR', ARRAY['MONTHLY','YEARLY'], 5,  20, 'PUBLISHED'),
+    99,    990,   'INR', ARRAY['MONTHLY','YEARLY'], 5,  20, 'PUBLISHED',
+    '{"workspaces":5,"projects":5,"collections":null,"teams":null,"seats":5,"storage_mb":2048,"runs_per_month":null,"public_sharing":false}'::jsonb),
   ('pro',   'Pro',        'For teams that live in their API workflow', NULL,
-    299,  2990,   'INR', ARRAY['MONTHLY','YEARLY'], 10, 30, 'PUBLISHED'),
+    299,  2990,   'INR', ARRAY['MONTHLY','YEARLY'], 10, 30, 'PUBLISHED',
+    '{"workspaces":25,"projects":25,"collections":null,"teams":null,"seats":25,"storage_mb":10240,"runs_per_month":null,"public_sharing":true}'::jsonb),
   ('team',  'Team',       'Shared workspaces, permissions and more', NULL,
-    799,  7990,   'INR', ARRAY['MONTHLY','YEARLY'], 15, 40, 'PUBLISHED'),
+    799,  7990,   'INR', ARRAY['MONTHLY','YEARLY'], 15, 40, 'PUBLISHED',
+    '{"workspaces":null,"projects":null,"collections":null,"teams":null,"seats":10,"storage_mb":null,"runs_per_month":null,"public_sharing":true,"sso":true}'::jsonb),
   ('enterprise','Enterprise','Dedicated support and SSO at scale', NULL,
-    NULL, NULL,  'INR', ARRAY['CUSTOM'],            0,  50, 'PUBLISHED')
-ON CONFLICT (key) DO UPDATE SET trial_days = EXCLUDED.trial_days;
+    NULL, NULL,  'INR', ARRAY['CUSTOM'],            0,  50, 'PUBLISHED',
+    '{"workspaces":null,"projects":null,"collections":null,"teams":null,"seats":null,"storage_mb":null,"runs_per_month":null,"public_sharing":true,"sso":true,"saml":true,"sla":true}'::jsonb)
+ON CONFLICT (key) DO UPDATE
+  SET trial_days = EXCLUDED.trial_days,
+      limits = plans.limits || EXCLUDED.limits;
 
 -- ---- Demo customer users (idempotent by email) ------------------------------
 -- c1..c6 = one account per plan. c7 = already expired, c8 = expires today,

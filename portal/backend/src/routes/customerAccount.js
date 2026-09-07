@@ -18,6 +18,11 @@
 
 const { Router } = require('express');
 const { query, access } = require('../shared');
+const {
+  resolveLimits,
+  countPoolUsage,
+  currentRunUsage,
+} = require('../../../../backend/src/api/entitlements');
 
 const router = Router();
 
@@ -111,6 +116,23 @@ router.get('/overview', access.requireAuth, async (req, res, next) => {
       { userId }
     );
 
+    // L5 — resolved plan entitlement + live org-pool usage (additive; never
+    // changes existing overview fields).
+    const en = await resolveLimits(userId);
+    const usage = en.poolOrgId
+      ? await countPoolUsage(en.poolOrgId)
+      : { workspaces: 0, projects: 0, collections: 0, teams: 0, seats: 0 };
+    const runs = en.poolOrgId ? await currentRunUsage(en.poolOrgId) : 0;
+    const plan = {
+      key: en.planKey,
+      name: en.planName,
+      enforced: en.enforced,
+      reason: en.reason,
+      poolOrgId: en.poolOrgId,
+      limits: en.limits,
+      usage: { ...usage, runs },
+    };
+
     res.json({
       ok: true,
       account: {
@@ -120,6 +142,7 @@ router.get('/overview', access.requireAuth, async (req, res, next) => {
         role: user.role,
       },
       current,
+      plan,
       invoices: invoiceRows.map(toInvoiceShape),
       hasPaidOrders: paid.length > 0,
     });
