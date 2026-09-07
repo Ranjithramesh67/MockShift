@@ -131,9 +131,10 @@ Notes for later segments: (a) the dev demo baseline's `plans.limits` are `{}`
 (`portal/db/seed-demo.sql` inserts plans WITHOUT the `limits` column and its
 `ON CONFLICT … DO UPDATE` only refreshes `trial_days` — the migration-013 limits
 never land in a fresh demo reseed), so the restrictions programme L1 must decide
-whether to add canonical limits to the demo seed; (b) throwaway `pr1_*@test.io`
-checkout accounts from the matrix are still in the DB (one with an ACTIVE starter
-sub) — cleanup pending explicit user OK per no-delete rule.
+whether to add canonical limits to the demo seed; (b) the throwaway
+`pr1_*@test.io` checkout accounts from the matrix were cleaned from the dev DB
+(user-confirmed psql DELETE, dependency order, transactional) — baseline back to
+12 users / 9 subs / 5 plans.
 
 Current demo/DB state: dev DB was reset + reseeded to the canonical demo
 baseline after the matrices/smoke (throwaway a5_*/pwacct_*/buyer1_* users
