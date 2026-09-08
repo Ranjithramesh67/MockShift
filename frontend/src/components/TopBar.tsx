@@ -22,6 +22,8 @@ import {
   PlayIcon,
   MenuIcon,
   UserIcon,
+  KeyIcon,
+  SendIcon,
 } from './icons';
 
 const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string; icon: typeof LayoutIcon }> = [
@@ -147,6 +149,16 @@ export function TopBar({
   const goProfile = () => {
     setMenuOpen(false);
     router.push('/profile');
+  };
+
+  const goInbox = () => {
+    setMenuOpen(false);
+    router.push('/inbox');
+  };
+
+  const goTokens = () => {
+    setMenuOpen(false);
+    router.push('/settings/api-tokens');
   };
 
   useEffect(() => {
@@ -276,6 +288,26 @@ export function TopBar({
               >
                 <UserIcon size={14} />
                 Profile
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                data-testid="inbox-menu-item"
+                onClick={goInbox}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <SendIcon size={14} />
+                Inbox
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                data-testid="tokens-menu-item"
+                onClick={goTokens}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <KeyIcon size={14} />
+                API tokens
               </button>
               <button
                 type="button"

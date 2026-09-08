@@ -1,0 +1,533 @@
+/* ==========================================================================
+   Inbox (send item to another user) — MAIN app.
+
+   Namespace: .inbox-* plus the shared .send-dialog-* rules used by the
+   SendItemDialog wherever it is mounted. Imported from app/inbox/page.tsx;
+   hosts that mount SendItemDialog outside /inbox should also import this file
+   (e.g. via the root layout) so the .send-dialog rules apply there too.
+   ========================================================================== */
+
+/* ---- Inbox screen shell -------------------------------------------------- */
+.inbox-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.inbox-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 16px;
+  background: rgba(19, 23, 34, 0.85);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.inbox-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.inbox-topbar-brand:hover {
+  filter: brightness(1.1);
+}
+
+.inbox-topbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
+.inbox-topbar-title {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.inbox-topbar-user {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.inbox-topbar-name {
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Content column ------------------------------------------------------ */
+.inbox-main {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 28px 20px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.inbox-head h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.inbox-head-sub {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  max-width: 560px;
+}
+
+.inbox-error,
+.inbox-row-error {
+  color: var(--err);
+}
+
+.inbox-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(248, 81, 73, 0.35);
+  background: rgba(248, 81, 73, 0.08);
+  border-radius: var(--r-md);
+}
+
+.inbox-error p {
+  margin: 0;
+}
+
+/* ---- Tabs + filter pills ------------------------------------------------- */
+.inbox-tabs {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.inbox-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.inbox-tab:hover {
+  color: var(--text);
+}
+
+.inbox-tab.active {
+  background: var(--bg-panel-2);
+  color: var(--accent);
+}
+
+.inbox-tab-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.inbox-filter-row {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.inbox-filter {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color var(--speed) var(--ease), border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.inbox-filter:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.inbox-filter.active {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+/* ---- List ---------------------------------------------------------------- */
+.inbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inbox-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+
+.inbox-person {
+  flex: none;
+  margin-top: 2px;
+}
+
+.inbox-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inbox-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inbox-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.inbox-time {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.inbox-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  margin-left: auto;
+}
+
+.inbox-chip-pending {
+  color: var(--warn);
+  background: rgba(210, 153, 34, 0.14);
+}
+
+.inbox-chip-accepted {
+  color: var(--ok);
+  background: rgba(63, 185, 80, 0.14);
+}
+
+.inbox-chip-rejected {
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.inbox-row-item {
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.inbox-row-item strong {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.inbox-row-by {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.inbox-row-note {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.inbox-row-note-ok {
+  color: var(--ok);
+}
+
+.inbox-row-note-no {
+  color: var(--err);
+}
+
+.inbox-row-error {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
+/* ---- Respond actions ----------------------------------------------------- */
+.inbox-respond-actions {
+  flex: none;
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.inbox-respond-confirm {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
+.inbox-respond-confirm .primary-button.small,
+.inbox-respond-confirm .ghost-button.small {
+  font-size: 12px;
+}
+
+.inbox-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.inbox-link {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px;
+  text-decoration: underline;
+}
+
+.inbox-link:hover {
+  color: var(--text);
+}
+
+/* ---- Empty state --------------------------------------------------------- */
+.inbox-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 44px 20px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+}
+
+.inbox-empty-title {
+  margin: 6px 0 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.inbox-empty-sub {
+  margin: 0;
+  max-width: 460px;
+}
+
+/* ==========================================================================
+   SendItemDialog — shared dialog styles (used by any item action menu host).
+   ========================================================================== */
+.send-item-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.send-item-kind {
+  flex: none;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.send-dialog-list {
+  margin-top: 10px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.send-recipient-row {
+  padding: 0;
+}
+
+.send-recipient-row .send-recipient-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.send-recipient-pick:hover {
+  background: var(--bg-hover);
+}
+
+.send-recipient-row.selected .send-recipient-pick {
+  background: var(--accent-soft);
+}
+
+.send-dialog-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--bg-panel-2);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.send-recipient-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.send-recipient-name {
+  font-weight: 600;
+}
+
+.send-recipient-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.send-recipient-check {
+  flex: none;
+  color: var(--accent);
+}
+
+.send-success-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  color: var(--ok);
+  overflow-wrap: anywhere;
+}
+
+.send-dialog-message {
+  width: 100%;
+  resize: vertical;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.send-dialog-message:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---- Responsive ---------------------------------------------------------- */
+@media (max-width: 640px) {
+  .inbox-main {
+    padding: 18px 12px 48px;
+  }
+
+  .inbox-row {
+    flex-wrap: wrap;
+  }
+
+  .inbox-row-main {
+    min-width: calc(100% - 50px);
+  }
+
+  .inbox-respond-actions,
+  .inbox-respond-confirm {
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: 2px;
+  }
+}

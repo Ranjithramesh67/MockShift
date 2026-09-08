@@ -437,6 +437,7 @@ module.exports = {
   resolveVariables,
   loadRequest,
   loadAuthProvider,
+  executePipeline,
   isMultipartPartsRequest,
   buildMultipartBody,
   MAX_FILE_PART_BYTES,

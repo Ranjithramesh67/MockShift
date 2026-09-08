@@ -11,6 +11,7 @@ import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { accessRequestApi } from '@/lib/api';
 import { CreateModal, type CreateKind } from './CreateModal';
 import { SharingModal } from './SharingModal';
+import { SendItemDialog, type SendableItem } from './SendItemDialog';
 import { TeamsModal } from './TeamsModal';
 import { AuthProviderModal } from './AuthProviderModal';
 import { CollectionRunnerModal } from './CollectionRunnerModal';
@@ -38,6 +39,7 @@ import {
   DotsIcon,
   RequestIcon,
   CopyIcon,
+  SendIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
@@ -217,6 +219,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
   const [renaming, setRenaming] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [menuFor, setMenuFor] = useState<{ kind: 'request' | 'folder' | 'collection'; id: string } | null>(null);
+  const [sendTarget, setSendTarget] = useState<SendableItem | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [selectedRow, setSelectedRow] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
 
@@ -509,6 +512,17 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
             </button>
             <button
               type="button"
+              data-testid={`request-send-${r.name}`}
+              onClick={() => {
+                setMenuFor(null);
+                setSendTarget({ id: r.id, type: 'request', name: r.name });
+              }}
+            >
+              <SendIcon size={13} />
+              Send to user
+            </button>
+            <button
+              type="button"
               className="danger"
               data-testid={`request-delete-${r.name}`}
               onClick={() => {
@@ -650,6 +664,17 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
               </button>
               <button
                 type="button"
+                data-testid={`folder-send-${folder.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  setSendTarget({ id: folder.id, type: 'folder', name: folder.name });
+                }}
+              >
+                <SendIcon size={13} />
+                Send to user
+              </button>
+              <button
+                type="button"
                 className="danger"
                 data-testid={`delete-folder-${folder.name}`}
                 onClick={() => {
@@ -688,8 +713,9 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
   };
 
   return (
-    <div className="sidebar-section tree-section">
-      <div className="sidebar-section-head">
+    <>
+      <div className="sidebar-section tree-section">
+        <div className="sidebar-section-head">
         <button
           type="button"
           className={`icon-button section-chevron ${collapsed ? '' : 'open'}`}
@@ -883,6 +909,17 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
                         </button>
                         <button
                           type="button"
+                          data-testid={`collection-send-${c.name}`}
+                          onClick={() => {
+                            setMenuFor(null);
+                            setSendTarget({ id: c.id, type: 'collection', name: c.name });
+                          }}
+                        >
+                          <SendIcon size={13} />
+                          Send to user
+                        </button>
+                        <button
+                          type="button"
                           className="danger"
                           data-testid={`delete-collection-${c.name}`}
                           onClick={() => {
@@ -926,7 +963,9 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
         </div>
       ))}
       {!collapsed && tree.collections.length === 0 && <p className="hint">No collections yet.</p>}
-    </div>
+      </div>
+      <SendItemDialog open={Boolean(sendTarget)} item={sendTarget} onClose={() => setSendTarget(null)} />
+    </>
   );
 }
 

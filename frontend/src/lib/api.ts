@@ -731,6 +731,77 @@ export const notificationApi = {
   readAll: () => apiFetch('/api/notifications/read-all', { method: 'POST' }),
 };
 
+// ------------------------------------------------------------------- Sends
+// "Send item to another user": a sender creates a send of a request / folder /
+// collection / project / workspace to a recipient; the recipient accepts (a
+// copy is cloned into their own account — the sender keeps the original) or
+// rejects. Endpoints live on backend/src/api/routes/sends.js (mounted /api).
+export type SendItemType = 'request' | 'folder' | 'collection' | 'project' | 'workspace';
+export type SendStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface SendPerson {
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+
+// Where an accepted copy landed, scoped to the recipient's account. The
+// optional key reflects the cloned item type (a workspace clone only carries
+// workspace fields, a request clone also carries project/collection/folder).
+export interface SendAcceptedPath {
+  type: SendItemType;
+  name: string;
+  workspaceId: string;
+  workspaceName: string;
+  projectId?: string;
+  projectName?: string;
+  collectionId?: string;
+  collectionName?: string;
+  folderId?: string;
+  folderName?: string;
+}
+
+export interface Send {
+  id: string;
+  itemType: SendItemType;
+  itemId: string;
+  itemName: string | null;
+  message: string | null;
+  status: SendStatus;
+  createdAt: string;
+  respondedAt: string | null;
+  acceptedPath: SendAcceptedPath | null;
+  sender: SendPerson | null;
+  recipient: SendPerson | null;
+}
+
+export interface SendRecipient {
+  id: string;
+  name: string;
+  email: string;
+  username: string;
+}
+
+export interface SendCreateInput {
+  recipientId: string;
+  itemType: SendItemType;
+  itemId: string;
+  message?: string;
+}
+
+export const sendsApi = {
+  inbox: (status?: SendStatus) =>
+    apiFetch<{ sends: Send[] }>(status ? `/api/sends/inbox?status=${status}` : '/api/sends/inbox'),
+  outbox: () => apiFetch<{ sends: Send[] }>('/api/sends/outbox'),
+  recipients: () => apiFetch<{ recipients: SendRecipient[] }>('/api/sends/recipients'),
+  create: (input: SendCreateInput) =>
+    apiFetch<{ send: Send }>('/api/sends', { method: 'POST', body: input }),
+  accept: (sendId: string) =>
+    apiFetch<{ send: Send }>(`/api/sends/${sendId}/accept`, { method: 'POST' }),
+  reject: (sendId: string) =>
+    apiFetch<{ send: Send }>(`/api/sends/${sendId}/reject`, { method: 'POST' }),
+};
+
 // ------------------------------------------------------------- Environments
 export interface Environment {
   id: string;
