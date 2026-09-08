@@ -237,7 +237,8 @@ router.post('/collections/import', async (req, res, next) => {
     if (!(await canWriteProject(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
-    const importGate = await checkCountGate({ userId: req.user.id, orgId: await orgOfProject(projectId), key: 'collections' });
+    const orgId = await orgOfProject(projectId);
+    const importGate = await checkCountGate({ userId: req.user.id, orgId, key: 'collections' });
     if (importGate) return res.status(403).json(importGate);
     const collectionName = cleanString(name || collection?.name, 500);
     if (!collectionName) return res.status(400).json({ error: 'Collection name is required' });
@@ -251,6 +252,16 @@ router.post('/collections/import', async (req, res, next) => {
       if (parsed.error) return res.status(400).json({ error: parsed.error });
       validated.push(parsed.value);
     }
+
+    // Request-creation gate — an import inserts every validated request into
+    // the org pool (R4: creation-only). extra = requests about to be inserted.
+    const importReqGate = await checkCountGate({
+      userId: req.user.id,
+      orgId,
+      key: 'api_requests',
+      extra: validated.length,
+    });
+    if (importReqGate) return res.status(403).json(importReqGate);
 
     // Validate the folder tree up-front (pure JS, before opening the
     // transaction): every parent must be a known folder and the graph must be

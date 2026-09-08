@@ -16,6 +16,7 @@ import {
 import { ApiPickerModal, UserPickerModal } from './Pickers';
 import { BlocksEditor } from './BlockEditor';
 import { BlockView, MentionChips } from './Mentions';
+import { DocShareButton, ExportMenu } from './PageActions';
 import { fmtDate, workspaceRoleRank } from './helpers';
 import styles from './docs.module.css';
 import { BackIcon, TrashIcon, UserIcon, ServerIcon, SaveIcon, XIcon, PencilIcon } from '@/components/icons';
@@ -245,6 +246,12 @@ export function DocsPageView({
               <PencilIcon size={13} />
               Edit
             </button>
+          )}
+          {!editing && (
+            <>
+              <ExportMenu pageId={pageId} title={detail.page.title} />
+              <DocShareButton pageId={pageId} />
+            </>
           )}
           {editing && (
             <>

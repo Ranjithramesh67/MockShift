@@ -131,6 +131,18 @@ function Block({ block }: { block: DocsBlock }) {
         </ul>
       );
     }
+    case 'image': {
+      const src = blockText(c, 'src');
+      const alt = blockText(c, 'alt');
+      const caption = blockText(c, 'caption');
+      if (!src) return null;
+      return (
+        <figure className={styles.imgBlock} data-testid="docs-block-image">
+          <img className={styles.imgEl} src={src} alt={alt} />
+          {caption && <figcaption className={styles.imgCaption}>{caption}</figcaption>}
+        </figure>
+      );
+    }
   }
 }
 

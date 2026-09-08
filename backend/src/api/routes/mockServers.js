@@ -10,6 +10,7 @@ const {
   canWriteProject,
 } = require('../access');
 const { logAudit } = require('../audit');
+const { checkCountGate, orgOfProject } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -103,6 +104,17 @@ router.get('/projects/:projectId/mock-server', requireProjectRead, async (req, r
 router.post('/projects/:projectId/mock-server', requireProjectWrite, async (req, res, next) => {
   try {
     const { projectId } = req.params;
+    // Count gate — mock servers are counted against the org pool plan (only
+    // creation is gated; the upsert below never increments when a project
+    // already has its server, matching the existing UNIQUE(project_id)).
+    const existing = await query(`SELECT id FROM mock_servers WHERE project_id = $1`, [projectId]);
+    const mockGate = await checkCountGate({
+      userId: req.user.id,
+      orgId: await orgOfProject(projectId),
+      key: 'mock_servers',
+      extra: existing.rows.length > 0 ? 0 : 1,
+    });
+    if (mockGate) return res.status(403).json(mockGate);
     const name = String(req.body?.name || '').trim() || 'Mock Server';
     const enabled = req.body?.enabled !== false;
     const { rows } = await query(

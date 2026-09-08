@@ -673,6 +673,59 @@ parallel on a frozen REST contract; the coordinator wired every seam afterwards.
   deep-link opens the request at '/'); `tsc --noEmit` clean, `npm test` 89/89.
   Scratch `UI smoke` pages deleted; demo data untouched.
 
+### 5.49 Docs export / share links / image blocks + free-plan limits (pushed 2026-09-08)
+
+User asked for: docs export "in a different format", back-to-the-originating-doc
+after opening a linked API (it was redirecting to the docs list instead), a
+number-of-docs limit, images in docs, plus API-request and mock-server limits
+for the free plan. Two more parallel agents ran against a frozen contract; the
+coordinator fixed one real-assembly bug and re-verified everything live.
+
+- **Limits (backend)** — `db/migrations/027_plan_limit_extensions.sql`
+  (plans.limits gains `api_requests`/`mock_servers`/`doc_pages`: free
+  `20/50/1`, starter `100/250/3`, pro `500/1000/10`, team/enterprise explicit
+  nulls = unlimited) and `026_docs_image_share.sql` (`doc_shares`, image in the
+  `doc_blocks.block_type` CHECK). `entitlements.js` new keys fall back to
+  free `50/1/20`, `countPoolUsage` counts api_requests / mock_servers /
+  doc_pages, and creation choke points enforce gates: content.js POST /requests
+  (+ folder duplicate, + import gate in exports.js), mockServers.js create,
+  docs.js POST /. Enterprise/custom and enforce-off plans stay exempt; 403
+  body is the uniform `plan_limit { code, key, limit, usage, upgrade }`.
+- **Docs (backend)** — image blocks (data: URL ≤5 MB or URL, alt/caption, 400
+  on bad source); `GET /docs/:id/export?format=markdown|html|json` (blob/text
+  download shapes); POST + DELETE `/docs/:id/share` (create-once then reuses the
+  token; free-plan `public_sharing` gate → 403 plan_limit); GET
+  `/docs/public/:token` returns a sanitized snapshot (title/updatedBy name only,
+  workspace name, blocks, mentions stripped to name/method — never ids/emails).
+- **Docs (frontend)** — Export menu (md/html/json download + "Print or save as
+  PDF" over the HTML export), Share button/modal with copy + revoke, image block
+  editor (file→data URL or URL, alt/caption, thumbnail, remove), per-workspace
+  usage pill and New-page disabled at the doc limit, and `?p=` deep-links.
+- **Back-to-doc fix** — DocsView keeps the open doc in the URL (`/docs?p=` +
+  `router.push('/docs?p=…')`), the linked-API chip still `router.push('/')`, so
+  browser Back restores the exact originating doc instead of the list. New
+  public route `frontend/app/s/doc/[token]/page.tsx` renders the sanitized
+  snapshot to anyone holding the link.
+- **Coordinator seam fix** — docs.js already mounted `/public` before its own
+  `requireAuth`, but on the real server earlier `/api`-mounted routers
+  (content/environments/etc.) run router-level `requireAuth` for every `/api/*`
+  request, so an anonymous `/api/docs/public/:token` 401'd before docs.js was
+  reached. Fixed by exporting `docsRoutes.publicRouter` and mounting
+  `app.use('/api/docs/public', …)` in the pre-auth section of server.js (same
+  pattern as `/api/webhooks`). Anonymous unknown token → 404; bogus token UI →
+  "Link unavailable".
+- **Verification (live :3001)** — docs-extension API probes 13/13 (anonymous
+  public 404-not-401, image block accept + 400 on bad source, md/html/json
+  exports, free-plan share 403 plan_limit, usage counts after create), paid-plan
+  share proof 10/10 (pro org share 201 → anonymous snapshot 200 sanitized with
+  no emails/ids, repeat share returns same token, unshare → 404); `tsc --noEmit`
+  clean, `npm test` 89/89; Playwright UI smoke 26/26 (limit pill x/20, image
+  block add + viewer roundtrip, export md download, free-share upgrade toast,
+  tag-API chip → request at '/' → Back restores `/docs?p=` same page, real-token
+  public page anonymous shows title + content, bogus token "Link unavailable").
+  All probe scratch rows (users/orgs/subs + demo "Milestone smoke" page) were
+  purged with user approval; demo data verified intact (`Test` page only).
+
 ### 5.44 Profile & plan visibility PR-1 — backend profile surface + avatar storage (pushed `0c171f4`, 2026-09-06)
 
 Ranjith approved starting the Profile & plan visibility programme with segment
@@ -1830,7 +1883,16 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-Workspaces sidebar scanability turn (§5.36) plus username (§5.35) and
+Docs export/share/image + free-plan limits turn (§5.49): migrations
+`026_docs_image_share.sql`, `027_plan_limit_extensions.sql` (applied);
+`backend/src/api/entitlements.js`, `routes/content.js`, `routes/mockServers.js`,
+`routes/exports.js`, `routes/docs.js`, and a server.js pre-auth public mount
+(`/api/docs/public`); frontend `app/docs/page.tsx` (`?p=` deep-link +
+Suspense), new `app/s/doc/[token]/page.tsx`, `components/docs/**`
+(PageActions export/share, image blocks), `DocsView.tsx`, `docsApi.ts`.
+Leave `frontend/tsconfig.tsbuildinfo`.
+
+Prior Workspaces sidebar scanability turn (§5.36) plus username (§5.35) and
 team-invite picker (§5.34): Sidebar/WorkspaceStore/globals.css + e2e;
 migration `014_user_username.sql`, `backend/src/api/username.js`,
 auth/admin/teams/seed, TeamsModal/signup/AdminView, tests + docs. Not

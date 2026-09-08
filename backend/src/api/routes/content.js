@@ -413,6 +413,20 @@ router.post('/folders/:folderId/duplicate', async (req, res, next) => {
       }
     }
 
+    // Folder duplication clones every request in the subtree — count them
+    // against the org pool before inserting (R4: creation-only gate).
+    const { rows: toCloneRows } = await query(
+      `SELECT count(*)::int AS n FROM api_requests WHERE folder_id = ANY($1::uuid[])`,
+      [[...seen]]
+    );
+    const folderDupGate = await checkCountGate({
+      userId: req.user.id,
+      orgId: projectId ? await orgOfProject(projectId) : null,
+      key: 'api_requests',
+      extra: toCloneRows[0]?.n ?? 0,
+    });
+    if (folderDupGate) return res.status(403).json(folderDupGate);
+
     await client.query('BEGIN');
     const rootCopyName = await uniqueFolderName(
       source.collection_id,
@@ -497,6 +511,14 @@ router.post('/requests', async (req, res, next) => {
     if (folderId && (await collectionOfFolder(folderId)) !== collectionId) {
       return res.status(400).json({ error: 'Folder must belong to the same collection as the request' });
     }
+    // L2 gate — stored requests are counted against the org pool plan (only
+    // request CREATION is gated, never edits/deletes — R4).
+    const reqGate = await checkCountGate({
+      userId: req.user.id,
+      orgId: await orgOfProject(projectId),
+      key: 'api_requests',
+    });
+    if (reqGate) return res.status(403).json(reqGate);
 
     const requestName = await uniqueRequestName(collectionId, folderId || null, name, null);
     const { rows } = await query(
@@ -679,6 +701,13 @@ router.post('/requests/:requestId/duplicate', async (req, res, next) => {
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
+    // Request duplication creates one more stored request (counted, R4).
+    const dupGate = await checkCountGate({
+      userId: req.user.id,
+      orgId: await orgOfProject(projectId),
+      key: 'api_requests',
+    });
+    if (dupGate) return res.status(403).json(dupGate);
     const copyName = await uniqueRequestName(source.collection_id, source.folder_id, source.name, null);
     const { rows: created } = await query(
       `INSERT INTO api_requests

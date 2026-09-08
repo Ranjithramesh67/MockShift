@@ -6,7 +6,8 @@
 // Canonical limit keys (nullable value = unlimited):
 //   workspaces, projects, collections, teams, seats (distinct people in the
 //   org pool), storage_mb (reserved, NOT enforced), runs_per_month,
-//   public_sharing (boolean; false blocks public exposure).
+//   public_sharing (boolean; false blocks public exposure), api_requests,
+//   mock_servers, doc_pages.
 //
 // Pool model (R1/R2 defaults):
 //   - Usage is counted against an ORG pool. A pool org may carry a covering
@@ -44,6 +45,9 @@ const CANONICAL_KEYS = [
   'storage_mb',
   'runs_per_month',
   'public_sharing',
+  'api_requests',
+  'mock_servers',
+  'doc_pages',
 ];
 
 const NON_TERMINAL = `s.status IN ('ACTIVE', 'TRIALING', 'PAST_DUE', 'SUSPENDED')`;
@@ -59,6 +63,9 @@ const FREE_FALLBACK_LIMITS = {
   storage_mb: 200,
   runs_per_month: null,
   public_sharing: false,
+  api_requests: 50,
+  mock_servers: 1,
+  doc_pages: 20,
 };
 
 function num(v) {
@@ -231,7 +238,16 @@ async function resolveLimits(userId, orgId = null) {
 // of the org's resources).
 async function countPoolUsage(orgId) {
   if (!orgId) {
-    return { workspaces: 0, projects: 0, collections: 0, teams: 0, seats: 0 };
+    return {
+      workspaces: 0,
+      projects: 0,
+      collections: 0,
+      teams: 0,
+      seats: 0,
+      api_requests: 0,
+      mock_servers: 0,
+      doc_pages: 0,
+    };
   }
   const { rows } = await query(
     `SELECT
@@ -257,10 +273,36 @@ async function countPoolUsage(orgId) {
           SELECT pm.user_id FROM project_members pm
             JOIN projects p ON p.id = pm.project_id
             JOIN workspaces w ON w.id = p.workspace_id AND w.organization_id = $1
-        ) seat_ids) AS seats`,
+        ) seat_ids) AS seats,
+       (SELECT count(*)::int
+          FROM api_requests ar
+          JOIN collections c ON c.id = ar.collection_id
+          JOIN projects p ON p.id = c.project_id
+          JOIN workspaces w ON w.id = p.workspace_id
+         WHERE w.organization_id = $1) AS api_requests,
+       (SELECT count(*)::int
+          FROM mock_servers ms
+          JOIN projects p ON p.id = ms.project_id
+          JOIN workspaces w ON w.id = p.workspace_id
+         WHERE w.organization_id = $1) AS mock_servers,
+       (SELECT count(*)::int
+          FROM doc_pages dp
+          JOIN workspaces w ON w.id = dp.workspace_id
+         WHERE w.organization_id = $1) AS doc_pages`,
     [orgId]
   );
-  return rows[0] || { workspaces: 0, projects: 0, collections: 0, teams: 0, seats: 0 };
+  return (
+    rows[0] || {
+      workspaces: 0,
+      projects: 0,
+      collections: 0,
+      teams: 0,
+      seats: 0,
+      api_requests: 0,
+      mock_servers: 0,
+      doc_pages: 0,
+    }
+  );
 }
 
 function monthBucket(now = new Date()) {

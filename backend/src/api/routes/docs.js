@@ -24,6 +24,7 @@
 // ============================================================================
 
 const { Router } = require('express');
+const crypto = require('crypto');
 const { query, pool } = require('../db');
 const {
   requireAuth,
@@ -33,8 +34,22 @@ const {
   canReadWorkspace,
 } = require('../access');
 const { logAudit } = require('../audit');
+const {
+  checkPublicSharingGate,
+  checkCountGate,
+  orgOfWorkspace,
+  resolveLimits,
+  countPoolUsage,
+} = require('../entitlements');
 
 const router = Router();
+
+// Public share viewer — mounted BEFORE requireAuth so holding a doc share
+// token alone grants a sanitized read (never ids/emails/workspace ids).
+const publicDocRouter = Router();
+publicDocRouter.get('/:token', servePublicDocShare);
+router.use('/public', publicDocRouter);
+
 router.use(requireAuth);
 
 // Workspace-access-request routes live on their own sub-router mounted at
@@ -47,7 +62,7 @@ accessRequestRouter.use(requireAuth);
 // paths can never be shadowed by a page lookup.
 router.use('/workspace-access-requests', accessRequestRouter);
 
-const BLOCK_TYPES = ['heading', 'text', 'code', 'payload', 'response', 'schema', 'list'];
+const BLOCK_TYPES = ['heading', 'text', 'code', 'payload', 'response', 'schema', 'list', 'image'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isUuid(value) {
@@ -202,6 +217,20 @@ function blockContentError(type, content) {
         return 'list content items must be an array of strings';
       }
       return null;
+    case 'image':
+      if (typeof content.src !== 'string' || !String(content.src).trim()) {
+        return 'image content requires a non-empty src';
+      }
+      if (!/^https?:\/\//i.test(content.src) && !/^data:image\//i.test(content.src)) {
+        return 'image content src must be an http(s) URL or a data:image data URL';
+      }
+      if (content.alt !== undefined && content.alt !== null && typeof content.alt !== 'string') {
+        return 'image content alt must be a string';
+      }
+      if (content.caption !== undefined && content.caption !== null && typeof content.caption !== 'string') {
+        return 'image content caption must be a string';
+      }
+      return null;
     default:
       return `block_type must be one of ${BLOCK_TYPES.join(', ')}`;
   }
@@ -301,6 +330,14 @@ router.post('/', async (req, res, next) => {
       resolvedProjectId = projectId;
     }
 
+    // doc_pages are counted against the org pool plan (R4 creation-only gate).
+    const docGate = await checkCountGate({
+      userId: req.user.id,
+      orgId: await orgOfWorkspace(workspaceId),
+      key: 'doc_pages',
+    });
+    if (docGate) return res.status(403).json(docGate);
+
     const created = await query(
       `INSERT INTO doc_pages (workspace_id, project_id, title, created_by)
        VALUES ($1, $2, $3, $4)
@@ -318,6 +355,344 @@ router.post('/', async (req, res, next) => {
     next(err);
   }
 });
+
+// ------------------------------------------------------------------ Usage
+
+// GET /docs/usage?workspaceId=<uuid> -> 200
+// { planKey, planName, enforced, usage: { doc_pages, api_requests,
+// mock_servers }, limits: { doc_pages, api_requests, mock_servers } }
+// Auth + workspace read gate. Declared before /:pageId so "usage" is never
+// shadowed by a page lookup.
+router.get('/usage', async (req, res, next) => {
+  try {
+    const { workspaceId } = req.query;
+    if (!workspaceId) return res.status(400).json({ error: 'workspaceId is required' });
+    if (!isUuid(workspaceId)) return res.status(400).json({ error: 'workspaceId must be a valid uuid' });
+    const access = await workspaceAccessFor(req.user, workspaceId);
+    if (!access.readable) return res.status(403).json({ error: 'No access to this workspace' });
+    const orgId = await orgOfWorkspace(workspaceId);
+    const [en, usage] = await Promise.all([resolveLimits(req.user.id, orgId), countPoolUsage(orgId)]);
+    res.json({
+      planKey: en.planKey,
+      planName: en.planName,
+      enforced: en.enforced,
+      usage: {
+        doc_pages: usage.doc_pages ?? 0,
+        api_requests: usage.api_requests ?? 0,
+        mock_servers: usage.mock_servers ?? 0,
+      },
+      limits: {
+        doc_pages: en.limits.doc_pages ?? null,
+        api_requests: en.limits.api_requests ?? null,
+        mock_servers: en.limits.mock_servers ?? null,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------- Export (download)
+
+// Renderers for the three export formats. All text goes through esc() in HTML;
+// markdown keeps raw text as-is (safe, no HTML is produced). Blocks whose
+// content lacks a key degrade to '' rather than throwing.
+function escHtml(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function prettyBody(body) {
+  if (typeof body === 'string') return body;
+  if (body === null || body === undefined) return '';
+  try {
+    return JSON.stringify(body, null, 2);
+  } catch {
+    return String(body);
+  }
+}
+
+function blockToMarkdown(b) {
+  const c = b.content || {};
+  switch (b.type) {
+    case 'heading':
+      return `## ${c.text ?? ''}`;
+    case 'text':
+      return c.text ?? '';
+    case 'code':
+      return `\`\`\`${c.language || ''}\n${c.code ?? ''}\n\`\`\``;
+    case 'schema':
+      return `\`\`\`${c.language || ''}\n${prettyBody(c.definition)}\n\`\`\``;
+    case 'payload': {
+      const method = String(c.method || '').toUpperCase();
+      const lines = [`### Payload ${method}`];
+      if (typeof c.contentType === 'string' && c.contentType) {
+        lines.push(`Content-Type: ${c.contentType}`, '');
+      }
+      lines.push('```json', prettyBody(c.body), '```');
+      return lines.join('\n');
+    }
+    case 'response':
+      return `### Example response (${c.status})\n\n\`\`\`json\n${prettyBody(c.body)}\n\`\`\``;
+    case 'list': {
+      const items = Array.isArray(c.items) ? c.items : [];
+      if (c.style === 'number') return items.map((it, i) => `${i + 1}. ${it}`).join('\n');
+      return items.map((it) => `- ${it}`).join('\n');
+    }
+    case 'image': {
+      const alt = typeof c.alt === 'string' ? c.alt : '';
+      const caption = typeof c.caption === 'string' && c.caption ? ` *${c.caption}*` : '';
+      return `![${alt}](${c.src})${caption}`;
+    }
+    default:
+      return '';
+  }
+}
+
+function blockToHtml(b) {
+  const c = b.content || {};
+  switch (b.type) {
+    case 'heading':
+      return `<h2>${escHtml(c.text)}</h2>`;
+    case 'text':
+      return `<p>${escHtml(c.text)}</p>`;
+    case 'code':
+      return `<pre><code>${escHtml(c.code)}</code></pre>`;
+    case 'schema':
+      return `<pre><code>${escHtml(prettyBody(c.definition))}</code></pre>`;
+    case 'payload': {
+      const method = String(c.method || '').toUpperCase();
+      const type =
+        typeof c.contentType === 'string' && c.contentType
+          ? `<p>Content-Type: ${escHtml(c.contentType)}</p>`
+          : '';
+      return `<h3>Payload ${escHtml(method)}</h3>${type}<pre><code>${escHtml(prettyBody(c.body))}</code></pre>`;
+    }
+    case 'response':
+      return `<h3>Example response (${Number(c.status)})</h3><pre><code>${escHtml(prettyBody(c.body))}</code></pre>`;
+    case 'list': {
+      const items = Array.isArray(c.items) ? c.items : [];
+      const tag = c.style === 'number' ? 'ol' : 'ul';
+      return `<${tag}>${items.map((it) => `<li>${escHtml(it)}</li>`).join('')}</${tag}>`;
+    }
+    case 'image': {
+      const src = typeof c.src === 'string' ? c.src : '';
+      const alt = typeof c.alt === 'string' ? c.alt : '';
+      const caption =
+        typeof c.caption === 'string' && c.caption ? `<figcaption>${escHtml(c.caption)}</figcaption>` : '';
+      return `<figure><img src="${escHtml(src)}" alt="${escHtml(alt)}" />${caption}</figure>`;
+    }
+    default:
+      return '';
+  }
+}
+
+// GET /docs/:pageId/export?format=markdown|html|json -> file download.
+// Same read gate as GET /:pageId. Filename: doc-<slug>-<first8 of id>.<ext>.
+router.get('/:pageId/export', async (req, res, next) => {
+  try {
+    const { pageId } = req.params;
+    const format = String(req.query.format || '').toLowerCase();
+    if (!['markdown', 'html', 'json'].includes(format)) {
+      return res.status(400).json({ error: 'format must be markdown, html or json' });
+    }
+    if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
+    const page = await pageRow(pageId);
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+    const access = await workspaceAccessFor(req.user, page.workspace_id);
+    if (!access.readable) return res.status(404).json({ error: 'Page not found' });
+
+    const [summary, blockRows] = await Promise.all([
+      serializePageSummary(page),
+      query(
+        `SELECT block_type, content FROM doc_blocks WHERE page_id = $1 ORDER BY position`,
+        [pageId]
+      ),
+    ]);
+    const blocks = blockRows.rows.map((b) => ({ type: b.block_type, content: b.content }));
+
+    let body;
+    let ext;
+    let contentType;
+    if (format === 'markdown') {
+      const metaName = (summary.updatedBy && summary.updatedBy.name) || summary.createdBy.name || 'Unknown';
+      const meta = `_Last updated ${new Date(page.updated_at).toISOString()} by ${metaName}_`;
+      const rendered = blocks.map(blockToMarkdown).filter((s) => s !== '').join('\n\n');
+      body = `# ${page.title}\n\n${meta}\n\n${rendered}\n`;
+      ext = 'md';
+      contentType = 'text/markdown; charset=utf-8';
+    } else if (format === 'html') {
+      const metaName = (summary.updatedBy && summary.updatedBy.name) || summary.createdBy.name || 'Unknown';
+      const meta = `Last updated ${new Date(page.updated_at).toISOString()} by ${escHtml(metaName)}`;
+      const rendered = blocks.map(blockToHtml).join('\n');
+      body =
+        `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n` +
+        `<title>${escHtml(page.title)}</title>\n</head>\n<body>\n` +
+        `<h1>${escHtml(page.title)}</h1>\n<p class="meta">${meta}</p>\n` +
+        `${rendered}\n</body>\n</html>\n`;
+      ext = 'html';
+      contentType = 'text/html; charset=utf-8';
+    } else {
+      const mentionList = await sanitizePageMentions(pageId);
+      const payload = {
+        title: page.title,
+        workspaceName: summary.workspaceName,
+        updatedAt: new Date(page.updated_at).toISOString(),
+        updatedBy: summary.updatedBy ? { name: summary.updatedBy.name } : null,
+        blocks: blocks.map((b) => ({ type: b.type, content: b.content })),
+        mentions: mentionList,
+      };
+      body = JSON.stringify(payload, null, 2);
+      ext = 'json';
+      contentType = 'application/json; charset=utf-8';
+    }
+
+    const slug = slugifyForFile(page.title);
+    const filename = `doc-${slug}-${String(page.id).slice(0, 8)}.${ext}`;
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(body);
+  } catch (err) {
+    next(err);
+  }
+});
+
+function slugifyForFile(title) {
+  const slug = String(title || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return slug || 'page';
+}
+
+// ---------------------------------------------------------------- Sharing
+
+// Sanitized mention list (shared by the JSON export and the public snapshot):
+// user refs -> {name}; api refs -> {name, method}. Never ids, emails or
+// request internals.
+async function sanitizePageMentions(pageId) {
+  const { rows } = await query(
+    `SELECT mention_type, ref_id FROM doc_mentions WHERE page_id = $1 ORDER BY created_at, id`,
+    [pageId]
+  );
+  const mentions = [];
+  for (const m of rows) {
+    if (m.mention_type === 'user') {
+      const { rows: us } = await query(`SELECT name FROM users WHERE id = $1`, [m.ref_id]);
+      mentions.push({ type: 'user', ref: us[0] ? { name: us[0].name } : { name: null } });
+    } else {
+      const { rows: ap } = await query(`SELECT name, method FROM api_requests WHERE id = $1`, [m.ref_id]);
+      mentions.push({ type: 'api', ref: ap[0] ? { name: ap[0].name, method: ap[0].method } : { name: null, method: null } });
+    }
+  }
+  return mentions;
+}
+
+// POST /docs/:pageId/share -> 201 {share:{token,url}} (200 when a share
+// already exists). Auth + canEdit + public-sharing plan gate.
+router.post('/:pageId/share', async (req, res, next) => {
+  try {
+    const { pageId } = req.params;
+    if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
+    const page = await pageRow(pageId);
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+    if (!(await canEditPage(req.user, page))) {
+      return res.status(403).json({ error: 'Editor or admin access required' });
+    }
+    const existing = await query(`SELECT id, token, created_at FROM doc_shares WHERE doc_id = $1`, [pageId]);
+    if (existing.rows.length > 0) {
+      const share = existing.rows[0];
+      return res.json({ share: { token: share.token, url: `/s/doc/${share.token}` } });
+    }
+    const orgId = await orgOfWorkspace(page.workspace_id);
+    const sharingGate = await checkPublicSharingGate({ userId: req.user.id, orgId });
+    if (sharingGate) return res.status(403).json(sharingGate);
+    const token = crypto.randomUUID();
+    const created = await query(
+      `INSERT INTO doc_shares (doc_id, token, created_by) VALUES ($1, $2, $3) RETURNING token`,
+      [pageId, token, req.user.id]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'doc_page',
+      entityId: pageId,
+      action: 'share_doc',
+      detail: { shareId: created.rows[0].token },
+      ip: req.ip,
+    });
+    res.status(201).json({ share: { token, url: `/s/doc/${token}` } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /docs/:pageId/share -> 204. Auth + same edit gate as POST share.
+router.delete('/:pageId/share', async (req, res, next) => {
+  try {
+    const { pageId } = req.params;
+    if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
+    const page = await pageRow(pageId);
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+    if (!(await canEditPage(req.user, page))) {
+      return res.status(403).json({ error: 'Editor or admin access required' });
+    }
+    await query(`DELETE FROM doc_shares WHERE doc_id = $1`, [pageId]);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /docs/public/:token -> 200 public safe snapshot (no auth). 404 unknown.
+async function servePublicDocShare(req, res, next) {
+  try {
+    const token = String(req.params.token || '');
+    if (!isUuid(token)) return res.status(404).json({ error: 'Share link not found' });
+    const { rows } = await query(
+      `SELECT s.token, s.created_at, s.doc_id,
+              p.title, p.updated_at, p.updated_by,
+              ub.name AS updated_by_name,
+              w.name AS workspace_name
+         FROM doc_shares s
+         JOIN doc_pages p ON p.id = s.doc_id
+         JOIN workspaces w ON w.id = p.workspace_id
+         LEFT JOIN users ub ON ub.id = p.updated_by
+        WHERE s.token = $1`,
+      [token]
+    );
+    const share = rows[0];
+    if (!share) return res.status(404).json({ error: 'Share link not found' });
+
+    const [blockRows, mentions] = await Promise.all([
+      query(
+        `SELECT block_type, content FROM doc_blocks WHERE page_id = $1 ORDER BY position`,
+        [share.doc_id]
+      ),
+      sanitizePageMentions(share.doc_id),
+    ]);
+    res.json({
+      share: {
+        token: share.token,
+        createdAt: share.created_at,
+        page: {
+          title: share.title,
+          updatedAt: share.updated_at,
+          updatedBy: share.updated_by ? { name: share.updated_by_name } : null,
+        },
+        workspaceName: share.workspace_name,
+        blocks: blockRows.rows.map((b) => ({ type: b.block_type, content: b.content })),
+        mentions,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
 
 // GET /docs/:pageId -> 200 {page:{...(summary),canEdit},blocks:[Block],mentions:[Mention]}
 // 404 for unknown pages or when the caller cannot read the page's workspace.
@@ -871,3 +1246,6 @@ accessRequestRouter.post('/:id/cancel', async (req, res, next) => {
 });
 
 module.exports = router;
+// Pre-auth public share viewer (mounted by the coordinator in server.js ahead
+// of the authenticated /api routers, mirroring the /api/webhooks pattern).
+module.exports.publicRouter = publicDocRouter;
