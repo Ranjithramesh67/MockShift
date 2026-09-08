@@ -40,6 +40,7 @@ import {
   RequestIcon,
   CopyIcon,
   SendIcon,
+  FileIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
@@ -1217,6 +1218,19 @@ export function Sidebar({
           }}
         >
           <HistoryIcon size={17} />
+        </Link>
+        <Link
+          href="/docs"
+          className={`rail-button ${view === 'docs' ? 'active' : ''}`}
+          data-testid="rail-docs"
+          title="Docs"
+          aria-label="Docs"
+          onClick={() => {
+            setView('docs');
+            onRequestClose?.();
+          }}
+        >
+          <FileIcon size={17} />
         </Link>
         {canManage && (
           <Link

@@ -1,0 +1,258 @@
+'use client';
+
+import React from 'react';
+import {
+  blockNum,
+  blockStrings,
+  blockText,
+  BLOCK_LABELS,
+  newBlock,
+  type DocsBlock,
+  type DocsBlockContent,
+  type DocsBlockType,
+} from '@/lib/docsApi';
+import styles from './docs.module.css';
+import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from '@/components/icons';
+
+function setField(c: DocsBlockContent, field: string, value: unknown): DocsBlockContent {
+  return { ...c, [field]: value };
+}
+
+function EditorTextarea({
+  value,
+  onChange,
+  mono,
+  rows,
+  placeholder,
+  testId,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  mono?: boolean;
+  rows?: number;
+  placeholder?: string;
+  testId?: string;
+}) {
+  return (
+    <textarea
+      className={`${styles.editorTextarea} ${mono ? styles.monoArea : ''}`}
+      rows={rows ?? 3}
+      value={value}
+      placeholder={placeholder}
+      data-testid={testId}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+function EditorText({
+  value,
+  onChange,
+  testId,
+  large,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  testId?: string;
+  large?: boolean;
+}) {
+  return (
+    <input
+      type="text"
+      className={`${styles.editorInput} ${large ? styles.headingEditorInput : ''}`}
+      value={value}
+      data-testid={testId}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+function BlockFields({
+  block,
+  onChange,
+}: {
+  block: DocsBlock;
+  onChange: (content: DocsBlockContent) => void;
+}) {
+  const c = block.content;
+  switch (block.type) {
+    case 'heading':
+      return (
+        <EditorText
+          large
+          value={blockText(c, 'text')}
+          onChange={(v) => onChange(setField(c, 'text', v))}
+          testId="docs-field-heading"
+        />
+      );
+    case 'text':
+      return (
+        <EditorTextarea
+          rows={4}
+          value={blockText(c, 'text')}
+          onChange={(v) => onChange(setField(c, 'text', v))}
+          placeholder="Write some text…"
+          testId="docs-field-text"
+        />
+      );
+    case 'code':
+      return (
+        <>
+          <EditorText value={blockText(c, 'language', 'text')} onChange={(v) => onChange(setField(c, 'language', v))} testId="docs-field-language" />
+          <EditorTextarea
+            mono
+            rows={6}
+            value={blockText(c, 'code')}
+            onChange={(v) => onChange(setField(c, 'code', v))}
+            placeholder="code"
+            testId="docs-field-code"
+          />
+        </>
+      );
+    case 'payload':
+      return (
+        <>
+          <div className={styles.fieldRow}>
+            <EditorText value={blockText(c, 'method', 'GET')} onChange={(v) => onChange(setField(c, 'method', v))} testId="docs-field-method" />
+            <EditorText value={blockText(c, 'contentType', 'application/json')} onChange={(v) => onChange(setField(c, 'contentType', v))} testId="docs-field-contenttype" />
+          </div>
+          <EditorTextarea
+            mono
+            rows={6}
+            value={blockText(c, 'body')}
+            onChange={(v) => onChange(setField(c, 'body', v))}
+            placeholder="{ … request body … }"
+            testId="docs-field-payload-body"
+          />
+        </>
+      );
+    case 'response': {
+      const status = blockNum(c, 'status', 0);
+      return (
+        <>
+          <EditorText
+            value={String(status)}
+            onChange={(v) => {
+              const n = Number(v);
+              onChange(setField(c, 'status', Number.isFinite(n) ? n : 0));
+            }}
+            testId="docs-field-status"
+          />
+          <EditorTextarea
+            mono
+            rows={6}
+            value={blockText(c, 'body')}
+            onChange={(v) => onChange(setField(c, 'body', v))}
+            placeholder="{ … response body … }"
+            testId="docs-field-response-body"
+          />
+        </>
+      );
+    }
+    case 'schema':
+      return (
+        <>
+          <EditorText value={blockText(c, 'language', 'json')} onChange={(v) => onChange(setField(c, 'language', v))} testId="docs-field-schema-language" />
+          <EditorTextarea
+            mono
+            rows={6}
+            value={blockText(c, 'definition')}
+            onChange={(v) => onChange(setField(c, 'definition', v))}
+            placeholder="{ … schema definition … }"
+            testId="docs-field-schema"
+          />
+        </>
+      );
+    case 'list': {
+      const items = blockStrings(c, 'items');
+      const style = blockText(c, 'style', 'bullet');
+      return (
+        <>
+          <select
+            className="compact-select"
+            data-testid="docs-field-list-style"
+            value={style === 'number' ? 'number' : 'bullet'}
+            onChange={(e) => onChange(setField(c, 'style', e.target.value as 'bullet' | 'number'))}
+          >
+            <option value="bullet">Bulleted</option>
+            <option value="number">Numbered</option>
+          </select>
+          <EditorTextarea
+            rows={5}
+            value={items.join('\n')}
+            onChange={(v) => onChange(setField(c, 'items', v.split('\n')))}
+            placeholder={'One item per line'}
+            testId="docs-field-list-items"
+          />
+        </>
+      );
+    }
+  }
+}
+
+export function BlocksEditor({
+  blocks,
+  onChange,
+  testId,
+}: {
+  blocks: DocsBlock[];
+  onChange: (next: DocsBlock[]) => void;
+  testId?: string;
+}) {
+  const updateContent = (index: number, content: DocsBlockContent) => {
+    onChange(blocks.map((b, i) => (i === index ? { ...b, content } : b)));
+  };
+
+  const move = (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= blocks.length) return;
+    const next = blocks.slice();
+    const [item] = next.splice(index, 1);
+    next.splice(target, 0, item);
+    onChange(next);
+  };
+
+  const remove = (index: number) => {
+    onChange(blocks.filter((_, i) => i !== index));
+  };
+
+  const add = (type: DocsBlockType) => {
+    onChange([...blocks, newBlock(type)]);
+  };
+
+  return (
+    <div className={styles.blockList} data-testid={testId}>
+      {blocks.map((b, i) => (
+        <div key={b.id ?? `draft-${i}`} className={styles.blockCard} data-testid={`docs-block-editor-${i}`}>
+          <div className={styles.blockCardHead}>
+            <span className={styles.blockTypePill}>
+              {BLOCK_LABELS.find((l) => l.type === b.type)?.label ?? b.type}
+            </span>
+            <div className={styles.blockTools}>
+              <button type="button" className={styles.toolBtn} disabled={i === 0} title="Move up" onClick={() => move(i, -1)}>
+                <ArrowUpIcon size={14} />
+              </button>
+              <button type="button" className={styles.toolBtn} disabled={i === blocks.length - 1} title="Move down" onClick={() => move(i, 1)}>
+                <ArrowDownIcon size={14} />
+              </button>
+              <button type="button" className={`${styles.toolBtn} ${styles.danger}`} title="Remove block" onClick={() => remove(i)}>
+                <TrashIcon size={14} />
+              </button>
+            </div>
+          </div>
+          <div className={styles.blockBody}>
+            <BlockFields block={b} onChange={(content) => updateContent(i, content)} />
+          </div>
+        </div>
+      ))}
+      <div className={styles.addBlockBar}>
+        {BLOCK_LABELS.map((l) => (
+          <button key={l.type} type="button" className={styles.addTypeBtn} data-testid={`docs-add-${l.type}`} onClick={() => add(l.type)}>
+            <PlusIcon size={12} />
+            {l.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}

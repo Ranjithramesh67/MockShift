@@ -20,6 +20,7 @@ const shareRoutes = require('./routes/shares');
 const tokenRoutes = require('./routes/tokens');
 const serverRunRoutes = require('./routes/serverRuns');
 const sendRoutes = require('./routes/sends');
+const docsRoutes = require('./routes/docs');
 const { mockDispatch } = require('./mockDispatch');
 const { query } = require('./db');
 const { runWorkflow, syncAllSchedules } = require('./workflowService');
@@ -83,6 +84,7 @@ function createApp() {
   app.use('/api/history', historyRoutes);
   app.use('/api', mockServerRoutes);
   app.use('/api', exportRoutes);
+  app.use('/api/docs', docsRoutes);
 
   // Public per-project mock server: hit it like any external API.
   // Registered before the /api 404 handler (different prefix) so requests to

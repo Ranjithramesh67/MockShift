@@ -1,0 +1,741 @@
+/* Docs feature — scoped styles colocated with the docs components.
+   Reuses the app palette variables defined in app/globals.css. */
+
+/* -------------------------------------------------------------- shared bits */
+.docsRoot {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.docsHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.docsHeader h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+  letter-spacing: -0.02em;
+}
+
+.docsHeaderTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.subtle {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.softBtn {
+  font-size: 13px;
+}
+
+.sectionLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+/* ------------------------------------------------------------------- home */
+.scopeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.scopeRow .compact-select {
+  max-width: 260px;
+}
+
+.searchWrap {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+  max-width: 340px;
+}
+
+.searchInput {
+  width: 100%;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  transition: border-color var(--speed) var(--ease);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.searchInput::placeholder {
+  color: var(--text-faint);
+}
+
+.clickableRow {
+  cursor: pointer;
+}
+
+.pageTitleCell {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pageTitleCell svg {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.mutedCell {
+  color: var(--text-muted);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.pillBlock {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(124, 242, 156, 0.35);
+}
+
+/* ------------------------------------------------------------ page / editor */
+.docColumn {
+  max-width: 860px;
+}
+
+.docMetaLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
+.docMetaLine strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pageTitleInput {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  padding: 4px 6px;
+  margin: 0 -6px 2px;
+  border-radius: 8px;
+  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.pageTitleInput:hover {
+  border-color: var(--border);
+  background: var(--bg-input);
+}
+
+.pageTitleInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-input);
+}
+
+.docBody {
+  margin-top: 18px;
+  min-width: 0;
+}
+
+.viewerBlocks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.blockGap {
+  height: 8px;
+}
+
+.rHeading {
+  margin: 14px 0 4px;
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.rText {
+  margin: 6px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.rList {
+  margin: 8px 0;
+  padding-left: 22px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.rList li {
+  margin: 3px 0;
+}
+
+.rListBullet {
+  list-style: disc;
+}
+
+.rListNumber {
+  list-style: decimal;
+}
+
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 10px 0;
+  overflow: hidden;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--bg-panel-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.cardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+}
+
+.cardTitle svg {
+  color: var(--text-faint);
+}
+
+.langChip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #7cb8ff;
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+
+.methodChip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  border-radius: 5px;
+  padding: 2px 7px;
+  letter-spacing: 0.04em;
+}
+
+.contentTypeChip {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+
+.monoArea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.codePre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.methodLabel {
+  font-weight: 800;
+}
+
+/* editor blocks */
+.blockList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.blockCard {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color var(--speed) var(--ease);
+}
+
+.blockCard:focus-within {
+  border-color: var(--border-strong);
+}
+
+.blockCardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-panel-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.blockTypePill {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+}
+
+.blockTools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-faint);
+  border-radius: 6px;
+  padding: 3px 7px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition: color var(--speed) var(--ease), background var(--speed) var(--ease), border-color var(--speed) var(--ease);
+}
+
+.toolBtn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.toolBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.toolBtn.danger {
+  color: var(--err);
+}
+
+.toolBtn.danger:hover:not(:disabled) {
+  background: rgba(248, 81, 73, 0.14);
+  border-color: rgba(248, 81, 73, 0.5);
+}
+
+.blockBody {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blockBody textarea,
+.blockBody input[type='text'] {
+  width: 100%;
+}
+
+.fieldRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fieldRow .smallField {
+  width: 160px;
+}
+
+.editorTextarea {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 72px;
+}
+
+.editorTextarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.editorInput {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+}
+
+.editorInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.headingEditorInput {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.addBlockBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.addTypeBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-panel);
+  border: 1px dashed var(--border-strong);
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color var(--speed) var(--ease), border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.addTypeBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* mentions */
+.mentionSection {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.mentionSectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.mentionActions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.chipWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 3px 11px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel-2);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+button.chip {
+  cursor: pointer;
+  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+button.chip:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.chipUser {
+  border-color: rgba(88, 166, 255, 0.4);
+  background: rgba(88, 166, 255, 0.1);
+}
+
+.chipUser .at {
+  color: #7cb8ff;
+}
+
+.chipApi {
+  border-color: rgba(210, 153, 34, 0.45);
+  background: rgba(210, 153, 34, 0.12);
+}
+
+.chipApi .methodDot {
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.chipApi.locked {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.chip .avatarDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.chipX {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  border-radius: 50%;
+  padding: 1px;
+  cursor: pointer;
+  margin-left: 2px;
+}
+
+.chipX:hover {
+  color: var(--err);
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.popCard {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 280px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  padding: 10px 12px;
+}
+
+.popName {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.popEmail {
+  color: var(--text-muted);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.accessBox {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 300px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  padding: 12px;
+}
+
+.accessTitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.accessDesc {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.accessPending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+/* access requests panel */
+.requestMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reqBadge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.reqPending {
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--warn);
+}
+
+.reqApproved {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--ok);
+}
+
+.reqDenied {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--err);
+}
+
+.mineEmpty {
+  color: var(--text-muted);
+  padding: 10px 2px;
+}
+
+.editorHint {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.emptyPad {
+  padding: 30px 10px;
+}
+
+/* pickers */
+.pickerScroll {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.pickerGroup {
+  margin-bottom: 6px;
+}
+
+.pickerGroup .sectionLabel {
+  margin: 10px 0 4px;
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.optionRow:hover {
+  background: var(--bg-hover);
+}
+
+.optionMain {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.optionName {
+  font-weight: 600;
+}
+
+.optionEmail {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

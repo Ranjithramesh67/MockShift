@@ -25,6 +25,7 @@ const AutomationsView = dynamic(() => import('./views/AutomationsView').then((m)
 const ManageView = dynamic(() => import('./views/ManageView').then((m) => m.ManageView));
 const AdminView = dynamic(() => import('./views/AdminView').then((m) => m.AdminView));
 const HistoryView = dynamic(() => import('./views/HistoryView').then((m) => m.HistoryView));
+const DocsView = dynamic(() => import('./views/DocsView').then((m) => m.default));
 
 function WorkspaceArea({
   onOpenCurl,
@@ -165,6 +166,8 @@ export function AppShell() {
                 <ManageView />
               ) : view === 'history' ? (
                 <HistoryView />
+              ) : view === 'docs' ? (
+                <DocsView />
               ) : (
                 <AdminView />
               )}
