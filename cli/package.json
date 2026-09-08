@@ -1,0 +1,27 @@
+{
+  "name": "apihub-cli",
+  "version": "0.1.0",
+  "description": "Official command-line interface for API Hub: browse workspaces, projects, collections and requests and trigger server-side request runs from CI.",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "lib/cli.js",
+  "bin": {
+    "apihub": "./bin/apihub.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "keywords": [
+    "apihub",
+    "cli",
+    "api-testing"
+  ]
+}
