@@ -65,10 +65,19 @@ coordinator seam reconciliation. Summary:
   the real `price_monthly`/`price_yearly` columns (POST param reads updated to
   match). Portal backend restarted (`term_1788856386239_79` supersedes
   `term_1788809116883_77`); live curl verified PUT persists price + tagline;
-  demo Starter row restored (₹99/₹990). Related gap found but NOT built
-  (awaiting direction): the Portal A "Plans for every stage" cards render the
-  `plans.features` array, which is empty for all 5 demo plans — no editor
-  exists to add bullets; Portal B plans page has no Features field.
+  demo Starter row restored (₹99/₹990).
+- Empty pricing "details" fixed (this turn, pushed with docs): Portal A
+  "Plans for every stage" cards render the `plans.features` array, which was
+  `[]` for all 5 demo plans (seed-demo.sql never wrote `features`, and Portal B
+  had no editor). Now (a) `portal/db/seed-demo.sql` inserts canonical marketing
+  bullets per plan and backfills on conflict only when the stored list is empty
+  (editor edits survive reseeds); (b) live DB backfilled to the same bullets
+  (free 5 / starter 5 / pro 6 / team 6 / enterprise 5, verified via
+  `/api/public/plans`); (c) Portal B plans editor (`manage/plans/page.tsx`)
+  gained a "Feature bullets" list editor — add/remove/rename rows saved into
+  `features`. `tsc --noEmit` clean; Playwright `/tmp/features-smoke.cjs` 7/7
+  (Free card shows 5 bullets, all five cards render, editor loads 5 rows,
+  add appends / remove drops a row).
 
 PREVIOUS STEP (for narrative continuity) — PUSHED: Portal A `A5` subscriber
 self-service ("My subscription") is complete and on `master`. Self-service

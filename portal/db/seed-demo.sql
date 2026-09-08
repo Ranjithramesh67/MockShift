@@ -27,27 +27,41 @@
 -- (migration 013 default '{}' would otherwise wipe the numbers); ON CONFLICT
 -- MERGES the canonical numbers over any stored limits so editor-added extras
 -- (enforce / sso / saml / sla / future keys) survive a reseed.
+--
+-- `features` holds the marketing bullets rendered on the Portal A pricing grid.
+-- The INSERT carries them so a fresh demo reseed is never empty (the migration
+-- 013 default is '[]'); ON CONFLICT only backfills when the stored list is
+-- EMPTY, so bullets edited in Portal B's plan editor are never overwritten.
 INSERT INTO plans (key, name, tagline, description, price_monthly, price_yearly,
-                   currency, billing_cycles, trial_days, sort_order, status, limits)
+                   currency, billing_cycles, trial_days, sort_order, status,
+                   limits, features)
 VALUES
   ('free',  'Free',       'For hobbyists and quick experiments', NULL,
     0,     0,     'INR', ARRAY['MONTHLY','YEARLY'], 0,  10, 'PUBLISHED',
-    '{"workspaces":1,"projects":1,"collections":null,"teams":null,"seats":1,"storage_mb":200,"runs_per_month":null,"public_sharing":false}'::jsonb),
+    '{"workspaces":1,"projects":1,"collections":null,"teams":null,"seats":1,"storage_mb":200,"runs_per_month":null,"public_sharing":false}'::jsonb,
+    '["1 workspace","1 project","200 MB storage","1 seat","Community support"]'::jsonb),
   ('starter','Starter',   'For solo builders shipping real work', NULL,
     99,    990,   'INR', ARRAY['MONTHLY','YEARLY'], 5,  20, 'PUBLISHED',
-    '{"workspaces":5,"projects":5,"collections":null,"teams":null,"seats":5,"storage_mb":2048,"runs_per_month":null,"public_sharing":false}'::jsonb),
+    '{"workspaces":5,"projects":5,"collections":null,"teams":null,"seats":5,"storage_mb":2048,"runs_per_month":null,"public_sharing":false}'::jsonb,
+    '["5 workspaces","5 projects","2 GB storage","5 seats","Email support"]'::jsonb),
   ('pro',   'Pro',        'For teams that live in their API workflow', NULL,
     299,  2990,   'INR', ARRAY['MONTHLY','YEARLY'], 10, 30, 'PUBLISHED',
-    '{"workspaces":25,"projects":25,"collections":null,"teams":null,"seats":25,"storage_mb":10240,"runs_per_month":null,"public_sharing":true}'::jsonb),
+    '{"workspaces":25,"projects":25,"collections":null,"teams":null,"seats":25,"storage_mb":10240,"runs_per_month":null,"public_sharing":true}'::jsonb,
+    '["25 workspaces","25 projects","10 GB storage","25 seats","Public sharing","Priority support"]'::jsonb),
   ('team',  'Team',       'Shared workspaces, permissions and more', NULL,
     799,  7990,   'INR', ARRAY['MONTHLY','YEARLY'], 15, 40, 'PUBLISHED',
-    '{"workspaces":null,"projects":null,"collections":null,"teams":null,"seats":10,"storage_mb":null,"runs_per_month":null,"public_sharing":true,"sso":true}'::jsonb),
+    '{"workspaces":null,"projects":null,"collections":null,"teams":null,"seats":10,"storage_mb":null,"runs_per_month":null,"public_sharing":true,"sso":true}'::jsonb,
+    '["Unlimited workspaces & projects","Everything in Pro","10 seats","SSO","Advanced roles","Audit log"]'::jsonb),
   ('enterprise','Enterprise','Dedicated support and SSO at scale', NULL,
     NULL, NULL,  'INR', ARRAY['CUSTOM'],            0,  50, 'PUBLISHED',
-    '{"workspaces":null,"projects":null,"collections":null,"teams":null,"seats":null,"storage_mb":null,"runs_per_month":null,"public_sharing":true,"sso":true,"saml":true,"sla":true}'::jsonb)
+    '{"workspaces":null,"projects":null,"collections":null,"teams":null,"seats":null,"storage_mb":null,"runs_per_month":null,"public_sharing":true,"sso":true,"saml":true,"sla":true}'::jsonb,
+    '["Everything in Team","Unlimited seats","SAML SSO","SLA","Dedicated CSM"]'::jsonb)
 ON CONFLICT (key) DO UPDATE
   SET trial_days = EXCLUDED.trial_days,
-      limits = plans.limits || EXCLUDED.limits;
+      limits = plans.limits || EXCLUDED.limits,
+      features = CASE
+        WHEN jsonb_array_length(COALESCE(plans.features, '[]'::jsonb)) = 0
+        THEN EXCLUDED.features ELSE plans.features END;
 
 -- ---- Demo customer users (idempotent by email) ------------------------------
 -- c1..c6 = one account per plan. c7 = already expired, c8 = expires today,
