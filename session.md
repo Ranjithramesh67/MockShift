@@ -5,6 +5,53 @@ Last updated: 2026-09-06
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
 
+## Plan — parallel completion of backlog + "Docs" documentation feature (2026-09-07)
+
+Requested: finish every pending backlog item (A6, Send-item, roadmap S4–S8) via
+parallel agents, then build the new **Docs** feature (Confluence-style API
+documentation). Status checkboxes updated as each step completes; code + docs
+pushed at each milestone. All agents work on disjoint files, never commit, and
+report mount/nav snippets for the coordinator to wire.
+
+Phase 1 — backlog (parallel agents, run simultaneously, none waits on another):
+- [ ] **A6 — payment gateway + webhooks + receipts** (Portal A). Agent owns
+  `portal/backend/**`, `portal/frontend/**`, `db/migrations/021_*.sql`. Simulated
+  payment gateway flow (redirect/confirm → webhook → PENDING order becomes PAID,
+  ACTIVE sub, invoice PAID) + a receipts view. Verify with a live curl/Playwright
+  matrix on :3102 using scratch guest buyers; never reseed the dev DB.
+- [ ] **Send item to another user (accept/reject)**. Agent owns main backend
+  (`backend/src/api/**` NEW files only) + `db/migrations/022_*.sql` +
+  `frontend/app/inbox/**` + new `frontend/src/components/**` (no shared mounts).
+  Send/inbox table; accept clones into recipient's space via the existing
+  duplicate/sibling-unique helpers; reject records + notifies sender.
+- [ ] **S4 — personal API tokens + S5 — server-side POST /api/runs**. Agent owns
+  main backend new routes + `db/migrations/023_*.sql` + `frontend/src/components/
+  api-tokens*` UI + app page. Token auth for machine calls; `POST /api/runs` runs
+  a stored request server-side.
+- [ ] **S6–S8 — CLI + reporters + CI recipes** (new `cli/` package, isolated). Remote
+  mode, JSON reporter, JUnit/HTML reporters + exit codes, Dockerfile + CI yaml
+  recipes (files only — no image build). Unit tests via `node --test`.
+
+Phase 1 integration (coordinator, sequential after agents report):
+- [ ] Wire the shared seams (mounts in `backend/src/api/server.js` /
+  `portal/backend/src/server.js`; nav entries in `TopBar.tsx`/layout; none by agents).
+- [ ] Verify: `tsc --noEmit` both frontends; `node --check` new backend files;
+  re-run each agent's matrix script against the freshly restarted services.
+- [ ] Commit + push per task with proper messages; update Phase 1 checkboxes +
+  `docs/SESSION.md`; demo rows/throwaways cleaned only with user OK.
+
+Phase 2 — Docs feature (Confluence-style API documentation):
+- [ ] **D2a — Docs data model + CRUD backend**: docs pages (per workspace/project),
+  Confluence-like content (blocks: payload/response/schema examples, code, lists),
+  tags on users and on APIs (link to api_requests), access gates.
+- [ ] **D2b — Docs UI**: "Docs" nav entry + page list + Confluence-style editor/
+  viewer with payload/response/code blocks; render api tags as links that open the
+  API when the user has access.
+- [ ] **D2c — access request flow**: request access to a specific API (enterprise
+  plan context) or full workspace access (individual accounts); owner approval
+  UI + notifications.
+Phase 2 integration + push (sequential).
+
 ## Current
 
 Step: PROFILE PAGE (PR-2/PR-3) + PER-PLAN USAGE RESTRICTIONS (L1–L6) DONE —
