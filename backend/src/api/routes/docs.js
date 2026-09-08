@@ -63,6 +63,10 @@ accessRequestRouter.use(requireAuth);
 router.use('/workspace-access-requests', accessRequestRouter);
 
 const BLOCK_TYPES = ['heading', 'text', 'code', 'payload', 'response', 'schema', 'list', 'image'];
+const IMG_SIZES = ['small', 'medium', 'large', 'full'];
+// Display width (% of the content column) per image size preset. Shared intent
+// with the frontend (docs.module.css / BlockView + BlockEditor size control).
+const IMG_SIZE_PCT = { small: 34, medium: 55, large: 80, full: 100 };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isUuid(value) {
@@ -229,6 +233,13 @@ function blockContentError(type, content) {
       }
       if (content.caption !== undefined && content.caption !== null && typeof content.caption !== 'string') {
         return 'image content caption must be a string';
+      }
+      if (
+        content.size !== undefined &&
+        content.size !== null &&
+        !IMG_SIZES.includes(content.size)
+      ) {
+        return `image content size must be one of ${IMG_SIZES.join(', ')}`;
       }
       return null;
     default:
@@ -482,23 +493,28 @@ function blockToHtml(b) {
     case 'image': {
       const src = typeof c.src === 'string' ? c.src : '';
       const alt = typeof c.alt === 'string' ? c.alt : '';
+      const size = IMG_SIZES.includes(c.size) ? c.size : 'full';
+      const width = IMG_SIZE_PCT[size];
       const caption =
         typeof c.caption === 'string' && c.caption ? `<figcaption>${escHtml(c.caption)}</figcaption>` : '';
-      return `<figure><img src="${escHtml(src)}" alt="${escHtml(alt)}" />${caption}</figure>`;
+      return `<figure class="image-fig"><img src="${escHtml(src)}" alt="${escHtml(alt)}" style="max-width:${width}%" />${caption}</figure>`;
     }
     default:
       return '';
   }
 }
 
-// GET /docs/:pageId/export?format=markdown|html|json -> file download.
+// GET /docs/:pageId/export?format=markdown|html|word|json -> file download.
 // Same read gate as GET /:pageId. Filename: doc-<slug>-<first8 of id>.<ext>.
+// html/word share the app theme (see EXPORT_THEME_CSS): html backs the in-app
+// "Print or save as PDF" flow, word is the same themed markup served as a
+// Word-compatible .doc so the brand look survives into Office.
 router.get('/:pageId/export', async (req, res, next) => {
   try {
     const { pageId } = req.params;
     const format = String(req.query.format || '').toLowerCase();
-    if (!['markdown', 'html', 'json'].includes(format)) {
-      return res.status(400).json({ error: 'format must be markdown, html or json' });
+    if (!['markdown', 'html', 'word', 'json'].includes(format)) {
+      return res.status(400).json({ error: 'format must be markdown, html, word or json' });
     }
     if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
     const page = await pageRow(pageId);
@@ -525,17 +541,18 @@ router.get('/:pageId/export', async (req, res, next) => {
       body = `# ${page.title}\n\n${meta}\n\n${rendered}\n`;
       ext = 'md';
       contentType = 'text/markdown; charset=utf-8';
-    } else if (format === 'html') {
+    } else if (format === 'html' || format === 'word') {
       const metaName = (summary.updatedBy && summary.updatedBy.name) || summary.createdBy.name || 'Unknown';
       const meta = `Last updated ${new Date(page.updated_at).toISOString()} by ${escHtml(metaName)}`;
       const rendered = blocks.map(blockToHtml).join('\n');
-      body =
-        `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n` +
-        `<title>${escHtml(page.title)}</title>\n</head>\n<body>\n` +
+      const contentHtml =
         `<h1>${escHtml(page.title)}</h1>\n<p class="meta">${meta}</p>\n` +
-        `${rendered}\n</body>\n</html>\n`;
-      ext = 'html';
-      contentType = 'text/html; charset=utf-8';
+        `${rendered}`;
+      body = buildDocumentShell(page.title, contentHtml, format === 'word');
+      ext = format === 'word' ? 'doc' : 'html';
+      contentType = format === 'word'
+        ? 'application/msword; charset=utf-8'
+        : 'text/html; charset=utf-8';
     } else {
       const mentionList = await sanitizePageMentions(pageId);
       const payload = {
@@ -560,6 +577,109 @@ router.get('/:pageId/export', async (req, res, next) => {
     next(err);
   }
 });
+
+// Theme carried into exported documents (HTML print/PDF + Word .doc). Mirrors
+// the app brand: dark canvas, panel cards, mint accent (#7cf29c) headings,
+// Inter + JetBrains Mono, rounded code blocks. print-color-adjust keeps the
+// background when the browser/PDF renderer strips it by default.
+const EXPORT_THEME_CSS = `
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #0a0d0a;
+  color: #e8efe9;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.65;
+  padding: 40px 20px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.doc-card {
+  max-width: 880px;
+  margin: 0 auto;
+  background: #0f1511;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
+  padding: 44px 52px;
+}
+.doc-head { margin-bottom: 6px; }
+.doc-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7cf29c;
+  margin-bottom: 14px;
+}
+.doc-brand .dot { width: 8px; height: 8px; border-radius: 50%; background: linear-gradient(135deg, #a5f7bd 0%, #7cf29c 55%, #4ade80 120%); }
+h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 6px; color: #f3faf4; }
+p.meta { color: #8e9b94; font-size: 13px; margin: 0 0 24px; padding-bottom: 16px; border-bottom: 1px solid rgba(148, 163, 184, 0.14); }
+h2 {
+  color: #a5f7bd;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  margin: 30px 0 10px;
+  padding-left: 10px;
+  border-left: 3px solid #7cf29c;
+}
+h3 { color: #7cf29c; font-size: 16px; margin: 20px 0 6px; }
+p { margin: 10px 0; }
+ul, ol { padding-left: 22px; }
+li { margin: 4px 0; }
+pre {
+  background: #111814;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow: auto;
+  margin: 10px 0;
+}
+code, pre {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+code { color: #a5f7bd; }
+pre code { color: #c9d8cf; }
+figure.image-fig { margin: 18px 0; }
+figure.image-fig img {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  background: #111814;
+}
+figure.image-fig figcaption { color: #8e9b94; font-size: 12px; text-align: center; margin-top: 6px; }
+@media print {
+  body { padding: 0; }
+  .doc-card { box-shadow: none; border-radius: 0; }
+}
+`;
+
+function buildDocumentShell(title, contentHtml, asWord) {
+  const docType = asWord
+    ? '<!DOCTYPE html>\n<html xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:o="urn:schemas-microsoft-com:office:office">'
+    : '<!DOCTYPE html>\n<html lang="en">';
+  const wordMeta = asWord
+    ? '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->\n'
+    : '';
+  const pageCss = asWord
+    ? '@page WordSection1 { size: 8.5in 11.0in; margin: 0.9in 0.8in; } div.WordSection1 { page: WordSection1; }\n'
+    : '';
+  return (
+    `${docType}\n<head>\n<meta charset="utf-8">\n<title>${escHtml(title)}</title>\n` +
+    `${wordMeta}<style>\n${pageCss}${EXPORT_THEME_CSS}\n</style>\n</head>\n` +
+    `<body class="doc-body">\n<div class="WordSection1">\n` +
+    `<div class="doc-card">\n` +
+    `<div class="doc-brand"><span class="dot"></span>API Hub · Docs</div>\n` +
+    `${contentHtml}\n` +
+    `</div>\n</div>\n</body>\n</html>\n`
+  );
+}
 
 function slugifyForFile(title) {
   const slug = String(title || '')

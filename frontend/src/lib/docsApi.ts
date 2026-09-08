@@ -90,7 +90,7 @@ export interface DocsUsage {
   limits: { doc_pages: number | null; api_requests: number | null; mock_servers: number | null };
 }
 
-export type DocExportFormat = 'markdown' | 'html' | 'json';
+export type DocExportFormat = 'markdown' | 'html' | 'word' | 'json';
 
 export interface DocsShareInfo {
   token: string;
@@ -142,6 +142,23 @@ export function blockText(c: DocsBlockContent, key = 'text', fallback = ''): str
   return fallback;
 }
 
+// Image display presets shared by the editor, viewer and exports. The percent
+// is a max width relative to the content column — the backend export keeps the
+// same mapping (IMG_SIZE_PCT in backend/src/api/routes/docs.js).
+export const IMAGE_SIZES = ['small', 'medium', 'large', 'full'] as const;
+export type DocsImageSize = (typeof IMAGE_SIZES)[number];
+export const IMAGE_SIZE_PCT: Record<DocsImageSize, number> = {
+  small: 34,
+  medium: 55,
+  large: 80,
+  full: 100,
+};
+
+export function imageSizeOf(c: DocsBlockContent): DocsImageSize {
+  const s = String(c.size ?? '');
+  return (IMAGE_SIZES as readonly string[]).includes(s) ? (s as DocsImageSize) : 'full';
+}
+
 export function blockNum(c: DocsBlockContent, key = 'status', fallback = 0): number {
   const v = c[key];
   if (typeof v === 'number') return v;
@@ -189,7 +206,7 @@ export function defaultContent(type: DocsBlockType): DocsBlockContent {
     case 'list':
       return { style: 'bullet', items: [''] };
     case 'image':
-      return { src: '', alt: '', caption: '' };
+      return { src: '', alt: '', caption: '', size: 'full' };
   }
 }
 

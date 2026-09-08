@@ -82,6 +82,14 @@ Phase 3 — Docs round 2: export / share links / image blocks + free-plan limits
   via `/docs?p=` after chip deep-link confirmed). Probe scratch rows purged with
   user approval; demo verified intact.
 
+Phase 3b — Docs polish (user feedback; record docs/SESSION.md §5.50):
+- [x] Image blocks get size presets (small/medium/large/full) with editor
+  control, viewer `data-size`, server validation + themed HTML/Word width.
+- [x] New Word `.doc` export (themed markup + Word headers, application/msword).
+- [x] HTML/PDF/Word exports embed the dark brand theme (EXPORT_THEME_CSS);
+  "Print or save as PDF" prints the themed document. Backend probes 12/12,
+  tsc clean + 89/89, Playwright smoke 10/10. Pushed with this commit.
+
 ## Current
 
 Step: BACKLOG COMPLETION (A6 payments, send-item, S4+S5 tokens/runs, S6–S8 CLI)

@@ -726,6 +726,35 @@ coordinator fixed one real-assembly bug and re-verified everything live.
   All probe scratch rows (users/orgs/subs + demo "Milestone smoke" page) were
   purged with user approval; demo data verified intact (`Test` page only).
 
+### 5.50 Docs image sizing + Word export + themed PDF/Word (pushed 2026-09-08)
+
+User feedback after §5.49: images render oversized, docs need a "Word"
+download, and PDF/Word output should carry the app theme.
+
+- **Image size presets** — image blocks accept an optional `content.size`
+  (`small` 34% / `medium` 55% / `large` 80% / `full` 100% of the content
+  column; server rejects anything else with 400). Sizing is shared: the
+  editor's Size segmented control (`docs-image-size-*`) → stored in the block
+  → applied by the viewer/shared-page `<img data-size …>` and by the HTML/Word
+  export via an inline `max-width` %. Existing blocks without a size default to
+  `full`, so nothing regresses.
+- **Word (.doc) export** — `GET /docs/:id/export?format=word` returns the same
+  themed markup as HTML served as `application/msword` with a `.doc` filename
+  and Word interoperability headers (`xmlns:w`, `WordSection1` page setup) so
+  Office opens it as a document. Export menu gains a Word entry (`.doc file`).
+- **Themed documents** — the HTML export now embeds `EXPORT_THEME_CSS`
+  (backend docs.js): dark brand canvas, mint `#7cf29c` headings with accent
+  rule, `API Hub · Docs` brand header, Inter/JetBrains Mono, rounded code
+  blocks, `print-color-adjust: exact`. The in-app "Print or save as PDF" flow
+  prints this themed HTML, so PDFs match the brand too.
+- **Verification (live :3001)** — size/export probe 12/12 (image size set,
+  viewer data-size roundtrip, invalid size 400, themed HTML w/ brand CSS,
+  HTML size widths, Word `.doc` content-type + WordSection1/xmlns:w, markdown
+  unaffected, unknown format 400). FE `tsc` clean + 89/89 tests; Playwright UI
+  smoke 10/10 (size=small preset active → viewer `<img data-size=small>` with
+  `max-width:34%`, Word `.doc` download, print popup contains themed
+  `doc-card`/brand). Demo scratch cleaned (`Test` page only).
+
 ### 5.44 Profile & plan visibility PR-1 — backend profile surface + avatar storage (pushed `0c171f4`, 2026-09-06)
 
 Ranjith approved starting the Profile & plan visibility programme with segment
@@ -1891,6 +1920,14 @@ Docs export/share/image + free-plan limits turn (§5.49): migrations
 Suspense), new `app/s/doc/[token]/page.tsx`, `components/docs/**`
 (PageActions export/share, image blocks), `DocsView.tsx`, `docsApi.ts`.
 Leave `frontend/tsconfig.tsbuildinfo`.
+
+Docs polish turn (§5.50): `backend/src/api/routes/docs.js` (image size
+validation + width in blockToHtml, `format=word` branch, EXPORT_THEME_CSS +
+buildDocumentShell); frontend `docsApi.ts` (IMAGE_SIZES/IMAGE_SIZE_PCT/
+imageSizeOf + word format), `BlockEditor.tsx` (Size control),
+`Mentions.tsx` (viewer data-size/max-width), `PageActions.tsx` (Word item +
+themed-print hint), `docs.module.css` (sizeCtl styles). Leave
+`frontend/tsconfig.tsbuildinfo`.
 
 Prior Workspaces sidebar scanability turn (§5.36) plus username (§5.35) and
 team-invite picker (§5.34): Sidebar/WorkspaceStore/globals.css + e2e;

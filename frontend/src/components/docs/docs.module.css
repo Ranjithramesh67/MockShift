@@ -872,6 +872,46 @@ button.chip:hover {
   color: var(--accent);
 }
 
+/* Image size preset control (small/medium/large/full). */
+.sizeCtl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sizeCtlLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+
+.sizeCtlBtn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.sizeCtlBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sizeCtlBtnActive,
+.sizeCtlBtnActive:disabled {
+  background: var(--accent-soft);
+  border-color: rgba(124, 242, 156, 0.55);
+  color: var(--accent-hover);
+}
+
 .imgThumbWrap {
   display: flex;
   align-items: flex-start;
