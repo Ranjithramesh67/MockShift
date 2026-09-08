@@ -5,6 +5,11 @@ const { readSessionToken, verifySession } = require('./authLib');
 
 const ROLE_RANK = { ADMIN: 4, MANAGER: 3, EDITOR: 2, VIEWER: 1 };
 
+function readBearerTokenHeader(req) {
+  const header = req.headers && req.headers.authorization;
+  return typeof header === 'string' && /^Bearer\s+/i.test(header);
+}
+
 function roleAtLeast(role, min) {
   if (!role) return false;
   return ROLE_RANK[role] >= ROLE_RANK[min];
@@ -21,15 +26,34 @@ async function loadUserById(userId) {
 
 /**
  * Express middleware: verifies the session cookie and attaches req.user.
+ * Falls back to a personal API token (Bearer) when no valid session cookie is
+ * present, so S4 machine clients can authenticate against any authenticated
+ * route. tokenAuth.js is loaded lazily to avoid a require cycle (it imports
+ * loadUserById from this module).
  */
 async function requireAuth(req, res, next) {
   try {
-    const payload = verifySession(readSessionToken(req));
-    if (!payload) return res.status(401).json({ error: 'Not authenticated' });
-    const user = await loadUserById(payload.userId);
-    if (!user || !user.is_active) return res.status(401).json({ error: 'Not authenticated' });
-    req.user = user;
-    next();
+    const sessionPayload = verifySession(readSessionToken(req));
+    if (sessionPayload) {
+      const user = await loadUserById(sessionPayload.userId);
+      if (!user || !user.is_active) return res.status(401).json({ error: 'Not authenticated' });
+      req.user = user;
+      return next();
+    }
+    if (readBearerTokenHeader(req)) {
+      const { authenticateApiToken } = require('./tokenAuth');
+      try {
+        const auth = await authenticateApiToken(req);
+        if (auth) {
+          req.user = auth.user;
+          req.apiToken = auth.token;
+          return next();
+        }
+      } catch (err) {
+        return res.status(err.status || 401).json({ error: err.message || 'Invalid API token' });
+      }
+    }
+    return res.status(401).json({ error: 'Not authenticated' });
   } catch (err) {
     next(err);
   }
