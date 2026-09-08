@@ -5,9 +5,10 @@ import { usePathname } from 'next/navigation';
 import { useNav, type AppView } from '@/store/NavStore';
 
 /**
- * Keep the in-memory view (workspace/manage/admin/automations) in sync with
- * the current route, so the providers can live once in the root layout while
- * still rendering the right view for /, /manage, /admin and /automations.
+ * Keep the in-memory view (workspace/manage/admin/automations/inbox/settings)
+ * in sync with the current route, so the providers can live once in the root
+ * layout while still rendering the right view for /, /manage, /admin,
+ * /automations, /inbox and /settings/api-tokens.
  */
 export function RouteViewSync() {
   const pathname = usePathname();
@@ -20,6 +21,8 @@ export function RouteViewSync() {
     else if (pathname.startsWith('/automations')) view = 'automations';
     else if (pathname.startsWith('/history')) view = 'history';
     else if (pathname.startsWith('/docs')) view = 'docs';
+    else if (pathname.startsWith('/inbox')) view = 'inbox';
+    else if (pathname.startsWith('/settings')) view = 'settings';
     setView(view);
   }, [pathname, setView]);
 
