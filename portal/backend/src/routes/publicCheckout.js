@@ -78,7 +78,8 @@ async function fetchSubscriptionShapeTx(client, id) {
 
 const ORDER_COLUMNS = `o.id, o.user_id, o.plan_id, o.status, o.billing_cycle,
   o.amount::text AS amount, o.currency, o.payment_method, o.created_at,
-  o.subscription_id, p.key AS plan_key, p.name AS plan_name,
+  o.subscription_id, o.gateway_status, o.gateway_provider, o.gateway_reference,
+  o.paid_at, p.key AS plan_key, p.name AS plan_name,
   p.trial_days AS plan_trial_days`;
 
 function toOrderShape(r) {
@@ -92,6 +93,12 @@ function toOrderShape(r) {
     plan_key: r.plan_key,
     plan_name: r.plan_name,
     created_at: r.created_at,
+    gateway: {
+      status: r.gateway_status,
+      provider: r.gateway_provider,
+      reference: r.gateway_reference,
+      paid_at: r.paid_at,
+    },
   };
 }
 
@@ -567,3 +574,23 @@ router.get('/orders/:orderId', access.requireAuth, async (req, res, next) => {
 });
 
 module.exports = router;
+
+// A6 (simulated gateway + webhooks) reuses the checkout shapes/transaction
+// helpers so the gateway finalization stays byte-for-byte consistent with the
+// A4 confirm flow. Attached to the router export (no circular dependency).
+module.exports._helpers = {
+  isUuid,
+  withTransaction,
+  withUserTransaction,
+  nextInvoiceNumber,
+  fetchSubscriptionShape,
+  fetchSubscriptionShapeTx,
+  hasActiveSubscription,
+  hasPriorPaidOrder,
+  toOrderShape,
+  toInvoiceShape,
+  toSubscriptionShape,
+  ORDER_COLUMNS,
+  INVOICE_COLUMNS,
+  SUB_COLUMNS,
+};

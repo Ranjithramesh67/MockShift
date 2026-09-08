@@ -1,0 +1,96 @@
+/* ==========================================================================
+   Portal A (A6) — receipt page. Rides the shared .ck- checkout design system
+   (imported from ../checkout); only receipt-specific surfaces are defined.
+   ========================================================================== */
+
+.ck-main {
+  max-width: 640px;
+}
+
+.rc-sheet {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-xl);
+  padding: 26px;
+}
+
+.rc-center {
+  text-align: center;
+}
+
+.rc-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ok);
+  background: rgba(63, 185, 80, 0.12);
+  border: 1px solid rgba(63, 185, 80, 0.28);
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
+
+.rc-title {
+  font-size: 24px;
+  font-weight: 750;
+  margin-bottom: 6px;
+}
+
+.rc-muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.rc-sep {
+  border: none;
+  border-top: 1px solid var(--border-soft);
+  margin: 18px 0;
+}
+
+.rc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 14px;
+  padding: 6px 0;
+}
+
+.rc-row dt {
+  color: var(--text-muted);
+}
+
+.rc-row dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.rc-total {
+  border-top: 1px solid var(--border-soft);
+  margin-top: 8px;
+  padding-top: 12px;
+}
+
+.rc-total dd {
+  font-size: 22px;
+}
+
+.rc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+  justify-content: center;
+}
+
+.rc-note {
+  font-size: 12px;
+  color: var(--text-faint);
+  text-align: center;
+  margin-top: 18px;
+  line-height: 1.6;
+}

@@ -1,0 +1,123 @@
+/* ==========================================================================
+   Portal A (A6) — simulated payment gateway page.
+   Rides the shared .ck- checkout design system (imported from ../checkout);
+   only the gateway-specific surfaces are defined here.
+   ========================================================================== */
+
+.ck-main {
+  max-width: 720px;
+}
+
+.gw-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-xl);
+  padding: 22px;
+  margin-bottom: 14px;
+}
+
+.gw-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.gw-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 14px;
+}
+
+.gw-row dt {
+  color: var(--text-muted);
+}
+
+.gw-row dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+}
+
+.gw-total {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 12px;
+  font-weight: 700;
+}
+
+.gw-total dd {
+  font-size: 20px;
+}
+
+.gw-card-input {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: 14px;
+  padding: 11px 13px;
+  width: 100%;
+}
+
+.gw-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.gw-rows label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.gw-sim-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  line-height: 1.5;
+  margin-top: 12px;
+}
+
+.gw-lock {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+}
+
+.gw-method {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.gw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.gw-badge-ok {
+  color: var(--ok);
+}
+
+@media (max-width: 560px) {
+  .gw-card-grid {
+    grid-template-columns: 1fr;
+  }
+}

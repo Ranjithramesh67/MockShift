@@ -99,7 +99,7 @@ export default function CheckoutView() {
         if (!result.requiresPayment) {
           setView({ kind: 'free-done', subscription: result.subscription });
         } else {
-          router.push(`/checkout/confirm?order=${encodeURIComponent(result.order.id)}`);
+          router.push(`/gateway?orderId=${encodeURIComponent(result.order.id)}`);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Checkout failed. Please try again.';

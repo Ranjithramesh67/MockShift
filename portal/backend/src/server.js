@@ -13,6 +13,8 @@ const subscribersRouter = require('./routes/subscribers');
 const promoCodesRouter = require('./routes/promoCodes');
 const auditRouter = require('./routes/audit');
 const settingsRouter = require('./routes/settings');
+const paymentGatewayRouter = require('./routes/paymentGateway');
+const webhooksRouter = require('./routes/webhooks');
 
 function createApp() {
   const app = express();
@@ -46,6 +48,9 @@ function createApp() {
   // Portal A — public showcase/catalog endpoints (no auth).
   app.use('/api/public', publicCatalogRouter);
   app.use('/api/public', publicCheckoutRouter);
+  // Portal A — simulated payment gateway + provider webhooks (A6).
+  app.use('/api/public/gateway', paymentGatewayRouter);
+  app.use('/api/public/webhooks', webhooksRouter);
   // Portal A — subscriber self-service (session auth, own data only).
   app.use('/api/public/account', customerAccountRouter);
 
