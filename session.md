@@ -58,7 +58,10 @@ Phase 2 integration + push (sequential).
   blocks/mentions incl. 404/409, delete, workspace-access-request 409/mine), docs
   UI Playwright smoke 10/10 on :3000 (rail → home → new page → editor → tag API →
   chip deep-link to '/'); FE tsc clean + 89/89 unit tests. Pushed with this
-  commit; demo rows intact (only scratch `UI smoke` pages deleted).
+  commit. Scratch `UI smoke` pages deleted; the earlier backlog scratch rows (21
+  `res_l1_`/`a6*` users + orgs/workspaces + buyer orders/invoices/subs/gateway
+  events + their audit rows) removed in one user-approved transaction — demo/
+  seed data verified untouched.
 
 ## Current
 

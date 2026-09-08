@@ -625,7 +625,10 @@ wired every shared seam (agents were forbidden from touching them).
   (checkout → /gateway → pay → /receipt).
 - Scratch rows created by the agents/matrices (restriction `res_l1_*` users from
   the earlier L1 phase, `a6_*`/`a6matrix*`/`a6ui*` buyers, revoked `matrix-*`
-  api_tokens) are queued for a single user-approved cleanup.
+  api_tokens) were removed in a single user-approved transaction on 2026-09-08:
+  21 scratch users + 17 scratch orgs/workspaces + 5 stray memberships + buyers'
+  6 orders / 6 invoices / 7 subscriptions / 10 gateway events + their
+  `audit_log`/`audit_logs` rows; demo/seed data untouched (verified counts 0 vs 3).
 
 ### 5.48 Docs feature — Confluence-style API documentation (pushed, 2026-09-08)
 
