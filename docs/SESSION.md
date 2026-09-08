@@ -726,6 +726,46 @@ coordinator fixed one real-assembly bug and re-verified everything live.
   All probe scratch rows (users/orgs/subs + demo "Milestone smoke" page) were
   purged with user approval; demo data verified intact (`Test` page only).
 
+### 5.51 Fold Inbox + API tokens into the shared AppShell (pushed 2026-09-08)
+
+Asked "why do /inbox and /settings/api-tokens not look like the rest of the
+app?" — they were standalone chrome-less routes with their own minimal top bar
+(brand link `href="/"`, avatar + Sign out) while everything else (Docs, Manage,
+History, …) lives inside the AppShell with the rail sidebar + one top bar.
+Decision: fold both into the shell as in-app views, mirroring the established
+route-shell pattern (`page.tsx` renders only `<AppShell />`). Approved by user;
+"also add all access to boss account" resolved separately (below).
+
+- **New views** — `NavStore` `AppView` union grows `'inbox' | 'settings'`;
+  `RouteViewSync` maps `/inbox` → `inbox` and `/settings*` → `settings`.
+  `AppShell` dynamically imports and renders `InboxView` / `ApiTokensView` in
+  the `.admin-view` main area, so they share the shell top bar + rail.
+- **Thin route shells** — `app/inbox/page.tsx` and
+  `app/settings/api-tokens/page.tsx` now just render `<AppShell />` (they no
+  longer need page-level CSS imports).
+- **Standalone chrome removed** — `InboxView` drops its `InboxTopBar` (brand
+  back-link, name, Sign out) and `ApiTokensView` drops its `profile-topbar`
+  header; sign-out/profile/back now come from the shared top-bar user menu and
+  the rail (`rail-apis`/`rail-teams` return to the workspace). Content columns
+  (`.inbox-main`, `.profile-main`) are preserved and self-center inside
+  `.admin-view`.
+- **CSS globalised** — `app/inbox/inbox.css` and
+  `app/settings/api-tokens/api-tokens.css` moved from page scope to
+  `app/layout.tsx` imports (same as `profile.css`), which also makes the shared
+  `.send-dialog-*` rules apply wherever `SendItemDialog` mounts (workspace
+  sidebar at `/`, not only after visiting `/inbox`).
+- **Boss "all access" — no change needed** (user confirmed): boss
+  `boss1785867669@test.io` is already `users.role = ADMIN`, which unlocks every
+  platform-gated surface — `requireAdmin`, `requireManagerOrAdmin`
+  (`/api/admin`, all-scope `/api/manage`), and `getProjectAccess` returns
+  `level: 'ADMIN'` for any project. `listWorkspaces` stays membership-scoped by
+  design, so the boss still only *lists* workspaces it has a row for.
+- **Verification** — FE `tsc` clean, 89/89 unit tests, Playwright fold-in smoke
+  **15/15**: Inbox & tokens open under the shell (single `top-bar`, rail
+  visible, no `inbox-topbar`/`.profile-topbar` duplicates), tab switch works,
+  rail-apis returns to `/`, token list loads, and the docs `/docs?p=` deep link
+  + browser Back still behaves. Demo scratch cleaned (`Test` page only).
+
 ### 5.50 Docs image sizing + Word export + themed PDF/Word (pushed 2026-09-08)
 
 User feedback after §5.49: images render oversized, docs need a "Word"
@@ -1911,6 +1951,15 @@ final M9 wrap-up per user instruction.
 - DB: `cd db && bash tests/run.sh` — all pass (includes migration 005).
 
 ## 7. Current uncommitted changes
+
+Fold-in turn (§5.51): `frontend/src/store/NavStore.tsx` (AppView union),
+`frontend/src/components/RouteViewSync.tsx`, `frontend/src/components/AppShell.tsx`
+(inbox/settings cases + dynamic imports), `frontend/src/components/InboxView.tsx`
++ `frontend/src/components/ApiTokensView.tsx` (standalone topbars removed),
+`frontend/app/inbox/page.tsx` + `frontend/app/settings/api-tokens/page.tsx`
+(thin `<AppShell />` shells), `frontend/app/layout.tsx` (global inbox.css /
+api-tokens.css imports). Leave `frontend/tsconfig.tsbuildinfo` and
+`.next.bak-*`.
 
 Docs export/share/image + free-plan limits turn (§5.49): migrations
 `026_docs_image_share.sql`, `027_plan_limit_extensions.sql` (applied);

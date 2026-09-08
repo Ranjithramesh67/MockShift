@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
@@ -300,78 +299,61 @@ export function ApiTokensView() {
   if (!user) return null;
 
   return (
-    <div className="profile-screen" data-testid="api-tokens-page">
-      <header className="profile-topbar">
-        <Link href="/" className="profile-topbar-brand" aria-label="Back to workspace">
-          <span className="brand-mark">AH</span>
-          <span className="brand-name">API Hub</span>
-        </Link>
-        <span className="profile-topbar-divider" aria-hidden="true" />
-        <span className="profile-topbar-title">Settings · API tokens</span>
-        <div className="profile-topbar-user">
-          <span className="profile-topbar-name">{user.name}</span>
-          <button type="button" className="ghost-button small" onClick={() => void logout()} data-testid="apitoken-signout">
-            Sign out
+    <main className="profile-main" data-testid="api-tokens-page">
+      <div className="profile-head">
+        <div className="profile-head-text">
+          <h1>API tokens</h1>
+          <p className="profile-head-meta">Personal tokens for machine authentication against the API Hub API.</p>
+        </div>
+      </div>
+
+      <Msg msg={msg} />
+      {error && !loading ? (
+        <div className="profile-error" role="alert">
+          <p>{error}</p>
+          <button type="button" className="ghost-button" onClick={() => void reload()}>
+            Retry
           </button>
         </div>
-      </header>
+      ) : null}
 
-      <main className="profile-main">
-        <div className="profile-head">
-          <div className="profile-head-text">
-            <h1>API tokens</h1>
-            <p className="profile-head-meta">Personal tokens for machine authentication against the API Hub API.</p>
-          </div>
-        </div>
-
-        <Msg msg={msg} />
-        {error && !loading ? (
-          <div className="profile-error" role="alert">
-            <p>{error}</p>
-            <button type="button" className="ghost-button" onClick={() => void reload()}>
-              Retry
-            </button>
-          </div>
-        ) : null}
-
-        {secret ? (
-          <section className="profile-card" aria-label="One-time token">
-            <OneTimeReveal secret={secret.token} name={secret.name} onClose={() => setSecret(null)} />
-          </section>
-        ) : null}
-
-        <section className="profile-card" aria-labelledby="apitoken-new-title">
-          <h2 className="profile-card-title" id="apitoken-new-title">
-            Create a token
-          </h2>
-          <CreateTokenForm
-            onMessage={setMsg}
-            onCreated={(token, name) => {
-              void reload();
-              setSecret({ token, name });
-            }}
-          />
+      {secret ? (
+        <section className="profile-card" aria-label="One-time token">
+          <OneTimeReveal secret={secret.token} name={secret.name} onClose={() => setSecret(null)} />
         </section>
+      ) : null}
 
-        <section className="profile-card" aria-labelledby="apitoken-list-title">
-          <h2 className="profile-card-title" id="apitoken-list-title">
-            Your tokens
-          </h2>
-          {loading ? (
-            <p className="profile-field-hint">Loading tokens…</p>
-          ) : tokens.length === 0 ? (
-            <p className="profile-field-hint" data-testid="apitoken-empty">
-              No tokens yet. Create one above to authenticate machine clients.
-            </p>
-          ) : (
-            <ul className="apitoken-list" data-testid="apitoken-list">
-              {tokens.map((t) => (
-                <TokenRow key={t.id} token={t} revoking={revokingId === t.id} onRevoke={(id) => void revoke(id)} />
-              ))}
-            </ul>
-          )}
-        </section>
-      </main>
-    </div>
+      <section className="profile-card" aria-labelledby="apitoken-new-title">
+        <h2 className="profile-card-title" id="apitoken-new-title">
+          Create a token
+        </h2>
+        <CreateTokenForm
+          onMessage={setMsg}
+          onCreated={(token, name) => {
+            void reload();
+            setSecret({ token, name });
+          }}
+        />
+      </section>
+
+      <section className="profile-card" aria-labelledby="apitoken-list-title">
+        <h2 className="profile-card-title" id="apitoken-list-title">
+          Your tokens
+        </h2>
+        {loading ? (
+          <p className="profile-field-hint">Loading tokens…</p>
+        ) : tokens.length === 0 ? (
+          <p className="profile-field-hint" data-testid="apitoken-empty">
+            No tokens yet. Create one above to authenticate machine clients.
+          </p>
+        ) : (
+          <ul className="apitoken-list" data-testid="apitoken-list">
+            {tokens.map((t) => (
+              <TokenRow key={t.id} token={t} revoking={revokingId === t.id} onRevoke={(id) => void revoke(id)} />
+            ))}
+          </ul>
+        )}
+      </section>
+    </main>
   );
 }

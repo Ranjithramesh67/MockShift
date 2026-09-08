@@ -1,9 +1,8 @@
 'use client';
 
 import React from 'react';
-import { InboxView } from '@/components/InboxView';
-import './inbox.css';
+import { AppShell } from '@/components/AppShell';
 
-export default function InboxRoute() {
-  return <InboxView />;
+export default function InboxPage() {
+  return <AppShell />;
 }

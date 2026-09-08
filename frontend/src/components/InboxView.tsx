@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { sendsApi, ApiError, type Send, type SendAcceptedPath, type SendItemType, type SendStatus } from '@/lib/api';
@@ -87,41 +86,6 @@ function acceptedWhere(path: SendAcceptedPath | null): string {
 function TypeIcon({ type }: { type: SendItemType }) {
   const Icon = TYPE_ICON[type] ?? RequestIcon;
   return <Icon size={16} />;
-}
-
-// ------------------------------------------------------------------ top shell
-
-function InboxTopBar({ userName }: { userName: string }) {
-  const { logout } = useAuth();
-  const router = useRouter();
-
-  const signOut = async () => {
-    await logout();
-    router.replace('/login');
-  };
-
-  return (
-    <header className="inbox-topbar" data-testid="inbox-topbar">
-      <Link href="/" className="inbox-topbar-brand" data-testid="inbox-topbar-brand" aria-label="Back to workspace">
-        <span className="brand-mark">AH</span>
-        <span className="brand-name">API Hub</span>
-      </Link>
-      <span className="inbox-topbar-divider" aria-hidden="true" />
-      <span className="inbox-topbar-title">Inbox</span>
-      <div className="inbox-topbar-user">
-        <UserAvatar name={userName} size={28} />
-        <span className="inbox-topbar-name">{userName}</span>
-        <button
-          type="button"
-          className="ghost-button small"
-          data-testid="inbox-signout"
-          onClick={() => void signOut()}
-        >
-          Sign out
-        </button>
-      </div>
-    </header>
-  );
 }
 
 // --------------------------------------------------------------- list pieces
@@ -463,99 +427,95 @@ export function InboxView() {
   const empty = sending !== null && sending.length === 0;
 
   return (
-    <div className="inbox-screen" data-testid="inbox-page">
-      <InboxTopBar userName={user.name} />
+    <main className="inbox-main" data-testid="inbox-page">
+      <div className="inbox-head">
+        <h1 data-testid="inbox-title">Inbox</h1>
+        <p className="inbox-head-sub">
+          Requests, folders, collections, projects and workspaces that people send you — plus a record of what you
+          have sent.
+        </p>
+      </div>
 
-      <main className="inbox-main">
-        <div className="inbox-head">
-          <h1 data-testid="inbox-title">Inbox</h1>
-          <p className="inbox-head-sub">
-            Requests, folders, collections, projects and workspaces that people send you — plus a record of what you
-            have sent.
-          </p>
-        </div>
+      <div className="inbox-tabs" role="tablist" aria-label="Inbox views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'inbox'}
+          className={`inbox-tab${tab === 'inbox' ? ' active' : ''}`}
+          data-testid="inbox-tab-inbox"
+          onClick={() => setTab('inbox')}
+        >
+          <SendIcon size={14} />
+          Received
+          {inbox ? <span className="inbox-tab-count">{inbox.length}</span> : null}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'sent'}
+          className={`inbox-tab${tab === 'sent' ? ' active' : ''}`}
+          data-testid="inbox-tab-sent"
+          onClick={() => setTab('sent')}
+        >
+          <SendIcon size={14} />
+          Sent
+          {outbox ? <span className="inbox-tab-count">{outbox.length}</span> : null}
+        </button>
+      </div>
 
-        <div className="inbox-tabs" role="tablist" aria-label="Inbox views">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'inbox'}
-            className={`inbox-tab${tab === 'inbox' ? ' active' : ''}`}
-            data-testid="inbox-tab-inbox"
-            onClick={() => setTab('inbox')}
-          >
-            <SendIcon size={14} />
-            Received
-            {inbox ? <span className="inbox-tab-count">{inbox.length}</span> : null}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'sent'}
-            className={`inbox-tab${tab === 'sent' ? ' active' : ''}`}
-            data-testid="inbox-tab-sent"
-            onClick={() => setTab('sent')}
-          >
-            <SendIcon size={14} />
-            Sent
-            {outbox ? <span className="inbox-tab-count">{outbox.length}</span> : null}
-          </button>
-        </div>
-
-        {tab === 'inbox' ? (
-          <div className="inbox-filter-row" role="group" aria-label="Filter received sends">
-            {ITEM_FILTERS.map((filter) => (
-              <button
-                type="button"
-                key={filter}
-                className={`inbox-filter${inboxFilter === filter ? ' active' : ''}`}
-                data-testid={`inbox-filter-${filter}`}
-                aria-pressed={inboxFilter === filter}
-                onClick={() => setInboxFilter(filter)}
-              >
-                {filter === 'all' ? 'All' : STATUS_LABEL[filter]}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        {loadErr && (
-          <div className="inbox-error" role="alert" data-testid="inbox-load-error">
-            <p>{loadErr}</p>
+      {tab === 'inbox' ? (
+        <div className="inbox-filter-row" role="group" aria-label="Filter received sends">
+          {ITEM_FILTERS.map((filter) => (
             <button
               type="button"
-              className="ghost-button small"
-              data-testid="inbox-retry"
-              onClick={() => (tab === 'inbox' ? void loadInbox() : void loadOutbox())}
+              key={filter}
+              className={`inbox-filter${inboxFilter === filter ? ' active' : ''}`}
+              data-testid={`inbox-filter-${filter}`}
+              aria-pressed={inboxFilter === filter}
+              onClick={() => setInboxFilter(filter)}
             >
-              Retry
+              {filter === 'all' ? 'All' : STATUS_LABEL[filter]}
             </button>
-          </div>
-        )}
+          ))}
+        </div>
+      ) : null}
 
-        {empty ? (
-          <EmptyState tab={tab} />
-        ) : sending ? (
-          <ul className="inbox-list" data-testid={tab === 'inbox' ? 'inbox-list' : 'sent-list'}>
-            {tab === 'inbox'
-              ? sending.map((send) => (
-                  <InboxRow
-                    key={send.id}
-                    send={send}
-                    busyId={busyId}
-                    confirmId={confirmId}
-                    errorText={rowError?.sendId === send.id ? rowError.text : null}
-                    onStart={startConfirm}
-                    onCancel={cancelConfirm}
-                    onConfirm={doRespond}
-                  />
-                ))
-              : sending.map((send) => (
-                  <SentRow key={send.id} send={send} errorText={rowError?.sendId === send.id ? rowError.text : null} />
-                ))}
-          </ul>
-        ) : null}
-      </main>
-    </div>
+      {loadErr && (
+        <div className="inbox-error" role="alert" data-testid="inbox-load-error">
+          <p>{loadErr}</p>
+          <button
+            type="button"
+            className="ghost-button small"
+            data-testid="inbox-retry"
+            onClick={() => (tab === 'inbox' ? void loadInbox() : void loadOutbox())}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {empty ? (
+        <EmptyState tab={tab} />
+      ) : sending ? (
+        <ul className="inbox-list" data-testid={tab === 'inbox' ? 'inbox-list' : 'sent-list'}>
+          {tab === 'inbox'
+            ? sending.map((send) => (
+                <InboxRow
+                  key={send.id}
+                  send={send}
+                  busyId={busyId}
+                  confirmId={confirmId}
+                  errorText={rowError?.sendId === send.id ? rowError.text : null}
+                  onStart={startConfirm}
+                  onCancel={cancelConfirm}
+                  onConfirm={doRespond}
+                />
+              ))
+            : sending.map((send) => (
+                <SentRow key={send.id} send={send} errorText={rowError?.sendId === send.id ? rowError.text : null} />
+              ))}
+        </ul>
+      ) : null}
+    </main>
   );
 }

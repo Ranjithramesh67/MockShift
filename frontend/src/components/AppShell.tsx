@@ -26,6 +26,8 @@ const ManageView = dynamic(() => import('./views/ManageView').then((m) => m.Mana
 const AdminView = dynamic(() => import('./views/AdminView').then((m) => m.AdminView));
 const HistoryView = dynamic(() => import('./views/HistoryView').then((m) => m.HistoryView));
 const DocsView = dynamic(() => import('./views/DocsView').then((m) => m.default));
+const InboxView = dynamic(() => import('./InboxView').then((m) => m.InboxView));
+const ApiTokensView = dynamic(() => import('./ApiTokensView').then((m) => m.ApiTokensView));
 
 function WorkspaceArea({
   onOpenCurl,
@@ -168,6 +170,10 @@ export function AppShell() {
                 <HistoryView />
               ) : view === 'docs' ? (
                 <DocsView />
+              ) : view === 'inbox' ? (
+                <InboxView />
+              ) : view === 'settings' ? (
+                <ApiTokensView />
               ) : (
                 <AdminView />
               )}

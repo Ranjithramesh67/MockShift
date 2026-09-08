@@ -90,7 +90,38 @@ Phase 3b — Docs polish (user feedback; record docs/SESSION.md §5.50):
   "Print or save as PDF" prints the themed document. Backend probes 12/12,
   tsc clean + 89/89, Playwright smoke 10/10. Pushed with this commit.
 
+Phase 3c — Inbox + API tokens shell fold-in + boss all-access (docs/SESSION.md
+§5.51):
+- [x] Fold the standalone `/inbox` + `/settings/api-tokens` pages into the
+  shared AppShell as in-app views (`inbox` / `settings`): thin route shells
+  render `<AppShell />`; NavStore `AppView` union, RouteViewSync + AppShell
+  wiring; standalone topbars removed; `inbox.css` + `api-tokens.css` moved to
+  root layout so the shared `.send-dialog-*` rules apply wherever
+  SendItemDialog mounts. tsc clean + 89/89 + Playwright fold-in smoke 15/15
+  (incl. docs `/docs?p=` deep-link Back regression); demo scratch cleaned.
+- [x] Boss "all access": confirmed **no DB change needed** — boss is already
+  `users.role = ADMIN` (requireAdmin / all-scope manage / getProjectAccess
+  ADMIN on any project); the workspace *list* stays membership-scoped by
+  design.
+
 ## Current
+
+Step: INBOX + API TOKENS SHELL FOLD-IN (§5.51) DONE — folded the standalone
+`/inbox` and `/settings/api-tokens` pages into the shared AppShell as in-app
+views (`inbox` / `settings`): thin route shells render `<AppShell />`; the
+NavStore `AppView` union + RouteViewSync + AppShell render cases wire the new
+views; both views drop their bespoke standalone topbars (brand back-link +
+Sign out) in favor of the shell top bar + rail; `inbox.css` +
+`api-tokens.css` became root-layout imports so the shared `.send-dialog-*`
+rules also reach the workspace sidebar's SendItemDialog. tsc clean, unit tests
+89/89, Playwright fold-in smoke 15/15 (inbox/tokens under a single shell
+top-bar with rail, no chrome duplication, rail-apis returns to `/`, token list
+loads, docs `/docs?p=` deep-link + browser Back regression). Demo scratch
+cleaned (`Test` page only). Boss all-access: confirmed no change — boss
+`boss1785867669@test.io` is already `users.role = ADMIN`, which opens every
+platform-gated surface and grants project access at ADMIN level anywhere;
+`listWorkspaces` remains membership-scoped by design (a future turn can widen
+it for global admins if the boss should list every workspace without rows).
 
 Step: BACKLOG COMPLETION (A6 payments, send-item, S4+S5 tokens/runs, S6–S8 CLI)
 DONE — four parallel agents delivered code on disk (SEND and CLI were re-
