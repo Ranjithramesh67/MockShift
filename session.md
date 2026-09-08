@@ -55,8 +55,20 @@ coordinator seam reconciliation. Summary:
   "PR2 Starter's Org" orgs, `liveg_owner/_extra/_extra2` + LiveG Org) were
   deleted after user approval — transactional, dependency-ordered, 6 users /
   4 orgs / 7 ws / 7 proj / 3 subs removed; verified 0 leftovers, portal_settings
-  row intact (`restrictions_enforced = true`). See also the two completion
+  row intact (`restrictions_enforced = true`).   See also the two completion
   records in the `## Pending` sections and docs/SESSION.md §5.46.
+- Portal B plan-save hotfix (this turn, pushed with docs): `PUT /api/plans/:id`
+  failed with `column "pricemonthly" does not exist` because
+  `portal/backend/src/routes/plans.js validatePayload` kept the frontend's
+  camelCase `priceMonthly`/`priceYearly` keys, so the dynamic `UPDATE … SET
+  priceMonthly` referenced a non-existent column. Validator now maps both to
+  the real `price_monthly`/`price_yearly` columns (POST param reads updated to
+  match). Portal backend restarted (`term_1788856386239_79` supersedes
+  `term_1788809116883_77`); live curl verified PUT persists price + tagline;
+  demo Starter row restored (₹99/₹990). Related gap found but NOT built
+  (awaiting direction): the Portal A "Plans for every stage" cards render the
+  `plans.features` array, which is empty for all 5 demo plans — no editor
+  exists to add bullets; Portal B plans page has no Features field.
 
 PREVIOUS STEP (for narrative continuity) — PUSHED: Portal A `A5` subscriber
 self-service ("My subscription") is complete and on `master`. Self-service

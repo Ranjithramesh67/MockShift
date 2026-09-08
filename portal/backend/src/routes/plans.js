@@ -47,12 +47,15 @@ function validatePayload(body) {
     }
   }
 
-  for (const src of ['priceMonthly', 'priceYearly']) {
+  for (const [src, column] of [
+    ['priceMonthly', 'price_monthly'],
+    ['priceYearly', 'price_yearly'],
+  ]) {
     const v = toNull(body[src]);
     if (v !== null) {
       if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
         errors.push(`${src} must be a non-negative number or null`);
-      } else out[src] = v;
+      } else out[column] = v;
     }
   }
 
@@ -146,8 +149,8 @@ router.post('/', requirePortalRole('MANAGER'), async (req, res, next) => {
         out.name,
         out.tagline ?? null,
         out.description ?? null,
-        out.priceMonthly ?? 0,
-        out.priceYearly ?? 0,
+        out.price_monthly ?? 0,
+        out.price_yearly ?? 0,
         out.currency ?? 'INR',
         out.billing_cycles ?? ['MONTHLY', 'YEARLY'],
         out.trial_days ?? 0,
