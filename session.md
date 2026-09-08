@@ -1,6 +1,6 @@
 # MockShift — Session State
 
-Last updated: 2026-09-06
+Last updated: 2026-09-08
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
@@ -14,30 +14,30 @@ pushed at each milestone. All agents work on disjoint files, never commit, and
 report mount/nav snippets for the coordinator to wire.
 
 Phase 1 — backlog (parallel agents, run simultaneously, none waits on another):
-- [ ] **A6 — payment gateway + webhooks + receipts** (Portal A). Agent owns
+- [x] **A6 — payment gateway + webhooks + receipts** (Portal A). Agent owns
   `portal/backend/**`, `portal/frontend/**`, `db/migrations/021_*.sql`. Simulated
   payment gateway flow (redirect/confirm → webhook → PENDING order becomes PAID,
   ACTIVE sub, invoice PAID) + a receipts view. Verify with a live curl/Playwright
   matrix on :3102 using scratch guest buyers; never reseed the dev DB.
-- [ ] **Send item to another user (accept/reject)**. Agent owns main backend
+- [x] **Send item to another user (accept/reject)**. Agent owns main backend
   (`backend/src/api/**` NEW files only) + `db/migrations/022_*.sql` +
   `frontend/app/inbox/**` + new `frontend/src/components/**` (no shared mounts).
   Send/inbox table; accept clones into recipient's space via the existing
   duplicate/sibling-unique helpers; reject records + notifies sender.
-- [ ] **S4 — personal API tokens + S5 — server-side POST /api/runs**. Agent owns
+- [x] **S4 — personal API tokens + S5 — server-side POST /api/runs**. Agent owns
   main backend new routes + `db/migrations/023_*.sql` + `frontend/src/components/
   api-tokens*` UI + app page. Token auth for machine calls; `POST /api/runs` runs
   a stored request server-side.
-- [ ] **S6–S8 — CLI + reporters + CI recipes** (new `cli/` package, isolated). Remote
+- [x] **S6–S8 — CLI + reporters + CI recipes** (new `cli/` package, isolated). Remote
   mode, JSON reporter, JUnit/HTML reporters + exit codes, Dockerfile + CI yaml
   recipes (files only — no image build). Unit tests via `node --test`.
 
 Phase 1 integration (coordinator, sequential after agents report):
-- [ ] Wire the shared seams (mounts in `backend/src/api/server.js` /
+- [x] Wire the shared seams (mounts in `backend/src/api/server.js` /
   `portal/backend/src/server.js`; nav entries in `TopBar.tsx`/layout; none by agents).
-- [ ] Verify: `tsc --noEmit` both frontends; `node --check` new backend files;
+- [x] Verify: `tsc --noEmit` both frontends; `node --check` new backend files;
   re-run each agent's matrix script against the freshly restarted services.
-- [ ] Commit + push per task with proper messages; update Phase 1 checkboxes +
+- [x] Commit + push per task with proper messages; update Phase 1 checkboxes +
   `docs/SESSION.md`; demo rows/throwaways cleaned only with user OK.
 
 Phase 2 — Docs feature (Confluence-style API documentation):
@@ -53,6 +53,39 @@ Phase 2 — Docs feature (Confluence-style API documentation):
 Phase 2 integration + push (sequential).
 
 ## Current
+
+Step: BACKLOG COMPLETION (A6 payments, send-item, S4+S5 tokens/runs, S6–S8 CLI)
+DONE — four parallel agents delivered code on disk (SEND and CLI were re-
+dispatched after their first results were truncated/missing), the coordinator
+wired the seams, verified live, and pushed three commits:
+
+- `5424add` feat(portal): simulated payment gateway + provider webhooks +
+  receipts (A6) — checkout → `/gateway` → pay → `/receipt`; orders gain
+  gateway state + `payment_gateway_events` log (migration 021).
+- `7f8226f` feat(api): send items between users (inbox, accept clones into the
+  recipient's account) + personal API tokens (S4, sha256 digests, Bearer
+  fallback in `requireAuth`) + server-side POST /api/runs (S5, trigger `api`).
+  Migrations 022/023/024; /inbox + /settings/api-tokens pages; SendItemDialog
+  in request/folder/collection menus; user-menu entries.
+- `2c93bd4` feat(cli): apihub CLI (S6–S8) — zero-dep package in `cli/`,
+  run/report junit|markdown/ci commands, 58/58 unit tests.
+
+Seam wiring by coordinator: mounts in both `server.js` files (serverRuns must
+precede the content router; the `/api/runs` router defines `/runs` so it mounts
+at `/api`), `requireAuth` Bearer fallback (lazy import avoids the
+tokenAuth↔access cycle), checkout redirects paid orders to the gateway page.
+Verification: integration matrix 34/34 (tokens CRUD + scope gates + revoked,
+runs auth/404/400/fall-through, sends mounts, A6 gateway pay + webhook fail/
+success/replay idempotence), main FE unit tests 89/89, `tsc --noEmit` clean in
+both frontends, Playwright smokes: main FE 8/8 (send dialog, /inbox, /settings/
+api-tokens), Portal A UI 7/7 (checkout→gateway→receipt).
+
+Scratch DB rows created by agents/matrices (res_l1_* restriction test users,
+a6_* agent buyers, a6matrix*/a6ui* buyers, revoked `matrix-*` api_tokens) are
+listed for a single user-approved cleanup; code + docs pushed with user OK only
+for the DB deletion itself.
+
+Prior record (profile page + L1–L6 restrictions):
 
 Step: PROFILE PAGE (PR-2/PR-3) + PER-PLAN USAGE RESTRICTIONS (L1–L6) DONE —
 pushed `16e7a98` (feat) in one commit after a parallel-agent dispatch + a

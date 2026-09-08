@@ -564,6 +564,69 @@ with an env override first and a localhost dev fallback last:
   `goto-plans` href resolves to `https://3002-<session>.monkeycode-ai.live/#pricing`
   after hydration).
 
+### 5.47 Backlog completion — A6 payments, send-item, S4+S5 tokens/runs, S6–S8 CLI (pushed 2026-09-08)
+
+User asked to finish every pending backlog item with parallel agents and then
+start the Confluence-style "Docs" documentation feature. Plan was recorded in
+`session.md` and four super-agents dispatched on disjoint file trees (no agent
+commits). Three delivered full code; SEND (send-item) and CLI results arrived
+empty/truncated, so both were re-dispatched and completed. The coordinator then
+wired every shared seam (agents were forbidden from touching them).
+
+- **A6 payment gateway + webhooks + receipts** (`5424add`, portal only).
+  Migration `021_payment_gateway.sql` adds `orders` gateway state columns
+  (`gateway_status/provider/reference/paid_at`) + append-only
+  `payment_gateway_events` log. New `portal/backend/src/routes/paymentGateway.js`
+  (`POST /api/public/gateway/:orderId/pay` owner-only, simulates the PSP charge)
+  and `routes/webhooks.js` (`POST /api/public/webhooks/payment`, secret from
+  `x-webhook-secret`, const-time compare); both settle through one idempotent
+  `portal/backend/src/paymentFinalize.js` (PAID order + DRAFT→PAID invoice +
+  ACTIVE subscription applying the first-recharge bonus + `app.supersede_
+  subscriptions()` for plan changes). Failed charges → 422 and stay PENDING;
+  replays → logged DUPLICATE no-ops. Coordinator mounted both routers and
+  pointed the paid checkout flow at a new `/gateway` page
+  (`portal/frontend/src/components/GatewayView.tsx` + `app/gateway/*`) with a
+  `/receipt/:orderId` view; free plans still activate instantly.
+- **Send item to another user** (accept/reject; part of `7f8226f`). Migration
+  `022_send_item.sql` (sends table, status lifecycle + accepted_path).
+  `backend/src/api/routes/sends.js`: create/inbox/outbox/recipients + accept
+  (clones the item into the recipient's own account with "(copy)" sibling-unique
+  naming) / reject; notifications both ways; 404 for neither-sender-nor-
+  recipient. Frontend `/inbox` page (Received/Sent tabs) + `SendItemDialog`
+  mounted in the request/folder/collection menus + user-menu entry. SEND agent's
+  scratch live matrix on :3006 was ALL PASS (incl. self-send 400, non-owner 403,
+  double-accept 409, clone-landing check).
+- **S4 personal API tokens + S5 server-side runs** (part of `7f8226f`).
+  Migrations `023_api_tokens.sql` (sha256 digests, prefix, scopes
+  read/write/runs, revoke/expiry) + `024_run_trigger_api.sql` (adds `api`
+  trigger). `tokens.js` CRUD returns the raw `tkh_` secret once;
+  `serverRuns.js` POST `/api/runs` (session or Bearer auth, `runs`/`write`
+  scope gate) loads the stored request, resolves env/vars, charges the run
+  pool, executes via `runner.executePipeline`, persists history + test rows and
+  fires ON_REQUEST / ON_RUN_FAILURE automations; ephemeral UI runs (no
+  `requestId`) fall through to the content router. Coordinator mounted the
+  routers in `backend/src/api/server.js` (serverRuns must precede the content
+  router and mounts at `/api` because the router itself defines `/runs`) and
+  added a Bearer fallback to `requireAuth` (lazy `require('./tokenAuth')` avoids
+  a tokenAuth↔access cycle) so tokens authenticate anywhere. UI:
+  `/settings/api-tokens` (`ApiTokensView`) + user-menu entry.
+- **S6–S8 CLI** (`2c93bd4`, isolated `/workspace/cli`). Zero-dependency Node ≥18
+  package (`bin: apihub`): login (token at `~/.config/apihub/config.json` 0600),
+  logout, whoami, workspace/project/collection/request list+show, project
+  create, `run <requestId>` (exit 0 PASS / 1 FAIL), `report junit|markdown`,
+  `ci run`, flags > env > config; 58/58 `node --test` unit tests; GitHub
+  Actions + GitLab CI recipes in `cli/ci/README.md`.
+- **Verification**: main integration matrix 34/34 live against :3001/:3102
+  (tokens CRUD + bearer profile + scope gate + revoked; runs 400/404/401/403 +
+  ephemeral fall-through not hijacked; sends mounts; A6 gateway pay + bonus +
+  replay, webhook wrong-secret 401, FAILED 422, success, replay idempotence);
+  `tsc --noEmit` clean in both frontends; main `npm test` 89/89; Playwright main
+  FE 8/8 (send dialog, /inbox, /settings/api-tokens) and Portal A UI 7/7
+  (checkout → /gateway → pay → /receipt).
+- Scratch rows created by the agents/matrices (restriction `res_l1_*` users from
+  the earlier L1 phase, `a6_*`/`a6matrix*`/`a6ui*` buyers, revoked `matrix-*`
+  api_tokens) are queued for a single user-approved cleanup.
+
 ### 5.44 Profile & plan visibility PR-1 — backend profile surface + avatar storage (pushed `0c171f4`, 2026-09-06)
 
 Ranjith approved starting the Profile & plan visibility programme with segment
