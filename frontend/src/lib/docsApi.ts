@@ -1,6 +1,6 @@
 'use client';
 
-import { apiFetch, type ApiError } from './api';
+import { apiFetch, ApiError } from './api';
 
 // ---------------------------------------------------------------- Docs types
 // Confluence-style documentation pages. A page lives in a workspace (project
@@ -8,7 +8,7 @@ import { apiFetch, type ApiError } from './api';
 // payload/response/schema examples, lists). Pages can also carry mentions —
 // either of a user (@Name chip) or of an API request (chip that deep-links
 // into the workspace when the reader has access).
-export type DocsBlockType = 'heading' | 'text' | 'code' | 'payload' | 'response' | 'schema' | 'list';
+export type DocsBlockType = 'heading' | 'text' | 'code' | 'payload' | 'response' | 'schema' | 'list' | 'image';
 
 export interface DocsPerson {
   id: string;
@@ -78,6 +78,54 @@ export interface DocsPageDetail {
   mentions: DocsMention[];
 }
 
+// -------------------------------------------------- sharing / usage contract
+// GET /api/docs/usage — per-workspace plan usage + limits for docs resources.
+// A null limit means unlimited; the pill/disable logic only kicks in when the
+// plan is enforced.
+export interface DocsUsage {
+  planKey: string | null;
+  planName: string | null;
+  enforced: boolean;
+  usage: { doc_pages: number; api_requests: number; mock_servers: number };
+  limits: { doc_pages: number | null; api_requests: number | null; mock_servers: number | null };
+}
+
+export type DocExportFormat = 'markdown' | 'html' | 'json';
+
+export interface DocsShareInfo {
+  token: string;
+  url: string; // relative public path, e.g. /s/doc/<token>
+  createdAt?: string;
+}
+
+// GET /api/docs/public/:token — the no-login public snapshot of a shared page.
+export interface SharedDocBlock {
+  id: string;
+  position: number;
+  type: DocsBlockType;
+  content: DocsBlockContent;
+}
+
+export interface SharedDocMention {
+  type: 'user' | 'api';
+  ref: { name: string };
+}
+
+export interface SharedDocView {
+  share: {
+    token: string;
+    createdAt: string;
+    page: {
+      title: string;
+      updatedAt: string;
+      updatedBy: { name: string } | null;
+    };
+    workspaceName: string;
+    blocks: SharedDocBlock[];
+    mentions: SharedDocMention[];
+  };
+}
+
 export function isUserMention(m: DocsMention): m is DocsMention & { ref: DocsUserRef } {
   return m.type === 'user';
 }
@@ -121,6 +169,7 @@ export const BLOCK_LABELS: Array<{ type: DocsBlockType; label: string }> = [
   { type: 'response', label: 'Response' },
   { type: 'schema', label: 'Schema' },
   { type: 'list', label: 'List' },
+  { type: 'image', label: 'Image' },
 ];
 
 export function defaultContent(type: DocsBlockType): DocsBlockContent {
@@ -139,6 +188,8 @@ export function defaultContent(type: DocsBlockType): DocsBlockContent {
       return { language: 'json', definition: '' };
     case 'list':
       return { style: 'bullet', items: [''] };
+    case 'image':
+      return { src: '', alt: '', caption: '' };
   }
 }
 
@@ -223,7 +274,39 @@ export const docsApi = {
 
   removeMention: (pageId: string, mentionId: string) =>
     apiFetch<void>(`/api/docs/${pageId}/mentions/${mentionId}`, { method: 'DELETE' }),
+
+  usage: (workspaceId: string) =>
+    apiFetch<DocsUsage>(`/api/docs/usage${toQuery({ workspaceId })}`),
+
+  share: (pageId: string) =>
+    apiFetch<{ share: DocsShareInfo }>(`/api/docs/${pageId}/share`, { method: 'POST' }),
+
+  unshare: (pageId: string) =>
+    apiFetch<void>(`/api/docs/${pageId}/share`, { method: 'DELETE' }),
+
+  // No-login public snapshot backing the /s/doc/<token> page.
+  publicShare: (token: string) => apiFetch<SharedDocView>(`/api/docs/public/${encodeURIComponent(token)}`),
 };
+
+// Document export downloads: the endpoint streams an authenticated file; we
+// pull the body as text so callers can build a Blob download or print the HTML.
+export async function fetchDocExport(pageId: string, format: DocExportFormat): Promise<string> {
+  const res = await fetch(`/api/docs/${encodeURIComponent(pageId)}/export?format=${format}`, {
+    credentials: 'include',
+    headers: { Accept: 'text/html, text/markdown, application/json, text/plain; q=0.9, */*; q=0.1' },
+  });
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && data.error) message = data.error;
+    } catch {
+      // non-JSON error body
+    }
+    throw new ApiError(res.status, message);
+  }
+  return res.text();
+}
 
 // Existing (non-docs) endpoints reused by the docs UI.
 export const docsSharedApi = {

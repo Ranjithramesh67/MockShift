@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
 import type { UserRole } from '@/lib/api';
-import { docsApi } from '@/lib/docsApi';
+import { docsApi, type DocsUsage } from '@/lib/docsApi';
 import { RequestsPanel } from './RequestsPanel';
 import { NewPageModal } from './Pickers';
 import { workspaceApi } from '@/lib/api';
@@ -32,6 +32,7 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [usage, setUsage] = useState<DocsUsage | null>(null);
   const seq = useRef(0);
 
   const workspaces = ws.workspaces;
@@ -64,6 +65,26 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
     const t = window.setTimeout(() => setAppliedQ(q.trim()), 250);
     return () => window.clearTimeout(t);
   }, [q]);
+
+  // Per-workspace plan usage (drives the doc-count pill and New page gate).
+  useEffect(() => {
+    if (!workspaceId) {
+      setUsage(null);
+      return;
+    }
+    let alive = true;
+    docsApi
+      .usage(workspaceId)
+      .then((u) => {
+        if (alive) setUsage(u);
+      })
+      .catch(() => {
+        if (alive) setUsage(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [workspaceId]);
 
   const loadPages = useCallback(async () => {
     if (!workspaceId || tab !== 'pages') {
@@ -106,11 +127,23 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
     user?.role
   );
 
+  const enforced = !!usage?.enforced;
+  const docLimit = usage && enforced ? usage.limits.doc_pages : null;
+  const docUsed = usage?.usage.doc_pages ?? 0;
+  const atDocLimit = enforced && docLimit !== null && docUsed >= docLimit;
+
   return (
     <div className={styles.docsRoot} data-testid="docs-home">
       <div className={styles.docsHeader}>
         <div>
-          <h1>Docs</h1>
+          <div className={styles.titleRow}>
+            <h1>Docs</h1>
+            {enforced && (
+              <span className={styles.limitPill} data-testid="docs-limit-pill">
+                {docLimit !== null ? `${docUsed} / ${docLimit} docs` : `${docUsed} docs used`}
+              </span>
+            )}
+          </div>
           <p className="admin-subtitle">Workspace documentation, examples and walkthroughs.</p>
         </div>
         <div className="admin-header-actions">
@@ -118,7 +151,8 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
             type="button"
             className="primary-button"
             data-testid="docs-new-page"
-            disabled={workspaces.length === 0}
+            title={atDocLimit ? 'Plan limit reached — upgrade for more docs' : undefined}
+            disabled={workspaces.length === 0 || atDocLimit}
             onClick={() => setCreating(true)}
           >
             <PlusIcon size={14} />

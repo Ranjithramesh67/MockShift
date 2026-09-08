@@ -65,6 +65,10 @@ function createApp() {
     }
   });
 
+  // Public doc-share viewer (no auth by design): registered before the
+  // authenticated /api routers so requireAuth does not intercept it.
+  app.use('/api/docs/public', docsRoutes.publicRouter);
+
   app.use('/api/auth', authRoutes);
   app.use('/api/profile', profileRoutes);
   app.use('/api', shareRoutes);

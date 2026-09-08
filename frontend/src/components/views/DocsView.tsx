@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useNav } from '@/store/NavStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { isApiMention, type DocsApiRef, type DocsMention } from '@/lib/docsApi';
@@ -13,15 +13,38 @@ import { DocsPageView } from '../docs/DocsPageView';
 // list/requests board and the page editor/viewer) and never touches the frozen
 // NavStore union beyond switching into 'workspace' when a reader opens a
 // mention it can access.
+//
+// The currently-open page is mirrored into the URL (/docs?p=<pageId>) so the
+// open doc survives browser refresh/Back: opening a linked API keeps the doc at
+// /docs?p=… in history, so pressing Back after closing the request returns to
+// the doc, not the docs list.
 export default function DocsView() {
   const nav = useNav();
   const router = useRouter();
   const ws = useWorkspace();
-  const [pageId, setPageId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const [pageId, setPageId] = useState<string | null>(() => {
+    const p = searchParams.get('p');
+    return p && p.trim() ? p.trim() : null;
+  });
 
-  const openPage = useCallback((id: string) => {
-    setPageId(id);
-  }, []);
+  // Single source of truth is the ?p= param: present → open that page,
+  // absent → home list. This also drives browser Back between list and page.
+  useEffect(() => {
+    const p = searchParams.get('p');
+    setPageId(p && p.trim() ? p.trim() : null);
+  }, [searchParams]);
+
+  const openPage = useCallback(
+    (id: string) => {
+      router.push(`/docs?p=${encodeURIComponent(id)}`);
+    },
+    [router]
+  );
+
+  const closePage = useCallback(() => {
+    router.replace('/docs');
+  }, [router]);
 
   // Deep-link into the workspace: activate the mention's workspace, then open
   // its request. Only invoked for mentions the reader can access (read === true);
@@ -53,7 +76,7 @@ export default function DocsView() {
   return (
     <main className="admin-main" data-testid="docs-view">
       {pageId ? (
-        <DocsPageView pageId={pageId} onBack={() => setPageId(null)} onOpenApi={openMention} />
+        <DocsPageView pageId={pageId} onBack={closePage} onOpenApi={openMention} />
       ) : (
         <DocsHome onOpenPage={openPage} />
       )}

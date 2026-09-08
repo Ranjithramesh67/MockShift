@@ -63,6 +63,25 @@ Phase 2 integration + push (sequential).
   events + their audit rows) removed in one user-approved transaction — demo/
   seed data verified untouched.
 
+Phase 3 — Docs round 2: export / share links / image blocks + free-plan limits
+(parallel agents, 2026-09-08; record in docs/SESSION.md §5.49):
+- [x] **D3a backend** — migrations `026_docs_image_share.sql` (doc_shares, image
+  blocks) + `027_plan_limit_extensions.sql` (limits keys api_requests/
+  mock_servers/doc_pages: free 20/50/1, starter 100/250/3, pro 500/1000/10,
+  team nulls) applied; entitlements keys + countPoolUsage extensions; creation
+  gates in content/exports/mockServers/docs; docs export (md/html/json), share
+  POST/DELETE + anonymous sanitized GET /docs/public/:token, GET /docs/usage.
+  Matrix 81/0 local.
+- [x] **D3b frontend** — Export menu (+ print/PDF), Share modal, image block
+  editor/viewer, docs usage pill + New-page gate, `/docs?p=` deep-link back-nav,
+  public route `frontend/app/s/doc/[token]/page.tsx`. tsc 0, tests 89/89.
+- [x] Coordinator: exported `docsRoutes.publicRouter` and mounted
+  `app.use('/api/docs/public', …)` pre-auth in server.js (earlier /api routers
+  were 401'ing anonymous public share reads); restarted :3001; re-verified
+  backend live 13/13 + paid-share 10/10 + Playwright UI smoke 26/26 (back-to-doc
+  via `/docs?p=` after chip deep-link confirmed). Probe scratch rows purged with
+  user approval; demo verified intact.
+
 ## Current
 
 Step: BACKLOG COMPLETION (A6 payments, send-item, S4+S5 tokens/runs, S6–S8 CLI)

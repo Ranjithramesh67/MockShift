@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
+import { useApp } from '@/store/AppStore';
 import {
   blockNum,
   blockStrings,
@@ -17,6 +18,8 @@ import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from '@/components/ic
 function setField(c: DocsBlockContent, field: string, value: unknown): DocsBlockContent {
   return { ...c, [field]: value };
 }
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 function EditorTextarea({
   value,
@@ -50,20 +53,118 @@ function EditorText({
   onChange,
   testId,
   large,
+  placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
   testId?: string;
   large?: boolean;
+  placeholder?: string;
 }) {
   return (
     <input
       type="text"
       className={`${styles.editorInput} ${large ? styles.headingEditorInput : ''}`}
       value={value}
+      placeholder={placeholder}
       data-testid={testId}
       onChange={(e) => onChange(e.target.value)}
     />
+  );
+}
+
+// Image block editor: upload a local file (data: URL via FileReader, capped at
+// 5 MB) or paste an http(s)/data URL, with optional alt text and caption.
+function ImageBlockFields({
+  content,
+  onChange,
+}: {
+  content: DocsBlockContent;
+  onChange: (content: DocsBlockContent) => void;
+}) {
+  const { dispatch } = useApp();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const src = blockText(content, 'src');
+  const alt = blockText(content, 'alt');
+  const caption = blockText(content, 'caption');
+
+  const onFile = (file: File | null) => {
+    if (!file) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'error',
+        message: 'Image is larger than 5 MB — choose a smaller file or paste an image URL instead.',
+      });
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') onChange(setField(content, 'src', reader.result));
+    };
+    reader.onerror = () => {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: 'Could not read that image file.' });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <>
+      <div className={styles.imgEditRow}>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className={styles.imgFileInput}
+          data-testid="docs-field-image-file"
+          aria-label="Upload image"
+          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+        />
+        <button type="button" className="ghost-button small" data-testid="docs-field-image-upload" onClick={() => fileRef.current?.click()}>
+          Choose image file…
+        </button>
+        <span className={styles.imgFileHint}>Max 5 MB — stored inline in the page</span>
+      </div>
+      <EditorText
+        value={src.startsWith('data:') ? '' : src}
+        onChange={(v) => onChange(setField(content, 'src', v))}
+        placeholder="…or paste an image URL (https://…)"
+        testId="docs-field-image-src"
+      />
+      {src.startsWith('data:') && src.length > 0 && (
+        <span className={styles.imgEmbeddedNote}>Image embedded from file</span>
+      )}
+      <div className={styles.fieldRow}>
+        <EditorText
+          value={alt}
+          onChange={(v) => onChange(setField(content, 'alt', v))}
+          placeholder="Alt text (optional)"
+          testId="docs-field-image-alt"
+        />
+        <EditorText
+          value={caption}
+          onChange={(v) => onChange(setField(content, 'caption', v))}
+          placeholder="Caption (optional)"
+          testId="docs-field-image-caption"
+        />
+      </div>
+      {src && (
+        <div className={styles.imgThumbWrap} data-testid="docs-field-image-thumb">
+          <img className={styles.imgThumb} src={src} alt={alt || 'Image preview'} />
+          {src.startsWith('data:') && (
+            <button
+              type="button"
+              className="ghost-button small"
+              data-testid="docs-field-image-remove"
+              onClick={() => onChange(setField(content, 'src', ''))}
+            >
+              Remove image
+            </button>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -187,6 +288,8 @@ function BlockFields({
         </>
       );
     }
+    case 'image':
+      return <ImageBlockFields content={c} onChange={onChange} />;
   }
 }
 
