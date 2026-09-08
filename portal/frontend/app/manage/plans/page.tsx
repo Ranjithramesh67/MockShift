@@ -59,6 +59,7 @@ type PlanForm = {
   limits: Record<string, string>;
   publicSharing: boolean;
   enforce: boolean;
+  features: string[];
 };
 
 // Canonical per-plan usage limit keys surfaced in the editor (Portal B usage
@@ -104,6 +105,7 @@ const DEFAULT_FORM: PlanForm = {
   limits: emptyLimits(),
   publicSharing: false,
   enforce: true,
+  features: [],
 };
 
 function errMsg(err: unknown): string {
@@ -175,6 +177,7 @@ function buildPayload(f: PlanForm, base: Record<string, unknown> | null) {
     sortOrder: Number(f.sortOrder),
     status: f.status,
     limits: buildLimits(f, base),
+    features: f.features.map((t) => t.trim()).filter((t) => t !== ''),
   };
 }
 
@@ -285,6 +288,9 @@ export default function PlansPage() {
       limits: limitsFromRow(plan),
       publicSharing: planLimits.public_sharing === true,
       enforce: planLimits.enforce !== false,
+      features: Array.isArray(plan.features)
+        ? plan.features.map((x) => String(x)).filter((s) => s.trim() !== '')
+        : [],
     });
     setFormError(null);
     setEditorOpen(true);
@@ -305,6 +311,25 @@ export default function PlansPage() {
 
   function setFlag(flag: 'publicSharing' | 'enforce', value: boolean) {
     setForm((f) => ({ ...f, [flag]: value }));
+  }
+
+  function setFeature(index: number, value: string) {
+    setForm((f) => {
+      const features = [...f.features];
+      features[index] = value;
+      return { ...f, features };
+    });
+  }
+
+  function addFeature() {
+    setForm((f) => ({ ...f, features: [...f.features, ''] }));
+  }
+
+  function removeFeature(index: number) {
+    setForm((f) => ({
+      ...f,
+      features: f.features.filter((_, i) => i !== index),
+    }));
   }
 
   function toggleCycle(cycle: string) {
@@ -813,6 +838,54 @@ export default function PlansPage() {
                       </label>
                     </div>
                   </div>
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <div
+                    style={{
+                      borderTop: '1px solid rgba(148,163,184,0.3)',
+                      paddingTop: 14,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span
+                      className="pm-label"
+                      style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}
+                    >
+                      Feature bullets
+                    </span>
+                    <p className="pm-hint" style={{ margin: '2px 0 0' }}>
+                      Shown as the check-marked list on the Portal A pricing grid (and in checkout). Add one item
+                      per row, e.g. &ldquo;25 workspaces&rdquo;. Empty rows are dropped on save.
+                    </p>
+                  </div>
+                  {form.features.length === 0 ? (
+                    <p className="pm-hint" style={{ margin: '2px 0 10px' }}>
+                      No bullets yet — add one below.
+                    </p>
+                  ) : null}
+                  {form.features.map((feature, index) => (
+                    <div key={`${index}-${feature.length > 0 ? feature.slice(0, 12) : 'empty'}`} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <input
+                        className="pm-input"
+                        aria-label={`Feature ${index + 1}`}
+                        value={feature}
+                        onChange={(e) => setFeature(index, e.target.value)}
+                        placeholder="e.g. 5 workspaces"
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        className="pm-btn pm-btn-ghost pm-btn-sm"
+                        aria-label={`Remove feature ${index + 1}`}
+                        onClick={() => removeFeature(index)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" className="pm-btn pm-btn-outline pm-btn-sm" onClick={addFeature}>
+                    + Add feature
+                  </button>
                 </div>
               </div>
               <div className="pm-modal-foot">
