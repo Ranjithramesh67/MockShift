@@ -7,6 +7,8 @@ import {
   blockStrings,
   blockText,
   BLOCK_LABELS,
+  IMAGE_SIZES,
+  imageSizeOf,
   newBlock,
   type DocsBlock,
   type DocsBlockContent,
@@ -148,6 +150,21 @@ function ImageBlockFields({
           placeholder="Caption (optional)"
           testId="docs-field-image-caption"
         />
+      </div>
+      <div className={styles.sizeCtl} role="group" aria-label="Image size">
+        <span className={styles.sizeCtlLabel}>Size</span>
+        {IMAGE_SIZES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={`${styles.sizeCtlBtn} ${imageSizeOf(content) === s ? styles.sizeCtlBtnActive : ''}`}
+            data-testid={`docs-image-size-${s}`}
+            disabled={!src}
+            onClick={() => onChange(setField(content, 'size', s))}
+          >
+            {s === 'full' ? 'Full' : s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
       </div>
       {src && (
         <div className={styles.imgThumbWrap} data-testid="docs-field-image-thumb">

@@ -5,6 +5,7 @@ import { useApp } from '@/store/AppStore';
 import { accessRequestApi, type ApiError } from '@/lib/api';
 import { docsSharedApi, isApiError, type DocsBlock, type DocsMention } from '@/lib/docsApi';
 import { blockMethod, blockNum, blockStrings, blockText } from '@/lib/docsApi';
+import { imageSizeOf, IMAGE_SIZE_PCT } from '@/lib/docsApi';
 import { formatBody } from './helpers';
 import styles from './docs.module.css';
 import { LockIcon, XIcon } from '@/components/icons';
@@ -135,10 +136,17 @@ function Block({ block }: { block: DocsBlock }) {
       const src = blockText(c, 'src');
       const alt = blockText(c, 'alt');
       const caption = blockText(c, 'caption');
+      const size = imageSizeOf(c);
       if (!src) return null;
       return (
         <figure className={styles.imgBlock} data-testid="docs-block-image">
-          <img className={styles.imgEl} src={src} alt={alt} />
+          <img
+            className={styles.imgEl}
+            src={src}
+            alt={alt}
+            data-size={size}
+            style={{ maxWidth: `${IMAGE_SIZE_PCT[size]}%` }}
+          />
           {caption && <figcaption className={styles.imgCaption}>{caption}</figcaption>}
         </figure>
       );

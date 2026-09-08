@@ -46,11 +46,15 @@ function legacyCopy(text: string): Promise<void> {
 const EXPORT_FORMATS: Array<{ format: DocExportFormat; label: string; desc: string }> = [
   { format: 'markdown', label: 'Markdown', desc: '.md file' },
   { format: 'html', label: 'HTML', desc: 'standalone page' },
+  { format: 'word', label: 'Word', desc: '.doc file' },
   { format: 'json', label: 'JSON', desc: 'structured data' },
 ];
 
 function mimeFor(format: DocExportFormat): string {
-  return format === 'markdown' ? 'text/markdown' : format === 'html' ? 'text/html' : 'application/json';
+  if (format === 'markdown') return 'text/markdown';
+  if (format === 'word') return 'application/msword';
+  if (format === 'html') return 'text/html';
+  return 'application/json';
 }
 
 export function ExportMenu({ pageId, title }: { pageId: string; title: string }) {
@@ -88,7 +92,7 @@ export function ExportMenu({ pageId, title }: { pageId: string; title: string })
     setOpen(false);
     try {
       const text = await fetchDocExport(pageId, format);
-      const ext = format === 'markdown' ? 'md' : format;
+      const ext = format === 'markdown' ? 'md' : format === 'word' ? 'doc' : format;
       const blob = new Blob([text], { type: `${mimeFor(format)};charset=utf-8` });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -176,7 +180,7 @@ export function ExportMenu({ pageId, title }: { pageId: string; title: string })
             onClick={printHtml}
           >
             Print or save as PDF
-            <span className={styles.actionMenuHint}>Open the page in a new window</span>
+            <span className={styles.actionMenuHint}>Themed document — choose “Save as PDF” in the print dialog</span>
           </button>
         </div>
       )}
