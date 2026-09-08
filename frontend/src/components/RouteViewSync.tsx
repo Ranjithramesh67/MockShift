@@ -19,6 +19,7 @@ export function RouteViewSync() {
     else if (pathname.startsWith('/admin')) view = 'admin';
     else if (pathname.startsWith('/automations')) view = 'automations';
     else if (pathname.startsWith('/history')) view = 'history';
+    else if (pathname.startsWith('/docs')) view = 'docs';
     setView(view);
   }, [pathname, setView]);
 

@@ -1,0 +1,251 @@
+'use client';
+
+import { apiFetch, type ApiError } from './api';
+
+// ---------------------------------------------------------------- Docs types
+// Confluence-style documentation pages. A page lives in a workspace (project
+// optional) and is made of an ordered list of typed "blocks" (text, code,
+// payload/response/schema examples, lists). Pages can also carry mentions —
+// either of a user (@Name chip) or of an API request (chip that deep-links
+// into the workspace when the reader has access).
+export type DocsBlockType = 'heading' | 'text' | 'code' | 'payload' | 'response' | 'schema' | 'list';
+
+export interface DocsPerson {
+  id: string;
+  name: string;
+}
+
+export interface DocsPageSummary {
+  id: string;
+  title: string;
+  workspaceId: string;
+  workspaceName: string;
+  projectId: string | null;
+  projectName: string | null;
+  createdBy: DocsPerson | null;
+  updatedBy: DocsPerson | null;
+  createdAt: string;
+  updatedAt: string;
+  blockCount: number;
+}
+
+export interface DocsPageInfo extends DocsPageSummary {
+  canEdit: boolean;
+}
+
+export interface DocsUserRef {
+  id: string;
+  name: string;
+  email?: string | null;
+}
+
+export interface DocsApiRef {
+  id: string;
+  name: string;
+  method: string;
+  collectionId: string;
+  workspaceId: string;
+  projectId: string;
+  access: { read: boolean };
+}
+
+export interface DocsMention {
+  id: string;
+  type: 'user' | 'api';
+  refId: string;
+  ref: DocsUserRef | DocsApiRef;
+}
+
+// Block content is stored server-side as a plain JSON object keyed per block
+// type (see the FROZEN contract). We keep it as a Record so editing stays
+// uniform; the renderer reads fields through the accessor helpers below.
+export type DocsBlockContent = Record<string, unknown>;
+
+export interface DocsBlock {
+  id: string | null;
+  type: DocsBlockType;
+  content: DocsBlockContent;
+}
+
+export interface DocsServerBlock extends DocsBlock {
+  id: string;
+  position: number;
+}
+
+export interface DocsPageDetail {
+  page: DocsPageInfo;
+  blocks: DocsServerBlock[];
+  mentions: DocsMention[];
+}
+
+export function isUserMention(m: DocsMention): m is DocsMention & { ref: DocsUserRef } {
+  return m.type === 'user';
+}
+
+export function isApiMention(m: DocsMention): m is DocsMention & { ref: DocsApiRef } {
+  return m.type === 'api';
+}
+
+// ------------------------------------------------------------------ accessors
+export function blockText(c: DocsBlockContent, key = 'text', fallback = ''): string {
+  const v = c[key];
+  if (typeof v === 'string') return v;
+  if (v != null) return String(v);
+  return fallback;
+}
+
+export function blockNum(c: DocsBlockContent, key = 'status', fallback = 0): number {
+  const v = c[key];
+  if (typeof v === 'number') return v;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function blockStrings(c: DocsBlockContent, key = 'items'): string[] {
+  const v = c[key];
+  if (Array.isArray(v)) return v.map((x) => (typeof x === 'string' ? x : String(x)));
+  return [];
+}
+
+export function blockMethod(c: DocsBlockContent): string {
+  const m = blockText(c, 'method', 'GET');
+  return (m || 'GET').toUpperCase();
+}
+
+// Blocks per type + their add-menu labels.
+export const BLOCK_LABELS: Array<{ type: DocsBlockType; label: string }> = [
+  { type: 'heading', label: 'Heading' },
+  { type: 'text', label: 'Text' },
+  { type: 'code', label: 'Code' },
+  { type: 'payload', label: 'Payload' },
+  { type: 'response', label: 'Response' },
+  { type: 'schema', label: 'Schema' },
+  { type: 'list', label: 'List' },
+];
+
+export function defaultContent(type: DocsBlockType): DocsBlockContent {
+  switch (type) {
+    case 'heading':
+      return { text: '' };
+    case 'text':
+      return { text: '' };
+    case 'code':
+      return { language: 'text', code: '' };
+    case 'payload':
+      return { method: 'GET', contentType: 'application/json', body: '' };
+    case 'response':
+      return { status: 200, body: '' };
+    case 'schema':
+      return { language: 'json', definition: '' };
+    case 'list':
+      return { style: 'bullet', items: [''] };
+  }
+}
+
+export function newBlock(type: DocsBlockType): DocsBlock {
+  return { id: null, type, content: defaultContent(type) };
+}
+
+// Normalise a draft block into the exact payload the PUT /blocks endpoint
+// expects (id null for new blocks, otherwise keep the server id).
+export function blockToPayload(b: DocsBlock): { id: string | null; type: DocsBlockType; content: DocsBlockContent } {
+  const content: DocsBlockContent = { ...b.content };
+  if (b.type === 'response') {
+    const n = Number(content.status);
+    content.status = Number.isFinite(n) ? n : 0;
+  }
+  if (b.type === 'list') {
+    const items = blockStrings(content, 'items').map((s) => s.trimEnd());
+    content.items = items[items.length - 1] === '' ? items.slice(0, -1) : items;
+  }
+  return { id: b.id ?? null, type: b.type, content };
+}
+
+export function stripPositions(blocks: DocsServerBlock[]): DocsBlock[] {
+  return blocks.map((b) => ({ id: b.id, type: b.type, content: b.content }));
+}
+
+// ------------------------------------------------------------------------- API
+export interface ProjectAccessRow {
+  id: string;
+  project_id: string;
+  user_id: string;
+  role: string;
+  reason: string | null;
+  status: string;
+  requested_at: string;
+}
+
+export interface WorkspaceAccessRequest {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  requesterId: string;
+  requester: { id: string; name: string; email: string };
+  reason: string | null;
+  status: string;
+  requestedAt: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+}
+
+function toQuery(params: Record<string, string | number | undefined>): string {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && String(v).length > 0) q.set(k, String(v));
+  });
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+export const docsApi = {
+  list: (params: { workspaceId: string; projectId?: string; q?: string }) =>
+    apiFetch<{ pages: DocsPageSummary[] }>(`/api/docs${toQuery(params)}`),
+
+  create: (input: { workspaceId: string; projectId?: string | null; title: string }) =>
+    apiFetch<{ page: DocsPageSummary }>('/api/docs', { method: 'POST', body: input }),
+
+  get: (pageId: string) => apiFetch<DocsPageDetail>(`/api/docs/${pageId}`),
+
+  updateTitle: (pageId: string, title: string) =>
+    apiFetch<{ page: DocsPageSummary }>(`/api/docs/${pageId}`, { method: 'PUT', body: { title } }),
+
+  remove: (pageId: string) => apiFetch<void>(`/api/docs/${pageId}`, { method: 'DELETE' }),
+
+  saveBlocks: (pageId: string, blocks: DocsBlock[]) =>
+    apiFetch<{ blocks: DocsServerBlock[] }>(`/api/docs/${pageId}/blocks`, {
+      method: 'PUT',
+      body: { blocks: blocks.map(blockToPayload) },
+    }),
+
+  addMention: (pageId: string, input: { type: 'user' | 'api'; refId: string }) =>
+    apiFetch<{ mention: DocsMention }>(`/api/docs/${pageId}/mentions`, { method: 'POST', body: input }),
+
+  removeMention: (pageId: string, mentionId: string) =>
+    apiFetch<void>(`/api/docs/${pageId}/mentions/${mentionId}`, { method: 'DELETE' }),
+};
+
+// Existing (non-docs) endpoints reused by the docs UI.
+export const docsSharedApi = {
+  // A caller's own project access-request rows (pre-fill "pending" state).
+  projectAccessRequests: (projectId: string) =>
+    apiFetch<{ accessRequests: ProjectAccessRow[] }>(`/api/projects/${projectId}/access-requests`),
+  // All workspace docs-access-requests for the selected workspace / caller.
+  listWorkspaceRequests: (params: { workspaceId: string; status?: string; mine?: boolean }) =>
+    apiFetch<{ requests: WorkspaceAccessRequest[] }>(
+      `/api/docs/workspace-access-requests${toQuery({ workspaceId: params.workspaceId, status: params.status, mine: params.mine ? 1 : undefined })}`
+    ),
+  requestWorkspaceAccess: (input: { workspaceId: string; reason?: string }) =>
+    apiFetch<{ request: WorkspaceAccessRequest }>('/api/docs/workspace-access-requests', { method: 'POST', body: input }),
+  reviewWorkspaceRequest: (requestId: string, approve: boolean) =>
+    apiFetch<{ ok: boolean; status: string }>(`/api/docs/workspace-access-requests/${requestId}/review`, {
+      method: 'POST',
+      body: { approve },
+    }),
+  cancelWorkspaceRequest: (requestId: string) =>
+    apiFetch<{ ok: boolean }>(`/api/docs/workspace-access-requests/${requestId}/cancel`, { method: 'POST' }),
+};
+
+export function isApiError(err: unknown): err is ApiError {
+  return err instanceof Error && typeof (err as ApiError).status === 'number';
+}

@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useMemo, useState } from 'react';
 
-export type AppView = 'workspace' | 'automations' | 'manage' | 'admin' | 'history';
+export type AppView = 'workspace' | 'automations' | 'manage' | 'admin' | 'history' | 'docs';
 
 interface NavState {
   view: AppView;

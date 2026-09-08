@@ -627,6 +627,49 @@ wired every shared seam (agents were forbidden from touching them).
   the earlier L1 phase, `a6_*`/`a6matrix*`/`a6ui*` buyers, revoked `matrix-*`
   api_tokens) are queued for a single user-approved cleanup.
 
+### 5.48 Docs feature — Confluence-style API documentation (pushed, 2026-09-08)
+
+Phase-2 agents D2a (backend), D2b (docs UI) and D2c (access request flow) ran in
+parallel on a frozen REST contract; the coordinator wired every seam afterwards.
+
+- **D2a backend** — `db/migrations/025_docs.sql` (`doc_pages`, `doc_blocks`,
+  `doc_mentions`, `workspace_access_requests`; `ALTER workspace_members ADD
+  granted_by`) applied to the live DB, plus a single self-contained router
+  `backend/src/api/routes/docs.js` (`router.use(requireAuth)`, reusing
+  `roleAtLeast`/`getWorkspaceRole`/`getProjectAccess`/`canReadWorkspace`).
+  Isolated live matrix 92/92 on :3007.
+  - Docs CRUD: list pages by workspace/project/q; create (auto heading block);
+    get detail (page + blocks + mentions, `canEdit`); rename; delete (author /
+    role≥ADMIN); wholesale block replace PUT (positions reassigned, invalid ids
+    pruned). Read gate = workspace membership; edit gate = role ≥ EDITOR.
+  - Mentions: user refs must be workspace members; api refs must belong to the
+    page's workspace (via collection); dup 409; `access.read` computed with
+    `getProjectAccess` so the UI can deep-link or offer request access.
+  - Workspace access requests: POST (409 if member/pending), GET mine=1 or
+    workspace PENDING list (role≥ADMIN/MANAGER-ADMIN), review approve → inserts
+    `workspace_members` VIEWER (conflict DO NOTHING) + notification + audit;
+    deny notifies; cancel by creator.
+- **D2b/D2c frontend** — new `frontend/src/lib/docsApi.ts` (typed client) +
+  `frontend/src/components/docs/**` (`DocsHome` list/search/filters + New-page
+  modal; `DocsPageView` viewer/editor with dirty-guard and per-block add/edit/
+  reorder/remove; `BlockEditor`; `Mentions` block viewer + user/@ chips with
+  email popover + API chips that deep-link when `access.read` else inline
+  project access-request via the existing projects endpoint; `Pickers`
+  user/API pickers; `RequestsPanel` admin review + my-requests/cancel) exported
+  from `frontend/src/components/views/DocsView.tsx`.
+- **Coordinator integration** — mounted `app.use('/api/docs', docsRoutes)` in
+  `backend/src/api/server.js` (before the /api 404); `AppView` union gains
+  `'docs'` (NavStore), RouteViewSync maps `/docs`, AppShell renders DocsView in
+  the admin-view area, Sidebar gained a Docs rail button (FileIcon) and a
+  `frontend/app/docs/page.tsx` route; DocsView's API-chip deep-link now
+  `router.push('/')` so the workspace switch is refresh-stable.
+- **Verification (live)** — docs API matrix 21/21 vs :3001 (create/list/get/
+  blocks order/mentions user+api incl. 404/409/delete, rename, delete page 204,
+  deleted 404, ws-request own-ws 409, mine=1); Playwright UI smoke 10/10 on
+  :3000 (rail → /docs → new page modal → viewer → Edit → Tag API picker → chip →
+  deep-link opens the request at '/'); `tsc --noEmit` clean, `npm test` 89/89.
+  Scratch `UI smoke` pages deleted; demo data untouched.
+
 ### 5.44 Profile & plan visibility PR-1 — backend profile surface + avatar storage (pushed `0c171f4`, 2026-09-06)
 
 Ranjith approved starting the Profile & plan visibility programme with segment

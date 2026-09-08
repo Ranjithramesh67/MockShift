@@ -41,16 +41,24 @@ Phase 1 integration (coordinator, sequential after agents report):
   `docs/SESSION.md`; demo rows/throwaways cleaned only with user OK.
 
 Phase 2 — Docs feature (Confluence-style API documentation):
-- [ ] **D2a — Docs data model + CRUD backend**: docs pages (per workspace/project),
+- [x] **D2a — Docs data model + CRUD backend**: docs pages (per workspace/project),
   Confluence-like content (blocks: payload/response/schema examples, code, lists),
   tags on users and on APIs (link to api_requests), access gates.
-- [ ] **D2b — Docs UI**: "Docs" nav entry + page list + Confluence-style editor/
+- [x] **D2b — Docs UI**: "Docs" nav entry + page list + Confluence-style editor/
   viewer with payload/response/code blocks; render api tags as links that open the
   API when the user has access.
-- [ ] **D2c — access request flow**: request access to a specific API (enterprise
+- [x] **D2c — access request flow**: request access to a specific API (enterprise
   plan context) or full workspace access (individual accounts); owner approval
   UI + notifications.
 Phase 2 integration + push (sequential).
+- [x] Coordinator wiring: mounted `docsRoutes` at `/api/docs` in server.js; added
+  `'docs'` to the NavStore `AppView` union, `/docs` → view mapping in
+  RouteViewSync, `DocsView` in AppShell, a rail Docs button + `/docs` route page.
+- [x] Verified live: docs backend matrix 21/21 against :3001 (create/list/get/
+  blocks/mentions incl. 404/409, delete, workspace-access-request 409/mine), docs
+  UI Playwright smoke 10/10 on :3000 (rail → home → new page → editor → tag API →
+  chip deep-link to '/'); FE tsc clean + 89/89 unit tests. Pushed with this
+  commit; demo rows intact (only scratch `UI smoke` pages deleted).
 
 ## Current
 
