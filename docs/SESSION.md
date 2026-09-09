@@ -743,7 +743,62 @@ DR1 → DR2 → DR3 → DR4 → DR6 → DR5 → DR7). Nothing started; each segm
 separately with approval, reusing the existing docs seams (`doc_pages`/
 `doc_blocks`/`doc_shares`/`doc_mentions`, `docs.module.css`, DocsHome/PageActions,
 `/docs?p=` deep-link, `docsRoutes` incl. the anonymous `/api/docs/public`
-mount) and the S4 token-auth API surface the new reference will document.
+  mount) and the S4 token-auth API surface the new reference will document.
+
+### 5.53 Docs round 3 DR1 — targeted doc sharing audiences (pushed `7a6cce7`, 2026-09-09)
+
+Ranjith picked "Start DR1 (share audiences)" from the Docs round-3 programme
+(§5.52). At segment start O1 and O2 were resolved with the user: **O1 per-target
+rows** and **O2 public stays a secret token link**. Shipped the backend model
+only — the share *UI* is DR2.
+
+- **Migration `028_docs_share_audiences.sql` (applied)** — `doc_shares`
+  becomes a per-target grant table: `token` drops NOT NULL (public only),
+  `kind text NOT NULL DEFAULT 'public'`, nullable `target_user_id`/`team_id`/
+  `target_org_id` (all cascade-delete FKs). CHECK constraints: token required
+  iff `kind='public'`; the target column must match the audience kind and the
+  three target columns never mix. Partial unique indexes cap one public link,
+  one grant per user, per team and per org per page. The legacy UNIQUE token
+  constraint is retained (NULLs are distinct).
+- **Read resolution** — new `canReadPage(user, page)` = workspace read
+  (`workspaceAccessFor`) OR platform MANAGER/ADMIN OR a matching `doc_shares`
+  audience (`pageShareGranted`): `user` → caller is the target, `team` → caller
+  is a member of that team, `org` → caller is a member of that org.
+  `kind='public'` deliberately never satisfies an authenticated session.
+  `GET /docs/:pageId` and `GET /docs/:pageId/export` now gate through it.
+  Editing is untouched (author / workspace ≥ EDITOR / platform high), so every
+  audience is read-only — the page GET reports `canEdit:false` for them.
+- **Share-management routes** (all `canEdit` gated):
+  - `GET /docs/:pageId/shares` → joined list of every grant (kind + human
+    target) for the management surface DR2 will build on.
+  - `POST /docs/:pageId/shares` — idempotent per target: `kind:user` resolves
+    `targetUser` by `id`/`email`/`username` (case-insensitive) and 400s on an
+    unknown person; `kind:team` requires the team to sit in the doc's owning
+    org; `kind:org` defaults to the owning org and rejects any other org;
+    `kind:public` reuses the plan-gated token-link flow. Unique-race fallback
+    re-reads the existing row (200) instead of erroring.
+  - `DELETE /docs/:pageId/shares/:shareId` → revokes exactly one grant (404
+    for a share not on the page).
+  - Legacy `POST/DELETE /docs/:pageId/share` kept as the public-link alias;
+    the DELETE now removes only the public grant so targeted audiences survive
+    link revoke (previously it deleted every share row).
+- **Audit** — `share_doc` / `unshare_doc` detail now carries the row
+  `shareId` (uuid id, not token) plus `kind`.
+- **Verification** — new `backend/tests/docsShares.integration.test.cjs`
+  **5/5 pass** (each run resets the schema and re-applies all migrations incl.
+  028): user share by email (mixed case) then duplicate-by-email 200 same id,
+  same user via username, unknown email 400, unknown kind 400, recipient
+  read-after-share with `canEdit:false`, unrelated user stays 404, grant
+  visible in GET /shares, per-grant revoke returns 404; org-team share (member
+  reads, non-member 404, foreign-team 400); org-wide share (plain org VIEWER
+  cannot read a private-workspace doc until shared, `orgId` defaults to owning
+  org, cross-org 400); public link token-only (anonymous reads snapshot,
+  authenticated non-holder 404) with idempotent create + legacy revoke +
+  recreate; and scoped legacy revoke leaving the user grant intact. The
+  request-share suite (`shares.integration.test.cjs`) still trips the L3
+  `public_sharing` gate on a fresh free org (enforcement default TRUE) — a
+  pre-existing condition unrelated to this change.
+
 
 ### 5.51 Fold Inbox + API tokens into the shared AppShell (pushed `9cf9d3a`, 2026-09-08)
 
