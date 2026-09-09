@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from '@/components/Modal';
 import { workspaceApi, type Workspace } from '@/lib/api';
-import { docsApi, type DocsPageSummary } from '@/lib/docsApi';
+import { docsApi, type DocsPageSummary, type DocsVisibility } from '@/lib/docsApi';
 import { listWorkspaceApis, listWorkspaceMembers, type MemberOption } from './helpers';
 import styles from './docs.module.css';
 
@@ -11,23 +11,30 @@ import styles from './docs.module.css';
 export function NewPageModal({
   workspaces,
   defaultWorkspaceId,
+  parentPage,
   onClose,
   onCreated,
 }: {
   workspaces: Workspace[];
   defaultWorkspaceId: string;
+  // When set the new page is a sub-page of this one: the workspace/project are
+  // inherited from the parent and the project selector is hidden.
+  parentPage?: { id: string; title: string; workspaceId: string; projectId: string | null } | null;
   onClose: () => void;
   onCreated: (page: DocsPageSummary) => void;
 }) {
-  const [workspaceId, setWorkspaceId] = useState(defaultWorkspaceId);
+  const [workspaceId, setWorkspaceId] = useState(() => parentPage?.workspaceId ?? defaultWorkspaceId);
   const [title, setTitle] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [visibility, setVisibility] = useState<DocsVisibility>('PRIVATE');
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  const fixedProject = parentPage?.projectId ?? null;
+
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId || parentPage) return;
     let alive = true;
     workspaceApi
       .content(workspaceId)
@@ -41,7 +48,7 @@ export function NewPageModal({
     return () => {
       alive = false;
     };
-  }, [workspaceId]);
+  }, [workspaceId, parentPage]);
 
   const create = async () => {
     const trimmed = title.trim();
@@ -56,11 +63,11 @@ export function NewPageModal({
     setBusy(true);
     setError('');
     try {
-      const { page } = await docsApi.create({
-        workspaceId,
-        projectId: projectId || null,
-        title: trimmed,
-      });
+      const { page } = await docsApi.create(
+        parentPage
+          ? { workspaceId: parentPage.workspaceId, parentId: parentPage.id, title: trimmed, visibility }
+          : { workspaceId, projectId: projectId || null, title: trimmed, visibility }
+      );
       onCreated(page);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create page');
@@ -68,8 +75,16 @@ export function NewPageModal({
     }
   };
 
+  const projectOptions = useMemo(() => {
+    if (fixedProject) {
+      const fallback = projects.find((p) => p.id === fixedProject) ?? { id: fixedProject, name: 'Workspace project' };
+      return [fallback];
+    }
+    return projects;
+  }, [projects, fixedProject]);
+
   return (
-    <Modal title="New page" onClose={onClose} testId="docs-new-page-modal">
+    <Modal title={parentPage ? 'New sub-page' : 'New page'} onClose={onClose} testId="docs-new-page-modal">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -80,6 +95,11 @@ export function NewPageModal({
         {error && (
           <p className="auth-error" role="alert" data-testid="docs-new-page-error">
             {error}
+          </p>
+        )}
+        {parentPage && (
+          <p className="hint" data-testid="docs-new-page-subtitle">
+            This page becomes a sub-page of “{parentPage.title}”.
           </p>
         )}
         <label className="auth-field">
@@ -94,38 +114,59 @@ export function NewPageModal({
             required
           />
         </label>
+        {!parentPage && (
+          <label className="auth-field">
+            <span>Workspace</span>
+            <select
+              className="compact-select"
+              data-testid="docs-new-page-workspace"
+              value={workspaceId}
+              onChange={(e) => {
+                setWorkspaceId(e.target.value);
+                setProjectId('');
+              }}
+            >
+              {workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="auth-field">
-          <span>Workspace</span>
-          <select
-            className="compact-select"
-            data-testid="docs-new-page-workspace"
-            value={workspaceId}
-            onChange={(e) => {
-              setWorkspaceId(e.target.value);
-              setProjectId('');
-            }}
-          >
-            {workspaces.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="auth-field">
-          <span>Project (optional)</span>
+          <span>Project{parentPage ? ' (inherited from parent)' : ' (optional)'}</span>
           <select
             className="compact-select"
             data-testid="docs-new-page-project"
-            value={projectId}
+            value={fixedProject ?? projectId}
+            disabled={Boolean(fixedProject)}
             onChange={(e) => setProjectId(e.target.value)}
           >
-            <option value="">No project — workspace page</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
+            {fixedProject ? (
+              <option value={fixedProject}>{projectOptions[0]?.name ?? 'Workspace project'}</option>
+            ) : (
+              <>
+                <option value="">No project — workspace page</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+        </label>
+        <label className="auth-field">
+          <span>Visibility</span>
+          <select
+            className="compact-select"
+            data-testid="docs-new-page-visibility"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as DocsVisibility)}
+          >
+            <option value="PRIVATE">Private — workspace members only</option>
+            <option value="PUBLIC">Public — visible to your organization</option>
           </select>
         </label>
         <div className="modal-actions">
@@ -133,7 +174,7 @@ export function NewPageModal({
             Cancel
           </button>
           <button type="submit" className="primary-button" data-testid="docs-new-page-submit" disabled={busy}>
-            {busy ? 'Creating…' : 'Create page'}
+            {busy ? 'Creating…' : parentPage ? 'Create sub-page' : 'Create page'}
           </button>
         </div>
       </form>
