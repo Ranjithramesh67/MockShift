@@ -1641,6 +1641,101 @@ needs PR-2 + L1, L6 last. R1/D1 scope decisions gate L1. Suggested global
 order once Ranjith picks: PR-1 → PR-2 → L1 → L2 → L3 → L4 → L5 → L6, then
 PR-3.
 
+## Pending — Docs round 3: structured documentation (share scoping + teams, private/public tabs, Confluence tree, Confluence export, tables, API reference) (planned 2026-09-09)
+
+PLANNING ONLY (no code this turn). Requested by Ranjith on top of the shipped
+docs feature (§5.49–§5.51) — these come AFTER all currently pending programme
+segments above; work proceeds one micro-turn at a time with approval. Existing
+docs surface being extended: `doc_pages`/`doc_blocks`/`doc_mentions`/`doc_shares`
+(+ anonymous public `GET /api/docs/public/:token`), DocsView home/list + editor/
+viewer (docs.module.css), PageActions export/share, `/docs?p=` deep-link back-nav
+(main FE docs route), and the personal API-token S4 auth (`tokensApi`, Bearer
+fallback in `requireAuth`).
+
+User feature list (verbatim intent):
+1. **Share scoping** — share a doc to only a specific email/username, to an
+   organisation, or public (anyone can view); plus **share to a team**.
+2. **Private vs public docs** — arrange the docs home into tabs so private and
+   public docs are organised cleanly.
+3. **Confluence-style document tree** — per team, create a main document with
+   sub-documents and nested sub-documents (hierarchical space tree).
+4. **Export to Confluence** — a copy-to-clipboard action that pastes cleanly
+   into Confluence (no manual reformatting).
+5. **Table block** — insert tables in a doc (editor/viewer/export).
+6. **API documentation for the product API** — we issue personal tokens (S4)
+   but expose no API reference; add documentation of the machine-facing API.
+
+Split (each a shippable micro-turn; none started, `[ ]`):
+- [ ] **DR1 — Share audiences backend**: extend sharing model so a share targets
+  `user` (email/username resolution → user id) | `org` | `team` | `public`;
+  `doc_shares` gains audience + nullable target refs (or a per-target rows
+  design — see O1); access resolver for doc read = owner / workspace+project
+  readers (existing) OR any matching share audience; revoke per target; share
+  URL stays stable for `public`. Matrix + route tests.
+- [ ] **DR2 — Share UI + team sharing**: PageActions share modal gains target
+  pickers (email/username search, org-wide, team multi-select from workspace
+  teams) + permission display + revoke list + "copy link"; notify recipients
+  (existing notification/mail infra); doc home gains a "Shared with me"
+  section grouping inbound shares by team/org.
+- [ ] **DR3 — Private/public tabs + visibility**: explicit `doc_pages.visibility`
+  (`PRIVATE` default / `PUBLIC`), enforcement in read/gate paths; DocsHome
+  reworked into tabs (Private / Public / Shared with me, plus by-team grouping
+  once DR4 lands); create/import actions keep the current UX. Needs O2/O3.
+- [ ] **DR4 — Confluence-style doc tree (spaces per team)**: `doc_pages` gains
+  `parent_id` (self-FK) + `space`/`team_id` binding + ordering; a tree/space
+  sidebar replaces the flat home list (collapsible, nested sub-doc creation,
+  move/reparent, depth guard), inherits parent access; `/docs?p=` deep-link +
+  Back behaviour and the read/write RLS inherit cleanly. Needs O4.
+- [ ] **DR5 — Confluence export / copy-to-clipboard**: produce paste-friendly
+  Confluence HTML (headings/list/code/table → rich-text paste) from the doc;
+  toolbar "Copy for Confluence" uses clipboard `text/html` (O5); reuses the
+  existing themed export pipeline minus brand chrome (neutral styling for paste);
+  works after DR6 so tables paste too.
+- [ ] **DR6 — Table blocks**: `content.rows: string[][]` table block type,
+  editor insert/grid edit + add/remove row/col, viewer + HTML/Word/Confluence/
+  print/markdown export, size + cell limits validated server-side; mirrors the
+  image-block sizing pattern (server validation + shared width in export).
+  Needs O6.
+- [ ] **DR7 — Product API reference**: contract-first OpenAPI (JSON) document
+  describing the machine API — auth via personal tokens (S4), `POST /api/runs`
+  (S5), token CRUD, send/inbox, profile/usage — versioned under the repo; a
+  docs "API Reference" surface (per-space page set generated from the spec with
+  sample payloads and curl snippets) + link from the API-tokens page. Needs O7/O8.
+
+Open decisions (resolve at each segment start):
+- O1 **Share persistence**: single `doc_shares` row carrying audience + arrays
+  (target_user_ids/team_ids) vs per-target rows. Recommend per-target rows
+  (`kind: user|team|org|public`, nullable `target_user_id`/`team_id`) — simple
+  revoke, clean RLS, org/public as kind without target.
+- O2 **"Public" meaning**: org-visible-only (any logged-in member of the org/
+  team) vs internet-public. Recommend: `visibility=PUBLIC` = visible to the
+  owning space's members; true anonymous access stays share-link only. Confirm
+  with Ranjith.
+- O3 **Tab semantics**: are Private/Public tabs derived from `visibility`
+  (DR3) and does PUBLIC require PUBLIC visibility on the parent chain in a
+  tree (inherit)? Recommend inherit-or-stronger on nested docs.
+- O4 **Space model**: is a Confluence "space" a workspace, a workspace team, or
+  an org? Recommend space = workspace with the existing Teams reused for the
+  "per team" grouping so both DR2 and DR4 compose; confirm which tree root the
+  home shows for a user across many spaces.
+- O5 **Confluence paste fidelity**: accept sanitised HTML via clipboard
+  `text/html` (Confluence converts pasted HTML to storage format) vs emitting
+  storage-format markup. Recommend HTML paste, neutral (un-themed) so tables/
+  code/headings land clean; test in a real Confluence editor paste.
+- O6 **Table guardrails**: max rows/cols/cell length, empty-cell handling,
+  markdown + print/Word representation, mobile horizontal scroll — pick sizes
+  before DR6.
+- O7 **API docs source of truth**: hand-authored OpenAPI yaml under e.g.
+  `api/openapi.json` vs generated from route manifests; decide the base-URL
+  (localhost vs preview) used in sample curl and how token auth samples read
+  the secret (never echo real token values).
+- O8 **API Reference audience**: signed-in users only vs public (matches docs
+  public-share?) — recommend signed-in users who hold the workspace access,
+  mirroring docs gates.
+
+Recommended order: DR1 → DR2 → DR3 → DR4 → DR6 → DR5 → DR7 (tables before
+Confluence export so tables paste; API reference last as it is self-contained).
+Reordering allowed when Ranjith picks each segment.
 
 ## Roadmap
 

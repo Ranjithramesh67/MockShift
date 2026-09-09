@@ -726,6 +726,25 @@ coordinator fixed one real-assembly bug and re-verified everything live.
   All probe scratch rows (users/orgs/subs + demo "Milestone smoke" page) were
   purged with user approval; demo data verified intact (`Test` page only).
 
+### 5.52 Planning only: Docs round 3 — structured documentation programme (2026-09-09, docs only)
+
+No code this turn. Ranjith requested the next docs round be recorded as pending
+(after all currently pending segments) to work on later: (1) **share scoping** —
+share a doc to a specific email/username, an organisation, or public (anyone),
+plus **share to a team**; (2) **private vs public docs** arranged in home tabs;
+(3) **Confluence-style document tree** per team — main doc with sub-docs and
+nested sub-docs; (4) **export to Confluence** — copy-to-clipboard that pastes
+cleanly; (5) **table blocks** in the editor; (6) **product API documentation**
+(we issue personal tokens but expose no API reference).
+
+Recorded in `session.md` as a new `## Pending — Docs round 3 …` section
+(D1–D7-style micro-turns DR1–DR7, open decisions O1–O8, recommended order
+DR1 → DR2 → DR3 → DR4 → DR6 → DR5 → DR7). Nothing started; each segment ships
+separately with approval, reusing the existing docs seams (`doc_pages`/
+`doc_blocks`/`doc_shares`/`doc_mentions`, `docs.module.css`, DocsHome/PageActions,
+`/docs?p=` deep-link, `docsRoutes` incl. the anonymous `/api/docs/public`
+mount) and the S4 token-auth API surface the new reference will document.
+
 ### 5.51 Fold Inbox + API tokens into the shared AppShell (pushed `9cf9d3a`, 2026-09-08)
 
 Asked "why do /inbox and /settings/api-tokens not look like the rest of the
