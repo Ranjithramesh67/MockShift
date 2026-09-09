@@ -1690,9 +1690,9 @@ needs PR-2 + L1, L6 last. R1/D1 scope decisions gate L1. Suggested global
 order once Ranjith picks: PR-1 → PR-2 → L1 → L2 → L3 → L4 → L5 → L6, then
 PR-3.
 
-## Pending — Docs round 3: structured documentation (share scoping + teams, private/public tabs, Confluence tree, Confluence export, tables, API reference) (planned 2026-09-09; DR1 pushed `7a6cce7`, DR3+DR4 groundwork shipped below, next full segment DR2)
+## Pending — Docs round 3: structured documentation (share scoping + teams, private/public tabs, Confluence tree, Confluence export, tables, API reference) (planned 2026-09-09; DR1 pushed `7a6cce7`, DR3+DR4 groundwork shipped below, DR4 FE + DR2 shipped below, next full segment DR3 tabs)
 
-COMPLETED SO FAR (see docs/SESSION.md §5.53–§5.54 and the `## Current` block):
+COMPLETED SO FAR (see docs/SESSION.md §5.53–§5.56 and the `## Current` block):
 DR1 share-audiences backend shipped (`7a6cce7`) — per-target `doc_shares` rows
 (kind=public/user/team/org, migration 028) with `canReadPage` audience
 resolution, idempotent POST /shares, per-grant revoke, and a public link that
