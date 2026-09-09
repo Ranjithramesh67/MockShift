@@ -99,6 +99,7 @@ Phase 3c — Inbox + API tokens shell fold-in + boss all-access (docs/SESSION.md
   root layout so the shared `.send-dialog-*` rules apply wherever
   SendItemDialog mounts. tsc clean + 89/89 + Playwright fold-in smoke 15/15
   (incl. docs `/docs?p=` deep-link Back regression); demo scratch cleaned.
+  Pushed as `9cf9d3a`.
 - [x] Boss "all access": confirmed **no DB change needed** — boss is already
   `users.role = ADMIN` (requireAdmin / all-scope manage / getProjectAccess
   ADMIN on any project); the workspace *list* stays membership-scoped by
@@ -122,6 +123,7 @@ cleaned (`Test` page only). Boss all-access: confirmed no change — boss
 platform-gated surface and grants project access at ADMIN level anywhere;
 `listWorkspaces` remains membership-scoped by design (a future turn can widen
 it for global admins if the boss should list every workspace without rows).
+Pushed as `9cf9d3a`.
 
 Step: BACKLOG COMPLETION (A6 payments, send-item, S4+S5 tokens/runs, S6–S8 CLI)
 DONE — four parallel agents delivered code on disk (SEND and CLI were re-
