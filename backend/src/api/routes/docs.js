@@ -9,9 +9,12 @@
 //   app.use('/api/docs', require('./routes/docs'));
 //
 // Access model mirrors access.js:
-//   read    -> canReadWorkspace(workspaceId) OR platform MANAGER/ADMIN
+//   read    -> canReadWorkspace(workspaceId) OR platform MANAGER/ADMIN OR a
+//              doc-level share grant (doc_shares kind=user/team/org). A
+//              'public' share never grants an authenticated session (token
+//              only); see /public.
 //   edit    -> page author OR workspace role >= EDITOR OR platform
-//              MANAGER/ADMIN  ("canEdit")
+//              MANAGER/ADMIN  ("canEdit"); share grants are read-only
 //   delete  -> page author OR workspace role >= ADMIN OR platform
 //              MANAGER/ADMIN
 //   review workspace-access-requests -> workspace role >= ADMIN OR platform
@@ -143,6 +146,37 @@ async function canDeletePage(user, page) {
   if (page.created_by === user.id) return true;
   const access = await workspaceAccessFor(user, page.workspace_id);
   return roleAtLeast(access.role, 'ADMIN');
+}
+
+// Does the caller hold a doc-level read grant on this page? Mirrors the
+// doc_shares kind semantics enforced by the schema and the share routes:
+//   user -> caller is the direct target; team -> caller is a team member;
+//   org -> caller is an organization member. kind='public' is deliberately
+// excluded: an authenticated session only reads through /public by token.
+async function pageShareGranted(user, page) {
+  const { rows } = await query(
+    `SELECT 1 FROM doc_shares s
+      WHERE s.doc_id = $1
+        AND (
+          (s.kind = 'user' AND s.target_user_id = $2)
+          OR (s.kind = 'team' AND EXISTS (
+                SELECT 1 FROM team_members tm
+                 WHERE tm.team_id = s.team_id AND tm.user_id = $2))
+          OR (s.kind = 'org' AND EXISTS (
+                SELECT 1 FROM organization_members om
+                 WHERE om.org_id = s.target_org_id AND om.user_id = $2))
+        )
+      LIMIT 1`,
+    [page.id, user.id]
+  );
+  return rows.length > 0;
+}
+
+// canRead = workspace read OR platform MANAGER/ADMIN OR a doc-level share grant.
+async function canReadPage(user, page) {
+  if (isGlobalHigh(user)) return true;
+  const access = await workspaceAccessFor(user, page.workspace_id);
+  return access.readable || (await pageShareGranted(user, page));
 }
 
 // Mention: {id,type,refId,ref:{...}}. User refs resolve to {id,name,email};
@@ -519,8 +553,7 @@ router.get('/:pageId/export', async (req, res, next) => {
     if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
     const page = await pageRow(pageId);
     if (!page) return res.status(404).json({ error: 'Page not found' });
-    const access = await workspaceAccessFor(req.user, page.workspace_id);
-    if (!access.readable) return res.status(404).json({ error: 'Page not found' });
+    if (!(await canReadPage(req.user, page))) return res.status(404).json({ error: 'Page not found' });
 
     const [summary, blockRows] = await Promise.all([
       serializePageSummary(page),
@@ -713,8 +746,70 @@ async function sanitizePageMentions(pageId) {
   return mentions;
 }
 
-// POST /docs/:pageId/share -> 201 {share:{token,url}} (200 when a share
-// already exists). Auth + canEdit + public-sharing plan gate.
+// -------------------------------------------------------- Share management
+// Share audiences (docs round 3 / DR1). doc_shares holds one row per grant:
+//   public -> secret token link (anonymous, sanitized snapshot, no discovery)
+//   user   -> read grant for one platform user
+//   team   -> read grant for every member of an org team
+//   org    -> read grant for every member of the owning organization
+// Targeted grants are read-only; management (create/list/revoke) requires
+// canEditPage. kind=public stays behind the plan-gated public-sharing gate.
+const SHARE_KINDS = ['public', 'user', 'team', 'org'];
+
+function sharePublicUrl(token) {
+  return `/s/doc/${token}`;
+}
+
+async function publicShareRow(pageId) {
+  const { rows } = await query(
+    `SELECT id, token, created_at FROM doc_shares
+      WHERE doc_id = $1 AND kind = 'public' LIMIT 1`,
+    [pageId]
+  );
+  return rows[0] || null;
+}
+
+// Share row -> API shape. `r` comes from the joined row SQL below.
+function serializeShareRow(r) {
+  if (r.kind === 'public') {
+    return { id: r.id, kind: r.kind, token: r.token, url: sharePublicUrl(r.token), createdAt: r.created_at };
+  }
+  if (r.kind === 'user') {
+    return { id: r.id, kind: r.kind, createdAt: r.created_at, target: { id: r.target_user_id, name: r.user_name, email: r.user_email } };
+  }
+  if (r.kind === 'team') {
+    return { id: r.id, kind: r.kind, createdAt: r.created_at, target: { id: r.team_id, name: r.team_name } };
+  }
+  return { id: r.id, kind: r.kind, createdAt: r.created_at, target: { id: r.target_org_id, name: r.org_name } };
+}
+
+const SHARE_ROW_SQL = `
+  SELECT s.id, s.kind, s.token, s.created_at,
+         s.target_user_id, s.team_id, s.target_org_id,
+         u.name AS user_name, u.email AS user_email,
+         t.name AS team_name,
+         o.name AS org_name
+    FROM doc_shares s
+    LEFT JOIN users u          ON u.id = s.target_user_id
+    LEFT JOIN teams t          ON t.id = s.team_id
+    LEFT JOIN organizations o  ON o.id = s.target_org_id`;
+
+async function shareRowById(id) {
+  const { rows } = await query(`${SHARE_ROW_SQL} WHERE s.id = $1`, [id]);
+  return rows[0] || null;
+}
+
+async function shareRowsForDoc(pageId) {
+  const { rows } = await query(
+    `${SHARE_ROW_SQL} WHERE s.doc_id = $1 ORDER BY s.created_at, s.id`,
+    [pageId]
+  );
+  return rows;
+}
+
+// POST /docs/:pageId/share -> 201 {share:{token,url}} (200 when a public
+// share already exists). Compatibility alias of POST /shares {kind:'public'}
+// kept for existing callers. Auth + canEdit + public-sharing plan gate.
 router.post('/:pageId/share', async (req, res, next) => {
   try {
     const { pageId } = req.params;
@@ -724,17 +819,17 @@ router.post('/:pageId/share', async (req, res, next) => {
     if (!(await canEditPage(req.user, page))) {
       return res.status(403).json({ error: 'Editor or admin access required' });
     }
-    const existing = await query(`SELECT id, token, created_at FROM doc_shares WHERE doc_id = $1`, [pageId]);
-    if (existing.rows.length > 0) {
-      const share = existing.rows[0];
-      return res.json({ share: { token: share.token, url: `/s/doc/${share.token}` } });
+    const existing = await publicShareRow(pageId);
+    if (existing) {
+      return res.json({ share: { token: existing.token, url: sharePublicUrl(existing.token) } });
     }
     const orgId = await orgOfWorkspace(page.workspace_id);
     const sharingGate = await checkPublicSharingGate({ userId: req.user.id, orgId });
     if (sharingGate) return res.status(403).json(sharingGate);
     const token = crypto.randomUUID();
     const created = await query(
-      `INSERT INTO doc_shares (doc_id, token, created_by) VALUES ($1, $2, $3) RETURNING token`,
+      `INSERT INTO doc_shares (doc_id, kind, token, created_by)
+       VALUES ($1, 'public', $2, $3) RETURNING id, token, created_at`,
       [pageId, token, req.user.id]
     );
     await logAudit({
@@ -742,16 +837,17 @@ router.post('/:pageId/share', async (req, res, next) => {
       entityType: 'doc_page',
       entityId: pageId,
       action: 'share_doc',
-      detail: { shareId: created.rows[0].token },
+      detail: { shareId: created.rows[0].id, kind: 'public' },
       ip: req.ip,
     });
-    res.status(201).json({ share: { token, url: `/s/doc/${token}` } });
+    res.status(201).json({ share: { token, url: sharePublicUrl(token) } });
   } catch (err) {
     next(err);
   }
 });
 
-// DELETE /docs/:pageId/share -> 204. Auth + same edit gate as POST share.
+// DELETE /docs/:pageId/share -> 204. Revokes only the public share link;
+// targeted audience grants are untouched. Auth + same edit gate as POST share.
 router.delete('/:pageId/share', async (req, res, next) => {
   try {
     const { pageId } = req.params;
@@ -761,12 +857,215 @@ router.delete('/:pageId/share', async (req, res, next) => {
     if (!(await canEditPage(req.user, page))) {
       return res.status(403).json({ error: 'Editor or admin access required' });
     }
-    await query(`DELETE FROM doc_shares WHERE doc_id = $1`, [pageId]);
+    const deleted = await query(
+      `DELETE FROM doc_shares WHERE doc_id = $1 AND kind = 'public' RETURNING id`,
+      [pageId]
+    );
+    if (deleted.rows.length > 0) {
+      await logAudit({
+        actorId: req.user.id,
+        entityType: 'doc_page',
+        entityId: pageId,
+        action: 'unshare_doc',
+        detail: { shareId: deleted.rows[0].id, kind: 'public' },
+        ip: req.ip,
+      });
+    }
     res.status(204).end();
   } catch (err) {
     next(err);
   }
 });
+
+// GET /docs/:pageId/shares -> 200 {shares:[Share]}. Management list of every
+// audience grant on the page (public link + targeted rows). Auth + canEdit.
+router.get('/:pageId/shares', async (req, res, next) => {
+  try {
+    const { pageId } = req.params;
+    if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
+    const page = await pageRow(pageId);
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+    if (!(await canEditPage(req.user, page))) {
+      return res.status(403).json({ error: 'Editor or admin access required' });
+    }
+    const rows = await shareRowsForDoc(pageId);
+    res.json({ shares: rows.map(serializeShareRow) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /docs/:pageId/shares {kind,...} -> 201 {share} (200 when that exact
+// grant already exists). Auth + canEdit. Public grants are plan-gated; user,
+// team and org grants are not (they are targeted, never public-facing).
+router.post('/:pageId/shares', async (req, res, next) => {
+  try {
+    const { pageId } = req.params;
+    if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
+    const page = await pageRow(pageId);
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+    if (!(await canEditPage(req.user, page))) {
+      return res.status(403).json({ error: 'Editor or admin access required' });
+    }
+    const body = req.body || {};
+    const kind = String(body.kind || '');
+
+    // ---- kind=public: secret token link (mirrors POST /:pageId/share).
+    if (kind === 'public') {
+      const existing = await publicShareRow(pageId);
+      if (existing) {
+        return res.json({ share: { token: existing.token, url: sharePublicUrl(existing.token) } });
+      }
+      const orgId = await orgOfWorkspace(page.workspace_id);
+      const sharingGate = await checkPublicSharingGate({ userId: req.user.id, orgId });
+      if (sharingGate) return res.status(403).json(sharingGate);
+      const token = crypto.randomUUID();
+      const created = await query(
+        `INSERT INTO doc_shares (doc_id, kind, token, created_by)
+         VALUES ($1, 'public', $2, $3) RETURNING id, token, created_at`,
+        [pageId, token, req.user.id]
+      );
+      await logAudit({
+        actorId: req.user.id,
+        entityType: 'doc_page',
+        entityId: pageId,
+        action: 'share_doc',
+        detail: { shareId: created.rows[0].id, kind: 'public' },
+        ip: req.ip,
+      });
+      return res.status(201).json({ share: { token, url: sharePublicUrl(token) } });
+    }
+
+    // ---- Targeted audiences: resolve the target then insert idempotently.
+    let targetCol = null; // { kind, targetUserId|teamId|orgId }
+    if (kind === 'user') {
+      const t = body.targetUser && typeof body.targetUser === 'object' ? body.targetUser : {};
+      let user = null;
+      if (isUuid(t.id)) {
+        const { rows } = await query(`SELECT id, name, email FROM users WHERE id = $1`, [t.id]);
+        user = rows[0] || null;
+      } else if (typeof t.email === 'string' && String(t.email).trim()) {
+        const { rows } = await query(
+          `SELECT id, name, email FROM users WHERE lower(email) = lower($1)`,
+          [String(t.email).trim()]
+        );
+        user = rows[0] || null;
+      } else if (typeof t.username === 'string' && String(t.username).trim()) {
+        const { rows } = await query(
+          `SELECT id, name, email FROM users WHERE lower(username) = lower($1)`,
+          [String(t.username).trim()]
+        );
+        user = rows[0] || null;
+      } else {
+        return res.status(400).json({ error: 'targetUser must include an id, email or username' });
+      }
+      if (!user) return res.status(400).json({ error: 'No user found for that email or username' });
+      targetCol = { kind, targetUserId: user.id };
+    } else if (kind === 'team') {
+      const teamId = body.teamId;
+      if (!isUuid(teamId)) return res.status(400).json({ error: 'teamId must be a valid uuid' });
+      const orgId = await orgOfWorkspace(page.workspace_id);
+      const { rows } = await query(
+        `SELECT t.id FROM teams t WHERE t.id = $1 AND t.organization_id = $2`,
+        [teamId, orgId]
+      );
+      if (rows.length === 0) {
+        return res.status(400).json({ error: 'Team not found in this organization' });
+      }
+      targetCol = { kind, teamId };
+    } else if (kind === 'org') {
+      const owningOrg = await orgOfWorkspace(page.workspace_id);
+      if (!owningOrg) return res.status(400).json({ error: 'Page has no organization' });
+      const requested = body.orgId && isUuid(body.orgId) ? body.orgId : owningOrg;
+      if (requested !== owningOrg) {
+        return res.status(400).json({ error: 'A page can only be shared with its own organization' });
+      }
+      targetCol = { kind, orgId: owningOrg };
+    } else {
+      return res.status(400).json({ error: `kind must be one of ${SHARE_KINDS.join(', ')}` });
+    }
+
+    // Idempotent create: return the existing row when the grant already exists.
+    const lookup = {
+      user: `SELECT id FROM doc_shares WHERE doc_id = $1 AND kind = 'user' AND target_user_id = $2`,
+      team: `SELECT id FROM doc_shares WHERE doc_id = $1 AND kind = 'team' AND team_id = $2`,
+      org: `SELECT id FROM doc_shares WHERE doc_id = $1 AND kind = 'org' AND target_org_id = $2`,
+    }[targetCol.kind];
+    const lookupParam = targetCol.targetUserId || targetCol.teamId || targetCol.orgId;
+    const existing = await query(lookup, [pageId, lookupParam]);
+    if (existing.rows.length > 0) {
+      const row = await shareRowById(existing.rows[0].id);
+      return res.json({ share: row ? serializeShareRow(row) : null });
+    }
+
+    const insert = {
+      user: `INSERT INTO doc_shares (doc_id, kind, target_user_id, created_by)
+             VALUES ($1, 'user', $2, $3) RETURNING id`,
+      team: `INSERT INTO doc_shares (doc_id, kind, team_id, created_by)
+             VALUES ($1, 'team', $2, $3) RETURNING id`,
+      org: `INSERT INTO doc_shares (doc_id, kind, target_org_id, created_by)
+            VALUES ($1, 'org', $2, $3) RETURNING id`,
+    }[targetCol.kind];
+    let created;
+    try {
+      created = await query(insert, [pageId, lookupParam, req.user.id]);
+    } catch (err) {
+      // Lost a create race against the unique partial indexes: re-read and
+      // treat as already-shared.
+      if (err && err.code === '23505') {
+        const raced = await query(lookup, [pageId, lookupParam]);
+        if (raced.rows.length > 0) {
+          const row = await shareRowById(raced.rows[0].id);
+          return res.json({ share: row ? serializeShareRow(row) : null });
+        }
+      }
+      throw err;
+    }
+    const row = await shareRowById(created.rows[0].id);
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'doc_page',
+      entityId: pageId,
+      action: 'share_doc',
+      detail: { shareId: created.rows[0].id, kind },
+      ip: req.ip,
+    });
+    res.status(201).json({ share: row ? serializeShareRow(row) : null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /docs/:pageId/shares/:shareId -> 204. Revokes one audience grant.
+// Auth + canEdit. 404 for a share that is not on this page.
+router.delete('/:pageId/shares/:shareId', async (req, res, next) => {
+  try {
+    const { pageId, shareId } = req.params;
+    if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
+    const page = await pageRow(pageId);
+    if (!page) return res.status(404).json({ error: 'Page not found' });
+    if (!(await canEditPage(req.user, page))) {
+      return res.status(403).json({ error: 'Editor or admin access required' });
+    }
+    const deleted = await query(
+      `DELETE FROM doc_shares WHERE id = $1 AND doc_id = $2 RETURNING id, kind`,
+      [shareId, pageId]
+    );
+    if (deleted.rows.length === 0) return res.status(404).json({ error: 'Share not found' });
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'doc_page',
+      entityId: pageId,
+      action: 'unshare_doc',
+      detail: { shareId: deleted.rows[0].id, kind: deleted.rows[0].kind },
+      ip: req.ip,
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 
 // GET /docs/public/:token -> 200 public safe snapshot (no auth). 404 unknown.
 async function servePublicDocShare(req, res, next) {
@@ -822,8 +1121,7 @@ router.get('/:pageId', async (req, res, next) => {
     if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
     const page = await pageRow(pageId);
     if (!page) return res.status(404).json({ error: 'Page not found' });
-    const access = await workspaceAccessFor(req.user, page.workspace_id);
-    if (!access.readable) return res.status(404).json({ error: 'Page not found' });
+    if (!(await canReadPage(req.user, page))) return res.status(404).json({ error: 'Page not found' });
 
     const [summary, blocks, mentions] = await Promise.all([
       serializePageSummary(page),
@@ -838,8 +1136,7 @@ router.get('/:pageId', async (req, res, next) => {
         [pageId]
       ),
     ]);
-    const canEdit =
-      page.created_by === req.user.id || roleAtLeast(access.role, 'EDITOR');
+    const canEdit = await canEditPage(req.user, page);
     const mentionList = [];
     for (const m of mentions.rows) mentionList.push(await serializeMention(m, req.user));
     res.json({
