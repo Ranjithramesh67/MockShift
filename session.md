@@ -1702,7 +1702,14 @@ owning-org members) + `parent_id` self-FK (same-workspace children, cascade
 delete), `canReadPage` ancestor-chain share resolution + PUBLIC-org reads,
 `POST /docs` `parentId`/`visibility`, `PUT /docs/:pageId` reparent + visibility
 with cycle/depth guards, `GET /docs?visibility=` and `GET /docs/shared`
-(coverage `docsTreeVisibility.integration.test.cjs` 7/7). O1 resolved (per-
+(coverage `docsTreeVisibility.integration.test.cjs` 7/7). **DR4 frontend tree UI built**:
+`DocsHome` rewritten to render collapsible sub-page rows (chevrons, depth
+indent, cached collapse state; searching flattens to a flat filter list), with
+per-row PUBLIC/PRIVATE pill (one-click toggle when manageable) and sub-page +
+move buttons; `MovePageModal.tsx` (move/`usePageIndex`, forbids self/descendant
+targets), `NewPageModal` extended for parent + visibility; doc-limit-aware.
+Typecheck + 89 unit tests + `next build` all green (no docs e2e yet — optional,
+then commit). O1 resolved (per-
 target rows) and O2 resolved (public = secret link, no discovery) at DR1
 start. Remaining text below is the original programme for context; each
 segment still ships with approval.

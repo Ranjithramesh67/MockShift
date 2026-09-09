@@ -799,6 +799,45 @@ only — the share *UI* is DR2.
   `public_sharing` gate on a fresh free org (enforcement default TRUE) — a
   pre-existing condition unrelated to this change.
 
+### 5.55 Docs DR4 frontend — collapsible doc-tree home + sub-page/move/visibility UI (2026-09-09)
+
+DR4 approved as the next full FE segment on top of §5.54's backend (tree
+read/write + per-page visibility). Everything here compiles but is **not yet
+committed** (split `feat(docs)` + this `docs(session)` record planned once e2e
+or a commit checkpoint is agreed).
+
+- **`DocsHome` rewritten to a Confluence-style tree** — the default (non-search)
+  listing now renders pages depth-first: a "root" is any page whose `parentId`
+  is null or whose parent fell outside the current workspace scope (roots +
+  collapsed-branch filtering happen client-side; backend already scopes reads
+  per workspace). Each row indents by depth (22 px/level), and rows with
+  children get a chevron toggle (rotate + cache of collapsed ids in component
+  state so the user's fold state survives re-fetch). Searching flattens the
+  tree to a plain filtered list (result rows show a "parent/…" breadcrumb).
+- **Per-row actions** — PUBLIC/PRIVATE pill (`docs-vis-<id>`), clickable to
+  toggle visibility when the caller can manage the page (pill disabled
+  otherwise); sub-page + (Add) and move buttons (`docs-page-sub-<id>`,
+  `docs-page-move-<id>`) shown only to managers; sub-page button disabled at the
+  plan's doc limit. Page row still navigates to the editor on click.
+- **`MovePageModal.tsx`** — new component (shared depth/children `usePageIndex`
+  + `useDescendants`, both exported for reuse) that lists every page with
+  alphabetical tree labels as reparent targets, forbids self/descendant
+  targets client-side, calls the §5.54 `PUT /docs/:pageId` `parentId` patch
+  (null = root) and reloads; backend cycle/depth/workspace guards are the final
+  word.
+- **`NewPageModal` extended** — optional `parent` select (only pages of the
+  current workspace/project scope; label shows the parent breadcrumb) + a
+  `visibility` radio (default PRIVATE); doc-limit error surfaced on create.
+- **Row/UX CSS** — new classes in `docs.module.css`: `.chevBtn/.chevOpen/
+  .chevSpacer`, `.pageName`, `.visPill/.visPrivate/.visPublic`,
+  `.rowActions/.rowActionBtn`, `.actionsHead`, `.treeHint` (uses existing
+  `--accent`, `--border`, `--bg-panel-2`, `--text-faint` vars; keeps prior
+  pill/header styles untouched).
+- **Verification** — FE `tsc --noEmit` clean, 89/89 unit tests, `next build`
+  green (all routes incl. `/docs`). No docs Playwright spec exists yet (docs FE
+  is verified via backend integration + build so far); e2e + commit optional and
+  pending user go-ahead.
+
 ### 5.54 Docs round 3 DR3+DR4 groundwork — per-doc visibility + document tree backend (2026-09-09)
 
 Ranjith scoped the next slice to the DR3/DR4 **backend** (visibility + tree
