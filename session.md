@@ -107,6 +107,29 @@ Phase 3c — Inbox + API tokens shell fold-in + boss all-access (docs/SESSION.md
 
 ## Current
 
+Step: DOCS ROUND 3 DR1 — SHARE AUDIENCES BACKEND DONE — pushed `7a6cce7`
+(feat). Started the Docs round-3 programme (§ pending below) with segment DR1:
+`doc_shares` became a per-target grant table (migration
+`028_docs_share_audiences.sql`, applied): `kind in (public|user|team|org)` with
+nullable `target_user_id`/`team_id`/`target_org_id`, CHECK constraints (token
+required iff public; target column matches kind), and partial unique indexes
+(≤1 public link / user / team / org per page). O1 resolved: per-target rows.
+O2 resolved: `public` stays a secret token link — anonymous sanitized snapshot
+only, never an authenticated-session grant. Page read now resolves through
+`canReadPage` = workspace read OR platform MANAGER/ADMIN OR a matching share
+audience (used by `GET /docs/:pageId` + `GET /docs/:pageId/export`); edit
+stays author/workspace-role, so audiences are read-only. New share-management
+endpoints: `GET /docs/:pageId/shares`, `POST /docs/:pageId/shares`
+(idempotent per target; user resolved by id/email/username, team must sit in
+the doc org, org restricted to the owning org), `DELETE
+/docs/:pageId/shares/:shareId`. Legacy `POST/DELETE /:pageId/share` kept as the
+public-link alias; the DELETE now revokes only the public grant (targeted rows
+survive). Audit actions `share_doc`/`unshare_doc` carry `{shareId, kind}`.
+Verification: new `backend/tests/docsShares.integration.test.cjs` 5/5 (user
+email/username grants + revoke, org-team, org-wide, token-only public link,
+scoped legacy revoke). Next segment: DR2 share UI + team sharing (awaiting
+Ranjith approval).
+
 Step: INBOX + API TOKENS SHELL FOLD-IN (§5.51) DONE — folded the standalone
 `/inbox` and `/settings/api-tokens` pages into the shared AppShell as in-app
 views (`inbox` / `settings`): thin route shells render `<AppShell />`; the
@@ -1641,9 +1664,17 @@ needs PR-2 + L1, L6 last. R1/D1 scope decisions gate L1. Suggested global
 order once Ranjith picks: PR-1 → PR-2 → L1 → L2 → L3 → L4 → L5 → L6, then
 PR-3.
 
-## Pending — Docs round 3: structured documentation (share scoping + teams, private/public tabs, Confluence tree, Confluence export, tables, API reference) (planned 2026-09-09)
+## Pending — Docs round 3: structured documentation (share scoping + teams, private/public tabs, Confluence tree, Confluence export, tables, API reference) (planned 2026-09-09; DR1 DONE pushed `7a6cce7`, next DR2)
 
-PLANNING ONLY (no code this turn). Requested by Ranjith on top of the shipped
+COMPLETED SO FAR (see docs/SESSION.md §5.53 and the `## Current` block): DR1
+share-audiences backend shipped (`7a6cce7`) — per-target `doc_shares` rows
+(kind=public/user/team/org, migration 028) with `canReadPage` audience
+resolution, idempotent POST /shares, per-grant revoke, and a public link that
+stays token-only. O1 resolved (per-target rows) and O2 resolved (public =
+secret link, no discovery) at DR1 start. Remaining text below is the original
+programme for context; DR2–DR7 are still pending, each shipped with approval.
+
+Requested by Ranjith on top of the shipped
 docs feature (§5.49–§5.51) — these come AFTER all currently pending programme
 segments above; work proceeds one micro-turn at a time with approval. Existing
 docs surface being extended: `doc_pages`/`doc_blocks`/`doc_mentions`/`doc_shares`
@@ -1666,7 +1697,7 @@ User feature list (verbatim intent):
    but expose no API reference; add documentation of the machine-facing API.
 
 Split (each a shippable micro-turn; none started, `[ ]`):
-- [ ] **DR1 — Share audiences backend**: extend sharing model so a share targets
+- [x] **DR1 — Share audiences backend** (DONE 2026-09-09, `7a6cce7`): extend sharing model so a share targets
   `user` (email/username resolution → user id) | `org` | `team` | `public`;
   `doc_shares` gains audience + nullable target refs (or a per-target rows
   design — see O1); access resolver for doc read = owner / workspace+project
@@ -1703,11 +1734,16 @@ Split (each a shippable micro-turn; none started, `[ ]`):
   sample payloads and curl snippets) + link from the API-tokens page. Needs O7/O8.
 
 Open decisions (resolve at each segment start):
-- O1 **Share persistence**: single `doc_shares` row carrying audience + arrays
+- O1 **Share persistence**: RESOLVED at DR1 start — per-target rows. Single
+  `doc_shares` row carrying audience + arrays
   (target_user_ids/team_ids) vs per-target rows. Recommend per-target rows
   (`kind: user|team|org|public`, nullable `target_user_id`/`team_id`) — simple
   revoke, clean RLS, org/public as kind without target.
-- O2 **"Public" meaning**: org-visible-only (any logged-in member of the org/
+- O2 **"Public" meaning**: RESOLVED at DR1 start for the share audience —
+  `kind=public` is a secret token link (anonymous sanitized snapshot, no
+  discovery); authenticated sessions need workspace access or a targeted grant.
+  The related org-visible `visibility=PUBLIC` question below stays open for DR3.
+  Org-visible-only (any logged-in member of the org/
   team) vs internet-public. Recommend: `visibility=PUBLIC` = visible to the
   owning space's members; true anonymous access stays share-link only. Confirm
   with Ranjith.
