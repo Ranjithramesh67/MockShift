@@ -726,7 +726,7 @@ coordinator fixed one real-assembly bug and re-verified everything live.
   All probe scratch rows (users/orgs/subs + demo "Milestone smoke" page) were
   purged with user approval; demo data verified intact (`Test` page only).
 
-### 5.51 Fold Inbox + API tokens into the shared AppShell (pushed 2026-09-08)
+### 5.51 Fold Inbox + API tokens into the shared AppShell (pushed `9cf9d3a`, 2026-09-08)
 
 Asked "why do /inbox and /settings/api-tokens not look like the rest of the
 app?" — they were standalone chrome-less routes with their own minimal top bar
@@ -1952,7 +1952,8 @@ final M9 wrap-up per user instruction.
 
 ## 7. Current uncommitted changes
 
-Fold-in turn (§5.51): `frontend/src/store/NavStore.tsx` (AppView union),
+Fold-in turn (§5.51) committed + pushed as `9cf9d3a`: `frontend/src/store/
+NavStore.tsx` (AppView union),
 `frontend/src/components/RouteViewSync.tsx`, `frontend/src/components/AppShell.tsx`
 (inbox/settings cases + dynamic imports), `frontend/src/components/InboxView.tsx`
 + `frontend/src/components/ApiTokensView.tsx` (standalone topbars removed),
