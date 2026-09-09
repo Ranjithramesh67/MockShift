@@ -838,6 +838,71 @@ or a commit checkpoint is agreed).
   is verified via backend integration + build so far); e2e + commit optional and
   pending user go-ahead.
 
+### 5.56 Docs round 3 DR2 — share audiences UI + team/org sharing, notify recipients, "Shared with me" (2026-09-09)
+
+DR2 shipped as the full frontend segment on top of the DR1 backend (migration
+028 `doc_shares`, token-only public links) and the DR3/DR4 groundwork. Committed
+`feat(docs)` + `docs(session)` split (not pushed).
+
+- **Test-infra isolation (all 13 `backend/tests/*.integration.test.cjs`)** —
+  every suite now honours `INTEGRATION_PGDATABASE` / `INTEGRATION_PGPORT`
+  overrides (both the psql helper calls and runtime `process.env.PGDATABASE`
+  writes) so integration runs never touch the dev DB. A scratch Postgres 15
+  cluster `dr2scratch` (port 5433, DB `apihub`, password `postgres`) is used
+  for docs integration runs; the dev DB on 5432 stays intact.
+- **Backend `src/api/routes/docs.js`** —
+  - `GET /docs/:pageId/shares` response extended with
+    `{ shares, context: { organizationId, teams:[{id,name}] } }` (owning org +
+    its teams, so the UI can offer team/org-wide targets).
+  - `POST /docs/:pageId/shares` targeted audience creates notify recipients via
+    `notifyShareAudience` — kind `user` notifies that user, `team` notifies all
+    team members, `org` notifies all org members (batched insert); the sharing
+    actor is skipped; an idempotent re-share (existing grant → 200) stays
+    silent. `notifyUser` gained a `link` column (`/docs?p=<pageId>` deep link).
+  - `GET /docs/shared` page objects now carry `via:
+    [{kind:'user'} | {kind:'team',id,name} | {kind:'org',id,name} |
+    {kind:'public',id,name}]` describing which audience exposed the page to the
+    caller (public kind = PUBLIC-org readable page labelled by org name).
+    `serializePageSummary` extended to pass through the untouched row.
+  - New suite `backend/tests/docsShareAudiences.integration.test.cjs` — 6 tests
+    green on scratch 5433 (context org+teams, direct-user notify target, team
+    notify excluding sharer, org notify + via name, sub-tree share surfaces
+    `via team` on root and child, PUBLIC page surfaces `via public`). Regression
+    `docsTreeVisibility` 7/7 and `docsShares` 5/5 green on scratch.
+- **Frontend `docsApi.ts`** — typed `DocsShareTarget`, `DocsShareGrant`
+  (discriminated by kind), `DocsShareContext`, `DocsSharedVia`,
+  `DocsPageSummary.via?`; added `listShares`, `createShare` (kinds
+  user/team/org only — intentionally no public kind; public links go through the
+  existing public-link endpoints), `revokeShare`, and `shared()` now returns
+  the full summaries carrying `via`.
+- **`DocShareButton` (`PageActions.tsx`)** rewritten from the minimal DR1
+  public-link modal into the full audience share modal (`testId
+  "docs-share-modal"`):
+  - Public-link section (`docs-share-public-on` / `-url` / `-copy` /
+    `-off`) — plan-gated, 403 toasts show the upgrade hint.
+  - Audience section — add a person by email or username
+    (`docs-share-add-user` + `docs-share-person-input`), grant by team
+    (`docs-share-team` select + `docs-share-add-team`), grant to the whole org
+    (`docs-share-add-org`, disabled while an org grant already exists), current
+    grant list (`docs-share-list`, `docs-share-grant-<kind>-<id>`) with per-grant
+    revoke (`docs-share-revoke-<kind>-<id>`); read-only grants never show a
+    public toggle. Errors surface inline (`docs-share-person-error`,
+    `docs-share-error`); buttons disable while busy.
+  - `DocsPageView.tsx` gates the Share button on `canEdit` (read-only viewers
+    see no Share affordance).
+- **`DocsHome.tsx` "Shared with me"** — pages tab fetches `GET /docs/shared`
+  (`docs-shared-section`, count badge, loading + empty states) and groups pages
+  by the first audience that exposed each one (direct → team → org → public);
+  each row opens the page (`docs-shared-page-<id>`) and shows workspace · last
+  updated.
+- **CSS** — new `docs.module.css` classes for the share modal
+  (`.sharePanel/.shareSection/.shareSectionHead/.shareHint/.shareRows/.shareRow*/
+  .shareRevoke/.shareAddRow`) and the shared-with-me section
+  (`.sharedWrap/.sharedHead/.sharedCount/.sharedGroup/.sharedGroupTitle/
+  .sharedList/.sharedItem*`) using existing design vars.
+- **Verification** — FE `tsc --noEmit` clean, 89/89 unit tests, `next build`
+  green; backend api unit 53/53; integration suites on scratch 5433.
+
 ### 5.54 Docs round 3 DR3+DR4 groundwork — per-doc visibility + document tree backend (2026-09-09)
 
 Ranjith scoped the next slice to the DR3/DR4 **backend** (visibility + tree
