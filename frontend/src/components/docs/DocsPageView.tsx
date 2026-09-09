@@ -250,7 +250,7 @@ export function DocsPageView({
           {!editing && (
             <>
               <ExportMenu pageId={pageId} title={detail.page.title} />
-              <DocShareButton pageId={pageId} />
+              {canEdit && <DocShareButton pageId={pageId} />}
             </>
           )}
           {editing && (

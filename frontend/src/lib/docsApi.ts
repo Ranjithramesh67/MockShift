@@ -102,6 +102,53 @@ export interface DocsShareInfo {
   createdAt?: string;
 }
 
+// One doc_shares audience grant as returned by GET /docs/:pageId/shares.
+export interface DocsShareTarget {
+  id: string;
+  name: string;
+  email?: string | null;
+}
+export type DocsShareGrant =
+  | { id: string; kind: 'public'; token: string; url: string; createdAt: string }
+  | { id: string; kind: 'user'; createdAt: string; target: DocsShareTarget }
+  | { id: string; kind: 'team'; createdAt: string; target: DocsShareTarget }
+  | { id: string; kind: 'org'; createdAt: string; target: DocsShareTarget };
+
+export interface DocsShareTargetOption {
+  id: string;
+  name: string;
+}
+export interface DocsShareContext {
+  organizationId: string | null;
+  teams: DocsShareTargetOption[];
+}
+
+// How a page in GET /docs/shared became readable to the caller (DR2): a direct
+// user grant, a team/org audience share, or PUBLIC visibility in an org the
+// caller belongs to. `name` is present for team/org/public reasons.
+export interface DocsSharedVia {
+  kind: 'user' | 'team' | 'org' | 'public';
+  id?: string | null;
+  name?: string | null;
+}
+
+export interface DocsPageSummary {
+  id: string;
+  title: string;
+  workspaceId: string;
+  workspaceName: string;
+  projectId: string | null;
+  projectName: string | null;
+  visibility: DocsVisibility;
+  parentId: string | null;
+  createdBy: DocsPerson | null;
+  updatedBy: DocsPerson | null;
+  createdAt: string;
+  updatedAt: string;
+  blockCount: number;
+  via?: DocsSharedVia[];
+}
+
 // GET /api/docs/public/:token — the no-login public snapshot of a shared page.
 export interface SharedDocBlock {
   id: string;
@@ -276,8 +323,28 @@ export const docsApi = {
 
   // Pages this caller can read without holding the owning workspace: targeted
   // share audiences (the share's whole sub-tree) + PUBLIC pages of orgs the
-  // caller belongs to.
+  // caller belongs to. Each page carries `via` (which grant exposed it) so the
+  // home "Shared with me" surface can group by team/org/direct.
   shared: () => apiFetch<{ pages: DocsPageSummary[] }>('/api/docs/shared'),
+
+  // Share management (DR1 audiences + DR2 UI): the page's current grants and
+  // the org/team target options, creating one audience grant, revoking one.
+  listShares: (pageId: string) =>
+    apiFetch<{ shares: DocsShareGrant[]; context: DocsShareContext }>(`/api/docs/${pageId}/shares`),
+
+  createShare: (
+    pageId: string,
+    input:
+      | { kind: 'user'; targetUser: { email: string } | { username: string } | { id: string } }
+      | { kind: 'team'; teamId: string }
+      | { kind: 'org' }
+  ) => apiFetch<{ share: DocsShareGrant | null }>(`/api/docs/${pageId}/shares`, {
+    method: 'POST',
+    body: input,
+  }),
+
+  revokeShare: (pageId: string, shareId: string) =>
+    apiFetch<void>(`/api/docs/${pageId}/shares/${shareId}`, { method: 'DELETE' }),
 
   create: (input: {
     workspaceId: string;

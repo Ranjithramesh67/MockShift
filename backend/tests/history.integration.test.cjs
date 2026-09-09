@@ -11,10 +11,10 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const PGENV = {
   ...process.env,
   PGHOST: '127.0.0.1',
-  PGPORT: '5432',
+  PGPORT: process.env.INTEGRATION_PGPORT || '5432',
   PGUSER: 'postgres',
   PGPASSWORD: 'postgres',
-  PGDATABASE: 'apihub',
+  PGDATABASE: process.env.INTEGRATION_PGDATABASE || 'apihub',
   AUTH_SECRET: 'test-auth-secret-for-integration',
   VAULT_KEY: 'test-vault-key-do-not-use-in-prod',
 };
@@ -22,7 +22,7 @@ const PGENV = {
 function psqlReset() {
   return execFileSync(
     'psql',
-    ['-q', '-v', 'ON_ERROR_STOP=1', '-d', 'apihub', '-c', 'DROP SCHEMA IF EXISTS app CASCADE; DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public'],
+    ['-q', '-v', 'ON_ERROR_STOP=1', '-d', process.env.INTEGRATION_PGDATABASE || 'apihub', '-c', 'DROP SCHEMA IF EXISTS app CASCADE; DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public'],
     { env: PGENV, stdio: 'pipe', encoding: 'utf8' }
   );
 }
@@ -61,7 +61,7 @@ function makeClient() {
 before(async () => {
   psqlReset();
   for (const file of fs.readdirSync(path.join(ROOT, 'db', 'migrations')).filter((f) => f.endsWith('.sql')).sort()) {
-    execFileSync('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '-d', 'apihub', '-f', path.join(ROOT, 'db', 'migrations', file)], {
+    execFileSync('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '-d', process.env.INTEGRATION_PGDATABASE || 'apihub', '-f', path.join(ROOT, 'db', 'migrations', file)], {
       env: PGENV,
       stdio: 'pipe',
     });
@@ -74,7 +74,7 @@ before(async () => {
   await new Promise((resolve) => mockUpstream.listen(0, '127.0.0.1', resolve));
   const mockPort = mockUpstream.address().port;
 
-  process.env.PGDATABASE = 'apihub';
+  process.env.PGDATABASE = process.env.INTEGRATION_PGDATABASE || 'apihub';
   process.env.AUTH_SECRET = 'test-auth-secret-for-integration';
   process.env.VAULT_KEY = 'test-vault-key-do-not-use-in-prod';
 

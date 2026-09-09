@@ -376,15 +376,54 @@ function blockContentError(type, content) {
   }
 }
 
-async function notifyUser({ userId, title, body, kind }) {
+async function notifyUser({ userId, title, body, kind, link }) {
   try {
     await query(
-      `INSERT INTO notifications (user_id, title, body, kind) VALUES ($1, $2, $3, $4)`,
-      [userId, title, body || null, kind || 'info']
+      `INSERT INTO notifications (user_id, title, body, kind, link) VALUES ($1, $2, $3, $4, $5)`,
+      [userId, title, body || null, kind || 'info', link || null]
     );
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[docs] notification insert failed:', err.message);
+  }
+}
+
+// Notify a share audience that a page was shared with them (DR2). The actor is
+// skipped so sharers don't notify themselves; only newly-created grants notify
+// (idempotent re-shares of an existing grant are silent). team/org fan-out uses
+// one batched insert per audience.
+async function notifyShareAudience({ kind, targetUserId, teamId, orgId, actorId, actorName, pageTitle, pageId }) {
+  try {
+    const link = `/docs?p=${encodeURIComponent(pageId)}`;
+    const title = `${actorName || 'Someone'} shared “${pageTitle || 'a doc'}” with you`;
+    const body = `You can now read this doc and its sub-pages.`;
+    if (kind === 'user') {
+      if (targetUserId && targetUserId !== actorId) {
+        await notifyUser({ userId: targetUserId, title, body, kind: 'success', link });
+      }
+      return;
+    }
+    const memberSql =
+      kind === 'team'
+        ? `SELECT DISTINCT user_id FROM team_members WHERE team_id = $1 AND user_id <> $2`
+        : `SELECT DISTINCT user_id FROM organization_members WHERE org_id = $1 AND user_id <> $2`;
+    const memberParam = kind === 'team' ? teamId : orgId;
+    const { rows } = await query(memberSql, [memberParam, actorId]);
+    if (rows.length === 0) return;
+    const values = [];
+    const params = [];
+    rows.forEach((r, i) => {
+      const n = params.length + 1;
+      params.push(r.user_id, title, body, 'success', link);
+      values.push(`($${n}, $${n + 1}, $${n + 2}, $${n + 3}, $${n + 4})`);
+    });
+    await query(
+      `INSERT INTO notifications (user_id, title, body, kind, link) VALUES ${values.join(', ')}`,
+      params
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[docs] share-notification insert failed:', err.message);
   }
 }
 
@@ -446,11 +485,14 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// GET /docs/shared -> 200 {pages:[...]}. Pages the caller can read but is not
-// necessarily a member of the owning workspace for: pages reachable through a
-// targeted share audience (kind=user/team/org on the page or any ancestor, so
-// a shared page exposes its sub-tree) plus PUBLIC pages of organizations the
-// caller belongs to. Declared before /:pageId so "shared" is never shadowed.
+// GET /docs/shared -> 200 {pages:[PageWithVia]}. Pages the caller can read but
+// is not necessarily a member of the owning workspace for: pages reachable
+// through a targeted share audience (kind=user/team/org on the page or any
+// ancestor, so a shared page exposes its sub-tree) plus PUBLIC pages of
+// organizations the caller belongs to. Each page carries `via` — the audience
+// grants that exposed it (kind=user/team/org + kind=public for PUBLIC pages)
+// — so the home "Shared with me" surface can group pages by team/org/direct.
+// Declared before /:pageId so "shared" is never shadowed.
 router.get('/shared', async (req, res, next) => {
   try {
     const { rows } = await query(
@@ -470,11 +512,11 @@ router.get('/shared', async (req, res, next) => {
            FROM doc_pages p2
            JOIN granted g ON p2.parent_id = g.page_id
        )
-       SELECT DISTINCT p.id
+       SELECT DISTINCT p.*
          FROM granted g
          JOIN doc_pages p ON p.id = g.page_id
        UNION
-       SELECT p.id
+       SELECT DISTINCT p.*
          FROM doc_pages p
          JOIN workspaces w ON w.id = p.workspace_id
          JOIN organization_members om ON om.org_id = w.organization_id
@@ -487,7 +529,62 @@ router.get('/shared', async (req, res, next) => {
       pages.push(summary);
     }
     pages.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-    res.json({ pages });
+
+    // Audience grants that exposed each page. kind='public' here means the
+    // page is PUBLIC-org-visible (its owning org name is the label); the
+    // secret-link public share kind never appears in this feed.
+    const { rows: reasonRows } = await query(
+      `WITH RECURSIVE granted AS (
+         SELECT DISTINCT s.doc_id AS root_id, p.id AS page_id,
+                s.kind, s.team_id, s.target_org_id
+           FROM doc_shares s
+           JOIN doc_pages p ON p.id = s.doc_id
+          WHERE (s.kind = 'user' AND s.target_user_id = $1)
+             OR (s.kind = 'team' AND EXISTS (
+                   SELECT 1 FROM team_members tm
+                    WHERE tm.team_id = s.team_id AND tm.user_id = $1))
+             OR (s.kind = 'org' AND EXISTS (
+                   SELECT 1 FROM organization_members om
+                    WHERE om.org_id = s.target_org_id AND om.user_id = $1))
+         UNION
+         SELECT g.root_id, p2.id, g.kind, g.team_id, g.target_org_id
+           FROM doc_pages p2
+           JOIN granted g ON p2.parent_id = g.page_id
+       ),
+       public_pages AS (
+         SELECT DISTINCT p.id AS page_id, w.organization_id
+           FROM doc_pages p
+           JOIN workspaces w ON w.id = p.workspace_id
+           JOIN organization_members om ON om.org_id = w.organization_id
+          WHERE p.visibility = 'PUBLIC' AND om.user_id = $1
+       )
+       SELECT DISTINCT r.page_id, r.kind, r.team_id,
+              r.target_org_id AS org_id,
+              t.name AS team_name, o.name AS org_name, NULL::text AS pub_name
+         FROM granted r
+         LEFT JOIN teams t ON t.id = r.team_id
+         LEFT JOIN organizations o ON o.id = r.target_org_id
+       UNION ALL
+       SELECT DISTINCT pp.page_id, 'public'::text, NULL::uuid,
+              pp.organization_id, NULL, NULL, o.name
+         FROM public_pages pp
+         JOIN organizations o ON o.id = pp.organization_id`,
+      [req.user.id]
+    );
+    const viaByPage = new Map();
+    for (const r of reasonRows) {
+      let via;
+      if (r.kind === 'user') via = { kind: 'user' };
+      else if (r.kind === 'team') via = { kind: 'team', id: r.team_id, name: r.team_name };
+      else if (r.kind === 'org') via = { kind: 'org', id: r.org_id, name: r.org_name };
+      else via = { kind: 'public', id: r.org_id, name: r.pub_name };
+      const list = viaByPage.get(r.page_id) ?? [];
+      if (!list.some((v) => v.kind === via.kind && v.id === via.id)) list.push(via);
+      viaByPage.set(r.page_id, list);
+    }
+    const withVia = pages.map((p) => ({ ...p, via: viaByPage.get(p.id) ?? [] }));
+
+    res.json({ pages: withVia });
   } catch (err) {
     next(err);
   }
@@ -1050,8 +1147,11 @@ router.delete('/:pageId/share', async (req, res, next) => {
   }
 });
 
-// GET /docs/:pageId/shares -> 200 {shares:[Share]}. Management list of every
-// audience grant on the page (public link + targeted rows). Auth + canEdit.
+// GET /docs/:pageId/shares -> 200 {shares:[Share], context:{organizationId,
+// teams:[{id,name}]}}. Management list of every audience grant on the page
+// (public link + targeted rows) plus the org the page belongs to and its teams
+// (so the share UI can offer valid targets without extra round-trips). Auth +
+// canEdit.
 router.get('/:pageId/shares', async (req, res, next) => {
   try {
     const { pageId } = req.params;
@@ -1062,7 +1162,16 @@ router.get('/:pageId/shares', async (req, res, next) => {
       return res.status(403).json({ error: 'Editor or admin access required' });
     }
     const rows = await shareRowsForDoc(pageId);
-    res.json({ shares: rows.map(serializeShareRow) });
+    const orgId = await orgOfWorkspace(page.workspace_id);
+    let context = { organizationId: orgId, teams: [] };
+    if (orgId) {
+      const { rows: teamRows } = await query(
+        `SELECT id, name FROM teams WHERE organization_id = $1 ORDER BY name`,
+        [orgId]
+      );
+      context = { organizationId: orgId, teams: teamRows.map((t) => ({ id: t.id, name: t.name })) };
+    }
+    res.json({ shares: rows.map(serializeShareRow), context });
   } catch (err) {
     next(err);
   }
@@ -1202,6 +1311,16 @@ router.post('/:pageId/shares', async (req, res, next) => {
       action: 'share_doc',
       detail: { shareId: created.rows[0].id, kind },
       ip: req.ip,
+    });
+    await notifyShareAudience({
+      kind,
+      targetUserId: targetCol.targetUserId,
+      teamId: targetCol.teamId,
+      orgId: targetCol.orgId,
+      actorId: req.user.id,
+      actorName: req.user.name,
+      pageTitle: page.title,
+      pageId,
     });
     res.status(201).json({ share: row ? serializeShareRow(row) : null });
   } catch (err) {
