@@ -17,16 +17,16 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const PGENV = {
   ...process.env,
   PGHOST: '127.0.0.1',
-  PGPORT: '5432',
+  PGPORT: process.env.INTEGRATION_PGPORT || '5432',
   PGUSER: 'postgres',
   PGPASSWORD: 'postgres',
-  PGDATABASE: 'apihub',
+  PGDATABASE: process.env.INTEGRATION_PGDATABASE || 'apihub',
   AUTH_SECRET: 'test-auth-secret-for-integration',
   VAULT_KEY: 'test-vault-key-do-not-use-in-prod',
 };
 
 function psqlRun(sql) {
-  return execFileSync('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '-d', 'apihub', '-c', sql], {
+  return execFileSync('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '-d', process.env.INTEGRATION_PGDATABASE || 'apihub', '-c', sql], {
     env: PGENV,
     stdio: 'pipe',
     encoding: 'utf8',
@@ -34,7 +34,7 @@ function psqlRun(sql) {
 }
 
 function psqlFile(file) {
-  return execFileSync('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '-d', 'apihub', '-f', file], {
+  return execFileSync('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '-d', process.env.INTEGRATION_PGDATABASE || 'apihub', '-f', file], {
     env: PGENV,
     stdio: 'pipe',
     encoding: 'utf8',
@@ -42,7 +42,7 @@ function psqlFile(file) {
 }
 
 function psqlScalar(sql) {
-  const out = execFileSync('psql', ['-q', '-t', '-A', '-d', 'apihub', '-c', sql], {
+  const out = execFileSync('psql', ['-q', '-t', '-A', '-d', process.env.INTEGRATION_PGDATABASE || 'apihub', '-c', sql], {
     env: PGENV,
     stdio: 'pipe',
     encoding: 'utf8',
@@ -91,7 +91,7 @@ before(async () => {
   psqlRun('UPDATE portal_settings SET restrictions_enforced = false;');
 
   process.env.ALLOW_SELF_SIGNUP = '1';
-  process.env.PGDATABASE = 'apihub';
+  process.env.PGDATABASE = process.env.INTEGRATION_PGDATABASE || 'apihub';
   process.env.AUTH_SECRET = 'test-auth-secret-for-integration';
   process.env.VAULT_KEY = 'test-vault-key-do-not-use-in-prod';
 

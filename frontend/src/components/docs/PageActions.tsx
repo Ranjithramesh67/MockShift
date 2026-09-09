@@ -8,10 +8,23 @@ import {
   fetchDocExport,
   isApiError,
   type DocExportFormat,
-  type DocsShareInfo,
+  type DocsShareContext,
+  type DocsShareGrant,
 } from '@/lib/docsApi';
 import styles from './docs.module.css';
-import { CheckIcon, ChevronIcon, CopyIcon, ExportIcon, ShareIcon } from '@/components/icons';
+import {
+  CheckIcon,
+  ChevronIcon,
+  CopyIcon,
+  ExportIcon,
+  GlobeIcon,
+  LockIcon,
+  PlusIcon,
+  ShareIcon,
+  TeamIcon,
+  UserIcon,
+  XIcon,
+} from '@/components/icons';
 
 // File-name helper: slug of the page title plus the right extension.
 function fileNameFor(title: string, ext: string): string {
@@ -188,43 +201,148 @@ export function ExportMenu({ pageId, title }: { pageId: string; title: string })
   );
 }
 
-export function DocShareButton({ pageId, disabled = false }: { pageId: string; disabled?: boolean }) {
+export function DocShareButton({ pageId }: { pageId: string }) {
   const { dispatch } = useApp();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [share, setShare] = useState<DocsShareInfo | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [shares, setShares] = useState<DocsShareGrant[]>([]);
+  const [context, setContext] = useState<DocsShareContext>({ organizationId: null, teams: [] });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [personError, setPersonError] = useState('');
+  const [teamId, setTeamId] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const toastError = (err: unknown, upgradeHint = false) => {
-    const msg = err instanceof Error ? err.message : 'Failed to create share link';
-    dispatch({
-      type: 'SHOW_TOAST',
-      kind: 'error',
-      message: upgradeHint && !/upgrade/i.test(msg) ? `${msg} Upgrade to enable public sharing.` : msg,
-    });
-  };
+  const toast = (kind: 'success' | 'error', message: string) =>
+    dispatch({ type: 'SHOW_TOAST', kind, message });
 
-  const createShare = async () => {
-    if (busy) return;
-    setBusy(true);
+  const refresh = async () => {
+    setLoading(true);
+    setError('');
     try {
-      const res = await docsApi.share(pageId);
-      setShare(res.share);
-      setModalOpen(true);
+      const res = await docsApi.listShares(pageId);
+      setShares(res.shares);
+      setContext(res.context);
+      setTeamId((cur) => cur || res.context.teams[0]?.id || '');
     } catch (err) {
-      const isPlanLimit = isApiError(err) && err.status === 403;
-      toastError(err, isPlanLimit);
+      setError(err instanceof Error ? err.message : 'Failed to load shares');
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   };
 
-  const onCopy = async () => {
-    if (!share) return;
-    await copyText(`${window.location.origin}${share.url}`);
+  const openModal = () => {
+    setOpen(true);
+    void refresh();
+  };
+
+  const publicShare = shares.find((s) => s.kind === 'public');
+  const audience = shares.filter((s) => s.kind !== 'public');
+  const sharedTeamIds = new Set(
+    shares.filter((s) => s.kind === 'team').map((s) => s.target.id)
+  );
+  const hasOrgShare = shares.some((s) => s.kind === 'org');
+
+  const addPerson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const value = email.trim();
+    if (!value) return;
+    setPersonError('');
+    setBusy('user');
+    try {
+      const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
+      await docsApi.createShare(pageId, {
+        kind: 'user',
+        targetUser: isEmail ? { email: value } : { username: value },
+      });
+      setEmail('');
+      toast('success', 'Access granted — the person will be notified.');
+      await refresh();
+    } catch (err) {
+      setPersonError(err instanceof Error ? err.message : 'Could not share with that person');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addTeam = async () => {
+    if (!teamId) return;
+    setBusy('team');
+    setError('');
+    try {
+      await docsApi.createShare(pageId, { kind: 'team', teamId });
+      toast('success', 'Team members will be notified.');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not share with that team');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addOrg = async () => {
+    setBusy('org');
+    setError('');
+    try {
+      await docsApi.createShare(pageId, { kind: 'org' });
+      toast('success', 'Your organization can now read this doc.');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not share with the organization');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const togglePublicLink = async () => {
+    setBusy('public');
+    setError('');
+    try {
+      if (publicShare) {
+        await docsApi.unshare(pageId);
+        toast('success', 'Public link removed.');
+      } else {
+        const res = await docsApi.share(pageId);
+        toast('success', 'Anyone with the link can now view this doc.');
+        setCopied(false);
+      }
+      await refresh();
+    } catch (err) {
+      const planGated = isApiError(err) && err.status === 403;
+      if (planGated) {
+        const msg = err.message;
+        toast('error', /upgrade/i.test(msg) ? msg : `${msg} Upgrade to enable public sharing.`);
+      } else {
+        toast('error', err instanceof Error ? err.message : 'Failed to update the public link');
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const revoke = async (grant: DocsShareGrant) => {
+    setBusy(grant.id);
+    setError('');
+    try {
+      await docsApi.revokeShare(pageId, grant.id);
+      toast('success', 'Access revoked.');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revoke access');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const copyPublic = async () => {
+    if (!publicShare) return;
+    await copyText(`${window.location.origin}${publicShare.url}`);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
   };
+
+  const remainingTeams = context.teams.filter((t) => !sharedTeamIds.has(t.id));
 
   return (
     <>
@@ -232,61 +350,208 @@ export function DocShareButton({ pageId, disabled = false }: { pageId: string; d
         type="button"
         className="ghost-button"
         data-testid="docs-share"
-        disabled={disabled || busy}
-        onClick={createShare}
+        onClick={openModal}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
       >
         <ShareIcon size={13} />
         Share
       </button>
-      {modalOpen && share && (
-        <ShareModal
-          url={`${window.location.origin}${share.url}`}
-          copied={copied}
-          onCopy={onCopy}
-          onClose={() => setModalOpen(false)}
-        />
+      {open && (
+        <Modal title="Share this doc" onClose={() => setOpen(false)} testId="docs-share-modal">
+          <div className={styles.sharePanel}>
+            {error && (
+              <p className="auth-error" role="alert" data-testid="docs-share-error">
+                {error}
+              </p>
+            )}
+
+            <section className={styles.shareSection}>
+              <div className={styles.shareSectionHead}>
+                <GlobeIcon size={13} />
+                <span>Public link</span>
+              </div>
+              <p className={styles.shareHint}>
+                Anyone with the link can view the doc and its images — read-only, no login required.
+              </p>
+              {publicShare ? (
+                <>
+                  <div className="share-url-row">
+                    <input
+                      className="text-input"
+                      type="text"
+                      readOnly
+                      value={`${window.location.origin}${publicShare.url}`}
+                      data-testid="docs-share-url"
+                      aria-label="Public share URL"
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <button type="button" className="ghost-button" data-testid="docs-share-copy" onClick={copyPublic}>
+                      {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-button danger small"
+                    data-testid="docs-share-public-off"
+                    disabled={busy !== null}
+                    onClick={togglePublicLink}
+                  >
+                    <LockIcon size={13} />
+                    Turn off link
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  data-testid="docs-share-public-on"
+                  disabled={busy !== null}
+                  onClick={togglePublicLink}
+                >
+                  <GlobeIcon size={13} />
+                  {busy === 'public' ? 'Creating link…' : 'Create public link'}
+                </button>
+              )}
+            </section>
+
+            <section className={styles.shareSection}>
+              <div className={styles.shareSectionHead}>
+                <UserIcon size={13} />
+                <span>People, teams &amp; organization</span>
+              </div>
+              {loading ? (
+                <p className="hint" data-testid="docs-share-loading">
+                  Loading access…
+                </p>
+              ) : (
+                <>
+                  {audience.length === 0 ? (
+                    <p className={styles.shareHint} data-testid="docs-share-empty">
+                      No one has been granted access yet.
+                    </p>
+                  ) : (
+                    <ul className={styles.shareRows} data-testid="docs-share-list">
+                      {audience.map((grant) => (
+                        <li key={grant.id} className={styles.shareRow} data-testid={`docs-share-grant-${grant.id}`}>
+                          <span className={styles.shareRowIcon}>
+                            {grant.kind === 'user' ? (
+                              <UserIcon size={14} />
+                            ) : grant.kind === 'team' ? (
+                              <TeamIcon size={14} />
+                            ) : (
+                              <GlobeIcon size={14} />
+                            )}
+                          </span>
+                          <span className={styles.shareRowText}>
+                            <span className={styles.shareRowName}>
+                              {grant.kind === 'user' ? grant.target.name || grant.target.email : grant.target.name}
+                            </span>
+                            <span className={styles.shareRowMeta}>
+                              {grant.kind === 'user'
+                                ? 'Person'
+                                : grant.kind === 'team'
+                                  ? 'Team'
+                                  : 'Organization'}
+                              {grant.kind === 'user' && grant.target.email ? ` · ${grant.target.email}` : ''}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            className={styles.shareRevoke}
+                            data-testid={`docs-share-revoke-${grant.id}`}
+                            title="Revoke access"
+                            disabled={busy !== null}
+                            onClick={() => revoke(grant)}
+                          >
+                            <XIcon size={13} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </section>
+
+            <section className={styles.shareSection}>
+              <div className={styles.shareSectionHead}>
+                <PlusIcon size={13} />
+                <span>Grant access</span>
+              </div>
+              <form className={styles.shareAddRow} onSubmit={addPerson}>
+                <input
+                  className="text-input"
+                  type="text"
+                  placeholder="Email or username"
+                  aria-label="Email or username"
+                  data-testid="docs-share-person"
+                  value={email}
+                  disabled={busy !== null}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="ghost-button"
+                  data-testid="docs-share-add-user"
+                  disabled={busy !== null || email.trim().length === 0}
+                >
+                  {busy === 'user' ? 'Adding…' : 'Add person'}
+                </button>
+              </form>
+              {personError && (
+                <p className="auth-error" role="alert" data-testid="docs-share-person-error">
+                  {personError}
+                </p>
+              )}
+              <div className={styles.shareAddRow}>
+                <select
+                  className="compact-select"
+                  data-testid="docs-share-team"
+                  value={teamId}
+                  disabled={busy !== null || remainingTeams.length === 0}
+                  onChange={(e) => setTeamId(e.target.value)}
+                >
+                  {context.teams.length === 0 && <option value="">No teams in this organization</option>}
+                  {context.teams.length > 0 && remainingTeams.length === 0 && (
+                    <option value="">All teams already have access</option>
+                  )}
+                  {remainingTeams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  data-testid="docs-share-add-team"
+                  disabled={busy !== null || remainingTeams.length === 0}
+                  onClick={addTeam}
+                >
+                  {busy === 'team' ? 'Sharing…' : 'Add team'}
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  data-testid="docs-share-add-org"
+                  title="Let every member of your organization read this doc"
+                  disabled={busy !== null || hasOrgShare || !context.organizationId}
+                  onClick={addOrg}
+                >
+                  {hasOrgShare ? 'Organization has access' : busy === 'org' ? 'Sharing…' : 'Share with organization'}
+                </button>
+              </div>
+            </section>
+
+            <div className={styles.shareActions}>
+              <button type="button" className="primary-button" data-testid="docs-share-done" onClick={() => setOpen(false)}>
+                Done
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </>
-  );
-}
-
-function ShareModal({
-  url,
-  copied,
-  onCopy,
-  onClose,
-}: {
-  url: string;
-  copied: boolean;
-  onCopy: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <Modal title="Share page" onClose={onClose} testId="docs-share-modal">
-      <p className="hint">
-        Anyone with this link can view the doc and its images — read-only, no login required.
-      </p>
-      <div className="share-url-row">
-        <input
-          className="text-input"
-          type="text"
-          readOnly
-          value={url}
-          data-testid="docs-share-url"
-          aria-label="Public share URL"
-          onFocus={(e) => e.currentTarget.select()}
-        />
-        <button type="button" className="ghost-button" data-testid="docs-share-copy" onClick={onCopy}>
-          {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      <div className={styles.shareActions}>
-        <button type="button" className="primary-button" data-testid="docs-share-done" onClick={onClose}>
-          Done
-        </button>
-      </div>
-    </Modal>
   );
 }
