@@ -799,6 +799,57 @@ only — the share *UI* is DR2.
   `public_sharing` gate on a fresh free org (enforcement default TRUE) — a
   pre-existing condition unrelated to this change.
 
+### 5.54 Docs round 3 DR3+DR4 groundwork — per-doc visibility + document tree backend (2026-09-09)
+
+Ranjith scoped the next slice to the DR3/DR4 **backend** (visibility + tree
+foundations and their read/enforcement paths); the DR3 tabs UI and the DR4
+tree/space UI stay later segments. One migration covers both, so the slice
+ships together.
+
+- **Migration `029_docs_visibility_tree.sql` (applied to the dev DB)** —
+  `doc_pages.visibility text NOT NULL DEFAULT 'PRIVATE'` (CHECK in
+  `PRIVATE|PUBLIC`) and `doc_pages.parent_id uuid REFERENCES doc_pages(id) ON
+  DELETE CASCADE` (NULL = root) + `doc_pages_parent_idx`. A PUBLIC page is
+  readable by every member of the owning organization; anonymous access is
+  unchanged (public share token only). Deleting a page cascades to its whole
+  sub-tree. RLS enforcement stays in the route layer (privileged app role).
+- **Read resolution (`canReadPage`)** — workspace read OR platform
+  MANAGER/ADMIN OR **a matching share audience anywhere on the page's ancestor
+  chain** (`pageShareGranted` now walks `parent_id` up with a recursive CTE, so
+  sharing a page grants its whole sub-tree) OR `visibility='PUBLIC'` with the
+  caller a member of the owning organization (`isOrgMember` via
+  `orgOfWorkspace`). Edit is untouched (author / workspace ≥ EDITOR / platform
+  high), so PUBLIC readers get `canEdit:false`. Shared/export GETs both gate
+  through it, so PUBLIC-org reads and ancestor-share reads work everywhere the
+  old private gate did.
+- **New/updated surface** — page rows/summaries/list now carry `visibility` +
+  `parentId`; `GET /docs` gains a `visibility=` filter; `POST /docs` accepts
+  `parentId` (child must share the parent's workspace, inherits the parent's
+  project scope, rejects a differing `projectId`, depth-capped) and
+  `visibility`; `PUT /docs/:pageId` accepts optional `title`/`visibility`/
+  `parentId` where `parentId` absent = unchanged, `null` = move to root, and a
+  page id = reparent under that page — validated for same-workspace, self /
+  descendant cycles (`wouldCreateCycle`) and the resulting deepest node staying
+  within `MAX_TREE_DEPTH` (24). New `GET /docs/shared` lists pages the caller
+  can read without owning-workspace membership (targeted audiences on the page
+  or any ancestor → the whole exposed sub-tree, plus PUBLIC pages of orgs the
+  caller belongs to) — the feed the DR3 "Shared with me" tab will render.
+- **Verification** — new `backend/tests/docsTreeVisibility.integration.test.cjs`
+  **7/7 pass** (schema dropped + all migrations re-applied each run): default
+  PRIVATE + visibility round-trip + list filter; PUBLIC readable by an org
+  VIEWER without a workspace row (`canEdit:false`), PRIVATE 404, cross-org 404,
+  PUBLIC page surfaced via `/shared`; ancestor share exposing the whole sub-tree
+  through `/shared`; create under a parent (cross-workspace 400, unknown parent
+  404, malformed uuid 400, depth 24 allowed / depth 25 rejected); PUT reparent
+  (move/root, self-parent 400, cross-workspace 400, descendant-cycle 400 with
+  the tree left unchanged); per-page visibility (PRIVATE child under a PUBLIC
+  parent stays closed, PUBLIC child under a PRIVATE parent opens to the org);
+  root delete cascading to descendants. DR1 regression
+  (`docsShares.integration.test.cjs`) 5/5 and the jest unit suite 47/47 stay
+  green; `node --check` clean; backend restarted on :3001. Uncommitted —
+  recorded here and in `session.md`; commit split into `feat(docs)` + this
+  `docs(session)` record.
+
 
 ### 5.51 Fold Inbox + API tokens into the shared AppShell (pushed `9cf9d3a`, 2026-09-08)
 
