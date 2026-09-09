@@ -9,16 +9,31 @@
 //   app.use('/api/docs', require('./routes/docs'));
 //
 // Access model mirrors access.js:
-//   read    -> canReadWorkspace(workspaceId) OR platform MANAGER/ADMIN OR a
-//              doc-level share grant (doc_shares kind=user/team/org). A
-//              'public' share never grants an authenticated session (token
-//              only); see /public.
+//   read    -> canReadPage(user, page):
+//                - workspace read (canReadWorkspace) OR platform
+//                  MANAGER/ADMIN, OR
+//                - a matching share audience (doc_shares kind=user/team/org)
+//                  on the page OR any ancestor (a share covers the sub-tree;
+//                  see pageShareGranted), OR
+//                - visibility=PUBLIC and the caller is a member of the owning
+//                  organization.
+//              A kind='public' share never grants an authenticated session
+//              (token only); see /public.
 //   edit    -> page author OR workspace role >= EDITOR OR platform
-//              MANAGER/ADMIN  ("canEdit"); share grants are read-only
+//              MANAGER/ADMIN  ("canEdit"); share grants and PUBLIC visibility
+//              are read-only
 //   delete  -> page author OR workspace role >= ADMIN OR platform
-//              MANAGER/ADMIN
+//              MANAGER/ADMIN; deleting a page cascades to its sub-tree
+//              (parent_id ON DELETE CASCADE)
 //   review workspace-access-requests -> workspace role >= ADMIN OR platform
 //              MANAGER/ADMIN
+//
+// Pages form a per-workspace tree through doc_pages.parent_id (NULL = root).
+// A child page must sit in the same workspace as its parent (route layer);
+// nesting is bounded by MAX_TREE_DEPTH and reparenting cannot introduce a
+// cycle. visibility is per page: PRIVATE restricts to workspace readers /
+// share audiences / org admins, PUBLIC additionally opens the page to every
+// member of the owning organization (no anonymous access).
 //
 // Page bodies are a flat position-ordered block list; PUT /docs/:pageId/blocks
 // replaces the whole list (positions reassigned 0..n-1 server-side). Blocks
@@ -95,8 +110,8 @@ async function workspaceAccessFor(user, workspaceId) {
 
 async function pageRow(pageId) {
   const { rows } = await query(
-    `SELECT p.id, p.workspace_id, p.project_id, p.title, p.created_by, p.updated_by,
-            p.created_at, p.updated_at
+    `SELECT p.id, p.workspace_id, p.project_id, p.title, p.visibility, p.parent_id,
+            p.created_by, p.updated_by, p.created_at, p.updated_at
        FROM doc_pages p WHERE p.id = $1`,
     [pageId]
   );
@@ -105,7 +120,8 @@ async function pageRow(pageId) {
 
 // ----------------------------------------------------------- Serialization
 // Page summary: {id,title,workspaceId,workspaceName,projectId,projectName,
-// createdBy:{id,name},updatedBy:null|{id,name},createdAt,updatedAt,blockCount}
+// visibility,parentId,createdBy:{id,name},updatedBy:null|{id,name},
+// createdAt,updatedAt,blockCount}
 async function serializePageSummary(row) {
   const { rows } = await query(
     `SELECT w.name AS workspace_name, pr.name AS project_name,
@@ -127,6 +143,8 @@ async function serializePageSummary(row) {
     workspaceName: s.workspace_name,
     projectId: row.project_id ?? null,
     projectName: s.project_name ?? null,
+    visibility: row.visibility ?? 'PRIVATE',
+    parentId: row.parent_id ?? null,
     createdBy: { id: row.created_by, name: s.created_by_name },
     updatedBy: row.updated_by ? { id: row.updated_by, name: s.updated_by_name } : null,
     createdAt: row.created_at,
@@ -148,15 +166,23 @@ async function canDeletePage(user, page) {
   return roleAtLeast(access.role, 'ADMIN');
 }
 
-// Does the caller hold a doc-level read grant on this page? Mirrors the
-// doc_shares kind semantics enforced by the schema and the share routes:
-//   user -> caller is the direct target; team -> caller is a team member;
-//   org -> caller is an organization member. kind='public' is deliberately
-// excluded: an authenticated session only reads through /public by token.
+// Does the caller hold a doc-level read grant anywhere in this page's tree?
+// A targeted share (doc_shares kind=user/team/org) on a page grants its whole
+// sub-tree, so we walk up the parent chain and test every ancestor plus the
+// page itself. kind='public' is deliberately excluded: an authenticated
+// session only reads through /public by token.
 async function pageShareGranted(user, page) {
   const { rows } = await query(
-    `SELECT 1 FROM doc_shares s
-      WHERE s.doc_id = $1
+    `WITH RECURSIVE chain AS (
+       SELECT id, parent_id FROM doc_pages WHERE id = $1
+       UNION ALL
+       SELECT p.id, p.parent_id
+         FROM doc_pages p
+         JOIN chain c ON p.id = c.parent_id
+        WHERE c.parent_id IS NOT NULL
+     )
+     SELECT 1 FROM doc_shares s
+      WHERE s.doc_id IN (SELECT id FROM chain)
         AND (
           (s.kind = 'user' AND s.target_user_id = $2)
           OR (s.kind = 'team' AND EXISTS (
@@ -172,11 +198,80 @@ async function pageShareGranted(user, page) {
   return rows.length > 0;
 }
 
-// canRead = workspace read OR platform MANAGER/ADMIN OR a doc-level share grant.
+async function isOrgMember(userId, orgId) {
+  const { rows } = await query(
+    `SELECT 1 FROM organization_members WHERE org_id = $1 AND user_id = $2 LIMIT 1`,
+    [orgId, userId]
+  );
+  return rows.length > 0;
+}
+
+// Can the caller read this page? Workspace read OR platform MANAGER/ADMIN OR a
+// targeted share grant on the page's tree OR (PUBLIC pages) membership of the
+// owning organization.
 async function canReadPage(user, page) {
   if (isGlobalHigh(user)) return true;
   const access = await workspaceAccessFor(user, page.workspace_id);
-  return access.readable || (await pageShareGranted(user, page));
+  if (access.readable) return true;
+  if (await pageShareGranted(user, page)) return true;
+  if (page.visibility === 'PUBLIC') {
+    const orgId = await orgOfWorkspace(page.workspace_id);
+    return Boolean(orgId) && (await isOrgMember(user.id, orgId));
+  }
+  return false;
+}
+
+const MAX_TREE_DEPTH = 24;
+
+// Depth of a page above its root (1 for roots), following parent_id.
+async function treeDepth(pageId) {
+  const { rows } = await query(
+    `WITH RECURSIVE chain AS (
+       SELECT id, parent_id, 1 AS depth FROM doc_pages WHERE id = $1
+       UNION ALL
+       SELECT p.id, p.parent_id, c.depth + 1
+         FROM doc_pages p
+         JOIN chain c ON p.id = c.parent_id
+     )
+     SELECT max(depth)::int AS depth FROM chain`,
+    [pageId]
+  );
+  return rows[0]?.depth ?? 1;
+}
+
+// Deepest nesting measured from a page down through its descendants (1 when
+// the page is a leaf).
+async function subtreeDepth(pageId) {
+  const { rows } = await query(
+    `WITH RECURSIVE sub AS (
+       SELECT id, 1 AS depth FROM doc_pages WHERE id = $1
+       UNION ALL
+       SELECT p.id, s.depth + 1
+         FROM doc_pages p
+         JOIN sub s ON p.parent_id = s.id
+     )
+     SELECT max(depth)::int AS depth FROM sub`,
+    [pageId]
+  );
+  return rows[0]?.depth ?? 1;
+}
+
+// Would making `candidateId` a child of `pageId` create a cycle? True when the
+// page is `candidateId` itself or one of its ancestors.
+async function wouldCreateCycle(pageId, candidateId) {
+  const { rows } = await query(
+    `WITH RECURSIVE chain AS (
+       SELECT id, parent_id FROM doc_pages WHERE id = $1
+       UNION ALL
+       SELECT p.id, p.parent_id
+         FROM doc_pages p
+         JOIN chain c ON p.id = c.parent_id
+        WHERE c.parent_id IS NOT NULL
+     )
+     SELECT 1 FROM chain WHERE id = $2 LIMIT 1`,
+    [pageId, candidateId]
+  );
+  return rows.length > 0;
 }
 
 // Mention: {id,type,refId,ref:{...}}. User refs resolve to {id,name,email};
@@ -299,18 +394,23 @@ async function notifyUser({ userId, title, body, kind }) {
 // Caller must be able to read the workspace.
 router.get('/', async (req, res, next) => {
   try {
-    const { workspaceId, projectId, q } = req.query;
+    const { workspaceId, projectId, q, visibility } = req.query;
     if (!workspaceId) return res.status(400).json({ error: 'workspaceId is required' });
     if (!isUuid(workspaceId)) return res.status(400).json({ error: 'workspaceId must be a valid uuid' });
     if (projectId && !isUuid(projectId)) {
       return res.status(400).json({ error: 'projectId must be a valid uuid' });
+    }
+    const vis = visibility ? String(visibility).toUpperCase() : null;
+    if (vis && !['PRIVATE', 'PUBLIC'].includes(vis)) {
+      return res.status(400).json({ error: 'visibility must be PRIVATE or PUBLIC' });
     }
     const access = await workspaceAccessFor(req.user, workspaceId);
     if (!access.readable) return res.status(403).json({ error: 'No access to this workspace' });
 
     const { rows } = await query(
       `SELECT p.id, p.title, p.workspace_id, w.name AS workspace_name, p.project_id,
-              pr.name AS project_name, p.created_by, cb.name AS created_by_name,
+              pr.name AS project_name, p.visibility, p.parent_id,
+              p.created_by, cb.name AS created_by_name,
               p.updated_by, ub.name AS updated_by_name, p.created_at, p.updated_at,
               (SELECT count(*)::int FROM doc_blocks db WHERE db.page_id = p.id) AS block_count
          FROM doc_pages p
@@ -321,8 +421,9 @@ router.get('/', async (req, res, next) => {
         WHERE p.workspace_id = $1
           AND ($2::uuid IS NULL OR p.project_id = $2)
           AND ($3::text IS NULL OR p.title ILIKE '%' || $3 || '%')
+          AND ($4::text IS NULL OR p.visibility = $4)
         ORDER BY p.updated_at DESC`,
-      [workspaceId, projectId || null, (q && String(q).trim()) || null]
+      [workspaceId, projectId || null, (q && String(q).trim()) || null, vis]
     );
     const pages = rows.map((r) => ({
       id: r.id,
@@ -331,6 +432,8 @@ router.get('/', async (req, res, next) => {
       workspaceName: r.workspace_name,
       projectId: r.project_id ?? null,
       projectName: r.project_name ?? null,
+      visibility: r.visibility ?? 'PRIVATE',
+      parentId: r.parent_id ?? null,
       createdBy: { id: r.created_by, name: r.created_by_name },
       updatedBy: r.updated_by ? { id: r.updated_by, name: r.updated_by_name } : null,
       createdAt: r.created_at,
@@ -343,16 +446,70 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// POST /docs {workspaceId, projectId?, title} -> 201 {page}
-// Requires workspace read + role >= EDITOR. Auto-creates the leading heading
-// block (content {text: title}).
+// GET /docs/shared -> 200 {pages:[...]}. Pages the caller can read but is not
+// necessarily a member of the owning workspace for: pages reachable through a
+// targeted share audience (kind=user/team/org on the page or any ancestor, so
+// a shared page exposes its sub-tree) plus PUBLIC pages of organizations the
+// caller belongs to. Declared before /:pageId so "shared" is never shadowed.
+router.get('/shared', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `WITH RECURSIVE granted AS (
+         SELECT DISTINCT s.doc_id AS root_id, p.id AS page_id
+           FROM doc_shares s
+           JOIN doc_pages p ON p.id = s.doc_id
+          WHERE s.kind = 'user' AND s.target_user_id = $1
+             OR s.kind = 'team' AND EXISTS (
+                   SELECT 1 FROM team_members tm
+                    WHERE tm.team_id = s.team_id AND tm.user_id = $1)
+             OR s.kind = 'org' AND EXISTS (
+                   SELECT 1 FROM organization_members om
+                    WHERE om.org_id = s.target_org_id AND om.user_id = $1)
+         UNION
+         SELECT g.root_id, p2.id
+           FROM doc_pages p2
+           JOIN granted g ON p2.parent_id = g.page_id
+       )
+       SELECT DISTINCT p.id
+         FROM granted g
+         JOIN doc_pages p ON p.id = g.page_id
+       UNION
+       SELECT p.id
+         FROM doc_pages p
+         JOIN workspaces w ON w.id = p.workspace_id
+         JOIN organization_members om ON om.org_id = w.organization_id
+        WHERE p.visibility = 'PUBLIC' AND om.user_id = $1`,
+      [req.user.id]
+    );
+    const pages = [];
+    for (const row of rows) {
+      const summary = await serializePageSummary(row);
+      pages.push(summary);
+    }
+    pages.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    res.json({ pages });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /docs {workspaceId, projectId?, parentId?, title, visibility?} -> 201
+// {page}. Requires workspace read + role >= EDITOR (creating a sub-doc further
+// requires the parent to live in the same workspace and the tree depth to have
+// headroom; the child inherits the parent's project scope). Auto-creates the
+// leading heading block (content {text: title}).
 router.post('/', async (req, res, next) => {
   try {
-    const { workspaceId, projectId, title } = req.body || {};
+    const { workspaceId, projectId, parentId, title, visibility } = req.body || {};
     if (!workspaceId) return res.status(400).json({ error: 'workspaceId is required' });
     if (!isUuid(workspaceId)) return res.status(400).json({ error: 'workspaceId must be a valid uuid' });
     const cleanTitle = title === undefined || title === null ? '' : String(title).trim();
     if (!cleanTitle) return res.status(400).json({ error: 'title is required' });
+
+    const vis = visibility === undefined || visibility === null ? 'PRIVATE' : String(visibility).toUpperCase();
+    if (!['PRIVATE', 'PUBLIC'].includes(vis)) {
+      return res.status(400).json({ error: 'visibility must be PRIVATE or PUBLIC' });
+    }
 
     const ws = await query(`SELECT id FROM workspaces WHERE id = $1`, [workspaceId]);
     if (ws.rows.length === 0) return res.status(404).json({ error: 'Workspace not found' });
@@ -363,7 +520,23 @@ router.post('/', async (req, res, next) => {
     }
 
     let resolvedProjectId = null;
-    if (projectId) {
+    let resolvedParentId = null;
+    if (parentId) {
+      if (!isUuid(parentId)) return res.status(400).json({ error: 'parentId must be a valid uuid' });
+      const parent = await pageRow(parentId);
+      if (!parent) return res.status(404).json({ error: 'Parent page not found' });
+      if (parent.workspace_id !== workspaceId) {
+        return res.status(400).json({ error: 'Parent page must be in the same workspace' });
+      }
+      if ((await treeDepth(parent.id)) >= MAX_TREE_DEPTH) {
+        return res.status(400).json({ error: `Max nesting depth of ${MAX_TREE_DEPTH} reached` });
+      }
+      if (projectId && projectId !== parent.project_id) {
+        return res.status(400).json({ error: 'projectId must match the parent page' });
+      }
+      resolvedProjectId = parent.project_id ?? null;
+      resolvedParentId = parent.id;
+    } else if (projectId) {
       if (!isUuid(projectId)) return res.status(400).json({ error: 'projectId must be a valid uuid' });
       const proj = await query(`SELECT id FROM projects WHERE id = $1 AND workspace_id = $2`, [
         projectId,
@@ -384,10 +557,10 @@ router.post('/', async (req, res, next) => {
     if (docGate) return res.status(403).json(docGate);
 
     const created = await query(
-      `INSERT INTO doc_pages (workspace_id, project_id, title, created_by)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, workspace_id, project_id, title, created_by, updated_by, created_at, updated_at`,
-      [workspaceId, resolvedProjectId, cleanTitle, req.user.id]
+      `INSERT INTO doc_pages (workspace_id, project_id, parent_id, visibility, title, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, workspace_id, project_id, parent_id, visibility, title, created_by, updated_by, created_at, updated_at`,
+      [workspaceId, resolvedProjectId, resolvedParentId, vis, cleanTitle, req.user.id]
     );
     const page = created.rows[0];
     await query(
@@ -1149,7 +1322,11 @@ router.get('/:pageId', async (req, res, next) => {
   }
 });
 
-// PUT /docs/:pageId {title} -> 200 {page}. canEdit required.
+// PUT /docs/:pageId {title?, visibility?, parentId?} -> 200 {page}.
+// canEdit required. title/visibility are optional; each present field is
+// updated. parentId semantics: absent = unchanged; null = move to the root;
+// a page id = reparent under that page (same workspace, no cycles, and the
+// deepest node of the resulting tree must stay within MAX_TREE_DEPTH).
 router.put('/:pageId', async (req, res, next) => {
   try {
     const { pageId } = req.params;
@@ -1159,16 +1336,76 @@ router.put('/:pageId', async (req, res, next) => {
     if (!(await canEditPage(req.user, page))) {
       return res.status(403).json({ error: 'Editor or admin access required' });
     }
-    const { title } = req.body || {};
-    const cleanTitle = title === undefined || title === null ? '' : String(title).trim();
-    if (!cleanTitle) return res.status(400).json({ error: 'title is required' });
+
+    const body = req.body || {};
+    const hasParentKey = Object.prototype.hasOwnProperty.call(body, 'parentId');
+
+    const cleanTitle = body.title === undefined || body.title === null ? '' : String(body.title).trim();
+    if (body.title !== undefined && body.title !== null && !cleanTitle) {
+      return res.status(400).json({ error: 'title must not be empty' });
+    }
+    let vis = null;
+    if (body.visibility !== undefined && body.visibility !== null) {
+      vis = String(body.visibility).toUpperCase();
+      if (!['PRIVATE', 'PUBLIC'].includes(vis)) {
+        return res.status(400).json({ error: 'visibility must be PRIVATE or PUBLIC' });
+      }
+    }
+
+    let resolvedParentId;
+    if (hasParentKey) {
+      if (body.parentId === null || body.parentId === undefined || body.parentId === '') {
+        resolvedParentId = null;
+      } else {
+        if (!isUuid(body.parentId)) {
+          return res.status(400).json({ error: 'parentId must be a valid uuid or null' });
+        }
+        if (body.parentId === page.id) {
+          return res.status(400).json({ error: 'A page cannot be its own parent' });
+        }
+        const parent = await pageRow(body.parentId);
+        if (!parent) return res.status(404).json({ error: 'Parent page not found' });
+        if (parent.workspace_id !== page.workspace_id) {
+          return res.status(400).json({ error: 'Parent page must be in the same workspace' });
+        }
+        if (await wouldCreateCycle(parent.id, page.id)) {
+          return res.status(400).json({ error: 'Cannot move a page under one of its own descendants' });
+        }
+        const deepest =
+          (await treeDepth(parent.id)) + (await subtreeDepth(page.id));
+        if (deepest > MAX_TREE_DEPTH) {
+          return res.status(400).json({ error: `Max nesting depth of ${MAX_TREE_DEPTH} reached` });
+        }
+        resolvedParentId = parent.id;
+      }
+    }
+
+    const sets = [];
+    const params = [];
+    if (cleanTitle) {
+      params.push(cleanTitle);
+      sets.push(`title = $${params.length}`);
+    }
+    if (vis) {
+      params.push(vis);
+      sets.push(`visibility = $${params.length}`);
+    }
+    if (hasParentKey) {
+      params.push(resolvedParentId);
+      sets.push(`parent_id = $${params.length}`);
+    }
+    params.push(req.user.id);
+    sets.push(`updated_by = $${params.length}`);
+    sets.push('updated_at = now()');
+    params.push(pageId);
 
     const updated = await query(
       `UPDATE doc_pages
-          SET title = $1, updated_by = $2, updated_at = now()
-        WHERE id = $3
-        RETURNING id, workspace_id, project_id, title, created_by, updated_by, created_at, updated_at`,
-      [cleanTitle, req.user.id, pageId]
+          SET ${sets.join(', ')}
+        WHERE id = $${params.length}
+        RETURNING id, workspace_id, project_id, parent_id, visibility, title,
+                  created_by, updated_by, created_at, updated_at`,
+      params
     );
     const summary = await serializePageSummary(updated.rows[0]);
     res.json({ page: { ...summary, canEdit: true } });
