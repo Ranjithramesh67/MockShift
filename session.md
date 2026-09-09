@@ -1,6 +1,6 @@
 # MockShift — Session State
 
-Last updated: 2026-09-08
+Last updated: 2026-09-09
 
 > Canonical narrative log: docs/SESSION.md. This file is the working agreement + current state.
 > Read this file first, every session. Open docs/SESSION.md only for detail on a past turn.
@@ -107,6 +107,31 @@ Phase 3c — Inbox + API tokens shell fold-in + boss all-access (docs/SESSION.md
 
 ## Current
 
+Step: DOCS ROUND 3 DR3+DR4 GROUNDWORK — VISIBILITY + DOC TREE BACKEND DONE
+(recorded in docs/SESSION.md §5.54; feat uncommitted at time of this write).
+Ranjith scoped DR3 (private/public) + DR4 (tree) **backend foundations**; the
+DR3 tabs UI and DR4 tree/space UI stay later segments. Migration
+`029_docs_visibility_tree.sql` (applied to the dev DB) adds
+`doc_pages.visibility` (`PRIVATE` default / `PUBLIC`, CHECK) and
+`doc_pages.parent_id` (self-FK, ON DELETE CASCADE) + index. Reads now resolve
+through `canReadPage` = workspace read OR platform MANAGER/ADMIN OR a matching
+share audience **anywhere on the page's ancestor chain** (`pageShareGranted`
+walks up with a recursive CTE — a share grants the whole sub-tree) OR
+`visibility=PUBLIC` with the caller a member of the owning organization
+(`isOrgMember`); PUBLIC/share readers are read-only. Page rows/summaries/list
+carry `visibility` + `parentId`; `GET /docs` gains a `visibility=` filter;
+`POST /docs` accepts `parentId` (same workspace, inherits the parent's project
+scope) + `visibility`; `PUT /docs/:pageId` accepts optional
+`title`/`visibility`/`parentId` (absent = unchanged, `null` = move to root,
+uuid = reparent with same-workspace / self / descendant-cycle /
+`MAX_TREE_DEPTH`=24 guards via `treeDepth`/`subtreeDepth`/`wouldCreateCycle`);
+new `GET /docs/shared` lists pages readable without owning-workspace
+membership (audience + PUBLIC-org feed for the future Shared-with-me tab).
+Verification: new `backend/tests/docsTreeVisibility.integration.test.cjs` 7/7
+(schema reset each run) + DR1 `docsShares` regression 5/5 + jest unit 47/47;
+backend restarted on :3001. Next segment: DR2 share UI + team sharing, then
+the DR3 tabs UI and DR4 tree UI (awaiting Ranjith approval).
+
 Step: DOCS ROUND 3 DR1 — SHARE AUDIENCES BACKEND DONE — pushed `7a6cce7`
 (feat). Started the Docs round-3 programme (§ pending below) with segment DR1:
 `doc_shares` became a per-target grant table (migration
@@ -127,8 +152,9 @@ public-link alias; the DELETE now revokes only the public grant (targeted rows
 survive). Audit actions `share_doc`/`unshare_doc` carry `{shareId, kind}`.
 Verification: new `backend/tests/docsShares.integration.test.cjs` 5/5 (user
 email/username grants + revoke, org-team, org-wide, token-only public link,
-scoped legacy revoke). Next segment: DR2 share UI + team sharing (awaiting
-Ranjith approval).
+scoped legacy revoke). Ranjith then approved the DR3+DR4 *backend groundwork*
+slice next (visibility + tree, above) instead of DR2; DR2 share UI + team
+sharing remains pending approval.
 
 Step: INBOX + API TOKENS SHELL FOLD-IN (§5.51) DONE — folded the standalone
 `/inbox` and `/settings/api-tokens` pages into the shared AppShell as in-app
@@ -1664,15 +1690,22 @@ needs PR-2 + L1, L6 last. R1/D1 scope decisions gate L1. Suggested global
 order once Ranjith picks: PR-1 → PR-2 → L1 → L2 → L3 → L4 → L5 → L6, then
 PR-3.
 
-## Pending — Docs round 3: structured documentation (share scoping + teams, private/public tabs, Confluence tree, Confluence export, tables, API reference) (planned 2026-09-09; DR1 DONE pushed `7a6cce7`, next DR2)
+## Pending — Docs round 3: structured documentation (share scoping + teams, private/public tabs, Confluence tree, Confluence export, tables, API reference) (planned 2026-09-09; DR1 pushed `7a6cce7`, DR3+DR4 groundwork shipped below, next full segment DR2)
 
-COMPLETED SO FAR (see docs/SESSION.md §5.53 and the `## Current` block): DR1
-share-audiences backend shipped (`7a6cce7`) — per-target `doc_shares` rows
+COMPLETED SO FAR (see docs/SESSION.md §5.53–§5.54 and the `## Current` block):
+DR1 share-audiences backend shipped (`7a6cce7`) — per-target `doc_shares` rows
 (kind=public/user/team/org, migration 028) with `canReadPage` audience
 resolution, idempotent POST /shares, per-grant revoke, and a public link that
-stays token-only. O1 resolved (per-target rows) and O2 resolved (public =
-secret link, no discovery) at DR1 start. Remaining text below is the original
-programme for context; DR2–DR7 are still pending, each shipped with approval.
+stays token-only. Then DR3+DR4 **backend groundwork** (migration 029 +
+docs.js, §5.54): `doc_pages.visibility` (PRIVATE/PUBLIC, PUBLIC = readable by
+owning-org members) + `parent_id` self-FK (same-workspace children, cascade
+delete), `canReadPage` ancestor-chain share resolution + PUBLIC-org reads,
+`POST /docs` `parentId`/`visibility`, `PUT /docs/:pageId` reparent + visibility
+with cycle/depth guards, `GET /docs?visibility=` and `GET /docs/shared`
+(coverage `docsTreeVisibility.integration.test.cjs` 7/7). O1 resolved (per-
+target rows) and O2 resolved (public = secret link, no discovery) at DR1
+start. Remaining text below is the original programme for context; each
+segment still ships with approval.
 
 Requested by Ranjith on top of the shipped
 docs feature (§5.49–§5.51) — these come AFTER all currently pending programme
@@ -1711,12 +1744,25 @@ Split (each a shippable micro-turn; none started, `[ ]`):
 - [ ] **DR3 — Private/public tabs + visibility**: explicit `doc_pages.visibility`
   (`PRIVATE` default / `PUBLIC`), enforcement in read/gate paths; DocsHome
   reworked into tabs (Private / Public / Shared with me, plus by-team grouping
-  once DR4 lands); create/import actions keep the current UX. Needs O2/O3.
+  once DR4 lands); create/import actions keep the current UX.
+  *Backend shipped 2026-09-09 (migration 029 + §5.54): `visibility` column +
+  PUBLIC-org reads in `canReadPage`, `GET /docs?visibility=`, `POST/PUT`
+  visibility. O2 for visibility RESOLVED: PUBLIC = owning-org members only,
+  anonymous stays share-token; O3 RESOLVED: visibility is enforced per page,
+  NOT inherited down the tree (a PRIVATE child under a PUBLIC parent stays
+  closed). Pending: DocsHome Private/Public/Shared-with-me tabs UI (Shared
+  feed already served by `GET /docs/shared`).*
 - [ ] **DR4 — Confluence-style doc tree (spaces per team)**: `doc_pages` gains
   `parent_id` (self-FK) + `space`/`team_id` binding + ordering; a tree/space
   sidebar replaces the flat home list (collapsible, nested sub-doc creation,
   move/reparent, depth guard), inherits parent access; `/docs?p=` deep-link +
-  Back behaviour and the read/write RLS inherit cleanly. Needs O4.
+  Back behaviour and the read/write RLS inherit cleanly.
+  *Backend shipped 2026-09-09 (migration 029 + §5.54): `parent_id` self-FK
+  (same-workspace, cascade delete), `POST /docs` `parentId`, `PUT
+  /docs/:pageId` reparent with self/descendant-cycle + `MAX_TREE_DEPTH`=24
+  guards, ancestor-chain share read inheritance + subtree cascade. Pending:
+  `space`/`team_id` binding + ordering (O4), and the tree/space sidebar UI
+  (collapsible, nested create, move affordances).*
 - [ ] **DR5 — Confluence export / copy-to-clipboard**: produce paste-friendly
   Confluence HTML (headings/list/code/table → rich-text paste) from the doc;
   toolbar "Copy for Confluence" uses clipboard `text/html` (O5); reuses the
