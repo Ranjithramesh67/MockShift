@@ -127,6 +127,119 @@
   border-color: rgba(124, 242, 156, 0.35);
 }
 
+/* ------------------------------------------------------- home tree (DR4) */
+.pageName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  transition: color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.chevBtn:hover {
+  color: var(--text);
+  background: var(--bg-panel-2);
+}
+
+.chevBtn svg {
+  transition: transform 120ms var(--ease);
+}
+
+.chevOpen svg {
+  transform: rotate(90deg);
+}
+
+.chevSpacer {
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.visPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter var(--speed) var(--ease);
+  border: 1px solid transparent;
+}
+
+.visPill:disabled {
+  cursor: default;
+  filter: none;
+}
+
+.visPrivate {
+  color: var(--text-muted);
+  background: var(--bg-panel-2);
+  border-color: var(--border);
+}
+
+.visPublic {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(124, 242, 156, 0.35);
+}
+
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rowActionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--speed) var(--ease), border-color var(--speed) var(--ease);
+}
+
+.rowActionBtn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.rowActionBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.actionsHead {
+  width: 92px;
+}
+
+.treeHint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-faint);
+  padding: 0 2px;
+}
+
 /* ------------------------------------------------------------ page / editor */
 .docColumn {
   max-width: 860px;

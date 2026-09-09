@@ -1,16 +1,18 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
+import { useApp } from '@/store/AppStore';
 import type { UserRole } from '@/lib/api';
-import { docsApi, type DocsUsage } from '@/lib/docsApi';
+import { docsApi, type DocsUsage, type DocsPageSummary } from '@/lib/docsApi';
 import { RequestsPanel } from './RequestsPanel';
 import { NewPageModal } from './Pickers';
+import { MovePageModal } from './MovePageModal';
 import { workspaceApi } from '@/lib/api';
 import { fmtDate, workspaceRoleRank } from './helpers';
 import styles from './docs.module.css';
-import { FileIcon, PlusIcon } from '@/components/icons';
+import { ChevronIcon, FileIcon, GlobeIcon, LockIcon, MoveIcon, PlusIcon } from '@/components/icons';
 
 // Workspace-access-request review gate mirrors the backend: platform
 // MANAGER/ADMIN bypass, otherwise the workspace role must be >= ADMIN.
@@ -19,19 +21,43 @@ function roleCanReview(role: UserRole | null | undefined, globalRole?: UserRole 
   return workspaceRoleRank(role ?? null) >= 4;
 }
 
+// Page edit mirror of the backend canEditPage: page author OR workspace
+// role >= EDITOR OR platform MANAGER/ADMIN.
+function canManagePage(
+  role: UserRole | null | undefined,
+  globalRole: UserRole | null | undefined,
+  page: DocsPageSummary,
+  userId?: string
+): boolean {
+  if (workspaceRoleRank(globalRole ?? null) >= 3) return true;
+  if (workspaceRoleRank(role ?? null) >= 2) return true;
+  return Boolean(userId && page.createdBy?.id === userId);
+}
+
+interface TreeRow {
+  page: DocsPageSummary;
+  depth: number;
+  hasChildren: boolean;
+  expanded: boolean;
+}
+
 export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void }) {
   const ws = useWorkspace();
   const { user } = useAuth();
+  const { dispatch } = useApp();
   const [workspaceId, setWorkspaceId] = useState<string>(() => ws.activeWorkspaceId ?? ws.workspaces[0]?.id ?? '');
   const [projectId, setProjectId] = useState('');
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [q, setQ] = useState('');
   const [appliedQ, setAppliedQ] = useState('');
   const [tab, setTab] = useState<'pages' | 'requests'>('pages');
-  const [pages, setPages] = useState<Awaited<ReturnType<typeof docsApi.list>>['pages']>([]);
+  const [pages, setPages] = useState<DocsPageSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [subParent, setSubParent] = useState<DocsPageSummary | null>(null);
+  const [movePage, setMovePage] = useState<DocsPageSummary | null>(null);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [usage, setUsage] = useState<DocsUsage | null>(null);
   const seq = useRef(0);
 
@@ -108,6 +134,55 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
     loadPages();
   }, [loadPages]);
 
+  // Search results are a flat recent-first list (grouping a result set into a
+  // tree would hide matches whose ancestors did not match).
+  const searching = appliedQ.length > 0;
+
+  // Collapse everything when the scope or the query changes.
+  useEffect(() => {
+    setCollapsedIds(new Set());
+  }, [workspaceId, projectId, searching]);
+
+  const byParent = useMemo(() => {
+    const map = new Map<string | null, DocsPageSummary[]>();
+    for (const p of pages) {
+      const list = map.get(p.parentId) ?? [];
+      list.push(p);
+      map.set(p.parentId, list);
+    }
+    for (const list of Array.from(map.values())) list.sort((a, b) => a.title.localeCompare(b.title));
+    return map;
+  }, [pages]);
+
+  // Depth-first rows in tree order. A "root" is a page with no parent in the
+  // current scope (parentId null, or its parent was filtered out) — those are
+  // always shown; collapsed branches skip their descendants.
+  const rows = useMemo<TreeRow[]>(() => {
+    if (searching) {
+      return pages.map((page) => ({ page, depth: 0, hasChildren: false, expanded: false }));
+    }
+    const pagesById = new Map(pages.map((p) => [p.id, p]));
+    const roots = pages
+      .filter((p) => !p.parentId || !pagesById.has(p.parentId))
+      .sort((a, b) => a.title.localeCompare(b.title));
+    const out: TreeRow[] = [];
+    const walk = (parentId: string | null, depth: number) => {
+      for (const child of byParent.get(parentId) ?? []) {
+        const grand = byParent.get(child.id) ?? [];
+        const expanded = !collapsedIds.has(child.id);
+        out.push({ page: child, depth, hasChildren: grand.length > 0, expanded });
+        if (grand.length > 0 && expanded) walk(child.id, depth + 1);
+      }
+    };
+    for (const root of roots) {
+      const children = byParent.get(root.id) ?? [];
+      const expanded = !collapsedIds.has(root.id);
+      out.push({ page: root, depth: 0, hasChildren: children.length > 0, expanded });
+      if (children.length > 0 && expanded) walk(root.id, 1);
+    }
+    return out;
+  }, [pages, byParent, collapsedIds, searching]);
+
   const onWorkspaceChange = (id: string) => {
     setWorkspaceId(id);
     setProjectId('');
@@ -115,11 +190,50 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
     setAppliedQ('');
   };
 
+  const toastError = (err: unknown, fallback: string) => {
+    dispatch({
+      type: 'SHOW_TOAST',
+      kind: 'error',
+      message: err instanceof Error ? err.message : fallback,
+    });
+  };
+
   const onCreated = (page: { id: string; workspaceId: string }) => {
     setCreating(false);
+    setSubParent(null);
     setWorkspaceId(page.workspaceId);
     setTab('pages');
+    void loadPages();
     onOpenPage(page.id);
+  };
+
+  const toggleVisibility = async (page: DocsPageSummary) => {
+    const next = page.visibility === 'PUBLIC' ? 'PRIVATE' : 'PUBLIC';
+    try {
+      await docsApi.update(page.id, { visibility: next });
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'success',
+        message: next === 'PUBLIC' ? `“${page.title}” is now visible to your organization.` : `“${page.title}” is private again.`,
+      });
+      void loadPages();
+    } catch (err) {
+      toastError(err, 'Failed to change page visibility');
+    }
+  };
+
+  const toggleCollapsed = (pageId: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(pageId)) next.delete(pageId);
+      else next.add(pageId);
+      return next;
+    });
+  };
+
+  const onMoved = () => {
+    setMovePage(null);
+    void loadPages();
   };
 
   const canReview = roleCanReview(
@@ -233,47 +347,123 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
             <thead>
               <tr>
                 <th>Title</th>
-                <th>Location</th>
+                <th>Visibility</th>
                 <th>Updated</th>
                 <th>Blocks</th>
+                <th className={styles.actionsHead}></th>
               </tr>
             </thead>
             <tbody>
-              {pages.map((p) => (
-                <tr key={p.id} className={styles.clickableRow} data-testid={`docs-page-row-${p.id}`} onClick={() => onOpenPage(p.id)}>
-                  <td data-label="Title">
-                    <span className={styles.pageTitleCell}>
-                      <FileIcon size={14} />
-                      {p.title}
-                    </span>
-                  </td>
-                  <td className={styles.mutedCell} data-label="Location">
-                    {p.projectName ? `${p.workspaceName} · ${p.projectName}` : p.workspaceName}
-                  </td>
-                  <td className={styles.mutedCell} data-label="Updated">
-                    {(p.updatedBy ?? p.createdBy)?.name ?? '—'} · {fmtDate(p.updatedAt ?? p.createdAt)}
-                  </td>
-                  <td className={styles.mutedCell} data-label="Blocks">
-                    <span className={`${styles.pill} ${styles.pillBlock}`}>{p.blockCount}</span>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const { page, depth } = row;
+                const manage = canManagePage(
+                  workspaces.find((w) => w.id === workspaceId)?.role,
+                  user?.role,
+                  page,
+                  user?.id
+                );
+                const isPublic = page.visibility === 'PUBLIC';
+                return (
+                  <tr
+                    key={page.id}
+                    className={styles.clickableRow}
+                    data-testid={`docs-page-row-${page.id}`}
+                    onClick={() => onOpenPage(page.id)}
+                  >
+                    <td data-label="Title">
+                      <span className={styles.pageTitleCell} style={{ paddingLeft: depth * 22 }}>
+                        {row.hasChildren ? (
+                          <button
+                            type="button"
+                            className={`${styles.chevBtn} ${row.expanded ? styles.chevOpen : ''}`}
+                            data-testid={`docs-tree-expand-${page.id}`}
+                            aria-label={row.expanded ? 'Collapse sub-pages' : 'Expand sub-pages'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleCollapsed(page.id);
+                            }}
+                          >
+                            <ChevronIcon size={14} />
+                          </button>
+                        ) : (
+                          <span className={styles.chevSpacer} aria-hidden />
+                        )}
+                        <FileIcon size={14} />
+                        <span className={styles.pageName}>{page.title}</span>
+                      </span>
+                    </td>
+                    <td data-label="Visibility">
+                      <button
+                        type="button"
+                        className={`${styles.visPill} ${isPublic ? styles.visPublic : styles.visPrivate}`}
+                        data-testid={`docs-vis-${page.id}`}
+                        title={manage ? `Click to make it ${isPublic ? 'private' : 'public'}` : `${isPublic ? 'Public' : 'Private'} page`}
+                        disabled={!manage}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void toggleVisibility(page);
+                        }}
+                      >
+                        {isPublic ? <GlobeIcon size={11} /> : <LockIcon size={11} />}
+                        {isPublic ? 'Public' : 'Private'}
+                      </button>
+                    </td>
+                    <td className={styles.mutedCell} data-label="Updated">
+                      {(page.updatedBy ?? page.createdBy)?.name ?? '—'} · {fmtDate(page.updatedAt ?? page.createdAt)}
+                    </td>
+                    <td className={styles.mutedCell} data-label="Blocks">
+                      <span className={`${styles.pill} ${styles.pillBlock}`}>{page.blockCount}</span>
+                    </td>
+                    <td data-label="" onClick={(e) => e.stopPropagation()}>
+                      {manage && (
+                        <span className={styles.rowActions}>
+                          <button
+                            type="button"
+                            className={styles.rowActionBtn}
+                            data-testid={`docs-page-sub-${page.id}`}
+                            title={atDocLimit ? 'Plan limit reached — upgrade for more docs' : 'Add a sub-page'}
+                            disabled={atDocLimit}
+                            onClick={() => setSubParent(page)}
+                          >
+                            <PlusIcon size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.rowActionBtn}
+                            data-testid={`docs-page-move-${page.id}`}
+                            title="Move page"
+                            onClick={() => setMovePage(page)}
+                          >
+                            <MoveIcon size={13} />
+                          </button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
               {loading && (
                 <tr>
-                  <td colSpan={4} className="hint" data-testid="docs-loading">
+                  <td colSpan={5} className="hint" data-testid="docs-loading">
                     Loading pages…
                   </td>
                 </tr>
               )}
               {!loading && !error && pages.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="hint" data-testid="docs-pages-empty">
+                  <td colSpan={5} className="hint" data-testid="docs-pages-empty">
                     No pages yet{workspaceId ? '' : ' for this workspace'}. Click “New page” to write the first one.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+          {!searching && pages.length > 0 && (
+            <p className={styles.treeHint} data-testid="docs-tree-hint">
+              Nested pages form a document tree — use the arrows to collapse a branch, the “+” to add a sub-page, or the
+              move icon to re-parent a page.
+            </p>
+          )}
         </div>
       )}
 
@@ -283,6 +473,25 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
           defaultWorkspaceId={workspaceId}
           onClose={() => setCreating(false)}
           onCreated={onCreated}
+        />
+      )}
+
+      {subParent && (
+        <NewPageModal
+          workspaces={workspaces}
+          defaultWorkspaceId={workspaceId}
+          parentPage={subParent}
+          onClose={() => setSubParent(null)}
+          onCreated={onCreated}
+        />
+      )}
+
+      {movePage && (
+        <MovePageModal
+          page={movePage}
+          pages={pages}
+          onClose={() => setMovePage(null)}
+          onMoved={onMoved}
         />
       )}
     </div>

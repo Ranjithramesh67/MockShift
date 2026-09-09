@@ -15,6 +15,8 @@ export interface DocsPerson {
   name: string;
 }
 
+export type DocsVisibility = 'PRIVATE' | 'PUBLIC';
+
 export interface DocsPageSummary {
   id: string;
   title: string;
@@ -22,6 +24,8 @@ export interface DocsPageSummary {
   workspaceName: string;
   projectId: string | null;
   projectName: string | null;
+  visibility: DocsVisibility;
+  parentId: string | null;
   createdBy: DocsPerson | null;
   updatedBy: DocsPerson | null;
   createdAt: string;
@@ -267,16 +271,32 @@ function toQuery(params: Record<string, string | number | undefined>): string {
 }
 
 export const docsApi = {
-  list: (params: { workspaceId: string; projectId?: string; q?: string }) =>
+  list: (params: { workspaceId: string; projectId?: string; q?: string; visibility?: DocsVisibility }) =>
     apiFetch<{ pages: DocsPageSummary[] }>(`/api/docs${toQuery(params)}`),
 
-  create: (input: { workspaceId: string; projectId?: string | null; title: string }) =>
-    apiFetch<{ page: DocsPageSummary }>('/api/docs', { method: 'POST', body: input }),
+  // Pages this caller can read without holding the owning workspace: targeted
+  // share audiences (the share's whole sub-tree) + PUBLIC pages of orgs the
+  // caller belongs to.
+  shared: () => apiFetch<{ pages: DocsPageSummary[] }>('/api/docs/shared'),
+
+  create: (input: {
+    workspaceId: string;
+    projectId?: string | null;
+    parentId?: string | null;
+    title: string;
+    visibility?: DocsVisibility;
+  }) => apiFetch<{ page: DocsPageSummary }>('/api/docs', { method: 'POST', body: input }),
 
   get: (pageId: string) => apiFetch<DocsPageDetail>(`/api/docs/${pageId}`),
 
-  updateTitle: (pageId: string, title: string) =>
-    apiFetch<{ page: DocsPageSummary }>(`/api/docs/${pageId}`, { method: 'PUT', body: { title } }),
+  // Optional-title/visibility/parentId patch — parentId null moves the page to
+  // the root level. A missing key leaves that field untouched.
+  update: (
+    pageId: string,
+    patch: { title?: string; visibility?: DocsVisibility; parentId?: string | null }
+  ) => apiFetch<{ page: DocsPageSummary }>(`/api/docs/${pageId}`, { method: 'PUT', body: patch }),
+
+  updateTitle: (pageId: string, title: string) => apiFetch<{ page: DocsPageSummary }>(`/api/docs/${pageId}`, { method: 'PUT', body: { title } }),
 
   remove: (pageId: string) => apiFetch<void>(`/api/docs/${pageId}`, { method: 'DELETE' }),
 
