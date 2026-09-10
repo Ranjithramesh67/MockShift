@@ -235,3 +235,17 @@
 .apitoken-reveal .primary-button {
   align-self: flex-start;
 }
+
+.apitoken-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.apitoken-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
