@@ -19,6 +19,8 @@ import {
 } from '@/lib/mockScenariosApi';
 import styles from './mocks.module.css';
 
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+
 // ============================================================================
 // Standalone mock-scenarios panel (E3).
 //
@@ -64,6 +66,30 @@ function emptyDraft(): ResponseDraft {
     sequenceIndex: '',
     sequenceMode: 'cycle',
     conditions: [],
+  };
+}
+
+interface RouteDraft {
+  method: string;
+  path: string;
+  status: string;
+  delayMs: string;
+  body: string;
+  headers: string;
+}
+
+function emptyRouteDraft(): RouteDraft {
+  return { method: 'GET', path: '/', status: '200', delayMs: '0', body: '', headers: '' };
+}
+
+function toRouteDraft(route: MockRoute): RouteDraft {
+  return {
+    method: route.method,
+    path: route.path,
+    status: String(route.status),
+    delayMs: String(route.delay_ms ?? 0),
+    body: route.body ?? '',
+    headers: route.headers && Object.keys(route.headers).length > 0 ? JSON.stringify(route.headers, null, 2) : '',
   };
 }
 
@@ -114,7 +140,11 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [newScenarioName, setNewScenarioName] = useState('');
+  const [newServerName, setNewServerName] = useState('Mock Server');
   const [showForm, setShowForm] = useState(false);
+  const [showRouteForm, setShowRouteForm] = useState(false);
+  const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
+  const [routeDraft, setRouteDraft] = useState<RouteDraft>(emptyRouteDraft);
   const [draft, setDraft] = useState<ResponseDraft>(emptyDraft);
   const [replay, setReplay] = useState<{ status: number; body: string } | null>(null);
   const selectedRouteIdRef = useRef('');
@@ -206,11 +236,84 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
       await load();
     });
 
+  const createServer = () =>
+    withBusy(async () => {
+      if (!projectId) return;
+      await mockServerApi.create(projectId, { name: newServerName.trim() || 'Mock Server' });
+      setNotice('Mock server created');
+      await load();
+    });
+
   const deleteScenario = (id: string) =>
     withBusy(async () => {
       if (!window.confirm('Delete this scenario and all of its response overrides?')) return;
       await mockScenariosApi.deleteScenario(id);
       setNotice('Scenario deleted');
+      await load();
+    });
+
+  const cancelRouteForm = () => {
+    setShowRouteForm(false);
+    setEditingRouteId(null);
+    setRouteDraft(emptyRouteDraft());
+  };
+
+  const startAddRoute = () => {
+    if (showRouteForm && !editingRouteId) {
+      cancelRouteForm();
+      return;
+    }
+    setEditingRouteId(null);
+    setRouteDraft(emptyRouteDraft());
+    setShowRouteForm(true);
+  };
+
+  const startEditRoute = (route: MockRoute) => {
+    setEditingRouteId(route.id);
+    setRouteDraft(toRouteDraft(route));
+    setShowRouteForm(true);
+  };
+
+  const submitRoute = () =>
+    withBusy(async () => {
+      if (!server) return;
+      let headers: Record<string, string>;
+      try {
+        headers = parseHeaders(routeDraft.headers);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Invalid headers');
+        return;
+      }
+      const path = routeDraft.path.trim();
+      if (!path) return;
+      const input = {
+        method: routeDraft.method.toUpperCase(),
+        path,
+        status: Number(routeDraft.status) || 200,
+        headers,
+        body: routeDraft.body,
+        delayMs: Number(routeDraft.delayMs) || 0,
+      };
+      if (editingRouteId) {
+        await mockServerApi.updateRoute(editingRouteId, input);
+        setNotice('Route updated');
+        cancelRouteForm();
+        await load();
+      } else {
+        const { route } = await mockServerApi.createRoute(server.id, input);
+        setNotice('Route added');
+        cancelRouteForm();
+        await load();
+        setSelectedRouteId(route.id);
+        await refreshResponses(route.id);
+      }
+    });
+
+  const deleteRoute = (route: MockRoute) =>
+    withBusy(async () => {
+      if (!window.confirm(`Delete route ${route.method} ${route.path}?`)) return;
+      await mockServerApi.deleteRoute(route.id);
+      setNotice('Route deleted');
       await load();
     });
 
@@ -329,6 +432,30 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
       {!server && !loading ? (
         <div className={styles.section}>
           <p className={styles.empty}>This project has no mock server yet. Create one first.</p>
+          <div className={styles.inlineForm}>
+            <div className={`${styles.field} ${styles.fieldGrow}`}>
+              <label className={styles.label} htmlFor="new-mock-server-name">
+                Mock server name
+              </label>
+              <input
+                id="new-mock-server-name"
+                className={styles.input}
+                value={newServerName}
+                placeholder="Mock Server"
+                data-testid="mock-scenarios-server-name"
+                onChange={(event) => setNewServerName(event.target.value)}
+              />
+            </div>
+            <button
+              className={`${styles.btn} ${styles.btnPrimary}`}
+              type="button"
+              onClick={createServer}
+              disabled={busy || !projectId}
+              data-testid="mock-scenarios-create-server"
+            >
+              Create mock server
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -389,6 +516,163 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
                 Add scenario
               </button>
             </div>
+          </section>
+
+          <section className={styles.section}>
+            <div className={styles.sectionHead}>
+              <h2 className={styles.sectionTitle}>Routes</h2>
+              <div className={styles.actions}>
+                <span className={styles.sectionHint}>
+                  {routes.length} route{routes.length === 1 ? '' : 's'}
+                </span>
+                <button
+                  className={styles.btn}
+                  type="button"
+                  onClick={startAddRoute}
+                  disabled={busy}
+                  data-testid="mock-scenarios-add-route"
+                >
+                  {showRouteForm && !editingRouteId ? 'Cancel' : 'Add route'}
+                </button>
+              </div>
+            </div>
+
+            {routes.length === 0 ? (
+              <p className={styles.empty}>No routes yet. Add one to start serving mock responses.</p>
+            ) : (
+              <div className={styles.list}>
+                {routes.map((route) => (
+                  <div key={route.id} className={styles.listItem}>
+                    <div className={styles.itemMain}>
+                      <span className={styles.itemName}>
+                        <span className={styles.logMethod}>{route.method}</span> {route.path}
+                      </span>
+                      <span className={styles.itemMeta}>
+                        <span className={styles.badgeStatus}>status {route.status}</span>
+                        {route.delay_ms ? (
+                          <span className={styles.badge}>delay {route.delay_ms}ms</span>
+                        ) : null}
+                      </span>
+                    </div>
+                    <div className={styles.itemActions}>
+                      <button
+                        className={styles.btn}
+                        type="button"
+                        onClick={() => startEditRoute(route)}
+                        disabled={busy}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className={`${styles.btn} ${styles.btnDanger}`}
+                        type="button"
+                        onClick={() => deleteRoute(route)}
+                        disabled={busy}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {showRouteForm ? (
+              <div className={styles.routeForm}>
+                <div className={styles.row}>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Method</label>
+                    <select
+                      className={styles.select}
+                      value={routeDraft.method}
+                      data-testid="mock-scenarios-route-method"
+                      onChange={(event) =>
+                        setRouteDraft({ ...routeDraft, method: event.target.value })
+                      }
+                    >
+                      {METHODS.map((method) => (
+                        <option key={method} value={method}>
+                          {method}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={`${styles.field} ${styles.fieldGrow}`}>
+                    <label className={styles.label}>Path</label>
+                    <input
+                      className={styles.input}
+                      placeholder="/users/:id"
+                      value={routeDraft.path}
+                      data-testid="mock-scenarios-route-path"
+                      onChange={(event) =>
+                        setRouteDraft({ ...routeDraft, path: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Status</label>
+                    <input
+                      className={styles.input}
+                      value={routeDraft.status}
+                      inputMode="numeric"
+                      data-testid="mock-scenarios-route-status"
+                      onChange={(event) =>
+                        setRouteDraft({ ...routeDraft, status: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Delay (ms)</label>
+                    <input
+                      className={styles.input}
+                      value={routeDraft.delayMs}
+                      inputMode="numeric"
+                      data-testid="mock-scenarios-route-delay"
+                      onChange={(event) =>
+                        setRouteDraft({ ...routeDraft, delayMs: event.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className={styles.row}>
+                  <div className={`${styles.field} ${styles.fieldGrow}`}>
+                    <label className={styles.label}>Response body</label>
+                    <textarea
+                      className={styles.textarea}
+                      value={routeDraft.body}
+                      placeholder='{"userId":"{{id}}"}'
+                      data-testid="mock-scenarios-route-body"
+                      onChange={(event) =>
+                        setRouteDraft({ ...routeDraft, body: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className={`${styles.field} ${styles.fieldGrow}`}>
+                    <label className={styles.label}>Headers (JSON)</label>
+                    <textarea
+                      className={styles.textarea}
+                      value={routeDraft.headers}
+                      placeholder='{"x-mock":"true"}'
+                      data-testid="mock-scenarios-route-headers"
+                      onChange={(event) =>
+                        setRouteDraft({ ...routeDraft, headers: event.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className={styles.inlineForm}>
+                  <button
+                    className={`${styles.btn} ${styles.btnPrimary}`}
+                    type="button"
+                    onClick={submitRoute}
+                    disabled={busy || !routeDraft.path.trim()}
+                    data-testid="mock-scenarios-save-route"
+                  >
+                    {editingRouteId ? 'Save route' : 'Add route'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <section className={styles.section}>
