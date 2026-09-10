@@ -21,6 +21,11 @@ export function RouteViewSync() {
     else if (pathname.startsWith('/automations')) view = 'automations';
     else if (pathname.startsWith('/history')) view = 'history';
     else if (pathname.startsWith('/docs')) view = 'docs';
+    else if (pathname.startsWith('/contracts')) view = 'contracts';
+    else if (pathname.startsWith('/monitors')) view = 'monitors';
+    else if (pathname.startsWith('/mock-scenarios')) view = 'mock-scenarios';
+    else if (pathname.startsWith('/copilot')) view = 'copilot';
+    else if (pathname.startsWith('/collab')) view = 'collab';
     else if (pathname.startsWith('/inbox')) view = 'inbox';
     else if (pathname.startsWith('/settings')) view = 'settings';
     setView(view);
