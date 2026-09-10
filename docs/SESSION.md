@@ -838,6 +838,33 @@ or a commit checkpoint is agreed).
   is verified via backend integration + build so far); e2e + commit optional and
   pending user go-ahead.
 
+### 5.61 Docs round 3 DR7 — product API reference (2026-09-09)
+
+Contract-first API reference for the machine API. O7 resolved: a hand-authored
+OpenAPI 3.0.3 document versioned in the repo; samples use placeholder
+credentials and the runtime origin. O8 resolved: any signed-in user may read it
+(it holds no secrets).
+
+- **`api/openapi.json`** (new, repo root) — documents `POST /api/runs` (API token
+  with `runs`/`write` scope or session; `requestId`, optional `environmentId`,
+  `variables`) plus token CRUD, send/inbox accept-reject and `profile/usage`.
+  Includes schemas, redacted run examples, and both `bearerAuth` and `cookieAuth`
+  security schemes.
+- **Backend `docs.js`** — `GET /api/docs/api-reference` (after `requireAuth`)
+  serves the spec; it is declared before the single-segment `GET /:pageId`, so
+  "api-reference" can never resolve as a page id.
+- **Frontend** — `fetchApiReference()` + OpenAPI types in `docsApi.ts`; new
+  `ApiReference` component (`/docs/api-reference`) groups operations by tag and
+  renders method/path, parameters, request examples and a **copy-ready curl
+  snippet** built from the runtime origin with `$API_TOKEN`/`$SESSION`
+  placeholders; new route `app/docs/api-reference/page.tsx`. Linked from the
+  Docs home header (`docs-api-reference`) and the API-tokens page
+  (`api-tokens-api-reference`).
+- **New suite `backend/tests/docsApiReference.integration.test.cjs`** — 3 tests
+  green on scratch 5433: auth required (401 anonymous), valid OpenAPI document
+  with the key operations and bearer security, and placeholder-only credentials.
+  Frontend unit 89/89, `tsc --noEmit` and `next build` clean (new static route).
+
 ### 5.60 Docs round 3 DR5 — Copy for Confluence (2026-09-09)
 
 Paste-friendly export so a doc can be dropped into Confluence (or any rich-text
