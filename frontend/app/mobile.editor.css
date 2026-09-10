@@ -149,7 +149,12 @@
     min-height: 34vh;
   }
   .formula-editor .code-editor {
-    min-height: 24vh;
+    min-height: 0;
+  }
+  /* The helper keeps a real, scrollable share of the editor instead of being
+     squeezed to its header by the code editor's min-height. */
+  .formula-helper {
+    max-height: 52%;
   }
 
   /* --- Key/Value editor rows: stack key above value -------------------- */
@@ -252,20 +257,34 @@
   }
   .response-body {
     padding: 8px 10px;
+    gap: 6px;
   }
   .response-tab {
     padding: 7px 2px;
     min-height: 32px;
   }
   .response-toolbar {
-    row-gap: 8px;
+    flex-wrap: nowrap;
+    gap: 6px;
+    row-gap: 0;
+  }
+  .response-viewmodes {
+    flex: 0 1 auto;
+    min-width: 0;
   }
   .response-viewmode {
-    padding: 7px 12px;
+    padding: 6px 8px;
+    white-space: nowrap;
+  }
+  .response-toolbar-actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 4px;
   }
   .response-action {
-    padding: 6px 10px;
+    padding: 6px 8px;
     min-height: 32px;
+    white-space: nowrap;
   }
 
   /* --- Assertions editor ------------------------------------------------ */
