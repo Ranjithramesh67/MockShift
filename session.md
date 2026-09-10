@@ -1775,11 +1775,11 @@ Split (each a shippable micro-turn; none started, `[ ]`):
   toolbar "Copy for Confluence" uses clipboard `text/html` (O5); reuses the
   existing themed export pipeline minus brand chrome (neutral styling for paste);
   works after DR6 so tables paste too.
-- [ ] **DR6 — Table blocks**: `content.rows: string[][]` table block type,
-  editor insert/grid edit + add/remove row/col, viewer + HTML/Word/Confluence/
-  print/markdown export, size + cell limits validated server-side; mirrors the
-  image-block sizing pattern (server validation + shared width in export).
-  Needs O6.
+- [x] **DR6 — Table blocks** (DONE 2026-09-09, §5.59): `content.rows: string[][]` table block type,
+  editor insert/grid edit + add/remove row/col, viewer + HTML/Word/markdown export,
+  size + cell limits validated server-side; mirrors the image-block sizing pattern
+  (server validation + shared bounds). O6 RESOLVED: max 50 rows × 12 cols, 2000
+  chars/cell, empty cells allowed, markdown/HTML render first row as header.
 - [ ] **DR7 — Product API reference**: contract-first OpenAPI (JSON) document
   describing the machine API — auth via personal tokens (S4), `POST /api/runs`
   (S5), token CRUD, send/inbox, profile/usage — versioned under the repo; a

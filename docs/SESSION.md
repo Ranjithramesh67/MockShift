@@ -838,6 +838,33 @@ or a commit checkpoint is agreed).
   is verified via backend integration + build so far); e2e + commit optional and
   pending user go-ahead.
 
+### 5.59 Docs round 3 DR6 — table blocks (2026-09-09)
+
+Adds a `table` block type end-to-end. O6 resolved: max 50 rows × 12 columns,
+2000 characters per cell, empty cells allowed, first row is the header row.
+
+- **Migration `031_docs_table_blocks.sql`** (applied to the dev DB and scratch
+  cluster) — widens `doc_blocks_type_check` to admit `table`.
+- **Backend `src/api/routes/docs.js`** — `BLOCK_TYPES` gains `table`; content is
+  `{ rows: string[][], caption? }` with server-side guardrails in
+  `blockContentError` (`TABLE_MAX_ROWS` 50, `TABLE_MAX_COLS` 12,
+  `TABLE_MAX_CELL` 2000; non-empty rows array, rectangular-safe). Markdown
+  export renders a pipe table (separator + escaped `|`, optional caption);
+  HTML export (used by print and Word/.doc) renders `<table><thead><tbody>` with
+  escaped cells and an optional `<caption>`; json export already dumps blocks.
+- **New suite `backend/tests/docsTables.integration.test.cjs`** — 3 tests green
+  on scratch 5433: save/read round-trip; guardrail rejections (rows, cols,
+  non-string cells, empty rows/cells, oversized cell); markdown/html/json export
+  content. Docs regression suites (tree 7, shares 5, audiences 6, spaces 5) stay
+  green; backend api unit 53/53.
+- **Frontend** — `docsApi` adds the `table` type, `TABLE_MAX_*` constants,
+  `tableRows()` accessor, a default 2×2 grid, and a Table label; `BlockEditor`
+  gains `TableBlockFields` (editable grid, header row styling, add/remove row +
+  column, caption); the viewer (`Mentions.tsx`) renders a scrollable `<table>`
+  with header/caption. New `docs.module.css` classes cover the grid editor and
+  the viewer table. Verified: `tsc --noEmit` clean, unit tests green, `next
+  build` green.
+
 ### 5.58 Docs round 3 DR4 remainder — team spaces + sibling ordering (2026-09-09)
 
 Completes DR4 on top of §5.54 (visibility/tree backend) and §5.55 (tree home).
