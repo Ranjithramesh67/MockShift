@@ -838,6 +838,29 @@ or a commit checkpoint is agreed).
   is verified via backend integration + build so far); e2e + commit optional and
   pending user go-ahead.
 
+### 5.60 Docs round 3 DR5 — Copy for Confluence (2026-09-09)
+
+Paste-friendly export so a doc can be dropped into Confluence (or any rich-text
+editor) without reformatting. O5 resolved: emit neutral HTML on the clipboard as
+`text/html`, not a themed document download.
+
+- **Backend `src/api/routes/docs.js`** — `GET /:pageId/export?format=confluence`
+  (same read gate as every other export) returns an un-themed HTML fragment:
+  `<h1>` title plus `blockToHtml` output (headings, lists, code, images, tables —
+  everything already escaped), no `<html>`/`<head>`, no brand chrome or app theme.
+  Served as `text/html; charset=utf-8`. Format validation now advertises
+  `markdown | html | word | confluence | json`.
+- **Frontend `PageActions.tsx`** — new "Copy for Confluence" export-menu action
+  (`docs-export-confluence`). Fetches the `confluence` fragment and writes it to
+  the clipboard as `text/html` with a plain-text fallback via `ClipboardItem`
+  (`htmlToPlain` renders the fallback through `DOMParser`); older/locked-down
+  browsers degrade to a plain text copy. Success toast: "Copied for Confluence".
+- **New suite `backend/tests/docsConfluence.integration.test.cjs`** — 2 tests green
+  on scratch 5433: fragment shape (escaped title/text, heading/list/code/table,
+  no doctype/theme/brand) and format validation listing `confluence`. DR6 table
+  suite (3) stays green. Backend unit 47/47, frontend unit 89/89, `tsc --noEmit`
+  and `next build` clean.
+
 ### 5.59 Docs round 3 DR6 — table blocks (2026-09-09)
 
 Adds a `table` block type end-to-end. O6 resolved: max 50 rows × 12 columns,

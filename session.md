@@ -1770,11 +1770,12 @@ Split (each a shippable micro-turn; none started, `[ ]`):
   inheritance + subtree cascade. Spaces/ordering shipped §5.58 (O4 RESOLVED:
   space = workspace, `team_id` optional binding + `position` sibling order;
   tree home UI with team filter/chip + reorder).*
-- [ ] **DR5 — Confluence export / copy-to-clipboard**: produce paste-friendly
-  Confluence HTML (headings/list/code/table → rich-text paste) from the doc;
-  toolbar "Copy for Confluence" uses clipboard `text/html` (O5); reuses the
-  existing themed export pipeline minus brand chrome (neutral styling for paste);
-  works after DR6 so tables paste too.
+- [x] **DR5 — Confluence export / copy-to-clipboard** (DONE 2026-09-09, §5.60): new
+  `?format=confluence` export returns a neutral, un-themed HTML fragment (title h1
+  + `blockToHtml` blocks, all escaped — headings/list/code/table, no page chrome);
+  the doc toolbar "Copy for Confluence" action fetches it and writes `text/html`
+  (+ plain fallback) via `ClipboardItem` so pasting into Confluence keeps formatting;
+  works with DR6 so tables paste too.
 - [x] **DR6 — Table blocks** (DONE 2026-09-09, §5.59): `content.rows: string[][]` table block type,
   editor insert/grid edit + add/remove row/col, viewer + HTML/Word/markdown export,
   size + cell limits validated server-side; mirrors the image-block sizing pattern
