@@ -978,6 +978,122 @@ button.chip:hover {
   text-align: center;
 }
 
+/* ------------------------------------------------------------- tables (DR6) */
+.tableEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tableScroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.tableGrid {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.tableGrid td {
+  border: 1px solid var(--border);
+  padding: 0;
+  vertical-align: top;
+}
+
+.tableHeadCell {
+  background: var(--bg-panel-2);
+}
+
+.tableCellWrap {
+  display: flex;
+  align-items: center;
+}
+
+.tableCellWrap .tableCellInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.tableCellInput {
+  width: 100%;
+  min-width: 90px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.tableCellInput:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.tableCtlCell {
+  border: 0 !important;
+  width: 22px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.tableCtlBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.tableCtlBtn:hover:not(:disabled) {
+  color: #f87171;
+  background: var(--bg-panel-2);
+}
+
+.tableCtlBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.tableEditBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tableFigure {
+  margin: 10px 0;
+}
+
+.rTable {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.rTable th,
+.rTable td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rTable th {
+  background: var(--bg-panel-2);
+  font-weight: 600;
+}
+
+.rTable tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--bg-panel-2) 45%, transparent);
+}
+
 /* Editor controls. */
 .imgEditRow {
   display: flex;

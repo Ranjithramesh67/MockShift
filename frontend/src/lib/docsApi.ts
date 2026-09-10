@@ -8,7 +8,13 @@ import { apiFetch, ApiError } from './api';
 // payload/response/schema examples, lists). Pages can also carry mentions —
 // either of a user (@Name chip) or of an API request (chip that deep-links
 // into the workspace when the reader has access).
-export type DocsBlockType = 'heading' | 'text' | 'code' | 'payload' | 'response' | 'schema' | 'list' | 'image';
+export type DocsBlockType = 'heading' | 'text' | 'code' | 'payload' | 'response' | 'schema' | 'list' | 'image' | 'table';
+
+// Table guardrails mirror the backend (TABLE_MAX_* in routes/docs.js): the
+// editor clamps to the same bounds so a round-trip never trips a 400.
+export const TABLE_MAX_ROWS = 50;
+export const TABLE_MAX_COLS = 12;
+export const TABLE_MAX_CELL = 2000;
 
 export interface DocsPerson {
   id: string;
@@ -229,6 +235,14 @@ export function blockStrings(c: DocsBlockContent, key = 'items'): string[] {
   return [];
 }
 
+// Table rows as a rectangular grid: arrays of string cells, padded to the widest
+// row so the editor and viewer always see the same shape.
+export function tableRows(c: DocsBlockContent): string[][] {
+  const raw = Array.isArray(c.rows) ? (c.rows as unknown[]).filter(Array.isArray) : [];
+  const cols = raw.reduce((m, r) => Math.max(m, (r as unknown[]).length), 0);
+  return (raw as unknown[][]).map((r) => Array.from({ length: cols }, (_, i) => (typeof r[i] === 'string' ? (r[i] as string) : '')));
+}
+
 export function blockMethod(c: DocsBlockContent): string {
   const m = blockText(c, 'method', 'GET');
   return (m || 'GET').toUpperCase();
@@ -244,6 +258,7 @@ export const BLOCK_LABELS: Array<{ type: DocsBlockType; label: string }> = [
   { type: 'schema', label: 'Schema' },
   { type: 'list', label: 'List' },
   { type: 'image', label: 'Image' },
+  { type: 'table', label: 'Table' },
 ];
 
 export function defaultContent(type: DocsBlockType): DocsBlockContent {
@@ -264,6 +279,8 @@ export function defaultContent(type: DocsBlockType): DocsBlockContent {
       return { style: 'bullet', items: [''] };
     case 'image':
       return { src: '', alt: '', caption: '', size: 'full' };
+    case 'table':
+      return { rows: [['', ''], ['', '']], caption: '' };
   }
 }
 

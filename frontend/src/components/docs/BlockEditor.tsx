@@ -10,12 +10,16 @@ import {
   IMAGE_SIZES,
   imageSizeOf,
   newBlock,
+  TABLE_MAX_CELL,
+  TABLE_MAX_COLS,
+  TABLE_MAX_ROWS,
+  tableRows,
   type DocsBlock,
   type DocsBlockContent,
   type DocsBlockType,
 } from '@/lib/docsApi';
 import styles from './docs.module.css';
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from '@/components/icons';
+import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon, XIcon } from '@/components/icons';
 
 function setField(c: DocsBlockContent, field: string, value: unknown): DocsBlockContent {
   return { ...c, [field]: value };
@@ -185,6 +189,132 @@ function ImageBlockFields({
   );
 }
 
+// Table block editor (DR6): a rectangular cell grid. The first row is the
+// header row. Add/remove rows and columns within the backend guardrails
+// (TABLE_MAX_ROWS/TABLE_MAX_COLS/TABLE_MAX_CELL).
+function TableBlockFields({
+  content,
+  onChange,
+}: {
+  content: DocsBlockContent;
+  onChange: (content: DocsBlockContent) => void;
+}) {
+  const rows = tableRows(content);
+  const caption = blockText(content, 'caption');
+  const cols = rows[0]?.length ?? 0;
+
+  const setCell = (r: number, ci: number, value: string) => {
+    const next = rows.map((row) => row.slice());
+    next[r][ci] = value.slice(0, TABLE_MAX_CELL);
+    onChange(setField(content, 'rows', next));
+  };
+
+  const addRow = () => {
+    if (rows.length >= TABLE_MAX_ROWS) return;
+    onChange(setField(content, 'rows', [...rows.map((r) => r.slice()), Array.from({ length: cols || 1 }, () => '')]));
+  };
+
+  const removeRow = (r: number) => {
+    if (rows.length <= 1) return;
+    onChange(setField(content, 'rows', rows.filter((_, i) => i !== r).map((row) => row.slice())));
+  };
+
+  const addCol = () => {
+    if (cols >= TABLE_MAX_COLS) return;
+    onChange(setField(content, 'rows', rows.map((row) => [...row, ''])));
+  };
+
+  const removeCol = (ci: number) => {
+    if (cols <= 1) return;
+    onChange(setField(content, 'rows', rows.map((row) => row.filter((_, i) => i !== ci))));
+  };
+
+  return (
+    <div className={styles.tableEditor}>
+      <div className={styles.tableScroll}>
+        <table className={styles.tableGrid} data-testid="docs-field-table">
+          <tbody>
+            {rows.map((row, r) => (
+              <tr key={r}>
+                {row.map((cell, ci) => (
+                  <td key={ci} className={r === 0 ? styles.tableHeadCell : undefined}>
+                    <div className={styles.tableCellWrap}>
+                      <input
+                        type="text"
+                        className={styles.tableCellInput}
+                        value={cell}
+                        maxLength={TABLE_MAX_CELL}
+                        placeholder={r === 0 ? `Header ${ci + 1}` : ''}
+                        data-testid={`docs-field-table-cell-${r}-${ci}`}
+                        onChange={(e) => setCell(r, ci, e.target.value)}
+                      />
+                      {r === 0 && (
+                        <button
+                          type="button"
+                          className={styles.tableCtlBtn}
+                          title={cols <= 1 ? 'A table needs at least one column' : 'Remove column'}
+                          disabled={cols <= 1}
+                          data-testid={`docs-table-remove-col-${ci}`}
+                          onClick={() => removeCol(ci)}
+                        >
+                          <XIcon size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                ))}
+                <td className={styles.tableCtlCell}>
+                  <button
+                    type="button"
+                    className={styles.tableCtlBtn}
+                    title={rows.length <= 1 ? 'A table needs at least one row' : 'Remove row'}
+                    disabled={rows.length <= 1}
+                    data-testid={`docs-table-remove-row-${r}`}
+                    onClick={() => removeRow(r)}
+                  >
+                    <XIcon size={12} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className={styles.tableEditBar}>
+        <button
+          type="button"
+          className="ghost-button small"
+          data-testid="docs-table-add-row"
+          disabled={rows.length >= TABLE_MAX_ROWS}
+          onClick={addRow}
+        >
+          <PlusIcon size={12} />
+          Add row
+        </button>
+        <button
+          type="button"
+          className="ghost-button small"
+          data-testid="docs-table-add-col"
+          disabled={cols >= TABLE_MAX_COLS}
+          onClick={addCol}
+        >
+          <PlusIcon size={12} />
+          Add column
+        </button>
+        <span className={styles.imgFileHint}>
+          Header row + {Math.max(rows.length - 1, 0)} body rows · max {TABLE_MAX_ROWS}×{TABLE_MAX_COLS}
+        </span>
+      </div>
+      <EditorText
+        value={caption}
+        onChange={(v) => onChange(setField(content, 'caption', v))}
+        placeholder="Caption (optional)"
+        testId="docs-field-table-caption"
+      />
+    </div>
+  );
+}
+
 function BlockFields({
   block,
   onChange,
@@ -307,6 +437,8 @@ function BlockFields({
     }
     case 'image':
       return <ImageBlockFields content={c} onChange={onChange} />;
+    case 'table':
+      return <TableBlockFields content={c} onChange={onChange} />;
   }
 }
 

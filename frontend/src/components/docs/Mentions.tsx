@@ -5,7 +5,7 @@ import { useApp } from '@/store/AppStore';
 import { accessRequestApi, type ApiError } from '@/lib/api';
 import { docsSharedApi, isApiError, type DocsBlock, type DocsMention } from '@/lib/docsApi';
 import { blockMethod, blockNum, blockStrings, blockText } from '@/lib/docsApi';
-import { imageSizeOf, IMAGE_SIZE_PCT } from '@/lib/docsApi';
+import { imageSizeOf, IMAGE_SIZE_PCT, tableRows } from '@/lib/docsApi';
 import { formatBody } from './helpers';
 import styles from './docs.module.css';
 import { LockIcon, XIcon } from '@/components/icons';
@@ -147,6 +147,37 @@ function Block({ block }: { block: DocsBlock }) {
             data-size={size}
             style={{ maxWidth: `${IMAGE_SIZE_PCT[size]}%` }}
           />
+          {caption && <figcaption className={styles.imgCaption}>{caption}</figcaption>}
+        </figure>
+      );
+    }
+    case 'table': {
+      const rows = tableRows(c);
+      const caption = blockText(c, 'caption');
+      if (rows.length === 0) return null;
+      const [head, ...body] = rows;
+      return (
+        <figure className={styles.tableFigure} data-testid="docs-block-table">
+          <div className={styles.tableScroll}>
+            <table className={styles.rTable}>
+              <thead>
+                <tr>
+                  {head.map((cell, i) => (
+                    <th key={i}>{cell}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {body.map((row, r) => (
+                  <tr key={r}>
+                    {row.map((cell, i) => (
+                      <td key={i}>{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {caption && <figcaption className={styles.imgCaption}>{caption}</figcaption>}
         </figure>
       );
