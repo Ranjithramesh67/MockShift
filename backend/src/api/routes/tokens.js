@@ -4,12 +4,13 @@ const crypto = require('crypto');
 const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth } = require('../access');
+const { getProjectAccess, roleAtLeast, canMutateWorkspace } = require('../access');
 const { hashToken } = require('../tokenAuth');
 
 const router = Router();
 router.use(requireAuth);
 
-const ALLOWED_SCOPES = new Set(['read', 'write', 'runs']);
+const ALLOWED_SCOPES = new Set(['read', 'write', 'runs', 'sdk']);
 const TOKEN_PREFIX_MARK = 'tkh_';
 const TOKEN_PREFIX_LEN = 12;
 const TOKEN_BODY_BYTES = 24;
@@ -42,13 +43,15 @@ function toApiToken(row) {
     lastUsedAt: row.last_used_at,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
+    projectId: row.project_id ?? null,
+    workspaceId: row.workspace_id ?? null,
   };
 }
 
 router.get('/', async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT id, name, prefix, scopes, status, last_used_at, created_at, expires_at
+      `SELECT id, name, prefix, scopes, status, last_used_at, created_at, expires_at, project_id, workspace_id
          FROM api_tokens WHERE user_id = $1 ORDER BY created_at DESC`,
       [req.user.id]
     );
@@ -70,6 +73,25 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'scopes must be a subset of read, write and runs' });
     }
 
+    const projectId = body.projectId ? String(body.projectId).trim() : null;
+    const workspaceId = body.workspaceId ? String(body.workspaceId).trim() : null;
+    if (projectId && workspaceId) {
+      return res.status(400).json({ error: 'A token can bind to a project OR a workspace, not both' });
+    }
+    if (projectId) {
+      if (!/^[0-9a-f-]{36}$/i.test(projectId)) return res.status(400).json({ error: 'projectId must be a valid uuid' });
+      const access = await getProjectAccess(req.user.id, projectId);
+      if (!access || !roleAtLeast(access.level, 'EDITOR')) {
+        return res.status(403).json({ error: 'Editor, manager or admin access required for this project' });
+      }
+    }
+    if (workspaceId) {
+      if (!/^[0-9a-f-]{36}$/i.test(workspaceId)) return res.status(400).json({ error: 'workspaceId must be a valid uuid' });
+      if (!(await canMutateWorkspace(req.user.id, workspaceId))) {
+        return res.status(403).json({ error: 'Workspace write access required' });
+      }
+    }
+
     let expiresAt = null;
     if (body.expiresAt !== undefined && body.expiresAt !== null && body.expiresAt !== '') {
       const parsed = new Date(body.expiresAt);
@@ -84,10 +106,10 @@ router.post('/', async (req, res, next) => {
 
     const { token, prefix } = generateToken();
     const { rows } = await query(
-      `INSERT INTO api_tokens (user_id, name, prefix, token_hash, scopes, status, expires_at)
-       VALUES ($1, $2, $3, $4, $5, 'active', $6)
-       RETURNING id, name, prefix, scopes, status, last_used_at, created_at, expires_at`,
-      [req.user.id, name, prefix, hashToken(token), scopes, expiresAt]
+      `INSERT INTO api_tokens (user_id, name, prefix, token_hash, scopes, status, expires_at, project_id, workspace_id)
+       VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8)
+       RETURNING id, name, prefix, scopes, status, last_used_at, created_at, expires_at, project_id, workspace_id`,
+      [req.user.id, name, prefix, hashToken(token), scopes, expiresAt, projectId, workspaceId]
     );
     const row = rows[0];
     res.status(201).json({
