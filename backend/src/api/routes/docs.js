@@ -80,8 +80,13 @@ accessRequestRouter.use(requireAuth);
 // paths can never be shadowed by a page lookup.
 router.use('/workspace-access-requests', accessRequestRouter);
 
-const BLOCK_TYPES = ['heading', 'text', 'code', 'payload', 'response', 'schema', 'list', 'image'];
+const BLOCK_TYPES = ['heading', 'text', 'code', 'payload', 'response', 'schema', 'list', 'image', 'table'];
 const IMG_SIZES = ['small', 'medium', 'large', 'full'];
+// Table guardrails (DR6, O6): bounded so a page payload and every export stay
+// reasonable. Cells may be empty; rows are padded to a rectangle on export.
+const TABLE_MAX_ROWS = 50;
+const TABLE_MAX_COLS = 12;
+const TABLE_MAX_CELL = 2000;
 // Display width (% of the content column) per image size preset. Shared intent
 // with the frontend (docs.module.css / BlockView + BlockEditor size control).
 const IMG_SIZE_PCT = { small: 34, medium: 55, large: 80, full: 100 };
@@ -398,6 +403,32 @@ function blockContentError(type, content) {
         return `image content size must be one of ${IMG_SIZES.join(', ')}`;
       }
       return null;
+    case 'table': {
+      if (!Array.isArray(content.rows) || content.rows.length === 0) {
+        return 'table content requires a non-empty rows array';
+      }
+      if (content.rows.length > TABLE_MAX_ROWS) {
+        return `table supports at most ${TABLE_MAX_ROWS} rows`;
+      }
+      for (const row of content.rows) {
+        if (!Array.isArray(row) || row.length === 0) {
+          return 'each table row must be a non-empty array of cells';
+        }
+        if (row.length > TABLE_MAX_COLS) {
+          return `table supports at most ${TABLE_MAX_COLS} columns`;
+        }
+        if (row.some((cell) => typeof cell !== 'string')) {
+          return 'table cells must be strings';
+        }
+        if (row.some((cell) => cell.length > TABLE_MAX_CELL)) {
+          return `table cells must be at most ${TABLE_MAX_CELL} characters`;
+        }
+      }
+      if (content.caption !== undefined && content.caption !== null && typeof content.caption !== 'string') {
+        return 'table content caption must be a string';
+      }
+      return null;
+    }
     default:
       return `block_type must be one of ${BLOCK_TYPES.join(', ')}`;
   }
@@ -778,6 +809,17 @@ function prettyBody(body) {
   }
 }
 
+// Pad table rows to a rectangle so a ragged editor grid still exports cleanly.
+function tableRect(rows) {
+  const list = Array.isArray(rows) ? rows.filter(Array.isArray) : [];
+  const cols = list.reduce((m, r) => Math.max(m, r.length), 0);
+  return list.map((r) => Array.from({ length: cols }, (_, i) => (typeof r[i] === 'string' ? r[i] : '')));
+}
+
+function tableCellEsc(s) {
+  return String(s).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
 function blockToMarkdown(b) {
   const c = b.content || {};
   switch (b.type) {
@@ -809,6 +851,18 @@ function blockToMarkdown(b) {
       const alt = typeof c.alt === 'string' ? c.alt : '';
       const caption = typeof c.caption === 'string' && c.caption ? ` *${c.caption}*` : '';
       return `![${alt}](${c.src})${caption}`;
+    }
+    case 'table': {
+      const rows = tableRect(c.rows);
+      if (rows.length === 0) return '';
+      const head = rows[0];
+      const lines = [
+        `| ${head.map(tableCellEsc).join(' | ')} |`,
+        `| ${head.map(() => '---').join(' | ')} |`,
+      ];
+      for (const row of rows.slice(1)) lines.push(`| ${row.map(tableCellEsc).join(' | ')} |`);
+      if (typeof c.caption === 'string' && c.caption) lines.push('', `*${c.caption}*`);
+      return lines.join('\n');
     }
     default:
       return '';
@@ -849,6 +903,18 @@ function blockToHtml(b) {
       const caption =
         typeof c.caption === 'string' && c.caption ? `<figcaption>${escHtml(c.caption)}</figcaption>` : '';
       return `<figure class="image-fig"><img src="${escHtml(src)}" alt="${escHtml(alt)}" style="max-width:${width}%" />${caption}</figure>`;
+    }
+    case 'table': {
+      const rows = tableRect(c.rows);
+      if (rows.length === 0) return '';
+      const [head, ...rest] = rows;
+      const th = head.map((h) => `<th>${escHtml(h)}</th>`).join('');
+      const body = rest
+        .map((r) => `<tr>${r.map((cell) => `<td>${escHtml(cell)}</td>`).join('')}</tr>`)
+        .join('');
+      const caption =
+        typeof c.caption === 'string' && c.caption ? `<caption>${escHtml(c.caption)}</caption>` : '';
+      return `<table>${caption}<thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
     }
     default:
       return '';
