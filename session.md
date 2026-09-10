@@ -1833,47 +1833,46 @@ Reordering allowed when Ranjith picks each segment. **All segments DR1–DR7
 shipped (DR1–DR3 `c4fd25b`…`7362bed`, DR4 `c36f90a`, DR6 `14ef23b`, DR5
 `073d460`, DR7 below).**
 
-## Pending — Enhancement round 4 (planned 2026-09-09; priority order below; each a shippable micro-turn, none started, `[ ]`)
+## Enhancement round 4 (shipped 2026-09-09; E1–E5 all DONE, built in parallel by five agents then coordinator-wired in `52e76da`)
 
-Suggested from a capability audit after Docs round 3. Ordered by leverage:
-contract-awareness and monitoring compound with the code that already exists
-(assertions, cron automations, notifications, the new OpenAPI spec); the AI and
-collaboration items are larger and can follow. Reorder allowed when Ranjith
-picks each segment.
+Suggested from a capability audit after Docs round 3 and delivered in priority
+order. Each landed with its own migration (032–036), backend router, integration
+suite on an isolated scratch cluster, and a frontend panel + `/…` route; all
+views are mounted in `server.js`/`AppShell` and linked from the sidebar rail.
 
-- [ ] **E1 (P1, recommended next) — OpenAPI import + contract validation**:
-  import an external OpenAPI/Swagger 3.x spec and (a) generate a
-  collection/folders/requests, (b) validate live responses against the operation
-  schema as a first-class assertion, and (c) diff spec versions and flag
-  breaking changes. Builds on the assertion engine, collection import/export and
-  the `api/openapi.json` precedent. Likely a new `openapi` import module +
-  `spec_contracts` migration + a docs/collections surface. Open decisions:
-  spec storage (per project vs per collection), contract source of truth (repo
-  file vs uploaded), how to attach a contract to a request (operationId vs
-  path+method), and whether a failing contract marks the run FAILED.
-- [ ] **E2 (P2) — API monitoring & alerting**: promote `SCHEDULE` automations
-  into monitored checks with pass/fail streaks, p95 latency, configurable
-  failure thresholds, alert channels (email/Slack/Discord/webhook) and an
-  optional public status page. Builds on `automations.js` cron engine,
-  `notifications.js` and run history. Open decisions: alert delivery channels to
-  support first, retry/backoff policy, and status-page audience (public vs
-  workspace).
-- [ ] **E3 (P3) — Mock server scenarios & call logs**: conditional responses
-  (match on headers/query/body), named scenarios, stateful sequences, and a
-  captured request log with replay. Builds on `mockServers.js` (which already has
-  `delayMs` + static routes). Open decisions: matching DSL (glob/regex/JSONPath),
-  state store location (in-memory vs DB), and log retention.
-- [ ] **E4 (P4) — AI copilot for requests and tests**: generate assertions,
-  example bodies and docs from a request/response, and explain failed runs in
-  plain language. On-brand with the MonkeyCode platform; reuse the docs
-  generator, assertion engine and credential redaction so secrets never reach
-  the prompt. Open decisions: which model/provider, opt-in scope, and a
-  user-supplied key (`USER_LLM_*`) vs platform-provided.
-- [ ] **E5 (P5) — Collaboration: comments, review and version diff**: comment
-  threads on a request/collection, an approval/review flow for proposed API
-  changes, and a diff between collection versions. Builds on `logAudit`, the
-  share/notification infra and collection versioning. Open decisions: versioning
-  model (snapshot per save vs explicit versions) and review scope.
+- [x] **E1 — OpenAPI import + contract validation** (`d8d53e6`, migration 032):
+  import OpenAPI/Swagger 3.x → generate a collection/folders/requests; attach
+  response-schema contracts to requests and validate live responses; diff two
+  spec versions for breaking changes. New `backend/src/api/openapi.js` +
+  `routes/contracts.js`; suite `contracts.integration.test.cjs` 8/8; UI
+  `ContractPanel` at `/contracts`.
+- [x] **E2 — API monitoring & alerting** (`88eccc8`, migration 033): monitored
+  checks on a cron with pass/fail streaks, p95 latency, failure thresholds, and
+  webhook + in-app alerts with recovery; new `monitorRunner.js` +
+  `routes/monitors.js`; suite `monitors.integration.test.cjs` 5/5; UI
+  `MonitorsPanel` at `/monitors`; `startMonitorScheduler()` runs on boot.
+- [x] **E3 — Mock server scenarios & call logs** (`203aeea`, migration 034):
+  header/query/body conditional responses, named scenarios, stateful
+  cycle/advance sequences, and a redacted call log with replay; new
+  `mockMatcher.js` + `routes/mockScenarios.js`; suite
+  `mockScenarios.integration.test.cjs` 13/13; UI `MockScenariosPanel` at
+  `/mock-scenarios`; scenario middleware mounted ahead of `mockDispatch`.
+- [x] **E4 — AI copilot** (`10235a0`, migration 035): provider abstraction in
+  `backend/src/api/llm.js` reading only `USER_LLM_API_KEY`/`_BASE_URL`/`_MODEL`
+  (503 when unconfigured, redaction before send), with generate-assertions,
+  explain-run and generate-docs capabilities; suite
+  `copilot.integration.test.cjs` 5/5 (stubbed model); UI `CopilotPanel` at
+  `/copilot`.
+- [x] **E5 — Collaboration: comments, review and version diff** (`7ebc666`,
+  migration 036): comment threads, a collection review flow
+  (`none|pending|approved|changes_requested`) and explicit version snapshots
+  with a diff; new `collabDiff.js` + `routes/comments|reviews|versions.js`; suite
+  `collab.integration.test.cjs` 7/7; UI `CollabView` at `/collab`.
+
+Verification: backend unit 47/47, frontend unit 89/89, `tsc --noEmit` clean,
+`next build` green (5 new static routes); migrations 032–036 applied to the dev
+DB and the backend/frontend dev servers restarted; `/api/{contracts,monitors,
+copilot,mock-scenarios,collab}` all reachable through the frontend proxy.
 
 ## Roadmap
 
