@@ -85,7 +85,7 @@ async function resolveCollection(req, project, manifest, summary, exec) {
     await exec(`UPDATE collections SET source = COALESCE(source, $2) WHERE id = $1`, [existing.id, manifest.source]);
     return existing;
   }
-  const gate = await checkCountGate({ userId: req.user.id, orgId: await orgOfProject(project.id), key: 'collections' });
+  const gate = await checkCountGate({ userId: req.user.id, orgId: await orgOfProject(project.id, exec), key: 'collections', exec });
   if (gate) return { error: { status: 403, body: gate } };
   const used = (await exec(`SELECT name FROM collections WHERE project_id = $1`, [project.id])).rows.map((r) => r.name);
   const collection = (await exec(
@@ -169,7 +169,7 @@ async function upsertRequests(req, collection, manifest, folderIdByKey, summary,
     const gate = await checkCountGate({
       userId: req.user.id, orgId: await orgOfProject(collection.project_id || (await exec(
         `SELECT project_id FROM collections WHERE id = $1`, [collection.id]
-      )).rows[0].project_id), key: 'api_requests', extra: 1,
+      )).rows[0].project_id, exec), key: 'api_requests', extra: 1, exec,
     });
     if (gate) return { error: { status: 403, body: gate } };
 

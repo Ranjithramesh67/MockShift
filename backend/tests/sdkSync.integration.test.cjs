@@ -200,6 +200,9 @@ test('token create validates and returns project binding', async () => {
   });
   assert.equal(bad.status, 400);
 
+  const blank = await admin.api('POST', '/api/tokens', { name: 'Blank', scopes: ['sdk'], projectId: '   ' });
+  assert.equal(blank.status, 400);
+
   const both = await admin.api('POST', '/api/tokens', {
     name: 'Both', scopes: ['sdk'], projectId, workspaceId,
   });

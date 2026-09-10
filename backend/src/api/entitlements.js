@@ -236,7 +236,7 @@ async function resolveLimits(userId, orgId = null) {
 // Live usage counters for an org pool (single query). seats = distinct people
 // with any access inside the org (org members + workspace/team/project members
 // of the org's resources).
-async function countPoolUsage(orgId) {
+async function countPoolUsage(orgId, exec = query) {
   if (!orgId) {
     return {
       workspaces: 0,
@@ -249,7 +249,7 @@ async function countPoolUsage(orgId) {
       doc_pages: 0,
     };
   }
-  const { rows } = await query(
+  const { rows } = await exec(
     `SELECT
        (SELECT count(*)::int FROM workspaces WHERE organization_id = $1) AS workspaces,
        (SELECT count(*)::int
@@ -346,12 +346,12 @@ function planLimitBody({ key, limit, used, planKey, planName, label }) {
  * body when the org pool is at/over the (enforced) limit and creating `extra`
  * more would exceed it; else null.
  */
-async function checkCountGate({ userId, orgId, key, extra = 1 }) {
+async function checkCountGate({ userId, orgId, key, extra = 1, exec = query }) {
   const en = await resolveLimits(userId, orgId);
   if (!en.enforced) return null;
   const limit = en.limits[key];
   if (limit === null || limit === undefined) return null;
-  const usage = await countPoolUsage(orgId);
+  const usage = await countPoolUsage(orgId, exec);
   const used = usage[key];
   if (used === undefined) return null;
   if (used + extra > limit) {
@@ -371,9 +371,9 @@ async function orgOfWorkspace(workspaceId) {
   return rows[0]?.organization_id || null;
 }
 
-async function orgOfProject(projectId) {
+async function orgOfProject(projectId, exec = query) {
   if (!projectId) return null;
-  const { rows } = await query(
+  const { rows } = await exec(
     `SELECT w.organization_id FROM projects p JOIN workspaces w ON w.id = p.workspace_id WHERE p.id = $1`,
     [projectId]
   );

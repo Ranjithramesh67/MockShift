@@ -3,14 +3,14 @@
 const crypto = require('crypto');
 const { Router } = require('express');
 const { query } = require('../db');
-const { requireAuth } = require('../access');
-const { getProjectAccess, roleAtLeast, canMutateWorkspace } = require('../access');
+const { requireAuth, getProjectAccess, roleAtLeast, canMutateWorkspace } = require('../access');
 const { hashToken } = require('../tokenAuth');
 
 const router = Router();
 router.use(requireAuth);
 
 const ALLOWED_SCOPES = new Set(['read', 'write', 'runs', 'sdk']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN_PREFIX_MARK = 'tkh_';
 const TOKEN_PREFIX_LEN = 12;
 const TOKEN_BODY_BYTES = 24;
@@ -70,23 +70,27 @@ router.post('/', async (req, res, next) => {
 
     const scopes = normalizeScopes(body.scopes);
     if (!scopes) {
-      return res.status(400).json({ error: 'scopes must be a subset of read, write and runs' });
+      return res.status(400).json({ error: 'scopes must be a subset of read, write, runs and sdk' });
     }
 
-    const projectId = body.projectId ? String(body.projectId).trim() : null;
-    const workspaceId = body.workspaceId ? String(body.workspaceId).trim() : null;
+    const projectId = body.projectId != null ? String(body.projectId).trim() : null;
+    const workspaceId = body.workspaceId != null ? String(body.workspaceId).trim() : null;
     if (projectId && workspaceId) {
       return res.status(400).json({ error: 'A token can bind to a project OR a workspace, not both' });
     }
-    if (projectId) {
-      if (!/^[0-9a-f-]{36}$/i.test(projectId)) return res.status(400).json({ error: 'projectId must be a valid uuid' });
+    if (body.projectId != null) {
+      if (!projectId || !UUID_RE.test(projectId)) {
+        return res.status(400).json({ error: 'projectId must be a valid uuid' });
+      }
       const access = await getProjectAccess(req.user.id, projectId);
       if (!access || !roleAtLeast(access.level, 'EDITOR')) {
         return res.status(403).json({ error: 'Editor, manager or admin access required for this project' });
       }
     }
-    if (workspaceId) {
-      if (!/^[0-9a-f-]{36}$/i.test(workspaceId)) return res.status(400).json({ error: 'workspaceId must be a valid uuid' });
+    if (body.workspaceId != null) {
+      if (!workspaceId || !UUID_RE.test(workspaceId)) {
+        return res.status(400).json({ error: 'workspaceId must be a valid uuid' });
+      }
       if (!(await canMutateWorkspace(req.user.id, workspaceId))) {
         return res.status(403).json({ error: 'Workspace write access required' });
       }
