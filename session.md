@@ -1759,17 +1759,17 @@ Split (each a shippable micro-turn; none started, `[ ]`):
   NOT inherited down the tree (a PRIVATE child under a PUBLIC parent stays
   closed). Tabs UI shipped §5.57.*
 
-- [ ] **DR4 — Confluence-style doc tree (spaces per team)** (backend DONE §5.54, tree UI DONE §5.55; spaces/team binding pending O4): `doc_pages` gains
+- [x] **DR4 — Confluence-style doc tree (spaces per team)** (DONE 2026-09-09: backend §5.54 + tree UI §5.55 + spaces/ordering §5.58): `doc_pages` gains
   `parent_id` (self-FK) + `space`/`team_id` binding + ordering; a tree/space
   sidebar replaces the flat home list (collapsible, nested sub-doc creation,
   move/reparent, depth guard), inherits parent access; `/docs?p=` deep-link +
   Back behaviour and the read/write RLS inherit cleanly.
-  *Backend shipped 2026-09-09 (migration 029 + §5.54): `parent_id` self-FK
-  (same-workspace, cascade delete), `POST /docs` `parentId`, `PUT
-  /docs/:pageId` reparent with self/descendant-cycle + `MAX_TREE_DEPTH`=24
-  guards, ancestor-chain share read inheritance + subtree cascade. Pending:
-  `space`/`team_id` binding + ordering (O4), and the tree/space sidebar UI
-  (collapsible, nested create, move affordances).*
+  *Backend shipped (migration 029 + §5.54): `parent_id` self-FK (same-workspace,
+  cascade delete), `POST /docs` `parentId`, `PUT /docs/:pageId` reparent with
+  self/descendant-cycle + `MAX_TREE_DEPTH`=24 guards, ancestor-chain share read
+  inheritance + subtree cascade. Spaces/ordering shipped §5.58 (O4 RESOLVED:
+  space = workspace, `team_id` optional binding + `position` sibling order;
+  tree home UI with team filter/chip + reorder).*
 - [ ] **DR5 — Confluence export / copy-to-clipboard**: produce paste-friendly
   Confluence HTML (headings/list/code/table → rich-text paste) from the doc;
   toolbar "Copy for Confluence" uses clipboard `text/html` (O5); reuses the

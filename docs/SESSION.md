@@ -838,6 +838,39 @@ or a commit checkpoint is agreed).
   is verified via backend integration + build so far); e2e + commit optional and
   pending user go-ahead.
 
+### 5.58 Docs round 3 DR4 remainder — team spaces + sibling ordering (2026-09-09)
+
+Completes DR4 on top of §5.54 (visibility/tree backend) and §5.55 (tree home).
+O4 resolved: a Confluence "space" is a workspace and the existing Teams are
+reused for the per-team grouping.
+
+- **Migration `030_docs_spaces_ordering.sql`** (applied to the dev DB and the
+  scratch cluster) — `doc_pages.team_id uuid NULL REFERENCES teams(id) ON DELETE
+  SET NULL` (optional space binding) and `doc_pages.position integer NOT NULL
+  DEFAULT 0` (sibling order within `(workspace_id, parent_id)`); indexes
+  `doc_pages_sibling_order_idx` + `doc_pages_team_idx`.
+- **Backend `src/api/routes/docs.js`** — page rows/summaries carry
+  `teamId`/`teamName`/`position` (list, detail, `/docs/shared`); `POST /docs`
+  accepts `teamId` (validated against the workspace's owning organization, and
+  inherited from the parent for sub-pages) and appends at the next sibling
+  position; `PUT /docs/:pageId` accepts `teamId` (null clears), `position`
+  (non-negative integer), and appends to the new sibling set when reparented
+  without an explicit position. New helpers `teamInOrg` + `nextSiblingPosition`.
+- **New suite `backend/tests/docsSpaces.integration.test.cjs`** — 5 tests green
+  on scratch 5433: team binding + append order round-trip through create/list,
+  foreign-org/ malformed team rejection, child inheritance + sibling append,
+  PUT reorder/clear/negative guard/foreign-team guard, reparent-append. Docs
+  regression suites (`docsTreeVisibility` 7, `docsShares` 5,
+  `docsShareAudiences` 6) stay green.
+- **Frontend** — `docsApi` types gain `teamId`/`teamName`/`position` and the
+  create/update inputs accept them; `NewPageModal` offers an optional
+  "Team space" select for root pages (teams of the workspace); `DocsHome` loads
+  workspace teams, adds an "All teams" filter, shows a team chip on bound rows,
+  sorts siblings by `position` then title, and adds move-up/move-down buttons
+  that rewrite sibling positions.
+- **Verification** — FE `tsc --noEmit` clean, unit tests green, `next build`
+  green; backend api unit green.
+
 ### 5.57 Docs round 3 DR3 — Private / Public / Shared-with-me tabs (2026-09-09)
 
 DR3 built on the §5.54 visibility backend (`doc_pages.visibility`,
