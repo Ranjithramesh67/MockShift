@@ -1748,18 +1748,18 @@ Split (each a shippable micro-turn; none started, `[ ]`):
   teams) + permission display + revoke list + "copy link"; notify recipients
   (existing notification/mail infra); doc home gains a "Shared with me"
   section grouping inbound shares by team/org.
-- [ ] **DR3 — Private/public tabs + visibility**: explicit `doc_pages.visibility`
+- [x] **DR3 — Private/public tabs + visibility** (DONE 2026-09-09, DR2 commit `c4fd25b` + DR3): explicit `doc_pages.visibility`
   (`PRIVATE` default / `PUBLIC`), enforcement in read/gate paths; DocsHome
-  reworked into tabs (Private / Public / Shared with me, plus by-team grouping
-  once DR4 lands); create/import actions keep the current UX.
+  reworked into tabs (Private / Public / Shared with me + Access requests);
+  create/import actions keep the current UX.
   *Backend shipped 2026-09-09 (migration 029 + §5.54): `visibility` column +
   PUBLIC-org reads in `canReadPage`, `GET /docs?visibility=`, `POST/PUT`
   visibility. O2 for visibility RESOLVED: PUBLIC = owning-org members only,
   anonymous stays share-token; O3 RESOLVED: visibility is enforced per page,
   NOT inherited down the tree (a PRIVATE child under a PUBLIC parent stays
-  closed). Pending: DocsHome Private/Public/Shared-with-me tabs UI (Shared
-  feed already served by `GET /docs/shared`).*
-- [ ] **DR4 — Confluence-style doc tree (spaces per team)**: `doc_pages` gains
+  closed). Tabs UI shipped §5.57.*
+
+- [ ] **DR4 — Confluence-style doc tree (spaces per team)** (backend DONE §5.54, tree UI DONE §5.55; spaces/team binding pending O4): `doc_pages` gains
   `parent_id` (self-FK) + `space`/`team_id` binding + ordering; a tree/space
   sidebar replaces the flat home list (collapsible, nested sub-doc creation,
   move/reparent, depth guard), inherits parent access; `/docs?p=` deep-link +
