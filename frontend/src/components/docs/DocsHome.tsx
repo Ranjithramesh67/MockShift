@@ -50,7 +50,7 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [q, setQ] = useState('');
   const [appliedQ, setAppliedQ] = useState('');
-  const [tab, setTab] = useState<'pages' | 'requests'>('pages');
+  const [tab, setTab] = useState<'private' | 'public' | 'shared' | 'requests'>('private');
   const [pages, setPages] = useState<DocsPageSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -115,7 +115,7 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
   }, [workspaceId]);
 
   const loadPages = useCallback(async () => {
-    if (!workspaceId || tab !== 'pages') {
+    if (!workspaceId || (tab !== 'private' && tab !== 'public')) {
       setLoading(false);
       return;
     }
@@ -123,7 +123,12 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
     setLoading(true);
     setError('');
     try {
-      const res = await docsApi.list({ workspaceId, projectId: projectId || undefined, q: appliedQ || undefined });
+      const res = await docsApi.list({
+        workspaceId,
+        projectId: projectId || undefined,
+        q: appliedQ || undefined,
+        visibility: tab === 'public' ? 'PUBLIC' : 'PRIVATE',
+      });
       if (run === seq.current) setPages(res.pages);
     } catch (err) {
       if (run === seq.current) setError(err instanceof Error ? err.message : 'Failed to load pages');
@@ -150,6 +155,11 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
     void loadShared();
   }, [loadShared]);
 
+  // Refresh the inbound-shares feed whenever the Shared tab is opened.
+  useEffect(() => {
+    if (tab === 'shared') void loadShared();
+  }, [tab, loadShared]);
+
   useEffect(() => {
     loadPages();
   }, [loadPages]);
@@ -158,10 +168,10 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
   // tree would hide matches whose ancestors did not match).
   const searching = appliedQ.length > 0;
 
-  // Collapse everything when the scope or the query changes.
+  // Collapse everything when the scope, the query or the tab changes.
   useEffect(() => {
     setCollapsedIds(new Set());
-  }, [workspaceId, projectId, searching]);
+  }, [workspaceId, projectId, searching, tab]);
 
   const byParent = useMemo(() => {
     const map = new Map<string | null, DocsPageSummary[]>();
@@ -270,7 +280,7 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
     setCreating(false);
     setSubParent(null);
     setWorkspaceId(page.workspaceId);
-    setTab('pages');
+    setTab('private');
     void loadPages();
     void loadShared();
     onOpenPage(page.id);
@@ -392,8 +402,14 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
       </div>
 
       <div className="manage-tabs" data-testid="docs-tabs">
-        <button type="button" className={`manage-tab ${tab === 'pages' ? 'active' : ''}`} data-testid="docs-tab-pages" onClick={() => setTab('pages')}>
-          Pages
+        <button type="button" className={`manage-tab ${tab === 'private' ? 'active' : ''}`} data-testid="docs-tab-private" onClick={() => setTab('private')}>
+          Private
+        </button>
+        <button type="button" className={`manage-tab ${tab === 'public' ? 'active' : ''}`} data-testid="docs-tab-public" onClick={() => setTab('public')}>
+          Public
+        </button>
+        <button type="button" className={`manage-tab ${tab === 'shared' ? 'active' : ''}`} data-testid="docs-tab-shared" onClick={() => setTab('shared')}>
+          Shared with me{sharedGroups.length > 0 ? ` (${sharedGroups.reduce((n, g) => n + g.pages.length, 0)})` : ''}
         </button>
         <button type="button" className={`manage-tab ${tab === 'requests' ? 'active' : ''}`} data-testid="docs-tab-requests" onClick={() => setTab('requests')}>
           Access requests
@@ -406,8 +422,57 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
         ) : (
           <p className="hint">Select a workspace to view access requests.</p>
         )
+      ) : tab === 'shared' ? (
+        <section className={styles.sharedWrap} data-testid="docs-shared-section">
+          <div className={styles.sharedHead}>
+            <h2>Shared with me</h2>
+            <span className={styles.sharedCount}>
+              {sharedGroups.reduce((n, g) => n + g.pages.length, 0)}
+            </span>
+          </div>
+          <p className={styles.treeHint}>
+            Pages people shared with your teams or organization, and docs shared with you directly.
+          </p>
+          {sharedLoading && sharedPages.length === 0 && (
+            <p className="hint" data-testid="docs-shared-loading">
+              Loading shared docs…
+            </p>
+          )}
+          {!sharedLoading && sharedGroups.length === 0 && (
+            <p className="hint" data-testid="docs-shared-empty">
+              Nothing has been shared with you yet.
+            </p>
+          )}
+          {sharedGroups.map((group) => (
+            <div key={group.label} className={styles.sharedGroup} data-testid="docs-shared-group">
+              <h3 className={styles.sharedGroupTitle}>{group.label}</h3>
+              <ul className={styles.sharedList}>
+                {group.pages.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      className={styles.sharedItem}
+                      data-testid={`docs-shared-page-${p.id}`}
+                      onClick={() => onOpenPage(p.id)}
+                    >
+                      <FileIcon size={14} />
+                      <span className={styles.sharedItemMain}>
+                        <span className={styles.sharedItemTitle}>{p.title || 'Untitled page'}</span>
+                        <span className={styles.sharedItemMeta}>
+                          {p.workspaceName} · updated {fmtDate(p.updatedAt)}
+                        </span>
+                      </span>
+                      <span className={styles.sharedItemOpen}>
+                        Open <ChevronIcon size={12} />
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </section>
       ) : (
-        <>
         <div className="table-wrap table-stack">
           {error && (
             <p className="auth-error" role="alert" data-testid="docs-list-error">
@@ -523,7 +588,9 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
               {!loading && !error && pages.length === 0 && (
                 <tr>
                   <td colSpan={5} className="hint" data-testid="docs-pages-empty">
-                    No pages yet{workspaceId ? '' : ' for this workspace'}. Click “New page” to write the first one.
+                    {tab === 'public'
+                      ? 'No public pages yet. Make a page public from the Private tab or with the visibility control.'
+                      : `No private pages yet${workspaceId ? '' : ' for this workspace'}. Click “New page” to write the first one.`}
                   </td>
                 </tr>
               )}
@@ -536,52 +603,6 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
             </p>
           )}
         </div>
-
-        {sharedGroups.length > 0 && (
-          <section className={styles.sharedWrap} data-testid="docs-shared-section">
-            <div className={styles.sharedHead}>
-              <h2>Shared with me</h2>
-              <span className={styles.sharedCount}>{sharedGroups.reduce((n, g) => n + g.pages.length, 0)}</span>
-            </div>
-            <p className={styles.treeHint}>
-              Pages people shared with your teams or organization, and docs shared with you directly.
-            </p>
-            {sharedGroups.map((group) => (
-              <div key={group.label} className={styles.sharedGroup} data-testid="docs-shared-group">
-                <h3 className={styles.sharedGroupTitle}>{group.label}</h3>
-                <ul className={styles.sharedList}>
-                  {group.pages.map((p) => (
-                    <li key={p.id}>
-                      <button
-                        type="button"
-                        className={styles.sharedItem}
-                        data-testid={`docs-shared-page-${p.id}`}
-                        onClick={() => onOpenPage(p.id)}
-                      >
-                        <FileIcon size={14} />
-                        <span className={styles.sharedItemMain}>
-                          <span className={styles.sharedItemTitle}>{p.title || 'Untitled page'}</span>
-                          <span className={styles.sharedItemMeta}>
-                            {p.workspaceName} · updated {fmtDate(p.updatedAt)}
-                          </span>
-                        </span>
-                        <span className={styles.sharedItemOpen}>
-                          Open <ChevronIcon size={12} />
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </section>
-        )}
-        {sharedLoading && sharedPages.length === 0 && (
-          <p className="hint" data-testid="docs-shared-loading">
-            Loading shared docs…
-          </p>
-        )}
-        </>
       )}
 
       {creating && (
