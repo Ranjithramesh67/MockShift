@@ -921,17 +921,19 @@ function blockToHtml(b) {
   }
 }
 
-// GET /docs/:pageId/export?format=markdown|html|word|json -> file download.
+// GET /docs/:pageId/export?format=markdown|html|word|confluence|json -> download.
 // Same read gate as GET /:pageId. Filename: doc-<slug>-<first8 of id>.<ext>.
 // html/word share the app theme (see EXPORT_THEME_CSS): html backs the in-app
 // "Print or save as PDF" flow, word is the same themed markup served as a
-// Word-compatible .doc so the brand look survives into Office.
+// Word-compatible .doc so the brand look survives into Office. confluence is a
+// neutral, un-themed HTML fragment (headings/lists/code/table) meant to be put
+// on the clipboard as text/html and pasted into a Confluence editor (O5).
 router.get('/:pageId/export', async (req, res, next) => {
   try {
     const { pageId } = req.params;
     const format = String(req.query.format || '').toLowerCase();
-    if (!['markdown', 'html', 'word', 'json'].includes(format)) {
-      return res.status(400).json({ error: 'format must be markdown, html, word or json' });
+    if (!['markdown', 'html', 'word', 'confluence', 'json'].includes(format)) {
+      return res.status(400).json({ error: 'format must be markdown, html, word, confluence or json' });
     }
     if (!isUuid(pageId)) return res.status(404).json({ error: 'Page not found' });
     const page = await pageRow(pageId);
@@ -957,6 +959,13 @@ router.get('/:pageId/export', async (req, res, next) => {
       body = `# ${page.title}\n\n${meta}\n\n${rendered}\n`;
       ext = 'md';
       contentType = 'text/markdown; charset=utf-8';
+    } else if (format === 'confluence') {
+      // Paste target is a rich-text editor, so emit a fragment with no page
+      // chrome or app theme; blockToHtml already escapes all text.
+      const rendered = blocks.map(blockToHtml).filter((s) => s !== '').join('\n');
+      body = `<h1>${escHtml(page.title)}</h1>\n${rendered}\n`;
+      ext = 'html';
+      contentType = 'text/html; charset=utf-8';
     } else if (format === 'html' || format === 'word') {
       const metaName = (summary.updatedBy && summary.updatedBy.name) || summary.createdBy.name || 'Unknown';
       const meta = `Last updated ${new Date(page.updated_at).toISOString()} by ${escHtml(metaName)}`;

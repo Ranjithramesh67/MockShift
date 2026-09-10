@@ -56,6 +56,41 @@ function legacyCopy(text: string): Promise<void> {
   return Promise.resolve();
 }
 
+// Render an HTML fragment to plain text (fallback clipboard flavour so pasting
+// into apps that don't take rich text still lands readable content).
+function htmlToPlain(html: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return doc.body.textContent ?? '';
+  } catch {
+    return html;
+  }
+}
+
+// Copy rich text (text/html + plain fallback) so Confluence and other rich-text
+// editors paste headings, lists, code and tables without manual reformatting.
+async function copyHtml(html: string): Promise<void> {
+  const plain = htmlToPlain(html);
+  if (
+    typeof navigator !== 'undefined' &&
+    navigator.clipboard?.write &&
+    typeof ClipboardItem !== 'undefined'
+  ) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        }),
+      ]);
+      return;
+    } catch {
+      // Clipboard rich-write unsupported/blocked — fall back to plain copy.
+    }
+  }
+  return copyText(plain || html);
+}
+
 const EXPORT_FORMATS: Array<{ format: DocExportFormat; label: string; desc: string }> = [
   { format: 'markdown', label: 'Markdown', desc: '.md file' },
   { format: 'html', label: 'HTML', desc: 'standalone page' },
@@ -152,6 +187,24 @@ export function ExportMenu({ pageId, title }: { pageId: string; title: string })
     }
   };
 
+  const copyForConfluence = async () => {
+    setBusy('confluence');
+    setOpen(false);
+    try {
+      const html = await fetchDocExport(pageId, 'confluence');
+      await copyHtml(html);
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'success',
+        message: 'Copied for Confluence — paste into a Confluence page.',
+      });
+    } catch (err) {
+      toastError(err);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className={styles.actionMenuWrap} ref={wrapRef}>
       <button
@@ -169,6 +222,18 @@ export function ExportMenu({ pageId, title }: { pageId: string; title: string })
       </button>
       {open && (
         <div className={styles.actionMenu} data-testid="docs-export-menu" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            className={styles.actionMenuItem}
+            data-testid="docs-export-confluence"
+            disabled={busy !== null}
+            onClick={copyForConfluence}
+          >
+            Copy for Confluence
+            <span className={styles.actionMenuHint}>Rich HTML on the clipboard — paste into a Confluence page</span>
+          </button>
+          <div className={styles.actionMenuSep} />
           {EXPORT_FORMATS.map((item) => (
             <button
               key={item.format}

@@ -103,7 +103,7 @@ export interface DocsUsage {
   limits: { doc_pages: number | null; api_requests: number | null; mock_servers: number | null };
 }
 
-export type DocExportFormat = 'markdown' | 'html' | 'word' | 'json';
+export type DocExportFormat = 'markdown' | 'html' | 'word' | 'json' | 'confluence';
 
 export interface DocsShareInfo {
   token: string;
