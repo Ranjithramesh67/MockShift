@@ -8,10 +8,10 @@
 // repeated syncs update in place. Access + plan gates mirror contracts.js.
 
 const { Router } = require('express');
-const { query, pool } = require('../db');
+const { pool } = require('../db');
 const { tokenAuth } = require('../tokenAuth');
 const { getProjectAccess, roleAtLeast, canMutateWorkspace } = require('../access');
-const { checkCountGate, orgOfProject } = require('../entitlements');
+const { checkCountGate, orgOfProject, orgOfWorkspace } = require('../entitlements');
 const { normalizeManifest, pickUniqueName } = require('../sdkManifest');
 
 const router = Router();
@@ -20,20 +20,20 @@ router.use(tokenAuth);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v) => typeof v === 'string' && UUID_RE.test(v);
 
-async function projectRow(projectId) {
-  const { rows } = await query(
+async function projectRow(projectId, exec) {
+  const { rows } = await exec(
     `SELECT p.id, p.name, p.workspace_id FROM projects p WHERE p.id = $1`,
     [projectId]
   );
   return rows[0] || null;
 }
 
-async function resolveProject(req, manifest) {
+async function resolveProject(req, manifest, exec) {
   const token = req.apiToken;
   let project = null;
 
   if (token.project_id) {
-    project = await projectRow(token.project_id);
+    project = await projectRow(token.project_id, exec);
     if (!project) return { error: { status: 403, body: { error: 'Bound project no longer exists' } } };
     const access = await getProjectAccess(req.user.id, project.id);
     if (!access || !roleAtLeast(access.level, 'EDITOR')) {
@@ -43,18 +43,20 @@ async function resolveProject(req, manifest) {
   }
 
   if (token.workspace_id) {
-    const workspace = (await query(`SELECT id FROM workspaces WHERE id = $1`, [token.workspace_id])).rows[0];
+    const workspace = (await exec(`SELECT id FROM workspaces WHERE id = $1`, [token.workspace_id])).rows[0];
     if (!workspace) return { error: { status: 403, body: { error: 'Bound workspace no longer exists' } } };
     if (!(await canMutateWorkspace(req.user.id, workspace.id))) {
       return { error: { status: 403, body: { error: 'Workspace write access required' } } };
     }
     const name = manifest.project || 'SDK Sync';
-    const existing = (await query(
+    const existing = (await exec(
       `SELECT id, name, workspace_id FROM projects WHERE workspace_id = $1 AND name = $2 ORDER BY id LIMIT 1`,
       [workspace.id, name]
     )).rows[0];
     if (existing) return { project: existing };
-    const created = (await query(
+    const gate = await checkCountGate({ userId: req.user.id, orgId: await orgOfWorkspace(workspace.id, exec), key: 'projects', extra: 1, exec });
+    if (gate) return { error: { status: 403, body: gate } };
+    const created = (await exec(
       `INSERT INTO projects (workspace_id, name) VALUES ($1, $2) RETURNING id, name, workspace_id`,
       [workspace.id, name]
     )).rows[0];
@@ -66,7 +68,7 @@ async function resolveProject(req, manifest) {
   if (!isUuid(projectId)) {
     return { error: { status: 400, body: { error: 'Provide projectId, or use a project/workspace-bound key' } } };
   }
-  project = await projectRow(projectId);
+  project = await projectRow(projectId, exec);
   if (!project) return { error: { status: 404, body: { error: 'Project not found' } } };
   const access = await getProjectAccess(req.user.id, project.id);
   if (!access || !roleAtLeast(access.level, 'EDITOR')) {
@@ -194,7 +196,7 @@ async function upsertRequests(req, collection, manifest, folderIdByKey, summary,
     summary.requests.created += 1;
   }
 
-  if (manifest.prune) {
+  if (manifest.prune && manifest.requests.length > 0) {
     const { rows } = await exec(
       `DELETE FROM api_requests
         WHERE collection_id = $1 AND external_key IS NOT NULL AND source = $2
@@ -208,21 +210,25 @@ async function upsertRequests(req, collection, manifest, folderIdByKey, summary,
 }
 
 router.post('/sync', async (req, res, next) => {
+  if (!req.apiToken.scopes.includes('sdk') && !req.apiToken.scopes.includes('write')) {
+    return res.status(403).json({ error: 'API token requires the "sdk" or "write" scope' });
+  }
+  let manifest;
+  try {
+    manifest = normalizeManifest(req.body || {});
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
   const client = await pool.connect();
   const exec = (text, params) => client.query(text, params);
   try {
-    if (!req.apiToken.scopes.includes('sdk') && !req.apiToken.scopes.includes('write')) {
-      return res.status(403).json({ error: 'API token requires the "sdk" or "write" scope' });
+    await exec('BEGIN');
+    const resolved = await resolveProject(req, manifest, exec);
+    if (resolved.error) {
+      await exec('ROLLBACK');
+      return res.status(resolved.error.status).json(resolved.error.body);
     }
-    let manifest;
-    try {
-      manifest = normalizeManifest(req.body || {});
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
-    }
-
-    const resolved = await resolveProject(req, manifest);
-    if (resolved.error) return res.status(resolved.error.status).json(resolved.error.body);
     const { project } = resolved;
     project.name = project.name || '';
 
@@ -233,7 +239,6 @@ router.post('/sync', async (req, res, next) => {
       requests: { created: 0, updated: 0, pruned: 0 },
     };
 
-    await client.query('BEGIN');
     const collectionResult = await resolveCollection(req, project, manifest, summary, exec);
     if (collectionResult.error) {
       await client.query('ROLLBACK');
