@@ -305,6 +305,14 @@ export function ApiTokensView() {
           <h1>API tokens</h1>
           <p className="profile-head-meta">Personal tokens for machine authentication against the API Hub API.</p>
         </div>
+        <button
+          type="button"
+          className="ghost-button"
+          data-testid="api-tokens-api-reference"
+          onClick={() => router.push('/docs/api-reference')}
+        >
+          API reference
+        </button>
       </div>
 
       <Msg msg={msg} />

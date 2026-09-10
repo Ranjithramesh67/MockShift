@@ -1,0 +1,502 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API Hub machine API",
+    "version": "1.0.0",
+    "description": "Server-side endpoints for running stored requests and managing the account from scripts and CI. Personal API tokens are created in the app under Settings > API tokens; the secret is shown once and is sent as `Authorization: Bearer <token>` (never commit it). Browser-session endpoints use the `ah.session` cookie instead.\n\nAll request and response bodies are JSON. URLs below are relative to the deployment base URL (`<BASE_URL>`, e.g. `http://localhost:3001`). Response snapshots are run through the credential redactor before they are returned."
+  },
+  "servers": [
+    {
+      "url": "{baseUrl}",
+      "description": "Your API Hub deployment",
+      "variables": {
+        "baseUrl": {
+          "default": "http://localhost:3001",
+          "description": "Base URL of the deployment"
+        }
+      }
+    }
+  ],
+  "tags": [
+    { "name": "Runs", "description": "Execute stored requests on the server." },
+    { "name": "Tokens", "description": "Manage personal API tokens (browser session)." },
+    { "name": "Sends", "description": "Send items to other users and handle the inbox (browser session)." },
+    { "name": "Profile", "description": "Account profile and usage (browser session)." }
+  ],
+  "security": [{ "cookieAuth": [] }],
+  "paths": {
+    "/api/runs": {
+      "post": {
+        "tags": ["Runs"],
+        "summary": "Run a stored request",
+        "description": "Executes a stored request server-side and records a run in history. Authenticate with an API token bearing the `runs` or `write` scope, or with a browser session. Variables are resolved from the request's environment, then overridden by `variables`.",
+        "operationId": "runRequest",
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RunRequest" },
+              "examples": {
+                "minimal": { "value": { "requestId": "6f1c2b8e-2a34-4d0e-9b7a-1f2e3d4c5b6a" } },
+                "withOverrides": {
+                  "value": {
+                    "requestId": "6f1c2b8e-2a34-4d0e-9b7a-1f2e3d4c5b6a",
+                    "environmentId": "9a8b7c6d-5e4f-4321-8abc-def012345678",
+                    "variables": { "petId": "42" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run result. `status` is PASSED, FAILED or ERROR; snapshots are redacted.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RunResult" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/tokens": {
+      "get": {
+        "tags": ["Tokens"],
+        "summary": "List personal API tokens",
+        "description": "Returns the signed-in user's tokens (secrets are never returned, only the display prefix).",
+        "operationId": "listTokens",
+        "responses": {
+          "200": {
+            "description": "The user's tokens, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tokens": { "type": "array", "items": { "$ref": "#/components/schemas/ApiToken" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Tokens"],
+        "summary": "Create a personal API token",
+        "description": "Creates a token and returns its secret **once** in `token`. Store it immediately; it cannot be retrieved again.",
+        "operationId": "createToken",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTokenRequest" },
+              "examples": {
+                "readOnly": { "value": { "name": "CI checks", "scopes": ["read"] } },
+                "runAndRead": {
+                  "value": { "name": "Nightly runner", "scopes": ["read", "runs"], "expiresAt": "2027-01-01T00:00:00.000Z" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Token created. `token` is the one-time secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": { "type": "string", "description": "One-time secret, e.g. tkh_<hex>." },
+                    "apiToken": { "$ref": "#/components/schemas/ApiToken" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/tokens/{id}": {
+      "delete": {
+        "tags": ["Tokens"],
+        "summary": "Revoke a personal API token",
+        "description": "Marks the token revoked; the secret stops authenticating immediately.",
+        "operationId": "revokeToken",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "ok": { "type": "boolean" } } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/sends": {
+      "post": {
+        "tags": ["Sends"],
+        "summary": "Send an item to another user",
+        "description": "Sends a request, folder, collection, project or workspace to a registered user. The recipient accepts to copy it into their account.",
+        "operationId": "createSend",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateSendRequest" },
+              "examples": {
+                "collection": {
+                  "value": {
+                    "recipientId": "1f2e3d4c-5b6a-4789-9abc-def012345678",
+                    "itemType": "collection",
+                    "itemId": "6f1c2b8e-2a34-4d0e-9b7a-1f2e3d4c5b6a",
+                    "message": "Here is the pets collection."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Send created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "send": { "$ref": "#/components/schemas/Send" } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/sends/inbox": {
+      "get": {
+        "tags": ["Sends"],
+        "summary": "List received items",
+        "operationId": "listInbox",
+        "responses": {
+          "200": {
+            "description": "Items sent to the signed-in user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sends": { "type": "array", "items": { "$ref": "#/components/schemas/Send" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/sends/{sendId}/accept": {
+      "post": {
+        "tags": ["Sends"],
+        "summary": "Accept a received item",
+        "operationId": "acceptSend",
+        "parameters": [
+          { "name": "sendId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Accepted and copied into the recipient's account." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/sends/{sendId}/reject": {
+      "post": {
+        "tags": ["Sends"],
+        "summary": "Reject a received item",
+        "operationId": "rejectSend",
+        "parameters": [
+          { "name": "sendId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Rejected." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/profile/usage": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "Get account usage",
+        "description": "Returns the signed-in user's plan and usage counters (runs, storage, API tokens).",
+        "operationId": "getUsage",
+        "responses": {
+          "200": {
+            "description": "Usage summary.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Usage" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Personal API token (Settings > API tokens). Sent as `Authorization: Bearer <token>`."
+      },
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "ah.session",
+        "description": "Browser session cookie; set by signing in to the app."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid credentials.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Authenticated but not allowed (e.g. token missing scope, or no access to the request).",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" } },
+        "required": ["error"]
+      },
+      "RunRequest": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The stored request to run."
+          },
+          "environmentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional environment (same workspace) supplying variables."
+          },
+          "variables": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Optional variable overrides applied after the environment."
+          }
+        },
+        "required": ["requestId"]
+      },
+      "RunResult": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "format": "uuid" },
+              "requestId": { "type": "string", "format": "uuid" },
+              "name": { "type": "string" },
+              "trigger": { "type": "string", "enum": ["api"] },
+              "status": { "type": "string", "enum": ["PASSED", "FAILED", "ERROR"] },
+              "statusCode": { "type": "integer", "nullable": true },
+              "durationMs": { "type": "integer" },
+              "startedAt": { "type": "string", "format": "date-time" },
+              "finishedAt": { "type": "string", "format": "date-time" },
+              "error": { "type": "string", "nullable": true },
+              "requestSnapshot": { "type": "object", "nullable": true, "description": "Redacted request." },
+              "responseSnapshot": { "type": "object", "nullable": true, "description": "Redacted response." },
+              "testResults": { "type": "array", "items": { "type": "object" } },
+              "assertionsPassed": { "type": "boolean" }
+            }
+          }
+        },
+        "example": {
+          "run": {
+            "id": "0b9c8d7e-6f5a-4321-9abc-def012345678",
+            "requestId": "6f1c2b8e-2a34-4d0e-9b7a-1f2e3d4c5b6a",
+            "name": "List pets",
+            "trigger": "api",
+            "status": "PASSED",
+            "statusCode": 200,
+            "durationMs": 142,
+            "startedAt": "2026-09-01T10:00:00.000Z",
+            "finishedAt": "2026-09-01T10:00:00.142Z",
+            "error": null,
+            "requestSnapshot": {
+              "method": "GET",
+              "url": "https://api.example.com/pets",
+              "headers": { "authorization": "«redacted»" }
+            },
+            "responseSnapshot": { "status": 200, "body": [] },
+            "testResults": [],
+            "assertionsPassed": true
+          }
+        }
+      },
+      "ApiToken": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "prefix": { "type": "string", "description": "Display prefix; the secret is shown only once at creation." },
+          "scopes": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["read", "write", "runs"] }
+          },
+          "status": { "type": "string", "enum": ["active", "revoked"] },
+          "lastUsedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "expiresAt": { "type": "string", "format": "date-time", "nullable": true }
+        },
+        "example": {
+          "id": "3d4c5b6a-1f2e-4789-9abc-def012345678",
+          "name": "Nightly runner",
+          "prefix": "tkh_a1b2c3d4",
+          "scopes": ["read", "runs"],
+          "status": "active",
+          "lastUsedAt": null,
+          "createdAt": "2026-09-01T09:00:00.000Z",
+          "expiresAt": null
+        }
+      },
+      "CreateTokenRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "maxLength": 120 },
+          "scopes": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["read", "write", "runs"] },
+            "description": "Subset of read, write, runs. Defaults to [\"read\"]."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Optional future ISO date; omit or null for no expiry."
+          }
+        },
+        "required": ["name"]
+      },
+      "CreateSendRequest": {
+        "type": "object",
+        "properties": {
+          "recipientId": { "type": "string", "format": "uuid" },
+          "itemType": {
+            "type": "string",
+            "enum": ["request", "folder", "collection", "project", "workspace"]
+          },
+          "itemId": { "type": "string", "format": "uuid" },
+          "message": { "type": "string", "nullable": true }
+        },
+        "required": ["recipientId", "itemType", "itemId"]
+      },
+      "Send": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "senderId": { "type": "string", "format": "uuid" },
+          "recipientId": { "type": "string", "format": "uuid" },
+          "itemType": { "type": "string" },
+          "itemId": { "type": "string", "format": "uuid" },
+          "itemName": { "type": "string", "nullable": true },
+          "message": { "type": "string", "nullable": true },
+          "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "plan": {
+            "type": "object",
+            "properties": { "key": { "type": "string" }, "name": { "type": "string" } }
+          },
+          "enforced": { "type": "boolean" },
+          "reason": { "type": "string", "nullable": true },
+          "poolOrgId": { "type": "string", "format": "uuid", "nullable": true },
+          "limits": { "type": "object", "description": "Configured plan limits." },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "workspaces": { "type": "integer" },
+              "projects": { "type": "integer" },
+              "collections": { "type": "integer" },
+              "teams": { "type": "integer" },
+              "seats": { "type": "integer" },
+              "runs": { "type": "integer" }
+            }
+          }
+        },
+        "example": {
+          "ok": true,
+          "plan": { "key": "free", "name": "Free" },
+          "enforced": false,
+          "reason": null,
+          "poolOrgId": "5b6a1f2e-3d4c-4789-9abc-def012345678",
+          "limits": {},
+          "usage": { "workspaces": 1, "projects": 2, "collections": 3, "teams": 0, "seats": 1, "runs": 12 }
+        }
+      }
+    }
+  }
+}

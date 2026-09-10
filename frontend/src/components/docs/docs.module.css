@@ -1457,3 +1457,248 @@ button.chip:hover {
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
+
+/* ------------------------------------------------- product API reference (DR7) */
+.apiRef {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 920px;
+  min-width: 0;
+}
+
+.apiRefLoading,
+.apiRefError {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.apiRefHead h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  display: inline;
+}
+
+.apiRefVersion {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.apiRefIntro {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.apiRefGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.apiRefGroupTitle {
+  margin: 8px 0 0;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.apiRefGroupDesc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.apiRefOp {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.apiRefOpHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.apiRefMethod {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.apiRefMethod[data-method='get'] {
+  color: #7cc4f2;
+  background: rgba(124, 196, 242, 0.12);
+}
+
+.apiRefMethod[data-method='post'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.apiRefMethod[data-method='put'],
+.apiRefMethod[data-method='patch'] {
+  color: #f2c97c;
+  background: rgba(242, 201, 124, 0.12);
+}
+
+.apiRefMethod[data-method='delete'] {
+  color: #f28f8f;
+  background: rgba(242, 143, 143, 0.12);
+}
+
+.apiRefPath {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.apiRefOpTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.apiRefOpDesc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.apiRefSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.apiRefSectionTitle {
+  margin: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  font-weight: 700;
+}
+
+.apiRefParamList,
+.apiRefResponses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.apiRefParam,
+.apiRefResponse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.apiRefParam code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.apiRefParamIn {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.apiRefRequired {
+  font-size: 10px;
+  color: var(--accent);
+  border: 1px solid var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.apiRefParamDesc {
+  flex-basis: 100%;
+  color: var(--text-faint);
+}
+
+.apiRefCurlWrap {
+  position: relative;
+  min-width: 0;
+}
+
+.apiRefCurl {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.apiRefCopy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel-2);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.apiRefCopy:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.apiRefStatus {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.apiRefStatus[data-status='2'] {
+  color: var(--accent);
+}
+
+.apiRefStatus[data-status='4'],
+.apiRefStatus[data-status='5'] {
+  color: #f28f8f;
+}
