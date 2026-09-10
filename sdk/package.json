@@ -1,0 +1,26 @@
+{
+  "name": "apihub-sdk",
+  "version": "0.1.0",
+  "description": "Sync framework routes into MockShift / API Hub as testable requests.",
+  "license": "MIT",
+  "private": false,
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "bin": { "apihub-sdk": "./bin/apihub-sdk.js" },
+  "exports": {
+    ".": "./src/index.js",
+    "./express": "./src/adapters/express.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "bin", "README.md", "LICENSE"],
+  "engines": { "node": ">=18.0.0" },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": ["apihub", "mockshift", "api-testing", "express", "openapi", "routes"],
+  "repository": { "type": "git", "url": "https://github.com/Ranjithramesh67/MockShift.git", "directory": "sdk" },
+  "peerDependencies": { "express": ">=4" },
+  "peerDependenciesMeta": { "express": { "optional": true } },
+  "devDependencies": { "express": "^4.19.2" }
+}
