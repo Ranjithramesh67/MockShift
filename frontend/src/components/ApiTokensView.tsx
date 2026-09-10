@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { ApiError } from '@/lib/api';
+import { ApiError, workspaceApi, type Workspace } from '@/lib/api';
 import {
   tokensApi,
   API_TOKEN_SCOPES,
@@ -63,6 +63,8 @@ function TokenRow({ token, onRevoke, revoking }: TokenRowProps) {
         <div className="apitoken-meta">
           <code className="apitoken-prefix">{token.prefix}…</code>
           <span className="apitoken-scope">{token.scopes.map((s) => API_TOKEN_SCOPE_LABEL[s]).join(' · ')}</span>
+          {token.projectId ? <span className="apitoken-badge">project key</span> : null}
+          {token.workspaceId ? <span className="apitoken-badge">workspace key</span> : null}
         </div>
         <div className="apitoken-meta">
           <span>
@@ -133,6 +135,33 @@ function CreateTokenForm({ onCreated, onMessage }: { onCreated: (secret: string,
   const [expiryEnabled, setExpiryEnabled] = useState(false);
   const [expiryDate, setExpiryDate] = useState('');
   const [busy, setBusy] = useState(false);
+  const [bindingKind, setBindingKind] = useState<'none' | 'project' | 'workspace'>('none');
+  const [bindingTarget, setBindingTarget] = useState('');
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [projects, setProjects] = useState<Array<{ id: string; name: string; workspaceId: string }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await workspaceApi.list();
+        if (cancelled) return;
+        setWorkspaces(res.workspaces);
+        const perWorkspace = await Promise.all(
+          res.workspaces.map(async (w) => {
+            const content = await workspaceApi.content(w.id);
+            return content.projects.map((p) => ({ id: p.id, name: p.name, workspaceId: w.id }));
+          })
+        );
+        if (!cancelled) setProjects(perWorkspace.flat());
+      } catch {
+        /* binding is optional; ignore load errors */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggleScope = (s: ApiTokenScope) => {
     setScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
@@ -149,7 +178,10 @@ function CreateTokenForm({ onCreated, onMessage }: { onCreated: (secret: string,
       if (expiryEnabled && expiryDate) {
         expiresAt = new Date(`${expiryDate}T23:59:59Z`).toISOString();
       }
-      const created = await tokensApi.create({ name: name.trim(), scopes, expiresAt });
+      const input: Parameters<typeof tokensApi.create>[0] = { name: name.trim(), scopes, expiresAt };
+      if (bindingKind === 'project' && bindingTarget) input.projectId = bindingTarget;
+      if (bindingKind === 'workspace' && bindingTarget) input.workspaceId = bindingTarget;
+      const created = await tokensApi.create(input);
       onMessage(null);
       setBusy(false);
       onCreated(created.token, created.apiToken.name);
@@ -204,6 +236,50 @@ function CreateTokenForm({ onCreated, onMessage }: { onCreated: (secret: string,
             </label>
           ))}
         </div>
+      </div>
+
+      <div className="apitoken-field">
+        <label className="apitoken-label" htmlFor="apitoken-binding-kind">
+          Scope this key to
+        </label>
+        <select
+          id="apitoken-binding-kind"
+          className="text-input"
+          value={bindingKind}
+          data-testid="apitoken-binding-kind"
+          onChange={(e) => {
+            setBindingKind(e.target.value as 'none' | 'project' | 'workspace');
+            setBindingTarget('');
+          }}
+        >
+          <option value="none">Nothing (personal key)</option>
+          <option value="project">A project</option>
+          <option value="workspace">A workspace</option>
+        </select>
+        {bindingKind !== 'none' ? (
+          <select
+            className="text-input"
+            value={bindingTarget}
+            data-testid="apitoken-binding-target"
+            onChange={(e) => setBindingTarget(e.target.value)}
+          >
+            <option value="">Select…</option>
+            {bindingKind === 'project'
+              ? projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))
+              : workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+          </select>
+        ) : null}
+        <small className="apitoken-hint">
+          Project/workspace keys let apihub-sdk sync routes without a personal key.
+        </small>
       </div>
 
       <div className="apitoken-field">
