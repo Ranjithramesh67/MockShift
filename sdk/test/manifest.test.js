@@ -42,3 +42,13 @@ test('deduplicates identical method+path routes', () => {
   );
   assert.equal(m.requests.filter((r) => r.key === 'GET /users').length, 1);
 });
+
+test('normalizes explicitly provided route folders', () => {
+  const m = buildManifest(
+    [{ method: 'GET', path: '/users/admin', name: 'Admin list', folder: 'users/admin' }],
+    config
+  );
+  const request = m.requests.find((r) => r.key === 'GET /users/admin');
+  assert.equal(request.folder, 'Users/Admin');
+  assert.deepEqual(m.folders.map((f) => f.key), ['Users', 'Users/Admin']);
+});

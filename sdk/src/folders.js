@@ -14,7 +14,7 @@ function structureFolder(route, structure) {
   const path = String(route.path || '/');
   let best = null;
   for (const prefix of Object.keys(structure || {})) {
-    if (path === prefix || path.startsWith(`${prefix}/`) || path.startsWith(prefix)) {
+    if (path === prefix || path.startsWith(`${prefix}/`)) {
       if (!best || prefix.length > best.length) best = prefix;
     }
   }
@@ -59,4 +59,4 @@ function foldersFromPaths(paths) {
   return [...entries.values()];
 }
 
-module.exports = { resolveFolderPath, foldersFromPaths, titleCase };
+module.exports = { resolveFolderPath, foldersFromPaths, titleCase, clean };

@@ -1,6 +1,6 @@
 'use strict';
 
-const { resolveFolderPath, foldersFromPaths } = require('./folders');
+const { resolveFolderPath, foldersFromPaths, clean } = require('./folders');
 
 function normalizeKey(method, path) {
   const m = String(method || '').trim().toUpperCase();
@@ -23,7 +23,7 @@ function buildManifest(routes, config = {}) {
     const path = String(route.path || '').trim();
     if (!method || !path) continue;
     const key = route.key || normalizeKey(method, path);
-    const folder = route.folder !== undefined ? route.folder : resolveFolderPath({ ...route, method, path }, config);
+    const folder = route.folder !== undefined ? (clean(route.folder) || null) : resolveFolderPath({ ...route, method, path }, config);
     const entry = {
       key,
       name: route.name || key,

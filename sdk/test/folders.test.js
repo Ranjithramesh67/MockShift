@@ -30,3 +30,8 @@ test('structure uses the longest matching prefix', () => {
   assert.equal(resolveFolderPath({ path: '/users/:id/posts' }, config), 'Users/Posts');
   assert.equal(resolveFolderPath({ path: '/admin/metrics' }, config), 'Admin');
 });
+
+test('structure prefixes only match whole path segments', () => {
+  assert.equal(resolveFolderPath({ path: '/users' }, { structure: { '/user': 'A' } }), 'Users');
+  assert.equal(resolveFolderPath({ path: '/users' }, { structure: { '/users': 'A' } }), 'A');
+});
