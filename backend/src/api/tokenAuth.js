@@ -19,7 +19,8 @@ function readBearerToken(req) {
 
 async function findTokenByHash(tokenHash) {
   const { rows } = await query(
-    `SELECT id, user_id, name, prefix, scopes, status, last_used_at, expires_at, created_at, updated_at
+    `SELECT id, user_id, name, prefix, scopes, status, last_used_at, expires_at, created_at, updated_at,
+            project_id, workspace_id
        FROM api_tokens WHERE token_hash = $1`,
     [tokenHash]
   );

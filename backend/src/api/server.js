@@ -28,6 +28,7 @@ const copilotRoutes = require('./routes/copilot');
 const commentRoutes = require('./routes/comments');
 const reviewRoutes = require('./routes/reviews');
 const versionRoutes = require('./routes/versions');
+const sdkRoutes = require('./routes/sdk');
 const { mockDispatch } = require('./mockDispatch');
 const { query } = require('./db');
 const { runWorkflow, syncAllSchedules } = require('./workflowService');
@@ -103,6 +104,7 @@ function createApp() {
   app.use('/api', commentRoutes);
   app.use('/api', reviewRoutes);
   app.use('/api', versionRoutes);
+  app.use('/api/sdk', sdkRoutes);
 
   // Public per-project mock server: hit it like any external API.
   // The scenario middleware runs first so scenario/conditional responses and
