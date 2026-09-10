@@ -12,6 +12,9 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DBNAME = process.env.INTEGRATION_PGDATABASE || 'apihub_sdk_test';
+if (DBNAME === 'apihub' && (process.env.INTEGRATION_PGPORT || process.env.PGPORT || '5432') === '5432') {
+  throw new Error('Refusing to run integration tests against the dev database (apihub) on port 5432');
+}
 const PGENV = {
   ...process.env,
   PGHOST: '127.0.0.1',
@@ -221,4 +224,14 @@ test('a key without the sdk/write scope cannot sync', async () => {
     Authorization: `Bearer ${readToken.json.token}`,
   });
   assert.equal(res.status, 403);
+});
+
+test('an empty prune manifest does not delete existing requests', async () => {
+  const res = await syncRequest({ ...MANIFEST, prune: true, requests: [] });
+  assert.equal(res.status, 201);
+
+  const tree = await admin.api('GET', `/api/workspaces/${workspaceId}/content`);
+  const collection = tree.json.collections.find((c) => c.project_id === projectId && c.name === 'Backend');
+  const reqs = tree.json.requests.filter((r) => r.collection_id === collection.id);
+  assert.equal(reqs.length, 3);
 });
