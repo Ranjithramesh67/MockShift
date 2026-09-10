@@ -111,6 +111,7 @@ async function workspaceAccessFor(user, workspaceId) {
 async function pageRow(pageId) {
   const { rows } = await query(
     `SELECT p.id, p.workspace_id, p.project_id, p.title, p.visibility, p.parent_id,
+            p.team_id, p.position,
             p.created_by, p.updated_by, p.created_at, p.updated_at
        FROM doc_pages p WHERE p.id = $1`,
     [pageId]
@@ -124,12 +125,13 @@ async function pageRow(pageId) {
 // createdAt,updatedAt,blockCount}
 async function serializePageSummary(row) {
   const { rows } = await query(
-    `SELECT w.name AS workspace_name, pr.name AS project_name,
+    `SELECT w.name AS workspace_name, pr.name AS project_name, t.name AS team_name,
             cb.name AS created_by_name, ub.name AS updated_by_name,
             (SELECT count(*)::int FROM doc_blocks db WHERE db.page_id = p.id) AS block_count
        FROM doc_pages p
        JOIN workspaces w ON w.id = p.workspace_id
        LEFT JOIN projects pr ON pr.id = p.project_id
+       LEFT JOIN teams t ON t.id = p.team_id
        JOIN users cb ON cb.id = p.created_by
        LEFT JOIN users ub ON ub.id = p.updated_by
       WHERE p.id = $1`,
@@ -145,6 +147,9 @@ async function serializePageSummary(row) {
     projectName: s.project_name ?? null,
     visibility: row.visibility ?? 'PRIVATE',
     parentId: row.parent_id ?? null,
+    teamId: row.team_id ?? null,
+    teamName: s.team_name ?? null,
+    position: row.position ?? 0,
     createdBy: { id: row.created_by, name: s.created_by_name },
     updatedBy: row.updated_by ? { id: row.updated_by, name: s.updated_by_name } : null,
     createdAt: row.created_at,
@@ -254,6 +259,28 @@ async function subtreeDepth(pageId) {
     [pageId]
   );
   return rows[0]?.depth ?? 1;
+}
+
+// Team binding (DR4 spaces): a page's team must belong to the workspace's
+// owning organization.
+async function teamInOrg(teamId, orgId) {
+  if (!orgId) return false;
+  const { rows } = await query(
+    `SELECT 1 FROM teams WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+    [teamId, orgId]
+  );
+  return rows.length > 0;
+}
+
+// Next sibling position (append order) among (workspace, parent) siblings.
+async function nextSiblingPosition(workspaceId, parentId) {
+  const { rows } = await query(
+    `SELECT COALESCE(max(position), -1) + 1 AS pos
+       FROM doc_pages
+      WHERE workspace_id = $1 AND parent_id IS NOT DISTINCT FROM $2::uuid`,
+    [workspaceId, parentId]
+  );
+  return rows[0]?.pos ?? 0;
 }
 
 // Would making `candidateId` a child of `pageId` create a cycle? True when the
@@ -449,12 +476,14 @@ router.get('/', async (req, res, next) => {
     const { rows } = await query(
       `SELECT p.id, p.title, p.workspace_id, w.name AS workspace_name, p.project_id,
               pr.name AS project_name, p.visibility, p.parent_id,
+              p.team_id, p.position, t.name AS team_name,
               p.created_by, cb.name AS created_by_name,
               p.updated_by, ub.name AS updated_by_name, p.created_at, p.updated_at,
               (SELECT count(*)::int FROM doc_blocks db WHERE db.page_id = p.id) AS block_count
          FROM doc_pages p
          JOIN workspaces w ON w.id = p.workspace_id
          LEFT JOIN projects pr ON pr.id = p.project_id
+         LEFT JOIN teams t ON t.id = p.team_id
          JOIN users cb ON cb.id = p.created_by
          LEFT JOIN users ub ON ub.id = p.updated_by
         WHERE p.workspace_id = $1
@@ -473,6 +502,9 @@ router.get('/', async (req, res, next) => {
       projectName: r.project_name ?? null,
       visibility: r.visibility ?? 'PRIVATE',
       parentId: r.parent_id ?? null,
+      teamId: r.team_id ?? null,
+      teamName: r.team_name ?? null,
+      position: r.position ?? 0,
       createdBy: { id: r.created_by, name: r.created_by_name },
       updatedBy: r.updated_by ? { id: r.updated_by, name: r.updated_by_name } : null,
       createdAt: r.created_at,
@@ -590,14 +622,15 @@ router.get('/shared', async (req, res, next) => {
   }
 });
 
-// POST /docs {workspaceId, projectId?, parentId?, title, visibility?} -> 201
-// {page}. Requires workspace read + role >= EDITOR (creating a sub-doc further
-// requires the parent to live in the same workspace and the tree depth to have
-// headroom; the child inherits the parent's project scope). Auto-creates the
-// leading heading block (content {text: title}).
+// POST /docs {workspaceId, projectId?, parentId?, teamId?, title, visibility?}
+// -> 201 {page}. Requires workspace read + role >= EDITOR (creating a sub-doc
+// further requires the parent to live in the same workspace and the tree depth
+// to have headroom; the child inherits the parent's project scope and team
+// binding unless overridden). Auto-creates the leading heading block
+// (content {text: title}).
 router.post('/', async (req, res, next) => {
   try {
-    const { workspaceId, projectId, parentId, title, visibility } = req.body || {};
+    const { workspaceId, projectId, parentId, teamId, title, visibility } = req.body || {};
     if (!workspaceId) return res.status(400).json({ error: 'workspaceId is required' });
     if (!isUuid(workspaceId)) return res.status(400).json({ error: 'workspaceId must be a valid uuid' });
     const cleanTitle = title === undefined || title === null ? '' : String(title).trim();
@@ -606,6 +639,9 @@ router.post('/', async (req, res, next) => {
     const vis = visibility === undefined || visibility === null ? 'PRIVATE' : String(visibility).toUpperCase();
     if (!['PRIVATE', 'PUBLIC'].includes(vis)) {
       return res.status(400).json({ error: 'visibility must be PRIVATE or PUBLIC' });
+    }
+    if (teamId !== undefined && teamId !== null && !isUuid(teamId)) {
+      return res.status(400).json({ error: 'teamId must be a valid uuid' });
     }
 
     const ws = await query(`SELECT id FROM workspaces WHERE id = $1`, [workspaceId]);
@@ -618,6 +654,7 @@ router.post('/', async (req, res, next) => {
 
     let resolvedProjectId = null;
     let resolvedParentId = null;
+    let resolvedTeamId = null;
     if (parentId) {
       if (!isUuid(parentId)) return res.status(400).json({ error: 'parentId must be a valid uuid' });
       const parent = await pageRow(parentId);
@@ -633,6 +670,7 @@ router.post('/', async (req, res, next) => {
       }
       resolvedProjectId = parent.project_id ?? null;
       resolvedParentId = parent.id;
+      resolvedTeamId = parent.team_id ?? null;
     } else if (projectId) {
       if (!isUuid(projectId)) return res.status(400).json({ error: 'projectId must be a valid uuid' });
       const proj = await query(`SELECT id FROM projects WHERE id = $1 AND workspace_id = $2`, [
@@ -644,6 +682,14 @@ router.post('/', async (req, res, next) => {
       }
       resolvedProjectId = projectId;
     }
+    // An explicit teamId overrides an inherited one (and must belong to the
+    // workspace's owning organization).
+    if (teamId !== undefined && teamId !== null) {
+      if (!(await teamInOrg(teamId, await orgOfWorkspace(workspaceId)))) {
+        return res.status(400).json({ error: 'Team must belong to this workspace organization' });
+      }
+      resolvedTeamId = teamId;
+    }
 
     // doc_pages are counted against the org pool plan (R4 creation-only gate).
     const docGate = await checkCountGate({
@@ -653,11 +699,12 @@ router.post('/', async (req, res, next) => {
     });
     if (docGate) return res.status(403).json(docGate);
 
+    const position = await nextSiblingPosition(workspaceId, resolvedParentId);
     const created = await query(
-      `INSERT INTO doc_pages (workspace_id, project_id, parent_id, visibility, title, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, workspace_id, project_id, parent_id, visibility, title, created_by, updated_by, created_at, updated_at`,
-      [workspaceId, resolvedProjectId, resolvedParentId, vis, cleanTitle, req.user.id]
+      `INSERT INTO doc_pages (workspace_id, project_id, parent_id, team_id, position, visibility, title, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, workspace_id, project_id, parent_id, team_id, position, visibility, title, created_by, updated_by, created_at, updated_at`,
+      [workspaceId, resolvedProjectId, resolvedParentId, resolvedTeamId, position, vis, cleanTitle, req.user.id]
     );
     const page = created.rows[0];
     await query(
@@ -1441,11 +1488,14 @@ router.get('/:pageId', async (req, res, next) => {
   }
 });
 
-// PUT /docs/:pageId {title?, visibility?, parentId?} -> 200 {page}.
-// canEdit required. title/visibility are optional; each present field is
-// updated. parentId semantics: absent = unchanged; null = move to the root;
+// PUT /docs/:pageId {title?, visibility?, parentId?, teamId?, position?} -> 200
+// {page}. canEdit required. title/visibility are optional; each present field
+// is updated. parentId semantics: absent = unchanged; null = move to the root;
 // a page id = reparent under that page (same workspace, no cycles, and the
-// deepest node of the resulting tree must stay within MAX_TREE_DEPTH).
+// deepest node of the resulting tree must stay within MAX_TREE_DEPTH). teamId
+// absent = unchanged, null = clear (must belong to the workspace org when set).
+// position (>= 0) reorders among siblings; a reparent without an explicit
+// position appends to the end of the new sibling set.
 router.put('/:pageId', async (req, res, next) => {
   try {
     const { pageId } = req.params;
@@ -1458,6 +1508,8 @@ router.put('/:pageId', async (req, res, next) => {
 
     const body = req.body || {};
     const hasParentKey = Object.prototype.hasOwnProperty.call(body, 'parentId');
+    const hasTeamKey = Object.prototype.hasOwnProperty.call(body, 'teamId');
+    const hasPositionKey = Object.prototype.hasOwnProperty.call(body, 'position');
 
     const cleanTitle = body.title === undefined || body.title === null ? '' : String(body.title).trim();
     if (body.title !== undefined && body.title !== null && !cleanTitle) {
@@ -1468,6 +1520,29 @@ router.put('/:pageId', async (req, res, next) => {
       vis = String(body.visibility).toUpperCase();
       if (!['PRIVATE', 'PUBLIC'].includes(vis)) {
         return res.status(400).json({ error: 'visibility must be PRIVATE or PUBLIC' });
+      }
+    }
+
+    let resolvedTeamId;
+    if (hasTeamKey) {
+      if (body.teamId === null || body.teamId === undefined || body.teamId === '') {
+        resolvedTeamId = null;
+      } else {
+        if (!isUuid(body.teamId)) {
+          return res.status(400).json({ error: 'teamId must be a valid uuid or null' });
+        }
+        if (!(await teamInOrg(body.teamId, await orgOfWorkspace(page.workspace_id)))) {
+          return res.status(400).json({ error: 'Team must belong to this workspace organization' });
+        }
+        resolvedTeamId = body.teamId;
+      }
+    }
+
+    let resolvedPosition;
+    if (hasPositionKey) {
+      resolvedPosition = Number(body.position);
+      if (!Number.isInteger(resolvedPosition) || resolvedPosition < 0) {
+        return res.status(400).json({ error: 'position must be a non-negative integer' });
       }
     }
 
@@ -1509,9 +1584,21 @@ router.put('/:pageId', async (req, res, next) => {
       params.push(vis);
       sets.push(`visibility = $${params.length}`);
     }
+    if (hasTeamKey) {
+      params.push(resolvedTeamId);
+      sets.push(`team_id = $${params.length}`);
+    }
     if (hasParentKey) {
       params.push(resolvedParentId);
       sets.push(`parent_id = $${params.length}`);
+    }
+    if (hasPositionKey) {
+      params.push(resolvedPosition);
+      sets.push(`position = $${params.length}`);
+    } else if (hasParentKey && (resolvedParentId ?? null) !== (page.parent_id ?? null)) {
+      const position = await nextSiblingPosition(page.workspace_id, resolvedParentId ?? null);
+      params.push(position);
+      sets.push(`position = $${params.length}`);
     }
     params.push(req.user.id);
     sets.push(`updated_by = $${params.length}`);
@@ -1522,7 +1609,7 @@ router.put('/:pageId', async (req, res, next) => {
       `UPDATE doc_pages
           SET ${sets.join(', ')}
         WHERE id = $${params.length}
-        RETURNING id, workspace_id, project_id, parent_id, visibility, title,
+        RETURNING id, workspace_id, project_id, parent_id, team_id, position, visibility, title,
                   created_by, updated_by, created_at, updated_at`,
       params
     );

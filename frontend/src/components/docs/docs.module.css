@@ -134,6 +134,21 @@
   white-space: nowrap;
 }
 
+.teamChip {
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel-2);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
 .chevBtn {
   display: inline-flex;
   align-items: center;
