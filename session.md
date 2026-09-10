@@ -1781,11 +1781,16 @@ Split (each a shippable micro-turn; none started, `[ ]`):
   size + cell limits validated server-side; mirrors the image-block sizing pattern
   (server validation + shared bounds). O6 RESOLVED: max 50 rows × 12 cols, 2000
   chars/cell, empty cells allowed, markdown/HTML render first row as header.
-- [ ] **DR7 — Product API reference**: contract-first OpenAPI (JSON) document
-  describing the machine API — auth via personal tokens (S4), `POST /api/runs`
-  (S5), token CRUD, send/inbox, profile/usage — versioned under the repo; a
-  docs "API Reference" surface (per-space page set generated from the spec with
-  sample payloads and curl snippets) + link from the API-tokens page. Needs O7/O8.
+- [x] **DR7 — Product API reference** (DONE 2026-09-09, §5.61): contract-first
+  hand-authored OpenAPI 3.0.3 at `api/openapi.json` (Runs, Tokens, Sends,
+  Profile: `POST /api/runs` with token scopes, token CRUD, send/inbox
+  accept-reject, usage) with redacted examples and placeholder credentials only;
+  served to signed-in users at `GET /api/docs/api-reference`; in-app "API
+  Reference" surface (`/docs/api-reference`) renders the spec grouped by tag with
+  params, request examples and copy-ready curl snippets; linked from both the
+  Docs home and the API-tokens page. O7 RESOLVED: hand-authored JSON under the
+  repo, placeholder `$API_TOKEN`/`$SESSION` and runtime origin in samples.
+  O8 RESOLVED: any signed-in user (spec carries no secrets).
 
 Open decisions (resolve at each segment start):
 - O1 **Share persistence**: RESOLVED at DR1 start — per-target rows. Single
@@ -1815,17 +1820,18 @@ Open decisions (resolve at each segment start):
 - O6 **Table guardrails**: max rows/cols/cell length, empty-cell handling,
   markdown + print/Word representation, mobile horizontal scroll — pick sizes
   before DR6.
-- O7 **API docs source of truth**: hand-authored OpenAPI yaml under e.g.
-  `api/openapi.json` vs generated from route manifests; decide the base-URL
-  (localhost vs preview) used in sample curl and how token auth samples read
-  the secret (never echo real token values).
-- O8 **API Reference audience**: signed-in users only vs public (matches docs
-  public-share?) — recommend signed-in users who hold the workspace access,
-  mirroring docs gates.
+- O7 **API docs source of truth**: RESOLVED at DR7 start — hand-authored
+  OpenAPI 3.0.3 JSON at `api/openapi.json` (not generated). Sample curl uses the
+  runtime origin plus `$API_TOKEN` / `$SESSION` placeholders; token auth samples
+  never echo a real secret.
+- O8 **API Reference audience**: RESOLVED at DR7 start — any signed-in user
+  (`requireAuth`); the spec holds no secrets, so no workspace gate is needed.
 
 Recommended order: DR1 → DR2 → DR3 → DR4 → DR6 → DR5 → DR7 (tables before
 Confluence export so tables paste; API reference last as it is self-contained).
-Reordering allowed when Ranjith picks each segment.
+Reordering allowed when Ranjith picks each segment. **All segments DR1–DR7
+shipped (DR1–DR3 `c4fd25b`…`7362bed`, DR4 `c36f90a`, DR6 `14ef23b`, DR5
+`073d460`, DR7 below).**
 
 ## Roadmap
 
