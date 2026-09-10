@@ -107,6 +107,20 @@ Phase 3c — Inbox + API tokens shell fold-in + boss all-access (docs/SESSION.md
 
 ## Current
 
+Step: ROUND 5 — APIHUB-SDK + ROUTE SYNC DONE (recorded in docs/SESSION.md
+§5.63; code pushed `4771cdb`, docs commit follows). Ranjith requested a published JS
+library that pushes a service's Express routes into MockShift as testable
+requests. Migration `037_sdk_sync.sql` adds token→project/workspace binding + the
+`sdk` scope and `external_key` idempotent upserts (`api_requests`, `folders`) +
+the `sdk_sync_runs` audit table; `POST /api/sdk/sync` resolves the project from
+the bound key and transactionally upserts folders/requests; the `apihub-sdk`
+package (Express adapter + `sync` CLI, zero runtime deps) does the manifest build
+and upload. Verification: backend API unit 62/62, SDK 22/22, `sdkSync`
+integration 7/7 on the scratch cluster, frontend `tsc --noEmit` clean + 91/91.
+Live smoke through the real endpoint created 1 request/1 folder, the re-run
+updated 1/create 0, and was cleaned up via the collection API. Next: user
+go-ahead for follow-ons (nested `express.Router()` capture, npm publish).
+
 Step: DOCS ROUND 3 DR3+DR4 GROUNDWORK — VISIBILITY + DOC TREE BACKEND DONE
 (recorded in docs/SESSION.md §5.54; feat uncommitted at time of this write).
 Ranjith scoped DR3 (private/public) + DR4 (tree) **backend foundations**; the
@@ -1873,6 +1887,38 @@ Verification: backend unit 47/47, frontend unit 89/89, `tsc --noEmit` clean,
 `next build` green (5 new static routes); migrations 032–036 applied to the dev
 DB and the backend/frontend dev servers restarted; `/api/{contracts,monitors,
 copilot,mock-scenarios,collab}` all reachable through the frontend proxy.
+
+## Round 5 — apihub-sdk + route sync (shipped 2026-09-10; code pushed `4771cdb`)
+
+Ranjith asked for a publishable JS library: install it, set an API key (personal
+key or a project/workspace-bound key), `app.post(...)` a route and have it land
+in the linked account inside a project — with folders/sub-folders configurable
+and assertions configurable from the same place. Delivered as seven tasks
+(schema, sync endpoint, bound tokens, tokens UI, sdk package, adapter, docs).
+
+- [x] **Migration `037_sdk_sync.sql`**: `api_tokens.project_id|workspace_id`
+  (mutually exclusive, FK cascade) + `sdk` token scope; `api_requests.external_key`
+  (+ `source`/`source_file`/`synced_at`); `folders.external_key` (+ `source`);
+  `collections.source`; `sdk_sync_runs` audit table; partial unique indexes so
+  syncs are idempotent.
+- [x] **`POST /api/sdk/sync`** (`routes/sdk.js`): token auth with the `sdk`/`write`
+  scope, `normalizeManifest` validation, project resolution for project-/
+  workspace-bound/unbound keys, transactional folder (parent-first) + request
+  upsert by `external_key`, one `sdk_sync_runs` row, created/updated/pruned
+  counts; entitlement gates evaluated inside the transaction.
+- [x] **Bound tokens + `sdk` scope**: `POST /api/tokens` accepts `projectId` xor
+  `workspaceId` (rejects unknown/blank/both) and the `sdk` scope; the API-tokens
+  UI gained the binding selector; integration test proves binding wins and the
+  scope gate.
+- [x] **`sdk/` package (`apihub-sdk` 0.1.0)**: zero runtime deps, `createHub()` +
+  `attach()` + Express route adapter, `createConfig` option/env table, route
+  manifest with stable keys and `foldersFromPaths` nesting, fetch client,
+  assertions helper, `apihub-sdk sync --config` CLI and publish metadata;
+  `npm publish --dry-run` green.
+- [x] **Verification**: backend API unit 62/62, SDK 22/22, `sdkSync` integration
+  7/7 (scratch cluster), frontend `tsc --noEmit` clean + unit 91/91; live smoke:
+  create 1 request/1 folder → re-sync update 1/create 0 → collection cleaned up
+  via the API.
 
 ## Roadmap
 

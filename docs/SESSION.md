@@ -838,6 +838,48 @@ or a commit checkpoint is agreed).
   is verified via backend integration + build so far); e2e + commit optional and
   pending user go-ahead.
 
+### 5.63 apihub-sdk + route sync (round 5) (pushed `4771cdb`, 2026-09-10)
+
+Round 5 answers Ranjith's ask to publish a JS library that a service can install,
+point at an API key and have its Express routes pushed into a MockShift project
+as testable requests. Seven tasks landed the schema, backend router, bound
+tokens, tokens UI and the `sdk/` package; this turn ran the full verification set
+and recorded the milestone.
+
+- **Migration `037_sdk_sync.sql`**: `api_tokens.project_id` / `workspace_id`
+  (mutually exclusive binding, FK `ON DELETE CASCADE`), a `sdk` value added to
+  the token scope CHECK, `external_key` + `source` / `source_file` / `synced_at`
+  on `api_requests`, `external_key` + `source` on `folders`, `source` on
+  `collections`, and the `sdk_sync_runs` audit table (RLS + GRANTs). Partial
+  unique indexes on `(collection_id, external_key)` make folder and request
+  upserts idempotent.
+- **`POST /api/sdk/sync`** (`backend/src/api/routes/sdk.js`, token auth requiring
+  the `sdk` or `write` scope): `normalizeManifest` validates the payload, then in
+  a single transaction resolves the target project (project-bound key → its
+  project; workspace-bound key → find/create a project named `manifest.project`;
+  unbound legacy key → explicit `projectId`), upserts the collection, folders
+  (parent-first nesting) and requests by `external_key`, writes one
+  `sdk_sync_runs` row and returns per-entity created/updated/pruned counts.
+  Entitlement gates run inside the transaction (`51a6d8a`).
+- **Project/workspace-bound tokens + `sdk` scope**: `POST /api/tokens` accepts
+  `projectId` xor `workspaceId` (unknown/blank/both rejected) and the new `sdk`
+  scope; the API-tokens UI gained the binding selector (`f468edc`).
+- **`sdk/` package (`apihub-sdk` 0.1.0, zero runtime deps)**: `createHub()` /
+  `attach(app, …)` public API, an Express adapter that captures `app.get/post/…`
+  routes, a manifest builder with stable `METHOD /path` keys and
+  `foldersFromPaths` nesting, a fetch client, an assertions helper and the
+  `apihub-sdk sync --config <file.cjs>` CLI. `express` is an optional peer dep;
+  `npm publish --dry-run` packages 14 files / 7.2 kB cleanly (no publish).
+- **Verification (this turn)**: backend API unit `62/62`; SDK suite `22/22`;
+  `sdkSync.integration.test.cjs` on the scratch cluster `7/7` (create → update
+  idempotency, nested folders, assertions + target URL persisted, binding wins,
+  scope gate); frontend `tsc --noEmit` clean + unit `91/91`. Live smoke through
+  the real `POST /api/sdk/sync`: the first sync created 1 request + 1 folder, the
+  re-run updated 1 / created 0, and the content API showed collection
+  `SDK Smoke` → folder `Smoke` → `GET /smoke/ping` at
+  `http://localhost:4000/smoke/ping` (assertions `[]`); the smoke collection was
+  then removed via `DELETE /api/collections/:id`.
+
 ### 5.62 Enhancement round 4 — five features shipped in parallel (2026-09-09)
 
 After the capability audit, Ranjith asked to build the whole prioritized list
