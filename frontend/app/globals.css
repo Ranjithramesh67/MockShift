@@ -1712,6 +1712,7 @@ body.is-col-dragging .sidebar {
   overflow: hidden;
 }
 .response-body .code-editor .cm-theme,
+.response-body .code-editor .cm-theme-dark,
 .response-body .code-editor .cm-editor {
   height: 100% !important;
 }
@@ -3999,7 +4000,7 @@ body.is-col-dragging .sidebar {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-panel-2);
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   max-height: 45%;
   display: flex;

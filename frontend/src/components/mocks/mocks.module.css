@@ -6,6 +6,7 @@
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  padding: 20px;
   color: var(--text);
 }
 
@@ -357,6 +358,13 @@
   margin-top: 8px;
 }
 
+.routeForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .divider {
   height: 1px;
   background: var(--border-soft);
@@ -364,6 +372,9 @@
 }
 
 @media (max-width: 900px) {
+  .panel {
+    padding: 14px;
+  }
   .logRow {
     grid-template-columns: 70px 52px minmax(90px, 1fr) 52px;
   }

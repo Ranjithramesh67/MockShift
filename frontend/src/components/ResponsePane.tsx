@@ -245,7 +245,7 @@ export function ResponsePane() {
                   </div>
                 )}
                 <div className="response-toolbar-actions">
-                  {!isBinary && canFormat && (
+                  {!isBinary && canFormat && effectiveView !== 'pretty' && (
                     <button
                       type="button"
                       className="response-action"
@@ -259,6 +259,7 @@ export function ResponsePane() {
                     className="response-action"
                     onClick={handleDownload}
                     data-testid="response-download"
+                    aria-label="Download response"
                   >
                     <ExportIcon size={13} />
                     Download

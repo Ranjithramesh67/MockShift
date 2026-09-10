@@ -37,11 +37,16 @@ test('large response scrolls inside the response pane', async ({ page }) => {
 
   const metrics = await page.locator('.response-body .code-editor').evaluate((el) => {
     const scroller = el.querySelector('.cm-scroller');
+    const scrollBefore = scroller ? scroller.scrollTop : 0;
+    if (scroller) scroller.scrollTop = 500;
     return {
       editorClientHeight: el.clientHeight,
       editorScrollHeight: el.scrollHeight,
       paneClientHeight: el.closest('.response-pane')?.clientHeight ?? 0,
+      scrollerClientHeight: scroller ? scroller.clientHeight : 0,
+      scrollerScrollHeight: scroller ? scroller.scrollHeight : 0,
       scrollerOverflowY: scroller ? getComputedStyle(scroller).overflowY : '',
+      scrollerScrolled: scroller ? scroller.scrollTop > scrollBefore : false,
     };
   });
   console.log('metrics:', JSON.stringify(metrics));
@@ -51,6 +56,13 @@ test('large response scrolls inside the response pane', async ({ page }) => {
   expect(metrics.editorClientHeight).toBeLessThanOrEqual(metrics.paneClientHeight + 1);
   // The internal scroller scrolls vertically.
   expect(['auto', 'scroll']).toContain(metrics.scrollerOverflowY);
+  // The scroller must be the constrained, overflowable element: its own box is
+  // bounded and shorter than its content, and it actually scrolls. This catches
+  // the regression where the CodeMirror wrapper grows to the content height so
+  // the scroller never overflows (and the editor is clipped by overflow:hidden).
+  expect(metrics.scrollerClientHeight).toBeLessThanOrEqual(metrics.editorClientHeight + 1);
+  expect(metrics.scrollerScrollHeight).toBeGreaterThan(metrics.scrollerClientHeight);
+  expect(metrics.scrollerScrolled).toBe(true);
 
   // The page itself must not grow.
   const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
