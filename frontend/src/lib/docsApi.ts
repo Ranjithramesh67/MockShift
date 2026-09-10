@@ -444,6 +444,68 @@ export async function fetchDocExport(pageId: string, format: DocExportFormat): P
   return res.text();
 }
 
+// ---- Product API reference (DR7): the contract-first OpenAPI document. ----
+
+export interface OpenApiSchema {
+  [key: string]: unknown;
+}
+
+export interface OpenApiParameter {
+  name: string;
+  in: string;
+  required?: boolean;
+  description?: string;
+  schema?: OpenApiSchema;
+}
+
+export interface OpenApiMediaType {
+  schema?: OpenApiSchema;
+  example?: unknown;
+  examples?: Record<string, { value?: unknown; summary?: string }>;
+}
+
+export interface OpenApiRequestBody {
+  required?: boolean;
+  description?: string;
+  content?: Record<string, OpenApiMediaType>;
+}
+
+export interface OpenApiResponse {
+  description?: string;
+  content?: Record<string, OpenApiMediaType>;
+}
+
+export interface OpenApiOperation {
+  tags?: string[];
+  summary?: string;
+  description?: string;
+  operationId?: string;
+  parameters?: OpenApiParameter[];
+  requestBody?: OpenApiRequestBody;
+  responses?: Record<string, OpenApiResponse>;
+  security?: Array<Record<string, string[]>>;
+}
+
+export interface OpenApiPathItem {
+  get?: OpenApiOperation;
+  post?: OpenApiOperation;
+  put?: OpenApiOperation;
+  patch?: OpenApiOperation;
+  delete?: OpenApiOperation;
+}
+
+export interface OpenApiSpec {
+  openapi: string;
+  info: { title: string; version: string; description?: string };
+  servers?: Array<{ url: string; description?: string }>;
+  tags?: Array<{ name: string; description?: string }>;
+  paths: Record<string, OpenApiPathItem>;
+}
+
+export function fetchApiReference(): Promise<OpenApiSpec> {
+  return apiFetch<OpenApiSpec>('/api/docs/api-reference');
+}
+
 // Existing (non-docs) endpoints reused by the docs UI.
 export const docsSharedApi = {
   // A caller's own project access-request rows (pre-fill "pending" state).

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
 import { useApp } from '@/store/AppStore';
@@ -42,6 +43,7 @@ interface TreeRow {
 }
 
 export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void }) {
+  const router = useRouter();
   const ws = useWorkspace();
   const { user } = useAuth();
   const { dispatch } = useApp();
@@ -393,6 +395,14 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
           <p className="admin-subtitle">Workspace documentation, examples and walkthroughs.</p>
         </div>
         <div className="admin-header-actions">
+          <button
+            type="button"
+            className="ghost-button"
+            data-testid="docs-api-reference"
+            onClick={() => router.push('/docs/api-reference')}
+          >
+            API reference
+          </button>
           <button
             type="button"
             className="primary-button"

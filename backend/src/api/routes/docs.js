@@ -43,6 +43,7 @@
 
 const { Router } = require('express');
 const crypto = require('crypto');
+const path = require('path');
 const { query, pool } = require('../db');
 const {
   requireAuth,
@@ -486,6 +487,22 @@ async function notifyShareAudience({ kind, targetUserId, teamId, orgId, actorId,
 }
 
 // ================================================================ Pages
+
+// Contract-first OpenAPI document (DR7, O7): hand-authored under api/openapi.json
+// at the repo root and served verbatim. Audience (O8): any signed-in user — it
+// holds no secrets and every sample uses placeholder tokens. Declared before the
+// single-segment GET /:pageId so "api-reference" can never be read as a page id.
+const API_REFERENCE_PATH = path.join(__dirname, '..', '..', '..', '..', 'api', 'openapi.json');
+let apiReferenceCache = null;
+function loadApiReference() {
+  if (!apiReferenceCache) apiReferenceCache = require(API_REFERENCE_PATH);
+  return apiReferenceCache;
+}
+
+// GET /docs/api-reference -> 200 OpenAPI 3.0 document.
+router.get('/api-reference', (req, res) => {
+  res.json(loadApiReference());
+});
 
 // GET /docs?workspaceId=<uuid>[&projectId=<uuid>][&q=text] -> 200 {pages:[...]}
 // Caller must be able to read the workspace.

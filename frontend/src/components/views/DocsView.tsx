@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useNav } from '@/store/NavStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { isApiMention, type DocsApiRef, type DocsMention } from '@/lib/docsApi';
+import { ApiReference } from '../docs/ApiReference';
 import { DocsHome } from '../docs/DocsHome';
 import { DocsPageView } from '../docs/DocsPageView';
 
@@ -21,6 +22,7 @@ import { DocsPageView } from '../docs/DocsPageView';
 export default function DocsView() {
   const nav = useNav();
   const router = useRouter();
+  const pathname = usePathname();
   const ws = useWorkspace();
   const searchParams = useSearchParams();
   const [pageId, setPageId] = useState<string | null>(() => {
@@ -75,7 +77,9 @@ export default function DocsView() {
 
   return (
     <main className="admin-main" data-testid="docs-view">
-      {pageId ? (
+      {pathname === '/docs/api-reference' ? (
+        <ApiReference />
+      ) : pageId ? (
         <DocsPageView pageId={pageId} onBack={closePage} onOpenApi={openMention} />
       ) : (
         <DocsHome onOpenPage={openPage} />
