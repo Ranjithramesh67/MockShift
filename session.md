@@ -1743,7 +1743,7 @@ Split (each a shippable micro-turn; none started, `[ ]`):
   design — see O1); access resolver for doc read = owner / workspace+project
   readers (existing) OR any matching share audience; revoke per target; share
   URL stays stable for `public`. Matrix + route tests.
-- [ ] **DR2 — Share UI + team sharing**: PageActions share modal gains target
+- [x] **DR2 — Share UI + team sharing** (DONE 2026-09-09, `c4fd25b`, §5.56): PageActions share modal gains target
   pickers (email/username search, org-wide, team multi-select from workspace
   teams) + permission display + revoke list + "copy link"; notify recipients
   (existing notification/mail infra); doc home gains a "Shared with me"
