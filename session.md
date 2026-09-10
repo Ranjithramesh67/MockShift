@@ -1833,6 +1833,48 @@ Reordering allowed when Ranjith picks each segment. **All segments DR1–DR7
 shipped (DR1–DR3 `c4fd25b`…`7362bed`, DR4 `c36f90a`, DR6 `14ef23b`, DR5
 `073d460`, DR7 below).**
 
+## Pending — Enhancement round 4 (planned 2026-09-09; priority order below; each a shippable micro-turn, none started, `[ ]`)
+
+Suggested from a capability audit after Docs round 3. Ordered by leverage:
+contract-awareness and monitoring compound with the code that already exists
+(assertions, cron automations, notifications, the new OpenAPI spec); the AI and
+collaboration items are larger and can follow. Reorder allowed when Ranjith
+picks each segment.
+
+- [ ] **E1 (P1, recommended next) — OpenAPI import + contract validation**:
+  import an external OpenAPI/Swagger 3.x spec and (a) generate a
+  collection/folders/requests, (b) validate live responses against the operation
+  schema as a first-class assertion, and (c) diff spec versions and flag
+  breaking changes. Builds on the assertion engine, collection import/export and
+  the `api/openapi.json` precedent. Likely a new `openapi` import module +
+  `spec_contracts` migration + a docs/collections surface. Open decisions:
+  spec storage (per project vs per collection), contract source of truth (repo
+  file vs uploaded), how to attach a contract to a request (operationId vs
+  path+method), and whether a failing contract marks the run FAILED.
+- [ ] **E2 (P2) — API monitoring & alerting**: promote `SCHEDULE` automations
+  into monitored checks with pass/fail streaks, p95 latency, configurable
+  failure thresholds, alert channels (email/Slack/Discord/webhook) and an
+  optional public status page. Builds on `automations.js` cron engine,
+  `notifications.js` and run history. Open decisions: alert delivery channels to
+  support first, retry/backoff policy, and status-page audience (public vs
+  workspace).
+- [ ] **E3 (P3) — Mock server scenarios & call logs**: conditional responses
+  (match on headers/query/body), named scenarios, stateful sequences, and a
+  captured request log with replay. Builds on `mockServers.js` (which already has
+  `delayMs` + static routes). Open decisions: matching DSL (glob/regex/JSONPath),
+  state store location (in-memory vs DB), and log retention.
+- [ ] **E4 (P4) — AI copilot for requests and tests**: generate assertions,
+  example bodies and docs from a request/response, and explain failed runs in
+  plain language. On-brand with the MonkeyCode platform; reuse the docs
+  generator, assertion engine and credential redaction so secrets never reach
+  the prompt. Open decisions: which model/provider, opt-in scope, and a
+  user-supplied key (`USER_LLM_*`) vs platform-provided.
+- [ ] **E5 (P5) — Collaboration: comments, review and version diff**: comment
+  threads on a request/collection, an approval/review flow for proposed API
+  changes, and a diff between collection versions. Builds on `logAudit`, the
+  share/notification infra and collection versioning. Open decisions: versioning
+  model (snapshot per save vs explicit versions) and review scope.
+
 ## Roadmap
 
 | Step | Deliverable |
