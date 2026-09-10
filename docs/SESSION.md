@@ -838,6 +838,26 @@ or a commit checkpoint is agreed).
   is verified via backend integration + build so far); e2e + commit optional and
   pending user go-ahead.
 
+### 5.57 Docs round 3 DR3 — Private / Public / Shared-with-me tabs (2026-09-09)
+
+DR3 built on the §5.54 visibility backend (`doc_pages.visibility`,
+`GET /docs?visibility=`), no schema or route changes needed.
+
+- **`DocsHome` tabs reworked** — the old `Pages` + `Access requests` tab set
+  becomes `Private` / `Public` / `Shared with me (n)` / `Access requests`
+  (`docs-tab-private` / `docs-tab-public` / `docs-tab-shared` /
+  `docs-tab-requests`). Private and Public fetch the workspace list with
+  `visibility=PRIVATE|PUBLIC` respectively and keep the existing collapsible
+  tree, search, visibility pill and sub-page/move affordances; collapse state
+  resets on tab change. Public tab empty state points at the visibility control.
+- **Shared with me is now its own tab** — renders the `GET /docs/shared` feed
+  grouped by the audience that exposed each page (direct / team / org / public),
+  with loading + empty states; it refreshes each time the tab is opened. The
+  inline section previously appended under the pages tree was removed.
+- **Verification** — FE `tsc --noEmit` clean, unit tests green, `next build`
+  green. No backend change (existing integration suites cover the visibility
+  filter).
+
 ### 5.56 Docs round 3 DR2 — share audiences UI + team/org sharing, notify recipients, "Shared with me" (2026-09-09)
 
 DR2 shipped as the full frontend segment on top of the DR1 backend (migration
