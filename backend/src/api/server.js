@@ -21,6 +21,13 @@ const tokenRoutes = require('./routes/tokens');
 const serverRunRoutes = require('./routes/serverRuns');
 const sendRoutes = require('./routes/sends');
 const docsRoutes = require('./routes/docs');
+const contractsRoutes = require('./routes/contracts');
+const monitorRoutes = require('./routes/monitors');
+const mockScenarioRoutes = require('./routes/mockScenarios');
+const copilotRoutes = require('./routes/copilot');
+const commentRoutes = require('./routes/comments');
+const reviewRoutes = require('./routes/reviews');
+const versionRoutes = require('./routes/versions');
 const { mockDispatch } = require('./mockDispatch');
 const { query } = require('./db');
 const { runWorkflow, syncAllSchedules } = require('./workflowService');
@@ -89,10 +96,20 @@ function createApp() {
   app.use('/api', mockServerRoutes);
   app.use('/api', exportRoutes);
   app.use('/api/docs', docsRoutes);
+  app.use('/api/contracts', contractsRoutes);
+  app.use('/api/monitors', monitorRoutes);
+  app.use('/api/copilot', copilotRoutes);
+  app.use('/api', mockScenarioRoutes);
+  app.use('/api', commentRoutes);
+  app.use('/api', reviewRoutes);
+  app.use('/api', versionRoutes);
 
   // Public per-project mock server: hit it like any external API.
+  // The scenario middleware runs first so scenario/conditional responses and
+  // call logging apply, falling through to the base mock dispatch.
   // Registered before the /api 404 handler (different prefix) so requests to
   // http://127.0.0.1:3001/mock/:projectId/... are served with no auth.
+  app.use('/mock/:projectId', mockScenarioRoutes.createMockScenarioMiddleware());
   app.use('/mock/:projectId', mockDispatch);
 
   // 404 for unknown API routes.
@@ -138,4 +155,7 @@ if (require.main === module) {
   // Run-history retention purge (interval-based, first tick shortly after boot).
   const { startRetentionScheduler } = require('./retention');
   startRetentionScheduler();
+  // Monitored API checks (E2): own interval scheduler, first tick after boot.
+  const { startMonitorScheduler } = require('./monitorRunner');
+  startMonitorScheduler();
 }

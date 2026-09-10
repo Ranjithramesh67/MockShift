@@ -28,6 +28,11 @@ const HistoryView = dynamic(() => import('./views/HistoryView').then((m) => m.Hi
 const DocsView = dynamic(() => import('./views/DocsView').then((m) => m.default));
 const InboxView = dynamic(() => import('./InboxView').then((m) => m.InboxView));
 const ApiTokensView = dynamic(() => import('./ApiTokensView').then((m) => m.ApiTokensView));
+const ContractPanel = dynamic(() => import('./contracts/ContractPanel').then((m) => m.ContractPanel));
+const MonitorsPanel = dynamic(() => import('./monitors/MonitorsPanel').then((m) => m.MonitorsPanel));
+const MockScenariosPanel = dynamic(() => import('./mocks/MockScenariosPanel').then((m) => m.MockScenariosPanel));
+const CopilotPanel = dynamic(() => import('./copilot/CopilotPanel').then((m) => m.CopilotPanel));
+const CollabView = dynamic(() => import('./collab/CollabPanel').then((m) => m.CollabView));
 
 function WorkspaceArea({
   onOpenCurl,
@@ -104,6 +109,7 @@ export function AppShell() {
   const [scratchpadOpen, setScratchpadOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const prevRequestId = useRef<string | null>(null);
+  const mockProjectId = ws.overview?.project?.id ?? ws.tree?.projects?.[0]?.id ?? '';
 
   useCloseRequestTabShortcut();
 
@@ -174,6 +180,16 @@ export function AppShell() {
                 <InboxView />
               ) : view === 'settings' ? (
                 <ApiTokensView />
+              ) : view === 'contracts' ? (
+                <ContractPanel />
+              ) : view === 'monitors' ? (
+                <MonitorsPanel />
+              ) : view === 'mock-scenarios' ? (
+                <MockScenariosPanel projectId={mockProjectId} />
+              ) : view === 'copilot' ? (
+                <CopilotPanel />
+              ) : view === 'collab' ? (
+                <CollabView />
               ) : (
                 <AdminView />
               )}

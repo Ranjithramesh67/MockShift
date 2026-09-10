@@ -41,6 +41,10 @@ import {
   CopyIcon,
   SendIcon,
   FileIcon,
+  LayersIcon,
+  ClockIcon,
+  FormulaIcon,
+  UsersIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams';
@@ -1231,6 +1235,71 @@ export function Sidebar({
           }}
         >
           <FileIcon size={17} />
+        </Link>
+        <Link
+          href="/contracts"
+          className={`rail-button ${view === 'contracts' ? 'active' : ''}`}
+          data-testid="rail-contracts"
+          title="API contracts"
+          aria-label="API contracts"
+          onClick={() => {
+            setView('contracts');
+            onRequestClose?.();
+          }}
+        >
+          <LayersIcon size={17} />
+        </Link>
+        <Link
+          href="/monitors"
+          className={`rail-button ${view === 'monitors' ? 'active' : ''}`}
+          data-testid="rail-monitors"
+          title="Monitors"
+          aria-label="Monitors"
+          onClick={() => {
+            setView('monitors');
+            onRequestClose?.();
+          }}
+        >
+          <ClockIcon size={17} />
+        </Link>
+        <Link
+          href="/mock-scenarios"
+          className={`rail-button ${view === 'mock-scenarios' ? 'active' : ''}`}
+          data-testid="rail-mock-scenarios"
+          title="Mock scenarios"
+          aria-label="Mock scenarios"
+          onClick={() => {
+            setView('mock-scenarios');
+            onRequestClose?.();
+          }}
+        >
+          <ServerIcon size={17} />
+        </Link>
+        <Link
+          href="/copilot"
+          className={`rail-button ${view === 'copilot' ? 'active' : ''}`}
+          data-testid="rail-copilot"
+          title="AI copilot"
+          aria-label="AI copilot"
+          onClick={() => {
+            setView('copilot');
+            onRequestClose?.();
+          }}
+        >
+          <FormulaIcon size={17} />
+        </Link>
+        <Link
+          href="/collab"
+          className={`rail-button ${view === 'collab' ? 'active' : ''}`}
+          data-testid="rail-collab"
+          title="Collaboration"
+          aria-label="Collaboration"
+          onClick={() => {
+            setView('collab');
+            onRequestClose?.();
+          }}
+        >
+          <UsersIcon size={17} />
         </Link>
         {canManage && (
           <Link
