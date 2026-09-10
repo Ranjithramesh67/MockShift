@@ -12,20 +12,26 @@ export function NewPageModal({
   workspaces,
   defaultWorkspaceId,
   parentPage,
+  teams = [],
   onClose,
   onCreated,
 }: {
   workspaces: Workspace[];
   defaultWorkspaceId: string;
   // When set the new page is a sub-page of this one: the workspace/project are
-  // inherited from the parent and the project selector is hidden.
-  parentPage?: { id: string; title: string; workspaceId: string; projectId: string | null } | null;
+  // inherited from the parent and the project selector is hidden. The team
+  // ("space") binding is inherited server-side too.
+  parentPage?: { id: string; title: string; workspaceId: string; projectId: string | null; teamId?: string | null } | null;
+  // Teams of the selected workspace's organization, offered as a "space" for
+  // root pages.
+  teams?: Array<{ id: string; name: string }>;
   onClose: () => void;
   onCreated: (page: DocsPageSummary) => void;
 }) {
   const [workspaceId, setWorkspaceId] = useState(() => parentPage?.workspaceId ?? defaultWorkspaceId);
   const [title, setTitle] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [teamId, setTeamId] = useState('');
   const [visibility, setVisibility] = useState<DocsVisibility>('PRIVATE');
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [busy, setBusy] = useState(false);
@@ -66,7 +72,7 @@ export function NewPageModal({
       const { page } = await docsApi.create(
         parentPage
           ? { workspaceId: parentPage.workspaceId, parentId: parentPage.id, title: trimmed, visibility }
-          : { workspaceId, projectId: projectId || null, title: trimmed, visibility }
+          : { workspaceId, projectId: projectId || null, teamId: teamId || null, title: trimmed, visibility }
       );
       onCreated(page);
     } catch (err) {
@@ -124,6 +130,7 @@ export function NewPageModal({
               onChange={(e) => {
                 setWorkspaceId(e.target.value);
                 setProjectId('');
+                setTeamId('');
               }}
             >
               {workspaces.map((w) => (
@@ -169,6 +176,24 @@ export function NewPageModal({
             <option value="PUBLIC">Public — visible to your organization</option>
           </select>
         </label>
+        {!parentPage && teams.length > 0 && (
+          <label className="auth-field">
+            <span>Team space (optional)</span>
+            <select
+              className="compact-select"
+              data-testid="docs-new-page-team"
+              value={teamId}
+              onChange={(e) => setTeamId(e.target.value)}
+            >
+              <option value="">No team — workspace-wide</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="modal-actions">
           <button type="button" className="ghost-button" onClick={onClose}>
             Cancel

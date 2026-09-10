@@ -12,7 +12,7 @@ import { MovePageModal } from './MovePageModal';
 import { workspaceApi } from '@/lib/api';
 import { fmtDate, workspaceRoleRank } from './helpers';
 import styles from './docs.module.css';
-import { ChevronIcon, FileIcon, GlobeIcon, LockIcon, MoveIcon, PlusIcon } from '@/components/icons';
+import { ArrowDownIcon, ArrowUpIcon, ChevronIcon, FileIcon, GlobeIcon, LockIcon, MoveIcon, PlusIcon } from '@/components/icons';
 
 // Workspace-access-request review gate mirrors the backend: platform
 // MANAGER/ADMIN bypass, otherwise the workspace role must be >= ADMIN.
@@ -48,6 +48,8 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
   const [workspaceId, setWorkspaceId] = useState<string>(() => ws.activeWorkspaceId ?? ws.workspaces[0]?.id ?? '');
   const [projectId, setProjectId] = useState('');
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [teams, setTeams] = useState<Array<{ id: string; name: string }>>([]);
+  const [teamFilter, setTeamFilter] = useState('');
   const [q, setQ] = useState('');
   const [appliedQ, setAppliedQ] = useState('');
   const [tab, setTab] = useState<'private' | 'public' | 'shared' | 'requests'>('private');
@@ -82,6 +84,26 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
       })
       .catch(() => {
         if (alive) setProjects([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [workspaceId]);
+
+  // Teams linked to the selected workspace ("spaces" a page can be bound to).
+  useEffect(() => {
+    if (!workspaceId) {
+      setTeams([]);
+      return;
+    }
+    let alive = true;
+    workspaceApi
+      .teams(workspaceId)
+      .then((res) => {
+        if (alive) setTeams(res.teams.map((t) => ({ id: t.team_id, name: t.name })));
+      })
+      .catch(() => {
+        if (alive) setTeams([]);
       });
     return () => {
       alive = false;
@@ -168,6 +190,11 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
   // tree would hide matches whose ancestors did not match).
   const searching = appliedQ.length > 0;
 
+  const filteredPages = useMemo(
+    () => (teamFilter ? pages.filter((p) => p.teamId === teamFilter) : pages),
+    [pages, teamFilter]
+  );
+
   // Collapse everything when the scope, the query or the tab changes.
   useEffect(() => {
     setCollapsedIds(new Set());
@@ -175,26 +202,28 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
 
   const byParent = useMemo(() => {
     const map = new Map<string | null, DocsPageSummary[]>();
-    for (const p of pages) {
+    for (const p of filteredPages) {
       const list = map.get(p.parentId) ?? [];
       list.push(p);
       map.set(p.parentId, list);
     }
-    for (const list of Array.from(map.values())) list.sort((a, b) => a.title.localeCompare(b.title));
+    for (const list of Array.from(map.values())) {
+      list.sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.title.localeCompare(b.title));
+    }
     return map;
-  }, [pages]);
+  }, [filteredPages]);
 
   // Depth-first rows in tree order. A "root" is a page with no parent in the
   // current scope (parentId null, or its parent was filtered out) — those are
   // always shown; collapsed branches skip their descendants.
   const rows = useMemo<TreeRow[]>(() => {
     if (searching) {
-      return pages.map((page) => ({ page, depth: 0, hasChildren: false, expanded: false }));
+      return filteredPages.map((page) => ({ page, depth: 0, hasChildren: false, expanded: false }));
     }
-    const pagesById = new Map(pages.map((p) => [p.id, p]));
-    const roots = pages
+    const pagesById = new Map(filteredPages.map((p) => [p.id, p]));
+    const roots = filteredPages
       .filter((p) => !p.parentId || !pagesById.has(p.parentId))
-      .sort((a, b) => a.title.localeCompare(b.title));
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.title.localeCompare(b.title));
     const out: TreeRow[] = [];
     const walk = (parentId: string | null, depth: number) => {
       for (const child of byParent.get(parentId) ?? []) {
@@ -211,7 +240,7 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
       if (children.length > 0 && expanded) walk(root.id, 1);
     }
     return out;
-  }, [pages, byParent, collapsedIds, searching]);
+  }, [filteredPages, byParent, collapsedIds, searching]);
 
   // "Shared with me" grouped by how each page became readable. Pages of the
   // currently selected workspace are excluded (they already show in the tree).
@@ -264,6 +293,7 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
   const onWorkspaceChange = (id: string) => {
     setWorkspaceId(id);
     setProjectId('');
+    setTeamFilter('');
     setQ('');
     setAppliedQ('');
   };
@@ -309,6 +339,28 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
       else next.add(pageId);
       return next;
     });
+  };
+
+  // Move a page one slot within its sibling set. Rewrites the sibling positions
+  // sequentially so legacy rows that all share position 0 still reorder.
+  const reorderPage = async (page: DocsPageSummary, dir: 'up' | 'down') => {
+    const siblings = byParent.get(page.parentId) ?? [];
+    const idx = siblings.findIndex((s) => s.id === page.id);
+    const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= siblings.length) return;
+    const ordered = [...siblings];
+    [ordered[idx], ordered[swapIdx]] = [ordered[swapIdx], ordered[idx]];
+    try {
+      await Promise.all(
+        ordered
+          .map((s, i) => ({ s, i }))
+          .filter(({ s, i }) => (s.position ?? 0) !== i)
+          .map(({ s, i }) => docsApi.update(s.id, { position: i }))
+      );
+      void loadPages();
+    } catch (err) {
+      toastError(err, 'Failed to reorder page');
+    }
   };
 
   const onMoved = () => {
@@ -389,6 +441,21 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
             </option>
           ))}
         </select>
+        {teams.length > 0 && (
+          <select
+            className="compact-select"
+            data-testid="docs-team-filter"
+            value={teamFilter}
+            onChange={(e) => setTeamFilter(e.target.value)}
+          >
+            <option value="">All teams</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div className={styles.searchWrap}>
           <input
             type="search"
@@ -499,6 +566,8 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
                   user?.id
                 );
                 const isPublic = page.visibility === 'PUBLIC';
+                const siblings = byParent.get(page.parentId) ?? [];
+                const sIdx = siblings.findIndex((s) => s.id === page.id);
                 return (
                   <tr
                     key={page.id}
@@ -526,6 +595,11 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
                         )}
                         <FileIcon size={14} />
                         <span className={styles.pageName}>{page.title}</span>
+                        {page.teamName && (
+                          <span className={styles.teamChip} data-testid={`docs-page-team-${page.id}`}>
+                            {page.teamName}
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td data-label="Visibility">
@@ -553,6 +627,26 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
                     <td data-label="" onClick={(e) => e.stopPropagation()}>
                       {manage && (
                         <span className={styles.rowActions}>
+                          <button
+                            type="button"
+                            className={styles.rowActionBtn}
+                            data-testid={`docs-page-up-${page.id}`}
+                            title="Move up"
+                            disabled={sIdx <= 0}
+                            onClick={() => void reorderPage(page, 'up')}
+                          >
+                            <ArrowUpIcon size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.rowActionBtn}
+                            data-testid={`docs-page-down-${page.id}`}
+                            title="Move down"
+                            disabled={sIdx < 0 || sIdx >= siblings.length - 1}
+                            onClick={() => void reorderPage(page, 'down')}
+                          >
+                            <ArrowDownIcon size={13} />
+                          </button>
                           <button
                             type="button"
                             className={styles.rowActionBtn}
@@ -585,18 +679,20 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
                   </td>
                 </tr>
               )}
-              {!loading && !error && pages.length === 0 && (
+              {!loading && !error && filteredPages.length === 0 && (
                 <tr>
                   <td colSpan={5} className="hint" data-testid="docs-pages-empty">
                     {tab === 'public'
                       ? 'No public pages yet. Make a page public from the Private tab or with the visibility control.'
-                      : `No private pages yet${workspaceId ? '' : ' for this workspace'}. Click “New page” to write the first one.`}
+                      : teamFilter
+                        ? 'No pages in this team space yet. Create one and pick this team, or choose “All teams”.'
+                        : `No private pages yet${workspaceId ? '' : ' for this workspace'}. Click “New page” to write the first one.`}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-          {!searching && pages.length > 0 && (
+          {!searching && filteredPages.length > 0 && (
             <p className={styles.treeHint} data-testid="docs-tree-hint">
               Nested pages form a document tree — use the arrows to collapse a branch, the “+” to add a sub-page, or the
               move icon to re-parent a page.
@@ -609,6 +705,7 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
         <NewPageModal
           workspaces={workspaces}
           defaultWorkspaceId={workspaceId}
+          teams={teams}
           onClose={() => setCreating(false)}
           onCreated={onCreated}
         />
@@ -618,6 +715,7 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
         <NewPageModal
           workspaces={workspaces}
           defaultWorkspaceId={workspaceId}
+          teams={teams}
           parentPage={subParent}
           onClose={() => setSubParent(null)}
           onCreated={onCreated}

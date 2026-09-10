@@ -26,6 +26,9 @@ export interface DocsPageSummary {
   projectName: string | null;
   visibility: DocsVisibility;
   parentId: string | null;
+  teamId?: string | null;
+  teamName?: string | null;
+  position?: number;
   createdBy: DocsPerson | null;
   updatedBy: DocsPerson | null;
   createdAt: string;
@@ -141,6 +144,9 @@ export interface DocsPageSummary {
   projectName: string | null;
   visibility: DocsVisibility;
   parentId: string | null;
+  teamId?: string | null;
+  teamName?: string | null;
+  position?: number;
   createdBy: DocsPerson | null;
   updatedBy: DocsPerson | null;
   createdAt: string;
@@ -350,17 +356,26 @@ export const docsApi = {
     workspaceId: string;
     projectId?: string | null;
     parentId?: string | null;
+    teamId?: string | null;
     title: string;
     visibility?: DocsVisibility;
   }) => apiFetch<{ page: DocsPageSummary }>('/api/docs', { method: 'POST', body: input }),
 
   get: (pageId: string) => apiFetch<DocsPageDetail>(`/api/docs/${pageId}`),
 
-  // Optional-title/visibility/parentId patch — parentId null moves the page to
-  // the root level. A missing key leaves that field untouched.
+  // Optional-title/visibility/parentId/teamId/position patch — parentId null
+  // moves the page to the root level, teamId null clears the team ("space")
+  // binding, position (>= 0) reorders among siblings. A missing key leaves that
+  // field untouched.
   update: (
     pageId: string,
-    patch: { title?: string; visibility?: DocsVisibility; parentId?: string | null }
+    patch: {
+      title?: string;
+      visibility?: DocsVisibility;
+      parentId?: string | null;
+      teamId?: string | null;
+      position?: number;
+    }
   ) => apiFetch<{ page: DocsPageSummary }>(`/api/docs/${pageId}`, { method: 'PUT', body: patch }),
 
   updateTitle: (pageId: string, title: string) => apiFetch<{ page: DocsPageSummary }>(`/api/docs/${pageId}`, { method: 'PUT', body: { title } }),
