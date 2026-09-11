@@ -29,6 +29,11 @@ const STATUS_OPTIONS = [
 
 type SubscriberRow = {
   user: { id: string; name: string; email: string | null };
+  account?: {
+    type: 'PERSONAL' | 'COMPANY';
+    orgName: string | null;
+    domain: string | null;
+  };
   subscription: {
     id: string;
     status: string;
@@ -53,13 +58,19 @@ type ListResponse = {
 
 type PlanOption = { id: string; key: string; name: string; status: string };
 
-type Filters = { search: string; status: string; planId: string };
+type Filters = { search: string; status: string; planId: string; accountType: string };
 
 export default function SubscribersPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [planId, setPlanId] = useState('');
-  const [filters, setFilters] = useState<Filters>({ search: '', status: '', planId: '' });
+  const [accountType, setAccountType] = useState('');
+  const [filters, setFilters] = useState<Filters>({
+    search: '',
+    status: '',
+    planId: '',
+    accountType: '',
+  });
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ListResponse | null>(null);
   const [plans, setPlans] = useState<PlanOption[]>([]);
@@ -80,6 +91,7 @@ export default function SubscribersPage() {
       if (filters.search) params.set('search', filters.search);
       if (filters.status) params.set('status', filters.status);
       if (filters.planId) params.set('planId', filters.planId);
+      if (filters.accountType) params.set('accountType', filters.accountType);
       params.set('page', String(page));
       params.set('pageSize', '20');
       const res = await apiFetch<ListResponse>(`/api/subscribers?${params.toString()}`);
@@ -123,16 +135,27 @@ export default function SubscribersPage() {
           className="pm-toolbar"
           onSubmit={(e) => {
             e.preventDefault();
-            apply({ search, status, planId });
+            apply({ search, status, planId, accountType });
           }}
         >
           <input
             data-testid="subscribers-search"
             className="pm-input pm-search"
-            placeholder="Search name, email or username…"
+            placeholder="Search name, email, username or company…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <select
+            className="pm-select"
+            aria-label="Account type"
+            data-testid="subscribers-account-type"
+            value={accountType}
+            onChange={(e) => setAccountType(e.target.value)}
+          >
+            <option value="">All accounts</option>
+            <option value="PERSONAL">Individuals</option>
+            <option value="COMPANY">Companies</option>
+          </select>
           <select
             className="pm-select"
             aria-label="Subscription status"
@@ -169,7 +192,8 @@ export default function SubscribersPage() {
               setSearch('');
               setStatus('');
               setPlanId('');
-              apply({ search: '', status: '', planId: '' });
+              setAccountType('');
+              apply({ search: '', status: '', planId: '', accountType: '' });
             }}
           >
             Reset
@@ -184,6 +208,7 @@ export default function SubscribersPage() {
               <tr>
                 <th>Name</th>
                 <th>Email</th>
+                <th>Account</th>
                 <th>Plan</th>
                 <th>Status</th>
                 <th>Cycle</th>
@@ -195,7 +220,7 @@ export default function SubscribersPage() {
             {loading ? (
               <tbody>
                 <tr>
-                  <td colSpan={8} className="pm-table-empty">
+                  <td colSpan={9} className="pm-table-empty">
                     <LoadingBlock />
                   </td>
                 </tr>
@@ -203,7 +228,7 @@ export default function SubscribersPage() {
             ) : !data || data.subscribers.length === 0 ? (
               <tbody>
                 <tr>
-                  <td colSpan={8} className="pm-table-empty">
+                  <td colSpan={9} className="pm-table-empty">
                     <EmptyState
                       title="No subscribers found"
                       hint="Try clearing the filters or adjusting the search term."
@@ -225,6 +250,15 @@ export default function SubscribersPage() {
                         </Link>
                       </td>
                       <td className="pm-cell-sub">{s.user.email ?? '—'}</td>
+                      <td>
+                        <span className="pm-cell-main">
+                          {s.account?.type === 'COMPANY' ? 'Company' : 'Individual'}
+                        </span>
+                        <div className="pm-cell-sub">
+                          {s.account?.orgName ?? '—'}
+                          {s.account?.domain ? ` · ${s.account.domain}` : ''}
+                        </div>
+                      </td>
                       <td>
                         {s.subscription?.plan_name ? (
                           <span>

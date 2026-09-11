@@ -2016,6 +2016,12 @@ Marketing-grade rework of the narrated tour (media still gitignored):
 
 ## Completed
 
+- **Multi-tenancy: personal vs company identity (2026-09-11)** — signups classified by email domain;
+  company users auto-join one COMPANY org per domain (first ADMIN, rest EDITOR), personal users get
+  their own org. New migration 039 + `emailDomain.js` + `accountProvision.js`; targeted shares and
+  sends are now org-bound (anonymous public links stay plan-gated); Portal B shows account type/org,
+  and the docs share modal picks from org members. Tests: apiAuth 19/19, docsShareAudiences 7/7,
+  docsShares 5/5, docsTreeVisibility 12/12, API units 69/69, both frontends typecheck clean.
 - **Collection folders feature (pushed as `b61a2c6`)** — Postman-style nested folders on Aiven:
   migration 011 (`folders` + `api_requests.folder_id` + RLS), backend folders CRUD + request-move
   + folder-aware tree, frontend nested sidebar tree + create/rename/delete UI + per-request

@@ -160,7 +160,10 @@ router.get('/', async (req, res, next) => {
     const search = String(req.query.search || '').trim();
     if (search) {
       const like = addParam(`${search}%`);
-      where.push(`(u.name ILIKE ${like} OR u.email ILIKE ${like} OR u.username ILIKE ${like})`);
+      where.push(
+        `(u.name ILIKE ${like} OR u.email ILIKE ${like} OR u.username ILIKE ${like}
+          OR org.name ILIKE ${like} OR org.domain ILIKE ${like})`
+      );
     }
 
     const status = String(req.query.status || '').toUpperCase();
@@ -187,6 +190,17 @@ router.get('/', async (req, res, next) => {
       where.push(`l.plan_id = ${addParam(planId)}`);
     }
 
+    // Account type: individuals (personal email domains) vs companies. Derived
+    // from the caller's company org membership, falling back to their personal
+    // org, so a company-email user always shows as COMPANY.
+    const accountType = String(req.query.accountType || '').toUpperCase();
+    if (accountType) {
+      if (!['PERSONAL', 'COMPANY'].includes(accountType)) {
+        return res.status(400).json({ error: 'accountType must be PERSONAL or COMPANY' });
+      }
+      where.push(`COALESCE(org.kind::text, 'PERSONAL') = ${addParam(accountType)}`);
+    }
+
     const whereSql = where.join(' AND ');
     const fromSql = `
       FROM users u
@@ -199,7 +213,15 @@ router.get('/', async (req, res, next) => {
          ORDER BY s.created_at DESC
          LIMIT 1
       ) l ON true
-      LEFT JOIN plans p ON p.id = l.plan_id`;
+      LEFT JOIN plans p ON p.id = l.plan_id
+      LEFT JOIN LATERAL (
+        SELECT o.id, o.name, o.kind, o.domain
+          FROM organization_members om
+          JOIN organizations o ON o.id = om.org_id
+         WHERE om.user_id = u.id
+         ORDER BY (o.kind = 'COMPANY') DESC, o.created_at ASC
+         LIMIT 1
+      ) org ON true`;
 
     const { rows: countRows } = await query(
       `SELECT count(*)::int AS total ${fromSql} WHERE ${whereSql}`,
@@ -213,6 +235,7 @@ router.get('/', async (req, res, next) => {
               l.current_period_start, l.current_period_end, l.trial_ends_at,
               l.cancel_at_period_end, l.created_at,
               p.key AS plan_key, p.name AS plan_name,
+              org.name AS org_name, org.kind AS org_kind, org.domain AS org_domain,
               (SELECT count(*)::int FROM orders o WHERE o.user_id = u.id) AS total_orders,
               (SELECT coalesce(sum(o2.amount) FILTER (WHERE o2.status = 'PAID'), 0)::text
                  FROM orders o2 WHERE o2.user_id = u.id) AS total_paid
@@ -227,6 +250,11 @@ router.get('/', async (req, res, next) => {
     const canEmail = roleAtLeast(req.user.role, 'SUPPORT');
     const subscribers = rows.map((r) => ({
       user: { id: r.id, name: r.name, email: canEmail ? r.email : null },
+      account: {
+        type: r.org_kind === 'COMPANY' ? 'COMPANY' : 'PERSONAL',
+        orgName: r.org_name || null,
+        domain: r.org_domain || null,
+      },
       subscription: r.sub_id
         ? {
             id: r.sub_id,
@@ -296,8 +324,31 @@ router.get('/:userId', requirePortalRole('SUPPORT'), async (req, res, next) => {
       { userId: req.user.id }
     );
 
+    const { rows: orgRows } = await query(
+      `SELECT o.id, o.name, o.kind, o.domain, om.role
+         FROM organization_members om
+         JOIN organizations o ON o.id = om.org_id
+        WHERE om.user_id = $1
+        ORDER BY (o.kind = 'COMPANY') DESC, o.name`,
+      [req.params.userId],
+      { userId: req.user.id }
+    );
+    const companyOrg = orgRows.find((o) => o.kind === 'COMPANY') || null;
+
     res.json({
       user: userRows[0],
+      account: {
+        type: companyOrg ? 'COMPANY' : 'PERSONAL',
+        orgName: companyOrg ? companyOrg.name : orgRows[0]?.name || null,
+        domain: companyOrg ? companyOrg.domain : null,
+      },
+      organizations: orgRows.map((o) => ({
+        id: o.id,
+        name: o.name,
+        kind: o.kind,
+        domain: o.domain,
+        role: o.role,
+      })),
       subscriptions: subRows.map(toSubscriptionShape),
       orders: orderRows.map(toOrderShape),
       invoices: invoiceRows.map((r) => ({
