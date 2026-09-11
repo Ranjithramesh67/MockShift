@@ -1981,6 +1981,25 @@ as script/config only (the media is gitignored and reproducible).
 - [x] **Tracked vs generated**: `docs/tutorial/.gitignore` excludes `.work/`,
   `.voices/` and `out/`; scripts + `README.md` + `build-video.sh` are committed.
 
+## Round 8 — tutorial video v2: full coverage + music (shipped 2026-09-11)
+
+Marketing-grade rework of the narrated tour (media still gitignored):
+
+- [x] **Full-page coverage**: `fixtures.mjs` seeds docs, contracts, monitors,
+  automations, collaboration, teams, tokens, an incoming send and a pending
+  access request; `script.mjs` deep-links to real seeded content and visits
+  every rail for each role.
+- [x] **Better voice**: switched to `en_US-ryan-high` with a production chain
+  (EQ, compression, room, loudness normalisation) and faster pacing.
+- [x] **Original music bed**: new `music.mjs` (from-scratch royalty-free
+  ambient), ducked under the narration via sidechain compression.
+- [x] **Polish**: colour grade + vignette, chapter banners, animated intro/outro
+  cards, per-chapter SRT subtitles.
+- [x] **Fix**: close the admin create-user overlay via Cancel (Escape was
+  unsupported and the overlay blocked later admin scenes).
+- [x] **Output**: `docs/tutorial/out/mockshift-tutorial.mp4`, 1920x1080 H.264 +
+  AAC, 6.2 min, 5 chapters, -16.4 LUFS.
+
 ## Roadmap
 
 | Step | Deliverable |

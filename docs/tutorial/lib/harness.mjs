@@ -30,11 +30,7 @@ const CURSOR_CSS = `
     outline: 3px solid rgba(64, 150, 255, 0.95) !important;
     outline-offset: 3px !important;
     border-radius: 6px;
-    animation: __tut_focus 1.1s ease-in-out infinite !important;
-  }
-  @keyframes __tut_focus {
-    0%, 100% { outline-color: rgba(64, 150, 255, 0.95); }
-    50% { outline-color: rgba(64, 150, 255, 0.35); }
+    box-shadow: 0 0 0 6px rgba(64, 150, 255, 0.16), 0 0 22px 4px rgba(64, 150, 255, 0.32) !important;
   }
   .__tut_caption {
     position: fixed; left: 50%; bottom: 42px; transform: translateX(-50%);
@@ -109,7 +105,7 @@ export function createHarness(page) {
     async point(locator, settle = 320) {
       const box = await locator.boundingBox({ timeout: 5000 }).catch(() => null);
       if (box) {
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 14 });
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
         await sleep(settle);
       }
     },

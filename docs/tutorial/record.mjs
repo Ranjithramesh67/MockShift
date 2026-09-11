@@ -23,6 +23,24 @@ const ONLY = process.env.SEGMENT || '';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// In `next dev` the first request to a route compiles it, which can stall the
+// recording for seconds. Touch every route once up front (ignoring auth
+// redirects) so the pages the tour visits are already compiled.
+async function warmRoutes(browser) {
+  const routes = [
+    '/login', '/', '/manage', '/admin', '/automations', '/history',
+    '/docs', '/contracts', '/monitors', '/mock-scenarios', '/copilot',
+    '/collab', '/inbox', '/settings/api-tokens',
+  ];
+  const ctx = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1280, height: 800 } });
+  const page = await ctx.newPage();
+  for (const route of routes) {
+    await page.goto(route, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(250);
+  }
+  await ctx.close();
+}
+
 async function main() {
   const narration = JSON.parse(await readFile(path.join(WORK, 'narration.json'), 'utf8'));
   await mkdir(VIDEO_DIR, { recursive: true });
@@ -31,6 +49,8 @@ async function main() {
     headless: true,
     args: ['--hide-scrollbars', '--force-color-profile=srgb'],
   });
+
+  await warmRoutes(browser);
 
   let report = { baseUrl: BASE_URL, segments: [] };
   if (ONLY) {
@@ -50,10 +70,10 @@ async function main() {
 
     const context = await browser.newContext({
       baseURL: BASE_URL,
-      viewport: { width: 1920, height: 1080 },
+      viewport: { width: 1600, height: 900 },
       deviceScaleFactor: 1,
       colorScheme: 'dark',
-      recordVideo: { dir, size: { width: 1920, height: 1080 } },
+      recordVideo: { dir, size: { width: 1600, height: 900 } },
     });
     context.setDefaultTimeout(8000);
     context.setDefaultNavigationTimeout(45000);
@@ -77,7 +97,7 @@ async function main() {
       await h.clearCaption();
       const narrationDelayMs = h.narrationDelayMs;
       const elapsed = Date.now() - segStart - startMs;
-      const target = Math.max(narrationDelayMs + meta.duration * 1000 + 300, elapsed + 400);
+      const target = Math.max(narrationDelayMs + meta.duration * 1000 + 180, elapsed + 300);
       if (target - elapsed > 0) await sleep(target - elapsed);
       scenes.push({
         id: scene.id,
