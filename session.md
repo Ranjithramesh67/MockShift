@@ -1952,6 +1952,14 @@ method. Two shipped commits:
   (new QUERY case) and `mockScenarios` 13/13 on the scratch cluster; frontend
   `tsc --noEmit` clean + unit 91/91; live curl proved a QUERY route is created,
   dispatched with a body, and logged with the full exchange.
+- [x] **Scenario-to-route linkage** (this entry): `GET
+  /api/mock-scenarios/links?mockServerId=<uuid>` returns every response override
+  joined with its route + optional scenario. `MockScenariosPanel` renders each
+  scenario as an expandable row (`N routes · M responses`) listing its linked
+  routes (click to select) and responses, plus a collapsible **Default
+  responses** group. `MockScenarioLink` type + `listScenarioLinks` in
+  `mockScenariosApi`; links refresh on load and after response add/delete.
+  `mockScenarios` integration now 14/14.
 
 ## Roadmap
 

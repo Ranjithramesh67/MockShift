@@ -66,6 +66,22 @@ export interface MockSequenceState {
   updated_at: string;
 }
 
+// A response override joined with its route (+ scenario), used to show which
+// scenario overrides which routes on the mock server.
+export interface MockScenarioLink {
+  response_id: string;
+  route_id: string;
+  scenario_id: string | null;
+  name: string;
+  priority: number;
+  status: number;
+  conditions: MockCondition[];
+  sequence_index: number | null;
+  sequence_mode: MockSequenceMode;
+  method: string;
+  path: string;
+}
+
 export type MockCallSource = 'scenario' | 'static' | 'unmatched';
 
 export interface MockCallLog {
@@ -136,6 +152,11 @@ export const mockScenariosApi = {
       method: 'PATCH',
       body: patch,
     }),
+
+  listScenarioLinks: (mockServerId: string) =>
+    apiFetch<{ links: MockScenarioLink[] }>(
+      `/api/mock-scenarios/links${toQuery({ mockServerId })}`
+    ),
 
   deleteScenario: (scenarioId: string) =>
     apiFetch<{ ok: boolean }>(`/api/mock-scenarios/${scenarioId}`, { method: 'DELETE' }),

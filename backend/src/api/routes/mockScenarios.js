@@ -508,6 +508,34 @@ router.get('/mock-scenarios', async (req, res, next) => {
   }
 });
 
+// GET /api/mock-scenarios/links?mockServerId=<uuid> -> { links }
+// Every response override on the server joined with its route and (optional)
+// scenario, so the UI can show which scenario overrides which routes.
+router.get('/mock-scenarios/links', async (req, res, next) => {
+  try {
+    const { mockServerId } = req.query;
+    if (!isUuid(mockServerId)) return res.status(400).json({ error: 'mockServerId must be a valid uuid' });
+    const server = await loadMockServer(mockServerId);
+    if (!server) return res.status(404).json({ error: 'Mock server not found' });
+    if (!(await getProjectAccess(req.user.id, server.project_id))) {
+      return res.status(403).json({ error: 'No access to this mock server' });
+    }
+    const { rows } = await query(
+      `SELECT rr.id AS response_id, rr.route_id, rr.scenario_id, rr.name, rr.priority,
+              rr.status, rr.conditions, rr.sequence_index, rr.sequence_mode,
+              mr.method, mr.path, mr.sort_order, mr.created_at AS route_created_at
+         FROM mock_route_responses rr
+         JOIN mock_routes mr ON mr.id = rr.route_id
+        WHERE mr.mock_server_id = $1
+        ORDER BY mr.sort_order, mr.created_at, rr.priority DESC, rr.created_at`,
+      [server.id]
+    );
+    res.json({ links: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/mock-scenarios { mockServerId, name, description? } -> 201 { scenario }
 router.post('/mock-scenarios', async (req, res, next) => {
   try {
