@@ -880,6 +880,58 @@ and recorded the milestone.
   `http://localhost:4000/smoke/ping` (assertions `[]`); the smoke collection was
   then removed via `DELETE /api/collections/:id`.
 
+### 5.64 Mock call-log payload capture, route-response layout fix, scenario clarity (2026-09-10)
+
+Mock-server polish answering a review pass on the E3 scenarios panel.
+
+- **Layout bug fixed** — the "Route responses" add-response form, its Conditions
+  block and the responses list were each wrapped in `styles.divider`, a 1px
+  horizontal rule, so their contents overflowed and overlapped. Replaced with
+  proper stack containers `.responseForm` / `.subForm` / `.responseList` in
+  `mocks.module.css` (the same class of bug already fixed for the route form).
+- **Full call-log payloads** — migration `038_mock_call_log_response.sql` adds
+  `response_headers` / `response_body` to `mock_call_logs`; the dispatch hook in
+  `routes/mockScenarios.js` now persists the response it observes on `res.end`
+  (headers from `res.getHeaders()`), alongside the already-stored request
+  query/headers/body. Each log row gained an expandable **Details** view showing
+  the trigger timestamp (ms precision), duration, status/source/route, and
+  pretty-printed request query/headers/body + response headers/body.
+- **Scenario semantics clarified in the UI** — the Scenarios header and the
+  response form's Scenario field now explain that a named scenario is an override
+  set activated per request via `X-Mock-Scenario: <name>` or
+  `?__scenario=<name>`, and that Default responses are served for every call.
+- **Verification** — backend API unit `62/62`; `mockScenarios.integration.test.cjs`
+  `13/13` on the scratch cluster (added response-capture assertions); frontend
+  `tsc --noEmit` clean + unit `91/91`; live curl + Playwright smoke confirmed the
+  full exchange is captured and the new layout renders correctly.
+
+### 5.65 QUERY method — safe requests with a body (2026-09-11)
+
+- **What it is** — `QUERY` is an IANA-registered HTTP method (Safe + Idempotent,
+  [RFC 10008 §2](https://www.rfc-editor.org/rfc/rfc10008.html), formerly
+  `draft-ietf-httpbis-safe-method-w-body`). It is GET-like (safe/cacheable) but
+  carries a request body that describes the query, instead of cramming the
+  filters into the URL. The mock server now supports it alongside the classic
+  methods.
+- **Backend allowlists** — `QUERY` added to `routes/mockServers.js`,
+  `routes/content.js`, `routes/exports.js`, `openapi.js` and `sdkManifest.js`.
+  The request runner already sends the body for any method that is not GET/HEAD,
+  so QUERY bodies flow through unchanged.
+- **Frontend** — `HttpMethod` union, `METHODS` + `METHOD_COLORS`
+  (`requestForm.ts`), `CreateModal` (`HTTP_METHODS`, and `BODY_METHODS` so the
+  Body tab shows for QUERY), `MockServersModal`, `MockScenariosPanel` and the
+  docs `ApiReference` method map.
+- **Mock dispatch + call log** — the global `express.json()` parses a QUERY body
+  like any other, so mock body conditions and the call-log request/response
+  capture work without special-casing. Verified end-to-end.
+- **Verification** — backend API unit `62/62`; `mockServer.integration.test.cjs`
+  `4/4` (new QUERY test: route accepted, dispatched with a body, logged with
+  query + request body + response body); `mockScenarios.integration.test.cjs`
+  `13/13`; frontend `tsc --noEmit` clean + unit `91/91`. Live curl through the
+  running API: `POST /api/mock-servers/:id/routes` accepted a QUERY route (201),
+  `curl -X QUERY` with a JSON body returned the mock response, and the call log
+  showed the full exchange.
+
 ### 5.62 Enhancement round 4 — five features shipped in parallel (2026-09-09)
 
 After the capability audit, Ranjith asked to build the whole prioritized list
