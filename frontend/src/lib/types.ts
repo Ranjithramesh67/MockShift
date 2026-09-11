@@ -5,7 +5,8 @@ export type HttpMethod =
   | 'PATCH'
   | 'DELETE'
   | 'HEAD'
-  | 'OPTIONS';
+  | 'OPTIONS'
+  | 'QUERY';
 
 export type ApiType = 'REST' | 'SOAP' | 'GRAPHQL' | 'AUTH';
 

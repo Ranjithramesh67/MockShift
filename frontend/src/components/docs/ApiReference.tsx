@@ -12,7 +12,7 @@ import {
 import styles from './docs.module.css';
 import { CheckIcon, CopyIcon } from '@/components/icons';
 
-const METHODS = ['get', 'post', 'put', 'patch', 'delete'] as const;
+const METHODS = ['get', 'post', 'put', 'patch', 'delete', 'query'] as const;
 type Method = (typeof METHODS)[number];
 
 interface RefOperation {
@@ -27,6 +27,7 @@ const METHOD_LABEL: Record<Method, string> = {
   put: 'PUT',
   patch: 'PATCH',
   delete: 'DELETE',
+  query: 'QUERY',
 };
 
 function methodOf(item: Record<string, unknown>): Method | null {

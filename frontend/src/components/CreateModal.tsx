@@ -18,11 +18,12 @@ const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: 
   { id: 'AUTH', label: 'Auth / Token', hint: 'Token endpoint used by a folder auth provider', icon: KeyIcon },
 ];
 
-const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
 
 // Methods that conventionally carry a request body. GET/DELETE/HEAD/OPTIONS
-// hide the Body tab and edit query params instead.
-const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH']);
+// hide the Body tab and edit query params instead. QUERY is GET-like but
+// intentionally carries a body (RFC 10008), so it shows the Body tab.
+const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'QUERY']);
 
 type FormTab = 'params' | 'headers' | 'body';
 type CreateMode = 'form' | 'curl';

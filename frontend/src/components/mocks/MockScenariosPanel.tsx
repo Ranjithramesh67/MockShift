@@ -19,7 +19,7 @@ import {
 } from '@/lib/mockScenariosApi';
 import styles from './mocks.module.css';
 
-const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
 
 // ============================================================================
 // Standalone mock-scenarios panel (E3).

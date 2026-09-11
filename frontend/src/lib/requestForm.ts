@@ -2,7 +2,7 @@
 
 import type { ApiRequest, ApiType, BodyType, HttpMethod, RequestContentType } from '@/lib/types';
 
-export const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+export const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
 export const API_TYPES: ApiType[] = ['REST', 'SOAP', 'GRAPHQL', 'AUTH'];
 
 export const METHOD_COLORS: Record<HttpMethod, string> = {
@@ -13,6 +13,7 @@ export const METHOD_COLORS: Record<HttpMethod, string> = {
   DELETE: '#da3633',
   HEAD: '#6b7684',
   OPTIONS: '#6b7684',
+  QUERY: '#00b8d9',
 };
 
 export type BodyKind = 'NONE' | 'JSON' | 'XML' | 'FORM_URLENCODED' | 'MULTIPART' | 'GRAPHQL' | 'RAW_TEXT';
