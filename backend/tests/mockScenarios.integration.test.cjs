@@ -414,6 +414,16 @@ test('call logs capture matched route/scenario/status and replay re-issues', asy
   assert.equal(catCall.status, 200);
   assert.equal(catCall.source, 'scenario');
   assert.equal(catCall.matched_route_path, '/pets');
+  assert.equal(typeof catCall.duration_ms, 'number');
+  assert.ok(catCall.created_at, 'logged a trigger timestamp');
+  assert.ok(catCall.request_headers && typeof catCall.request_headers === 'object');
+  assert.ok(catCall.response_headers && typeof catCall.response_headers === 'object');
+  assert.match(
+    String(catCall.response_headers['content-type'] || ''),
+    /application\/json/,
+    'captured the response content-type'
+  );
+  assert.deepEqual(JSON.parse(catCall.response_body), { source: 'cat' });
 
   const replay = await api('POST', `/api/mock-call-logs/${catCall.id}/replay`);
   assert.equal(replay.status, 200, JSON.stringify(replay.json));
@@ -431,6 +441,7 @@ test('an unmatched mock request is logged with source unmatched', async () => {
   assert.ok(row, 'unmatched request logged');
   assert.equal(row.source, 'unmatched');
   assert.equal(row.status, 404);
+  assert.match(String(row.response_body || ''), /No matching mock route/);
 });
 
 test('clearing the call log empties it', async () => {

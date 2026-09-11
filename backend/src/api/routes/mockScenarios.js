@@ -261,7 +261,7 @@ function responseInsertParts(value) {
 
 // ------------------------------------------------------------ call logging
 
-function sanitizeRequestHeaders(headers) {
+function sanitizeHeaders(headers) {
   const out = {};
   for (const [key, value] of Object.entries(headers || {})) {
     out[key] = SENSITIVE_HEADERS.has(key.toLowerCase()) ? '[redacted]' : value;
@@ -286,16 +286,20 @@ async function recordCall({
   scenario,
   source,
   durationMs,
+  responseHeaders,
+  responseBody,
   replayedFrom,
 }) {
-  const headers = sanitizeRequestHeaders(req && req.headers);
+  const headers = sanitizeHeaders(req && req.headers);
   const body = truncate(requestBodyText(req), MAX_CALL_BODY);
+  const resHeaders = sanitizeHeaders(responseHeaders);
+  const resBody = truncate(responseBody, MAX_CALL_BODY);
   const inserted = await query(
     `INSERT INTO mock_call_logs
        (project_id, mock_server_id, method, path, query, request_headers, request_body,
         matched_route_id, matched_route_path, matched_response_id, matched_scenario_id,
-        scenario_name, status, duration_ms, source, replayed_from)
-     VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        scenario_name, status, duration_ms, response_headers, response_body, source, replayed_from)
+     VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18)
      RETURNING *`,
     [
       server.project_id,
@@ -312,6 +316,8 @@ async function recordCall({
       scenario ? scenario.name : null,
       Number.isFinite(Number(status)) ? Number(status) : null,
       Math.max(0, Math.floor(Number(durationMs) || 0)),
+      JSON.stringify(resHeaders),
+      resBody,
       ['scenario', 'static', 'unmatched'].includes(source) ? source : 'unmatched',
       replayedFrom || null,
     ]
@@ -349,6 +355,7 @@ function installCallLogHook(req, res, server, startedAt) {
       body = '';
     }
     const match = req._mockMatch || {};
+    const responseHeaders = typeof res.getHeaders === 'function' ? res.getHeaders() : {};
     const finish = () => originalEnd.call(res, chunk, encoding, callback);
     recordCall({
       server,
@@ -359,6 +366,8 @@ function installCallLogHook(req, res, server, startedAt) {
       scenario: match.scenario || null,
       source: match.source || 'static',
       durationMs: Date.now() - startedAt,
+      responseHeaders,
+      responseBody: body,
       replayedFrom: match.replayedFrom || null,
     }).then(finish, (err) => {
       // eslint-disable-next-line no-console
