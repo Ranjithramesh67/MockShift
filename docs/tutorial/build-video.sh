@@ -23,4 +23,5 @@ FORCE_MUSIC=1 node music.mjs
 echo "==> 5/5 assembling video"
 node assemble.mjs
 
-echo "Done -> $DIR/out/mockshift-tutorial.mp4"
+VERSION="${TUTORIAL_VERSION:-v2}"
+echo "Done -> $DIR/out/mockshift-tutorial-$VERSION.mp4 (copy: out/mockshift-tutorial.mp4)"

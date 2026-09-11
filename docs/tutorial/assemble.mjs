@@ -15,6 +15,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WORK = path.join(__dirname, '.work');
 const OUT = path.join(__dirname, 'out');
 
+// Bump when the tour content changes so the share URL is never served from a
+// stale CDN/browser cache (the previous file used the same name and stayed
+// cached for hours). The stable name is rewritten as a copy for convenience.
+const VERSION = process.env.TUTORIAL_VERSION || 'v2';
+
 const FONT_BOLD = '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf';
 const FONT_REG = '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf';
 const ACCENT = '0x39d98a';
@@ -273,12 +278,16 @@ async function main() {
     throw new Error('missing .work/music.wav — run `node music.mjs` first');
   }
 
-  const finalFile = path.join(OUT, 'mockshift-tutorial.mp4');
+  const finalFile = path.join(OUT, `mockshift-tutorial-${VERSION}.mp4`);
   console.log('Mixing music bed ...');
   await mixMusic(withChapters, musicFile, finalFile);
 
+  const stableFile = path.join(OUT, 'mockshift-tutorial.mp4');
+  await copyFile(finalFile, stableFile);
+
   const total = await probe(finalFile);
   console.log(`\nDone: ${finalFile}`);
+  console.log(`Copy:  ${stableFile}`);
   console.log(`Duration: ${(total / 60).toFixed(1)} min (${total.toFixed(1)}s)`);
 }
 
