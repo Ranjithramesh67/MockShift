@@ -360,6 +360,48 @@ test('a named scenario overrides defaults for header and query activation', asyn
   assert.equal(res.status, 200);
 });
 
+test('scenario links join responses to routes and scenarios', async () => {
+  const routeId = await createRoute('GET', '/links', { state: 'base' });
+  const scenario = await api('POST', '/api/mock-scenarios', { mockServerId, name: 'links-scenario' });
+  const scenarioId = scenario.json.scenario.id;
+
+  const scoped = await api('POST', `/api/mock-routes/${routeId}/responses`, {
+    scenarioId,
+    name: 'scoped override',
+    status: 418,
+    body: JSON.stringify({ state: 'linked' }),
+  });
+  assert.equal(scoped.status, 201);
+
+  const def = await api('POST', `/api/mock-routes/${routeId}/responses`, {
+    name: 'default override',
+    status: 202,
+    body: JSON.stringify({ state: 'default' }),
+  });
+  assert.equal(def.status, 201);
+
+  const bad = await api('GET', '/api/mock-scenarios/links?mockServerId=not-a-uuid');
+  assert.equal(bad.status, 400);
+
+  const links = await api('GET', `/api/mock-scenarios/links?mockServerId=${mockServerId}`);
+  assert.equal(links.status, 200);
+  assert.ok(Array.isArray(links.json.links));
+
+  const scopedLink = links.json.links.find((l) => l.response_id === scoped.json.response.id);
+  assert.ok(scopedLink, 'scoped response link present');
+  assert.equal(scopedLink.route_id, routeId);
+  assert.equal(scopedLink.scenario_id, scenarioId);
+  assert.equal(scopedLink.method, 'GET');
+  assert.equal(scopedLink.path, '/links');
+  assert.equal(scopedLink.status, 418);
+  assert.equal(scopedLink.name, 'scoped override');
+
+  const defaultLink = links.json.links.find((l) => l.response_id === def.json.response.id);
+  assert.ok(defaultLink, 'default response link present');
+  assert.equal(defaultLink.scenario_id, null);
+  assert.equal(defaultLink.status, 202);
+});
+
 // ========================================================= stateful sequences
 
 test('a sequence cycles through ordered responses and can be reset', async () => {

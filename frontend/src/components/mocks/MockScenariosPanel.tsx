@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mockServerApi, type MockRoute, type MockServer } from '@/lib/api';
 import { mockBaseUrl } from '@/lib/mockServer';
 import {
@@ -15,6 +15,7 @@ import {
   type MockConditionSource,
   type MockRouteResponse,
   type MockScenario,
+  type MockScenarioLink,
   type MockSequenceMode,
 } from '@/lib/mockScenariosApi';
 import styles from './mocks.module.css';
@@ -145,6 +146,27 @@ function formatTimestamp(value: string): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}.${ms}`;
 }
 
+interface ScenarioRouteGroup {
+  routeId: string;
+  method: string;
+  path: string;
+  responses: MockScenarioLink[];
+}
+
+// Group the flat scenario-link rows by route, preserving route order.
+function groupLinksByRoute(links: MockScenarioLink[]): ScenarioRouteGroup[] {
+  const groups = new Map<string, ScenarioRouteGroup>();
+  for (const link of links) {
+    let group = groups.get(link.route_id);
+    if (!group) {
+      group = { routeId: link.route_id, method: link.method, path: link.path, responses: [] };
+      groups.set(link.route_id, group);
+    }
+    group.responses.push(link);
+  }
+  return Array.from(groups.values());
+}
+
 function CallLogDetail({ log }: { log: MockCallLog }) {
   const query = log.query && Object.keys(log.query).length > 0 ? prettyJson(log.query) : '';
   const reqHeaders =
@@ -198,6 +220,7 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
   const [scenarios, setScenarios] = useState<MockScenario[]>([]);
   const [routes, setRoutes] = useState<MockRoute[]>([]);
   const [logs, setLogs] = useState<MockCallLog[]>([]);
+  const [scenarioLinks, setScenarioLinks] = useState<MockScenarioLink[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [responses, setResponses] = useState<MockRouteResponse[]>([]);
   const [loading, setLoading] = useState(false);
@@ -213,6 +236,8 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
   const [draft, setDraft] = useState<ResponseDraft>(emptyDraft);
   const [replay, setReplay] = useState<{ status: number; body: string } | null>(null);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [expandedScenarioId, setExpandedScenarioId] = useState<string | null>(null);
+  const [showDefaultOverrides, setShowDefaultOverrides] = useState(false);
   const selectedRouteIdRef = useRef('');
 
   useEffect(() => {
@@ -232,6 +257,19 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
     }
   }, []);
 
+  const refreshLinks = useCallback(async (serverId: string) => {
+    if (!serverId) {
+      setScenarioLinks([]);
+      return;
+    }
+    try {
+      const result = await mockScenariosApi.listScenarioLinks(serverId);
+      setScenarioLinks(result.links);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load scenario links');
+    }
+  }, []);
+
   const load = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
@@ -243,18 +281,21 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
         setScenarios([]);
         setRoutes([]);
         setLogs([]);
+        setScenarioLinks([]);
         setResponses([]);
         setSelectedRouteId('');
         return;
       }
-      const [scenarioResult, routeResult, logResult] = await Promise.all([
+      const [scenarioResult, routeResult, logResult, linkResult] = await Promise.all([
         mockScenariosApi.listScenarios(mockServer.id),
         mockServerApi.routes(mockServer.id),
         mockScenariosApi.listCallLogs(mockServer.id, { limit: 100 }),
+        mockScenariosApi.listScenarioLinks(mockServer.id),
       ]);
       setScenarios(scenarioResult.scenarios);
       setRoutes(routeResult.routes);
       setLogs(logResult.logs);
+      setScenarioLinks(linkResult.links);
       const currentRouteId = selectedRouteIdRef.current;
       const nextRouteId = routeResult.routes.some((r) => r.id === currentRouteId)
         ? currentRouteId
@@ -271,6 +312,21 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
   useEffect(() => {
     load();
   }, [load]);
+
+  const linksByScenario = useMemo(() => {
+    const map = new Map<string, MockScenarioLink[]>();
+    const defaults: MockScenarioLink[] = [];
+    for (const link of scenarioLinks) {
+      if (link.scenario_id) {
+        const list = map.get(link.scenario_id);
+        if (list) list.push(link);
+        else map.set(link.scenario_id, [link]);
+      } else {
+        defaults.push(link);
+      }
+    }
+    return { map, defaults };
+  }, [scenarioLinks]);
 
   const handleRouteSelect = useCallback(
     (routeId: string) => {
@@ -430,6 +486,7 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
       setShowForm(false);
       setNotice('Response added');
       await refreshResponses(selectedRouteId);
+      if (server) await refreshLinks(server.id);
     });
 
   const deleteResponse = (id: string) =>
@@ -437,6 +494,7 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
       await mockScenariosApi.deleteResponse(id);
       setNotice('Response deleted');
       await refreshResponses(selectedRouteId);
+      if (server) await refreshLinks(server.id);
     });
 
   const resetSequence = () =>
@@ -541,26 +599,90 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
               <p className={styles.empty}>No scenarios yet.</p>
             ) : (
               <div className={styles.list}>
-                {scenarios.map((scenario) => (
-                  <div key={scenario.id} className={styles.listItem}>
-                    <div className={styles.itemMain}>
-                      <span className={styles.itemName}>{scenario.name}</span>
-                      {scenario.description ? (
-                        <span className={styles.subtitle}>{scenario.description}</span>
+                {scenarios.map((scenario) => {
+                  const links = linksByScenario.map.get(scenario.id) || [];
+                  const groups = groupLinksByRoute(links);
+                  const expanded = expandedScenarioId === scenario.id;
+                  return (
+                    <div key={scenario.id} className={styles.scenarioRow}>
+                      <div className={styles.listItem}>
+                        <button
+                          className={styles.scenarioToggle}
+                          type="button"
+                          onClick={() => setExpandedScenarioId(expanded ? null : scenario.id)}
+                          aria-expanded={expanded}
+                          data-testid={`mock-scenario-toggle-${scenario.id}`}
+                        >
+                          <span className={styles.chevron}>{expanded ? '\u25be' : '\u25b8'}</span>
+                          <span className={styles.itemMain}>
+                            <span className={styles.itemName}>{scenario.name}</span>
+                            {scenario.description ? (
+                              <span className={styles.subtitle}>{scenario.description}</span>
+                            ) : null}
+                          </span>
+                          <span className={styles.badge}>
+                            {groups.length === 0
+                              ? 'no overrides'
+                              : `${groups.length} route${groups.length === 1 ? '' : 's'} · ${links.length} response${links.length === 1 ? '' : 's'}`}
+                          </span>
+                        </button>
+                        <div className={styles.itemActions}>
+                          <button
+                            className={`${styles.btn} ${styles.btnDanger}`}
+                            type="button"
+                            onClick={() => deleteScenario(scenario.id)}
+                            disabled={busy}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                      {expanded ? (
+                        <div className={styles.scenarioRoutes}>
+                          {groups.length === 0 ? (
+                            <p className={styles.empty}>
+                              No routes use this scenario yet. Add a response on a route below with this
+                              scenario selected.
+                            </p>
+                          ) : (
+                            groups.map((group) => (
+                              <div key={group.routeId} className={styles.scenarioRoute}>
+                                <button
+                                  className={styles.scenarioRouteHead}
+                                  type="button"
+                                  onClick={() => handleRouteSelect(group.routeId)}
+                                  title="Select this route"
+                                >
+                                  <span className={styles.logMethod}>{group.method}</span>
+                                  <code className={styles.scenarioRoutePath}>{group.path}</code>
+                                </button>
+                                <div className={styles.scenarioRouteResponses}>
+                                  {group.responses.map((link) => (
+                                    <div key={link.response_id} className={styles.scenarioResponse}>
+                                      <span className={styles.badge}>{link.name || 'Response'}</span>
+                                      <span className={styles.badgeStatus}>status {link.status}</span>
+                                      {link.conditions.length > 0 ? (
+                                        <span className={styles.badge}>
+                                          {link.conditions.length} condition
+                                          {link.conditions.length === 1 ? '' : 's'}
+                                        </span>
+                                      ) : null}
+                                      {link.sequence_index !== null ? (
+                                        <span className={styles.badge}>
+                                          seq {link.sequence_index} · {link.sequence_mode}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       ) : null}
                     </div>
-                    <div className={styles.itemActions}>
-                      <button
-                        className={`${styles.btn} ${styles.btnDanger}`}
-                        type="button"
-                        onClick={() => deleteScenario(scenario.id)}
-                        disabled={busy}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             <div className={styles.inlineForm}>
@@ -585,6 +707,66 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
                 Add scenario
               </button>
             </div>
+            {linksByScenario.defaults.length > 0 ? (
+              <div className={styles.scenarioRow}>
+                <div className={styles.listItem}>
+                  <button
+                    className={styles.scenarioToggle}
+                    type="button"
+                    onClick={() => setShowDefaultOverrides((current) => !current)}
+                    aria-expanded={showDefaultOverrides}
+                  >
+                    <span className={styles.chevron}>{showDefaultOverrides ? '\u25be' : '\u25b8'}</span>
+                    <span className={styles.itemMain}>
+                      <span className={styles.itemName}>Default responses</span>
+                      <span className={styles.subtitle}>
+                        Applied when no scenario overrides the route.
+                      </span>
+                    </span>
+                    <span className={styles.badge}>
+                      {groupLinksByRoute(linksByScenario.defaults).length} route
+                      {groupLinksByRoute(linksByScenario.defaults).length === 1 ? '' : 's'}
+                    </span>
+                  </button>
+                </div>
+                {showDefaultOverrides ? (
+                  <div className={styles.scenarioRoutes}>
+                    {groupLinksByRoute(linksByScenario.defaults).map((group) => (
+                      <div key={group.routeId} className={styles.scenarioRoute}>
+                        <button
+                          className={styles.scenarioRouteHead}
+                          type="button"
+                          onClick={() => handleRouteSelect(group.routeId)}
+                          title="Select this route"
+                        >
+                          <span className={styles.logMethod}>{group.method}</span>
+                          <code className={styles.scenarioRoutePath}>{group.path}</code>
+                        </button>
+                        <div className={styles.scenarioRouteResponses}>
+                          {group.responses.map((link) => (
+                            <div key={link.response_id} className={styles.scenarioResponse}>
+                              <span className={styles.badge}>{link.name || 'Response'}</span>
+                              <span className={styles.badgeStatus}>status {link.status}</span>
+                              {link.conditions.length > 0 ? (
+                                <span className={styles.badge}>
+                                  {link.conditions.length} condition
+                                  {link.conditions.length === 1 ? '' : 's'}
+                                </span>
+                              ) : null}
+                              {link.sequence_index !== null ? (
+                                <span className={styles.badge}>
+                                  seq {link.sequence_index} · {link.sequence_mode}
+                                </span>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           <section className={styles.section}>

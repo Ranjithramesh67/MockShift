@@ -932,6 +932,33 @@ Mock-server polish answering a review pass on the E3 scenarios panel.
   `curl -X QUERY` with a JSON body returned the mock response, and the call log
   showed the full exchange.
 
+### 5.66 Scenario to route linkage in the mock-scenarios panel (2026-09-11)
+
+- **Problem** — a scenario is a named override set, but the UI only listed
+  scenarios and, separately, each route's responses. There was no way to see
+  which scenario overrides which routes without opening every route.
+- **Backend** — new `GET /api/mock-scenarios/links?mockServerId=<uuid>` in
+  `backend/src/api/routes/mockScenarios.js` returns `{ links }`: every
+  `mock_route_responses` row joined with its route (`method`, `path`) and its
+  optional `scenario_id`, ordered by route then response priority. Same auth as
+  the rest of the mock surface (`loadMockServer` + `getProjectAccess`, 400 on a
+  bad uuid, 404/403 as appropriate).
+- **Frontend** — `MockScenarioLink` type + `mockScenariosApi.listScenarioLinks`
+  (`frontend/src/lib/mockScenariosApi.ts`). `MockScenariosPanel.tsx` now renders
+  each scenario as an expandable row: the header shows a
+  `N routes · M responses` badge, and expanding lists every linked route
+  (`METHOD /path`, click to select it in the Routes section) with its responses
+  (name, status, condition count, sequence). A collapsible "Default responses"
+  group lists overrides with `scenario_id IS NULL`. Links refresh on load and
+  after adding/deleting a response; new styles in `mocks.module.css`
+  (`.scenarioRow`, `.scenarioToggle`, `.scenarioRoutes`, `.scenarioRoute*`,
+  `.scenarioResponse`).
+- **Verification** — backend API unit `62/62`; `mockScenarios.integration.test.cjs`
+  `14/14` (new test: links join scoped/default responses to the route, and 400
+  on a malformed uuid); frontend `tsc --noEmit` clean + unit `91/91`. Live curl:
+  created a scenario + route + scoped response, `GET /api/mock-scenarios/links`
+  returned the joined row, then cleaned up the smoke route/scenario.
+
 ### 5.62 Enhancement round 4 — five features shipped in parallel (2026-09-09)
 
 After the capability audit, Ranjith asked to build the whole prioritized list
