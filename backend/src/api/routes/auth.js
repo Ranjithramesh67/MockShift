@@ -13,6 +13,7 @@ const {
 } = require('../authLib');
 const { requireAuth, loadUserById } = require('../access');
 const { allocateUsername } = require('../username');
+const { provisionNewAccount } = require('../accountProvision');
 
 const router = Router();
 
@@ -34,12 +35,12 @@ async function userSummary(userId) {
   const user = await loadUserById(userId);
   if (!user) return null;
   const { rows: orgs } = await query(
-    `SELECT o.id, o.name,
+    `SELECT o.id, o.name, o.kind, o.domain,
             (SELECT role FROM organization_members om WHERE om.org_id = o.id AND om.user_id = $1) AS role
        FROM organizations o
        JOIN organization_members om ON om.org_id = o.id
       WHERE om.user_id = $1
-      ORDER BY o.name`,
+      ORDER BY o.kind, o.name`,
     [userId]
   );
   return { user, organizations: orgs };
@@ -82,28 +83,7 @@ router.post('/signup', async (req, res, next) => {
       );
       const userId = rows[0].id;
 
-      const org = await client.query(
-        `INSERT INTO organizations (name, owner_id) VALUES ($1, $2) RETURNING id`,
-        [`${displayName}'s Org`, userId]
-      );
-      const orgId = org.rows[0].id;
-      await client.query(
-        `INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, 'ADMIN')`,
-        [orgId, userId]
-      );
-      const ws = await client.query(
-        `INSERT INTO workspaces (organization_id, name, visibility) VALUES ($1, $2, 'PRIVATE') RETURNING id`,
-        [orgId, 'My Workspace']
-      );
-      const wsId = ws.rows[0].id;
-      await client.query(
-        `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'ADMIN')`,
-        [wsId, userId]
-      );
-      await client.query(
-        `INSERT INTO projects (workspace_id, name) VALUES ($1, $2)`,
-        [wsId, 'Default Project']
-      );
+      await provisionNewAccount(client, { userId, email, displayName });
       await client.query('COMMIT');
 
       res.setHeader('Set-Cookie', sessionCookie(createSessionToken(userId)));

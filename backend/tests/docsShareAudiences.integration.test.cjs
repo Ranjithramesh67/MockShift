@@ -202,6 +202,7 @@ test('shares context exposes the page org and its teams', async () => {
 test('a direct user share notifies only the recipient (not the sharer)', async () => {
   const admin = globalThis.__admin;
   await signupUser('shareaud-bob@test.io', 'Bob Sharee');
+  addOrgMember('shareaud-bob@test.io', 'VIEWER');
   const page = await createDoc('Direct-share page');
 
   const res = await admin.api('POST', `/api/docs/${page.id}/shares`, {
@@ -222,6 +223,19 @@ test('a direct user share notifies only the recipient (not the sharer)', async (
   });
   assert.equal(again.status, 200, 'idempotent re-share returns 200');
   assert.equal(notificationCountFor(page.id), 1, 're-share is silent');
+});
+
+test('a user outside the organization cannot be granted a direct share', async () => {
+  const admin = globalThis.__admin;
+  await signupUser('shareaud-outsider@test.io', 'Outsider');
+  const page = await createDoc('Org-boundary page');
+
+  const res = await admin.api('POST', `/api/docs/${page.id}/shares`, {
+    kind: 'user',
+    targetUser: { email: 'shareaud-outsider@test.io' },
+  });
+  assert.equal(res.status, 400, 'cross-organization grants are rejected');
+  assert.match(String(res.json.error), /organization/i);
 });
 
 test('a team share notifies every team member except the sharer', async () => {

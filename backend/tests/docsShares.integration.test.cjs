@@ -149,11 +149,28 @@ function userIdByEmail(email) {
   return psqlScalar(`SELECT id FROM users WHERE email = '${email.replace(/'/g, "''")}'`);
 }
 
+function adminOrgId() {
+  const adminId = userIdByEmail('docshareadmin@test.io');
+  return psqlScalar(
+    `SELECT om.org_id FROM organization_members om WHERE om.user_id = '${adminId}' AND om.role = 'ADMIN' LIMIT 1`
+  );
+}
+
+function addOrgMember(email, role = 'VIEWER') {
+  const userId = userIdByEmail(email);
+  psqlRun(
+    `INSERT INTO organization_members (org_id, user_id, role)
+     VALUES ('${adminOrgId()}', '${userId}', '${role}')`
+  );
+  return userId;
+}
+
 test('share a doc to a specific user by email and username; revoke', async () => {
   const admin = globalThis.__admin;
   const pageId = await createDoc('User-shared page');
   const alice = await signupUser('alice-aud@test.io', 'Alice Aud');
   const mallory = await signupUser('mallory-aud@test.io', 'Mallory Aud');
+  addOrgMember('alice-aud@test.io', 'VIEWER');
 
   const denied = await alice.api('GET', `/api/docs/${pageId}`);
   assert.equal(denied.status, 404, 'recipient cannot read before share');
@@ -327,6 +344,7 @@ test('legacy share revoke leaves targeted audience grants intact', async () => {
   const admin = globalThis.__admin;
   const pageId = await createDoc('Mixed shares page');
   const alice = await signupUser('alice-mix@test.io', 'Alice Mix');
+  addOrgMember('alice-mix@test.io', 'VIEWER');
 
   const userShare = await admin.api('POST', `/api/docs/${pageId}/shares`, {
     kind: 'user',

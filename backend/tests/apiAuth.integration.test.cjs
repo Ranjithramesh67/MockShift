@@ -19,6 +19,14 @@ const PGENV = {
   VAULT_KEY: 'test-vault-key-do-not-use-in-prod',
 };
 
+function psqlRun(sql) {
+  return execFileSync(
+    'psql',
+    ['-q', '-v', 'ON_ERROR_STOP=1', '-d', process.env.INTEGRATION_PGDATABASE || 'apihub', '-c', sql],
+    { env: PGENV, stdio: 'pipe', encoding: 'utf8' }
+  );
+}
+
 function psqlReset() {
   return execFileSync(
     'psql',
@@ -103,6 +111,7 @@ before(async () => {
   }
 
   mockUpstream = await createMockUpstream();
+  psqlRun('UPDATE portal_settings SET restrictions_enforced = false;');
   process.env.PGDATABASE = process.env.INTEGRATION_PGDATABASE || 'apihub';
   process.env.AUTH_SECRET = 'test-auth-secret-for-integration';
   process.env.VAULT_KEY = 'test-vault-key-do-not-use-in-prod';
@@ -134,12 +143,56 @@ test('first signup bootstraps an ADMIN user with a private workspace', async () 
   assert.equal(res.status, 201);
   assert.equal(res.json.user.user.role, 'ADMIN');
   assert.equal(res.json.user.organizations.length, 1);
+  assert.equal(res.json.user.organizations[0].kind, 'PERSONAL');
+  assert.equal(res.json.user.organizations[0].domain, null);
+  assert.equal(res.json.user.organizations[0].role, 'ADMIN');
 
   const ws = await api('GET', '/api/workspaces');
   assert.equal(ws.status, 200);
   assert.equal(ws.json.workspaces.length, 1);
   assert.equal(ws.json.workspaces[0].name, 'My Workspace');
   assert.equal(ws.json.workspaces[0].role, 'ADMIN');
+});
+
+test('company-domain signups auto-join one organization by domain', async () => {
+  const owner = makeClient();
+  const ownerRes = await owner.api('POST', '/api/auth/signup', {
+    email: 'acme-owner@acme.com', password: 'acmepass123', name: 'Acme Owner',
+  });
+  assert.equal(ownerRes.status, 201);
+  const ownerOrg = ownerRes.json.user.organizations[0];
+  assert.equal(ownerOrg.kind, 'COMPANY');
+  assert.equal(ownerOrg.domain, 'acme.com');
+  assert.equal(ownerOrg.role, 'ADMIN');
+  assert.equal(ownerOrg.name, 'Acme');
+
+  const rep = makeClient();
+  const repRes = await rep.api('POST', '/api/auth/signup', {
+    email: 'acme-rep@acme.com', password: 'acmepass123', name: 'Acme Rep',
+  });
+  assert.equal(repRes.status, 201);
+  const repOrg = repRes.json.user.organizations[0];
+  assert.equal(repOrg.id, ownerOrg.id, 'second same-domain user joins the existing org');
+  assert.equal(repOrg.kind, 'COMPANY');
+  assert.equal(repOrg.role, 'EDITOR', 'subsequent company members join as EDITOR');
+
+  const me = await rep.api('GET', '/api/auth/me');
+  assert.equal(me.json.organizations.filter((o) => o.id === ownerOrg.id).length, 1);
+});
+
+test('a personal-domain signup gets its own individual organization', async () => {
+  const { api } = makeClient();
+  const res = await api('POST', '/api/auth/signup', { email: 'dana@gmail.com', password: 'danapass123', name: 'Dana' });
+  assert.equal(res.status, 201);
+  assert.equal(res.json.user.organizations.length, 1);
+  assert.equal(res.json.user.organizations[0].kind, 'PERSONAL');
+  assert.equal(res.json.user.organizations[0].domain, null);
+  assert.equal(res.json.user.organizations[0].role, 'ADMIN');
+
+  const ws = await api('GET', '/api/workspaces');
+  assert.equal(ws.status, 200);
+  assert.equal(ws.json.workspaces.length, 1);
+  assert.equal(ws.json.workspaces[0].name, 'My Workspace');
 });
 
 test('login validates credentials and session survives me()', async () => {

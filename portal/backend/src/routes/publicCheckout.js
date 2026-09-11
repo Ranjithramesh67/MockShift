@@ -17,6 +17,7 @@
 const { Router } = require('express');
 const { pool, query, authLib, access } = require('../shared');
 const { allocateUsername } = require('../../../../backend/src/api/username');
+const { provisionNewAccount } = require('../../../../backend/src/api/accountProvision');
 
 const router = Router();
 
@@ -270,33 +271,12 @@ router.post('/checkout', async (req, res, next) => {
           [email, await authLib.hashPassword(password), displayName, usernameValue]
         );
         const userId = rows[0].id;
-        // Give the individual buyer the same bootstrap the main-app register
-        // path provisions (backend/src/api/routes/auth.js): their own org +
-        // "My Workspace" + a Default Project, with them as org ADMIN — so a
-        // paying customer is never left org-less and unable to create or use
-        // workspaces in the main app.
-        const org = await client.query(
-          `INSERT INTO organizations (name, owner_id) VALUES ($1, $2) RETURNING id`,
-          [`${displayName}'s Org`, userId]
-        );
-        const orgId = org.rows[0].id;
-        await client.query(
-          `INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, 'ADMIN')`,
-          [orgId, userId]
-        );
-        const ws = await client.query(
-          `INSERT INTO workspaces (organization_id, name, visibility) VALUES ($1, $2, 'PRIVATE') RETURNING id`,
-          [orgId, 'My Workspace']
-        );
-        const wsId = ws.rows[0].id;
-        await client.query(
-          `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'ADMIN')`,
-          [wsId, userId]
-        );
-        await client.query(
-          `INSERT INTO projects (workspace_id, name) VALUES ($1, $2)`,
-          [wsId, 'Default Project']
-        );
+        // Give the buyer the same bootstrap the main-app register path
+        // provisions (backend/src/api/accountProvision.js): a personal org for
+        // consumer email addresses, or membership of the company org for a
+        // business domain, plus their own "My Workspace" + Default Project —
+        // so a paying customer is never left org-less.
+        await provisionNewAccount(client, { userId, email, displayName });
         return userId;
       });
     }

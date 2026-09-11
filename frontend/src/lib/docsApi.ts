@@ -126,10 +126,15 @@ export type DocsShareGrant =
 export interface DocsShareTargetOption {
   id: string;
   name: string;
+  email?: string | null;
+  username?: string | null;
 }
 export interface DocsShareContext {
   organizationId: string | null;
   teams: DocsShareTargetOption[];
+  // Members of the page's organization — the only valid `kind:'user'` targets
+  // (targeted grants never leave the org).
+  members: DocsShareTargetOption[];
 }
 
 // How a page in GET /docs/shared became readable to the caller (DR2): a direct

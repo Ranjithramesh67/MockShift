@@ -1302,13 +1302,30 @@ router.get('/:pageId/shares', async (req, res, next) => {
     }
     const rows = await shareRowsForDoc(pageId);
     const orgId = await orgOfWorkspace(page.workspace_id);
-    let context = { organizationId: orgId, teams: [] };
+    let context = { organizationId: orgId, teams: [], members: [] };
     if (orgId) {
       const { rows: teamRows } = await query(
         `SELECT id, name FROM teams WHERE organization_id = $1 ORDER BY name`,
         [orgId]
       );
-      context = { organizationId: orgId, teams: teamRows.map((t) => ({ id: t.id, name: t.name })) };
+      const { rows: memberRows } = await query(
+        `SELECT u.id, u.name, u.email, u.username
+           FROM organization_members om
+           JOIN users u ON u.id = om.user_id
+          WHERE om.org_id = $1 AND u.is_active = true AND om.user_id <> $2
+          ORDER BY u.name`,
+        [orgId, req.user.id]
+      );
+      context = {
+        organizationId: orgId,
+        teams: teamRows.map((t) => ({ id: t.id, name: t.name })),
+        members: memberRows.map((m) => ({
+          id: m.id,
+          name: m.name,
+          email: m.email,
+          username: m.username,
+        })),
+      };
     }
     res.json({ shares: rows.map(serializeShareRow), context });
   } catch (err) {
@@ -1381,6 +1398,20 @@ router.post('/:pageId/shares', async (req, res, next) => {
         return res.status(400).json({ error: 'targetUser must include an id, email or username' });
       }
       if (!user) return res.status(400).json({ error: 'No user found for that email or username' });
+      // Targeted grants stay inside the page's organization: a doc can never be
+      // shared with a user who is not a member of the owning org.
+      const owningOrg = await orgOfWorkspace(page.workspace_id);
+      const { rows: sameOrg } = owningOrg
+        ? await query(
+            `SELECT 1 FROM organization_members WHERE org_id = $1 AND user_id = $2`,
+            [owningOrg, user.id]
+          )
+        : { rows: [] };
+      if (sameOrg.length === 0) {
+        return res
+          .status(400)
+          .json({ error: 'You can only share with members of this organization' });
+      }
       targetCol = { kind, targetUserId: user.id };
     } else if (kind === 'team') {
       const teamId = body.teamId;

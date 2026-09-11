@@ -67,6 +67,18 @@ type DetailResponse = {
     is_active: boolean;
     created_at: string;
   };
+  account?: {
+    type: 'PERSONAL' | 'COMPANY';
+    orgName: string | null;
+    domain: string | null;
+  };
+  organizations?: {
+    id: string;
+    name: string;
+    kind: 'PERSONAL' | 'COMPANY';
+    domain: string | null;
+    role: string;
+  }[];
   subscriptions: SubscriptionDetail[];
   orders: OrderDetail[];
   invoices: InvoiceDetail[];
@@ -228,6 +240,19 @@ export default function SubscriberDetailPage() {
             <div className="pm-kv-value">{user.username ?? '—'}</div>
           </div>
           <div className="pm-kv-item">
+            <div className="pm-kv-label">Account type</div>
+            <div className="pm-kv-value">
+              {detail.account?.type === 'COMPANY' ? 'Company' : 'Individual'}
+            </div>
+          </div>
+          <div className="pm-kv-item">
+            <div className="pm-kv-label">Organization</div>
+            <div className="pm-kv-value">
+              {detail.account?.orgName ?? '—'}
+              {detail.account?.domain ? ` · ${detail.account.domain}` : ''}
+            </div>
+          </div>
+          <div className="pm-kv-item">
             <div className="pm-kv-label">Member since</div>
             <div className="pm-kv-value">{formatDate(user.created_at)}</div>
           </div>
@@ -237,6 +262,33 @@ export default function SubscriberDetailPage() {
           </div>
         </div>
       </Card>
+
+      {detail.organizations && detail.organizations.length > 0 ? (
+        <Card title={`Organizations (${detail.organizations.length})`}>
+          <div className="pm-table-wrap">
+            <table className="pm-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Domain</th>
+                  <th>Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.organizations.map((o) => (
+                  <tr key={o.id}>
+                    <td className="pm-cell-main">{o.name}</td>
+                    <td>{o.kind === 'COMPANY' ? 'Company' : 'Individual'}</td>
+                    <td className="pm-cell-sub">{o.domain ?? '—'}</td>
+                    <td className="pm-cell-sub">{titleCase(o.role)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
 
       <Card title={`Subscriptions (${detail.subscriptions.length})`}>
         {detail.subscriptions.length === 0 ? (

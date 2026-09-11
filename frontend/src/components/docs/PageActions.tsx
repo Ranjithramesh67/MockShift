@@ -272,9 +272,13 @@ export function DocShareButton({ pageId }: { pageId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [shares, setShares] = useState<DocsShareGrant[]>([]);
-  const [context, setContext] = useState<DocsShareContext>({ organizationId: null, teams: [] });
+  const [context, setContext] = useState<DocsShareContext>({
+    organizationId: null,
+    teams: [],
+    members: [],
+  });
   const [busy, setBusy] = useState<string | null>(null);
-  const [email, setEmail] = useState('');
+  const [memberId, setMemberId] = useState('');
   const [personError, setPersonError] = useState('');
   const [teamId, setTeamId] = useState('');
   const [copied, setCopied] = useState(false);
@@ -290,6 +294,11 @@ export function DocShareButton({ pageId }: { pageId: string }) {
       setShares(res.shares);
       setContext(res.context);
       setTeamId((cur) => cur || res.context.teams[0]?.id || '');
+      const sharedUsers = new Set(
+        res.shares.filter((s) => s.kind === 'user').map((s) => s.target.id)
+      );
+      const firstMember = res.context.members.find((m) => !sharedUsers.has(m.id));
+      setMemberId((cur) => cur || firstMember?.id || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load shares');
     } finally {
@@ -311,17 +320,12 @@ export function DocShareButton({ pageId }: { pageId: string }) {
 
   const addPerson = async (e: React.FormEvent) => {
     e.preventDefault();
-    const value = email.trim();
-    if (!value) return;
+    if (!memberId) return;
     setPersonError('');
     setBusy('user');
     try {
-      const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
-      await docsApi.createShare(pageId, {
-        kind: 'user',
-        targetUser: isEmail ? { email: value } : { username: value },
-      });
-      setEmail('');
+      await docsApi.createShare(pageId, { kind: 'user', targetUser: { id: memberId } });
+      setMemberId('');
       toast('success', 'Access granted — the person will be notified.');
       await refresh();
     } catch (err) {
@@ -408,6 +412,10 @@ export function DocShareButton({ pageId }: { pageId: string }) {
   };
 
   const remainingTeams = context.teams.filter((t) => !sharedTeamIds.has(t.id));
+  const sharedUserIds = new Set(
+    shares.filter((s) => s.kind === 'user').map((s) => s.target.id)
+  );
+  const remainingMembers = context.members.filter((m) => !sharedUserIds.has(m.id));
 
   return (
     <>
@@ -545,21 +553,32 @@ export function DocShareButton({ pageId }: { pageId: string }) {
                 <span>Grant access</span>
               </div>
               <form className={styles.shareAddRow} onSubmit={addPerson}>
-                <input
-                  className="text-input"
-                  type="text"
-                  placeholder="Email or username"
-                  aria-label="Email or username"
+                <select
+                  className="compact-select"
+                  aria-label="Organization member"
                   data-testid="docs-share-person"
-                  value={email}
-                  disabled={busy !== null}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+                  value={memberId}
+                  disabled={busy !== null || remainingMembers.length === 0}
+                  onChange={(e) => setMemberId(e.target.value)}
+                >
+                  {context.members.length === 0 && (
+                    <option value="">No other members in this organization</option>
+                  )}
+                  {context.members.length > 0 && remainingMembers.length === 0 && (
+                    <option value="">Everyone already has access</option>
+                  )}
+                  {remainingMembers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                      {m.email ? ` · ${m.email}` : ''}
+                    </option>
+                  ))}
+                </select>
                 <button
                   type="submit"
                   className="ghost-button"
                   data-testid="docs-share-add-user"
-                  disabled={busy !== null || email.trim().length === 0}
+                  disabled={busy !== null || !memberId}
                 >
                   {busy === 'user' ? 'Adding…' : 'Add person'}
                 </button>

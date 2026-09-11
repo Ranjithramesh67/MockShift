@@ -258,6 +258,7 @@ test('a targeted share on an ancestor covers the sub-tree and populates /shared'
   assert.equal(grand.json.page.parentId, child.json.page.id);
 
   const fay = await signupUser('fay-shared@test.io', 'Fay Shared');
+  addOrgMember('fay-shared@test.io', 'VIEWER');
   const denied = await fay.api('GET', `/api/docs/${grand.json.page.id}`);
   assert.equal(denied.status, 404, 'not readable before the share');
 

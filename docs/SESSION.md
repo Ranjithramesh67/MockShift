@@ -2994,3 +2994,29 @@ DONE — admin Users list is now **project-wise** (pushed as `a5b12bb`):
   Project) with 8 ready-to-run requests: `GET all posts`, `GET post 1`, `POST create post`,
   `PUT replace post 1`, `PATCH post 1`, `DELETE post 2`, `GET sample PDF`, `GET HTML page` — all
   pointed at `http://127.0.0.1:3999`.
+
+### 10.16 Multi-tenancy: personal vs company identity (2026-09-11)
+
+- **Feature**: every signup is classified by email domain as **PERSONAL** (well-known consumer
+  mailbox / reserved test domain) or **COMPANY**. A company user auto-joins the COMPANY org already
+  registered for their domain (first signup = ADMIN, later = EDITOR); a personal user gets their own
+  `<Name>'s Org` as ADMIN. Both always receive a PRIVATE `My Workspace` + `Default Project`.
+- **New**: `db/migrations/039_organizations_identity.sql` — `org_kind` enum, `organizations.kind /
+  domain / created_at`, partial unique index `organizations_company_domain_uidx` (one COMPANY org per
+  domain). `backend/src/api/emailDomain.js` — classifier (`PERSONAL_EMAIL_DOMAINS`,
+  `SPECIAL_USE_DOMAINS`, `classifyEmail`, `companyNameFromDomain`, env overrides
+  `PERSONAL_EMAIL_DOMAINS` / `COMPANY_EMAIL_DOMAINS`). `backend/src/api/accountProvision.js` —
+  shared `provisionNewAccount()`.
+- **Wiring**: `backend/src/api/routes/auth.js` and `portal/backend/src/routes/publicCheckout.js` both
+  call `provisionNewAccount`; `userSummary` exposes `organizations[].kind/domain/role`.
+- **Visibility tightened**: targeted sharing is org-bound — `docs.js` rejects `kind:'user'` grants
+  unless the target is a member of the page's org (share context gains `members[]`); `sends.js`
+  rejects a recipient who shares neither an org nor a workspace with the sender. Plan-gated
+  anonymous public links remain the only external channel.
+- **Frontend**: `PageActions.tsx` person share is now an org-member `<select>` posting
+  `{kind:'user', targetUser:{id}}`; Portal B `subscribers` list adds an Account column +
+  `accountType` filter and the detail page shows account type + organizations.
+- **Tests**: `apiAuth` 19/19 (new company auto-join + personal-domain cases; disabled plan
+  enforcement in `before()` like the other suites, clearing the pre-existing baseline failures);
+  `docsShareAudiences` 7/7 (new cross-org rejection test); `docsShares` 5/5; `docsTreeVisibility`
+  12/12; API units 69/69; both Next.js frontends `tsc --noEmit` clean.
