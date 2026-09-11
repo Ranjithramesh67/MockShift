@@ -1,6 +1,11 @@
-// Synthesize every scene's narration to a WAV with Piper and record the
-// measured duration into .work/narration.json. Runs before recording so the
-// recorder can hold each scene long enough for its voice over.
+// Synthesize every scene's narration with Piper and record the measured
+// duration into .work/narration.json. Runs before recording so the recorder can
+// hold each scene long enough for its voice over.
+//
+// The voice is a higher-quality single-speaker model, spoken slightly faster
+// than default, with leading/trailing silence trimmed and light production
+// polish (EQ, gentle compression, a touch of room, loudness normalisation) so
+// it reads less like a flat synthetic TTS and more like a produced voice over.
 
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -12,16 +17,28 @@ import { segments } from './script.mjs';
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VOICE =
-  process.env.PIPER_VOICE || path.join(__dirname, '.voices', 'en_US-lessac-medium.onnx');
+  process.env.PIPER_VOICE || path.join(__dirname, '.voices', 'en_US-ryan-high.onnx');
 const WORK = path.join(__dirname, '.work');
 const AUDIO = path.join(WORK, 'audio');
+
+const POLISH =
+  'highpass=f=90,lowpass=f=12000,' +
+  'silenceremove=start_periods=1:start_silence=0.03:start_threshold=-45dB,' +
+  'areverse,silenceremove=start_periods=1:start_silence=0.06:start_threshold=-45dB,areverse,' +
+  'acompressor=threshold=-18dB:ratio=3:attack=8:release=180,' +
+  'aecho=0.8:0.88:40|63:0.05|0.04,' +
+  'loudnorm=I=-16:TP=-1.5:LRA=11,' +
+  'aresample=48000';
 
 function piper(text, outFile) {
   return new Promise((resolve, reject) => {
     const child = spawn('piper', [
       '-m', VOICE,
       '-f', outFile,
-      '--sentence-silence', '0.35',
+      '--length_scale', '0.96',
+      '--noise_scale', '0.667',
+      '--noise_w', '0.8',
+      '--sentence-silence', '0.12',
     ]);
     let stderr = '';
     child.stderr.on('data', (d) => {
@@ -34,6 +51,12 @@ function piper(text, outFile) {
     });
     child.stdin.write(`${text}\n`);
     child.stdin.end();
+  });
+}
+
+async function polish(inFile, outFile) {
+  await execFileAsync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', inFile, '-af', POLISH, '-ac', '1', outFile], {
+    maxBuffer: 64 * 1024 * 1024,
   });
 }
 
@@ -54,23 +77,19 @@ async function main() {
   for (const segment of segments) {
     for (const scene of segment.scenes) {
       const key = `${segment.id}/${scene.id}`;
+      const raw = path.join(AUDIO, `${segment.id}__${scene.id}.raw.wav`);
       const out = path.join(AUDIO, `${segment.id}__${scene.id}.wav`);
       process.stdout.write(`  [tts] ${key} ... `);
-      await piper(scene.narration, out);
+      await piper(scene.narration, raw);
+      await polish(raw, out);
       const seconds = await duration(out);
-      index[key] = {
-        segment: segment.id,
-        scene: scene.id,
-        text: scene.narration,
-        wav: out,
-        duration: Number(seconds.toFixed(3)),
-      };
+      index[key] = { wav: out, duration: seconds, text: scene.narration };
       total += seconds;
       process.stdout.write(`${seconds.toFixed(2)}s\n`);
     }
   }
   await writeFile(path.join(WORK, 'narration.json'), JSON.stringify(index, null, 2));
-  console.log(`\nNarration: ${Object.keys(index).length} lines, ${total.toFixed(1)}s total.`);
+  console.log(`\nWrote ${path.join(WORK, 'narration.json')} (${segments.length} segments, ${total.toFixed(1)}s narration)`);
 }
 
 main().catch((err) => {

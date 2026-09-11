@@ -8,16 +8,19 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
-echo "==> 1/4 preparing fixtures"
+echo "==> 1/5 preparing fixtures"
 node fixtures.mjs
 
-echo "==> 2/4 synthesizing narration"
+echo "==> 2/5 synthesizing narration"
 node synth.mjs
 
-echo "==> 3/4 recording segments"
+echo "==> 3/5 recording segments"
 node record.mjs
 
-echo "==> 4/4 assembling video"
+echo "==> 4/5 generating music bed"
+FORCE_MUSIC=1 node music.mjs
+
+echo "==> 5/5 assembling video"
 node assemble.mjs
 
 echo "Done -> $DIR/out/mockshift-tutorial.mp4"

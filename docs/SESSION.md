@@ -988,6 +988,41 @@ script/config only (the media is gitignored and reproducible):
   `.voices/` and `out/`; only the scripts, `README.md` and `build-video.sh`
   are committed.
 
+### 5.68 Tutorial video v2 — full coverage, better voice, music (2026-09-11)
+
+DONE — a marketing-grade rework of the tutorial (media still gitignored):
+
+- **Every page, not just the highlights** — `fixtures.mjs` now seeds the whole
+  product idempotently per seeded user: docs pages with real blocks, an imported
+  OpenAPI contract, a monitor, a workflow + automation, collaboration
+  comments/review/version, a team, an API token, an incoming send and a pending
+  access request. `script.mjs` deep-links to the seeded docs page, collection
+  collaboration view and request runs, and the Editor chapter visits contracts,
+  monitors, automations, docs, collaboration, history, copilot and teams; the
+  Admin chapter adds platform settings, API tokens and the inbox.
+- **Human-sounding, brisk narration** — switched the Piper voice to
+  `en_US-ryan-high` and added a production chain (`highpass`, head/tail
+  silence trim, `acompressor`, subtle room `aecho`, `loudnorm` to -16 LUFS) in
+  `synth.mjs`; speaking rate is nudged up (`--length_scale 0.96`) and the
+  recorder holds each scene only ~180 ms past the narration so there is no dead
+  air between lines.
+- **Original music bed** — new `music.mjs` synthesizes a royalty-free ambient
+  track from scratch (additive sines + pulse + reverb, deterministic), sized to
+  the recording; `assemble.mjs` ducks it under the voice with
+  `sidechaincompress`.
+- **Polish** — `assemble.mjs` adds colour grade + vignette, chapter banners,
+  animated intro/outro cards and per-chapter SRT subtitles.
+- **CPU-constrained recording** — capture runs at 1600x900 and is scaled to
+  1920x1080 (lanczos) at assembly; `record.mjs` warms every route first so
+  `next dev` compiles pages before recording. Static focus rings and fewer
+  cursor steps keep the software encoder fast.
+- **Bug found + fixed** — the admin create-user form is a custom overlay with no
+  Escape handler, so the earlier recording left it open and its overlay blocked
+  every later admin click; the scene now closes it with the Cancel button.
+- **Output** — `docs/tutorial/out/mockshift-tutorial.mp4` 1920x1080 H.264 + AAC,
+  6.2 min (373.5 s), 5 chapter markers, integrated loudness -16.4 LUFS / true
+  peak -4.2 dBFS, plus `out/<segment>.srt`.
+
 ### 5.62 Enhancement round 4 — five features shipped in parallel (2026-09-09)
 
 After the capability audit, Ranjith asked to build the whole prioritized list
