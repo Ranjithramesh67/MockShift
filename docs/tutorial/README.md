@@ -11,8 +11,11 @@ follows three teammates with different access levels and visits every rail:
 | Administrator access | ADMIN | Users, creating users, access, platform settings, API tokens, inbox |
 | Recap | - | Closing summary |
 
-Output: `out/mockshift-tutorial.mp4` (1920x1080, H.264 + AAC, chapter markers,
-original music bed) plus one `out/<segment>.srt` subtitle file per chapter.
+Output: `out/mockshift-tutorial-v2.mp4` (1920x1080, H.264 + AAC, chapter markers,
+original music bed) plus one `out/<segment>.srt` subtitle file per chapter. The
+same render is copied to `out/mockshift-tutorial.mp4` for convenience, but share
+the versioned name so a stale CDN/browser cache never serves an old cut. Bump
+`TUTORIAL_VERSION` (or the default in `assemble.mjs`) whenever the tour changes.
 
 ## How it works
 
@@ -37,7 +40,7 @@ The pipeline is five independent stages, each writing into `.work/`:
 5. **`assemble.mjs`** - places each narration WAV at its recorded offset, adds
    light grade + vignette, burns in subtitles, bookends the tour with animated
    intro/outro cards, concatenates the segments with chapter markers and ducks
-   the music bed under the narration into `out/mockshift-tutorial.mp4`.
+   the music bed under the narration into `out/mockshift-tutorial-<version>.mp4`.
 
 `script.mjs` is the single source of truth for the content: it defines the
 `LOGIN` accounts and, for every segment and scene, the narration text plus the
