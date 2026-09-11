@@ -1920,6 +1920,39 @@ and assertions configurable from the same place. Delivered as seven tasks
   create 1 request/1 folder → re-sync update 1/create 0 → collection cleaned up
   via the API.
 
+## Round 6 — mock call-log payloads, route-response layout, scenarios clarity + QUERY method (shipped 2026-09-11; code pushed `ce0abdc`, `fc4ef41`)
+
+A review pass on the E3 mock-scenarios panel plus support for the `QUERY`
+method. Two shipped commits:
+
+- [x] **Full mock call-log payloads** (`ce0abdc`): migration
+  `038_mock_call_log_response.sql` adds `response_headers` / `response_body` to
+  `mock_call_logs`; the dispatch hook in `routes/mockScenarios.js` persists the
+  response it observes on `res.end` (headers via `res.getHeaders()`). Each log
+  row gained an expandable **Details** view (trigger time with ms, duration,
+  status/source/route, pretty-printed request query/headers/body + response
+  headers/body). Request query/headers/body were already stored.
+- [x] **Route responses layout fix**: the add-response form, its Conditions
+  block and the responses list were wrapped in `styles.divider` (a 1px rule), so
+  their contents overflowed/overlapped. Replaced with `.responseForm` /
+  `.subForm` / `.responseList` stack containers.
+- [x] **Scenario semantics clarified in the UI**: a named scenario is an override
+  set activated per request via `X-Mock-Scenario: <name>` (or
+  `?__scenario=<name>`); its responses outrank the Default set, and a Default
+  response is served for every call.
+- [x] **`QUERY` method** (`fc4ef41`): IANA-registered Safe + Idempotent method
+  (RFC 10008) that is GET-like but carries a query-describing body. Added to the
+  backend allowlists (`mockServers`, `content`, `exports`, `openapi`,
+  `sdkManifest`) and the frontend registries (`HttpMethod`, `METHODS`,
+  `METHOD_COLORS`, `CreateModal` incl. `BODY_METHODS`, `MockServersModal`,
+  `MockScenariosPanel`, docs `ApiReference`). The runner already sends bodies
+  for non-GET/HEAD; `express.json()` parses QUERY bodies so mock body conditions
+  and call-log capture work unchanged.
+- [x] **Verification**: backend API unit 62/62; `mockServer` integration 4/4
+  (new QUERY case) and `mockScenarios` 13/13 on the scratch cluster; frontend
+  `tsc --noEmit` clean + unit 91/91; live curl proved a QUERY route is created,
+  dispatched with a body, and logged with the full exchange.
+
 ## Roadmap
 
 | Step | Deliverable |
