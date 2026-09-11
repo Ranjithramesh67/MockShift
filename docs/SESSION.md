@@ -959,6 +959,35 @@ Mock-server polish answering a review pass on the E3 scenarios panel.
   created a scenario + route + scoped response, `GET /api/mock-scenarios/links`
   returned the joined row, then cleaned up the smoke route/scenario.
 
+### 5.67 Narrated tutorial video (2026-09-11)
+
+DONE — a full, voice-over product tour built with Playwright, committed as
+script/config only (the media is gitignored and reproducible):
+
+- **Pipeline** (all under `docs/tutorial/`) — four idempotent stages writing
+  into `.work/`: `fixtures.mjs` (logs in as each seeded user over the real API
+  and creates the demo collection / requests / environments / mock server +
+  scenario), `synth.mjs` (Piper neural TTS → one WAV per scene +
+  `narration.json`), `record.mjs` (Playwright chromium 1920x1080, one browser
+  context and `.webm` per segment, `timings.json` maps every scene to its
+  narration offset), `assemble.mjs` (places each narration WAV at its offset,
+  burns subtitles, concatenates the segments and adds chapter markers).
+  `script.mjs` is the single source of content (LOGIN accounts + per-scene
+  narration and actions); `lib/harness.mjs` injects a visible cursor, click
+  ripples, focus rings and captions. `build-video.sh` runs all four stages.
+- **Tour** — five chapters by access level: Introduction, Editor (requests,
+  responses, environments, mock server, plan limits), Manager (management
+  console: overview, projects, teams, run history), Administrator (users,
+  create user, access requests, platform settings), Recap.
+- **Output** — `docs/tutorial/out/mockshift-tutorial.mp4` (1920x1080 H.264 +
+  AAC, chapter markers) ≈ 5.3 min, plus one `out/<segment>.srt` per chapter.
+- **Gotcha** — Playwright `recordVideo` only emits frames on visual change, so
+  static screens truncate; `assemble.mjs` pads each segment with cloned frames
+  (`tpad=stop_mode=clone`) up to its target length before muxing.
+- **Tracked vs generated** — `docs/tutorial/.gitignore` excludes `.work/`,
+  `.voices/` and `out/`; only the scripts, `README.md` and `build-video.sh`
+  are committed.
+
 ### 5.62 Enhancement round 4 — five features shipped in parallel (2026-09-09)
 
 After the capability audit, Ranjith asked to build the whole prioritized list

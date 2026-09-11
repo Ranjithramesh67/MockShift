@@ -1,0 +1,5 @@
+# Generated tutorial assets. These are large and fully reproducible with the
+# scripts in this folder; only the scripts, README and this file are tracked.
+.work/
+.voices/
+out/
