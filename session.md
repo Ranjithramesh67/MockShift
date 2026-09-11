@@ -1961,6 +1961,26 @@ method. Two shipped commits:
   `mockScenariosApi`; links refresh on load and after response add/delete.
   `mockScenarios` integration now 14/14.
 
+## Round 7 — narrated tutorial video (shipped 2026-09-11)
+
+A full, voice-over product tour of MockShift built with Playwright, committed
+as script/config only (the media is gitignored and reproducible).
+
+- [x] **Pipeline** (`docs/tutorial/`): `fixtures.mjs` seeds deterministic demo
+  data per user over the real API; `synth.mjs` synthesizes narration with Piper
+  (neural, offline); `record.mjs` records each segment with Playwright
+  (1920x1080, cursor/ripple/focus/caption overlays from `lib/harness.mjs`) and
+  writes `timings.json`; `assemble.mjs` muxes narration at its offset, burns
+  subtitles, pads static video with cloned frames, concatenates segments and
+  emits chapter markers. `script.mjs` holds the LOGIN accounts and every
+  scene's narration + actions. `build-video.sh` runs the four stages.
+- [x] **Tour by access level**: Introduction → Editor → Manager → Administrator
+  → Recap, showing what each role can and cannot do.
+- [x] **Output**: `docs/tutorial/out/mockshift-tutorial.mp4` (1920x1080 H.264 +
+  AAC, chapters) ≈ 5.3 min, plus per-segment `out/<segment>.srt`.
+- [x] **Tracked vs generated**: `docs/tutorial/.gitignore` excludes `.work/`,
+  `.voices/` and `out/`; scripts + `README.md` + `build-video.sh` are committed.
+
 ## Roadmap
 
 | Step | Deliverable |
