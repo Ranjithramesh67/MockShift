@@ -128,6 +128,71 @@ function sourceBadgeClass(source: string): string {
   return `${styles.badge} ${styles.badgeUnmatched}`;
 }
 
+function prettyJson(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const ms = String(date.getMilliseconds()).padStart(3, '0');
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}.${ms}`;
+}
+
+function CallLogDetail({ log }: { log: MockCallLog }) {
+  const query = log.query && Object.keys(log.query).length > 0 ? prettyJson(log.query) : '';
+  const reqHeaders =
+    log.request_headers && Object.keys(log.request_headers).length > 0
+      ? prettyJson(log.request_headers)
+      : '';
+  const resHeaders =
+    log.response_headers && Object.keys(log.response_headers).length > 0
+      ? prettyJson(log.response_headers)
+      : '';
+  const scenarioLabel = log.scenario_name ? ` · scenario ${log.scenario_name}` : '';
+  return (
+    <div className={styles.logDetail} data-testid="mock-call-log-detail">
+      <div className={styles.logMeta}>
+        <span>Triggered {formatTimestamp(log.created_at)}</span>
+        <span>{log.duration_ms} ms</span>
+        <span>status {log.status ?? '-'}</span>
+        <span>
+          source {log.source}
+          {scenarioLabel}
+        </span>
+        <span>route {log.matched_route_path || '-'}</span>
+        {log.replayed_from ? <span>replay of {log.replayed_from}</span> : null}
+      </div>
+      <div className={styles.logDetailSection}>
+        <span className={styles.logDetailLabel}>Request query</span>
+        <pre className={styles.pre}>{query || '-'}</pre>
+      </div>
+      <div className={styles.logDetailSection}>
+        <span className={styles.logDetailLabel}>Request headers</span>
+        <pre className={styles.pre}>{reqHeaders || '-'}</pre>
+      </div>
+      <div className={styles.logDetailSection}>
+        <span className={styles.logDetailLabel}>Request body</span>
+        <pre className={styles.pre}>{log.request_body || '-'}</pre>
+      </div>
+      <div className={styles.logDetailSection}>
+        <span className={styles.logDetailLabel}>Response headers</span>
+        <pre className={styles.pre}>{resHeaders || '-'}</pre>
+      </div>
+      <div className={styles.logDetailSection}>
+        <span className={styles.logDetailLabel}>Response body</span>
+        <pre className={styles.pre}>{log.response_body || '-'}</pre>
+      </div>
+    </div>
+  );
+}
+
 export function MockScenariosPanel({ projectId, className }: MockScenariosPanelProps) {
   const [server, setServer] = useState<MockServer | null>(null);
   const [scenarios, setScenarios] = useState<MockScenario[]>([]);
@@ -147,6 +212,7 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
   const [routeDraft, setRouteDraft] = useState<RouteDraft>(emptyRouteDraft);
   const [draft, setDraft] = useState<ResponseDraft>(emptyDraft);
   const [replay, setReplay] = useState<{ status: number; body: string } | null>(null);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const selectedRouteIdRef = useRef('');
 
   useEffect(() => {
@@ -386,6 +452,7 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
       if (!window.confirm('Clear all captured calls for this mock server?')) return;
       await mockScenariosApi.clearCallLogs(server.id);
       setLogs([]);
+      setExpandedLogId(null);
       setNotice('Call log cleared');
     });
 
@@ -465,7 +532,9 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
             <div className={styles.sectionHead}>
               <h2 className={styles.sectionTitle}>Scenarios</h2>
               <span className={styles.sectionHint}>
-                Scenario overrides take precedence over the default responses.
+                Named override sets. Activate one per request with{' '}
+                <code>X-Mock-Scenario: &lt;name&gt;</code> or <code>?__scenario=&lt;name&gt;</code>;
+                its responses outrank the Default set.
               </span>
             </div>
             {scenarios.length === 0 ? (
@@ -711,7 +780,7 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
             </div>
 
             {showForm ? (
-              <div className={styles.divider}>
+              <div className={styles.responseForm}>
                 <div className={styles.row}>
                   <div className={styles.field}>
                     <label className={styles.label}>Scenario</label>
@@ -729,6 +798,10 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
                         </option>
                       ))}
                     </select>
+                    <span className={styles.fieldHint}>
+                      Default is served for every call. A named scenario response is served only
+                      while that scenario is active.
+                    </span>
                   </div>
                   <div className={styles.field}>
                     <label className={styles.label}>Priority</label>
@@ -784,7 +857,7 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
                   </div>
                 </div>
 
-                <div className={styles.divider}>
+                <div className={styles.subForm}>
                   <div className={styles.sectionHead}>
                     <span className={styles.sectionTitle}>Conditions (all must match)</span>
                     <button className={styles.btn} type="button" onClick={addCondition}>
@@ -892,7 +965,7 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
               </div>
             ) : null}
 
-            <div className={styles.divider}>
+            <div className={styles.responseList}>
               {responses.length === 0 ? (
                 <p className={styles.empty}>No conditional or sequence responses for this route.</p>
               ) : (
@@ -965,33 +1038,45 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
             ) : (
               <div className={styles.logTable}>
                 {logs.map((log) => (
-                  <div key={log.id} className={styles.logRow}>
-                    <span className={styles.logTime}>
-                      {new Date(log.created_at).toLocaleTimeString()}
-                    </span>
-                    <span className={styles.logMethod}>{log.method}</span>
-                    <span className={styles.logPath} title={log.path}>
-                      {log.path}
-                    </span>
-                    <span className={styles.badgeStatus}>{log.status ?? '-'}</span>
-                    <span className={sourceBadgeClass(log.source)}>
-                      {log.source === 'scenario' && log.scenario_name
-                        ? `scenario:${log.scenario_name}`
-                        : log.source}
-                    </span>
-                    <span className={`${styles.itemMeta} ${styles.logScenario}`}>
-                      {log.matched_route_path || '-'}
-                    </span>
-                    <span className={styles.logAction}>
-                      <button
-                        className={styles.btn}
-                        type="button"
-                        onClick={() => replayCall(log.id)}
-                        disabled={busy}
-                      >
-                        Replay
-                      </button>
-                    </span>
+                  <div key={log.id} className={styles.logEntry}>
+                    <div className={styles.logRow}>
+                      <span className={styles.logTime}>
+                        {new Date(log.created_at).toLocaleTimeString()}
+                      </span>
+                      <span className={styles.logMethod}>{log.method}</span>
+                      <span className={styles.logPath} title={log.path}>
+                        {log.path}
+                      </span>
+                      <span className={styles.badgeStatus}>{log.status ?? '-'}</span>
+                      <span className={sourceBadgeClass(log.source)}>
+                        {log.source === 'scenario' && log.scenario_name
+                          ? `scenario:${log.scenario_name}`
+                          : log.source}
+                      </span>
+                      <span className={`${styles.itemMeta} ${styles.logScenario}`}>
+                        {log.matched_route_path || '-'}
+                      </span>
+                      <span className={styles.logAction}>
+                        <button
+                          className={styles.btn}
+                          type="button"
+                          onClick={() =>
+                            setExpandedLogId((current) => (current === log.id ? null : log.id))
+                          }
+                        >
+                          {expandedLogId === log.id ? 'Hide' : 'Details'}
+                        </button>
+                        <button
+                          className={styles.btn}
+                          type="button"
+                          onClick={() => replayCall(log.id)}
+                          disabled={busy}
+                        >
+                          Replay
+                        </button>
+                      </span>
+                    </div>
+                    {expandedLogId === log.id ? <CallLogDetail log={log} /> : null}
                   </div>
                 ))}
               </div>

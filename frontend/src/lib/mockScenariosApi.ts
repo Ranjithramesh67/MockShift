@@ -84,6 +84,8 @@ export interface MockCallLog {
   scenario_name: string | null;
   status: number | null;
   duration_ms: number;
+  response_headers: Record<string, unknown>;
+  response_body: string;
   source: MockCallSource;
   replayed_from: string | null;
   created_at: string;
