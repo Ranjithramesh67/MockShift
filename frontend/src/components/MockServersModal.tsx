@@ -5,7 +5,7 @@ import { mockServerApi, type MockRoute, type MockServer } from '@/lib/api';
 import { parseMockHeaders, mockBaseUrl } from '@/lib/mockServer';
 import { Modal } from './Modal';
 
-const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
 
 interface DraftRoute {
   id?: string;

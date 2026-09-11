@@ -191,6 +191,37 @@ test('mock server CRUD + public dispatch', async () => {
   assert.equal(goneRes.status, 404);
 });
 
+test('mock server supports the QUERY method (safe GET with a body)', async () => {
+  const created = await admin.api('POST', `/api/projects/${projectId}/mock-server`, { name: 'Query Mock' });
+  const serverId = created.json.mockServer.id;
+
+  const route = await admin.api('POST', `/api/mock-servers/${serverId}/routes`, {
+    method: 'QUERY',
+    path: '/search',
+    status: 200,
+    body: JSON.stringify({ hits: [] }),
+  });
+  assert.equal(route.status, 201, 'QUERY route accepted');
+
+  const res = await fetch(`${base}/mock/${projectId}/search`, {
+    method: 'QUERY',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: 'needle' }),
+  });
+  assert.equal(res.status, 200, 'QUERY dispatch matched');
+  assert.deepEqual(await res.json(), { hits: [] });
+
+  const logs = await admin.api('GET', `/api/mock-call-logs?mockServerId=${serverId}&limit=10`);
+  assert.equal(logs.status, 200);
+  const row = logs.json.logs.find((l) => l.method === 'QUERY' && l.path === '/search');
+  assert.ok(row, 'QUERY call logged');
+  assert.equal(row.status, 200);
+  assert.equal(row.request_body, JSON.stringify({ q: 'needle' }), 'QUERY request body captured');
+  assert.deepEqual(JSON.parse(row.response_body), { hits: [] });
+
+  await admin.api('DELETE', `/api/mock-servers/${serverId}`);
+});
+
 test('mock server access is project-scoped', async () => {
   const dev = makeClient();
   await signup(dev, 'mockdev@test.io', 'devpass123', 'Mock Dev');

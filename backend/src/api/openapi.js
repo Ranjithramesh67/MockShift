@@ -9,7 +9,7 @@
 const crypto = require('crypto');
 const { parseBody } = require('../engine/assertions');
 
-const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'];
+const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'query'];
 
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);

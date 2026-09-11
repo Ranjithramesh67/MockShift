@@ -2,7 +2,7 @@
 
 // Pure helpers for POST /api/sdk/sync. No DB, no network — unit-testable.
 
-const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
+const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY']);
 
 function normalizeKey(method, path) {
   const m = String(method || '').trim().toUpperCase();

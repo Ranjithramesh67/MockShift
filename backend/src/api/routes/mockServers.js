@@ -15,7 +15,7 @@ const { checkCountGate, orgOfProject } = require('../entitlements');
 const router = Router();
 router.use(requireAuth);
 
-const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
 const MAX_DELAY_MS = 60000;
 
 function validateRouteInput(input) {
