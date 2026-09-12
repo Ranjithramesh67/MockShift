@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mockServerApi, type MockRoute, type MockServer } from '@/lib/api';
-import { mockBaseUrl } from '@/lib/mockServer';
+import { MockServerLink } from './MockServerLink';
 import {
   MOCK_CONDITION_OPERATORS,
   MOCK_CONDITION_SOURCES,
@@ -536,7 +536,7 @@ export function MockScenariosPanel({ projectId, className }: MockScenariosPanelP
           <p className={styles.subtitle}>
             {server ? (
               <>
-                {server.name} · <code>{mockBaseUrl(projectId)}</code> · activate with{' '}
+                {server.name} · <MockServerLink projectId={projectId} /> · activate with{' '}
                 <code>X-Mock-Scenario: &lt;name&gt;</code> or <code>?__scenario=&lt;name&gt;</code>
               </>
             ) : (
