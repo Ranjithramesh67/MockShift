@@ -7,6 +7,7 @@ const { hashPassword } = require('../authLib');
 const { logAudit } = require('../audit');
 const { allocateUsername } = require('../username');
 const { checkSeatGate, orgOfProject, orgOfWorkspace } = require('../entitlements');
+const { MENU_KEYS, isMenuKey } = require('../menuAccess');
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -342,6 +343,112 @@ router.patch('/users/:userId', async (req, res, next) => {
       [userId]
     );
     res.json({ user: updated.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------ menu settings
+// Platform-admin control of per-org / per-project feature visibility.
+router.get('/menus', async (req, res, next) => {
+  try {
+    const [settings, organizations, projects] = await Promise.all([
+      query(
+        `SELECT ms.id, ms.menu_key, ms.scope, ms.enabled, ms.updated_at,
+                ms.organization_id, o.name AS organization_name,
+                ms.project_id, p.name AS project_name, w.name AS workspace_name
+           FROM menu_settings ms
+           LEFT JOIN organizations o ON o.id = ms.organization_id
+           LEFT JOIN projects p ON p.id = ms.project_id
+           LEFT JOIN workspaces w ON w.id = p.workspace_id
+          ORDER BY ms.menu_key, ms.scope, ms.updated_at DESC`
+      ),
+      query(`SELECT id, name, kind FROM organizations ORDER BY kind, name`),
+      query(
+        `SELECT p.id, p.name, w.name AS workspace_name
+           FROM projects p JOIN workspaces w ON w.id = p.workspace_id
+          ORDER BY w.name, p.name`
+      ),
+    ]);
+    res.json({
+      keys: MENU_KEYS,
+      settings: settings.rows,
+      organizations: organizations.rows,
+      projects: projects.rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/menus', async (req, res, next) => {
+  try {
+    const { menuKey, scope, organizationId, projectId, enabled } = req.body || {};
+    if (!isMenuKey(menuKey)) return res.status(400).json({ error: 'Unknown menu key' });
+    if (scope !== 'org' && scope !== 'project') {
+      return res.status(400).json({ error: 'scope must be "org" or "project"' });
+    }
+    if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be boolean' });
+
+    let setting;
+    if (scope === 'org') {
+      if (!organizationId) return res.status(400).json({ error: 'organizationId is required' });
+      const org = await query(`SELECT id FROM organizations WHERE id = $1`, [organizationId]);
+      if (org.rows.length === 0) return res.status(404).json({ error: 'Organization not found' });
+      const { rows } = await query(
+        `INSERT INTO menu_settings (menu_key, scope, organization_id, enabled, updated_by)
+         VALUES ($1, 'org', $2, $3, $4)
+         ON CONFLICT (menu_key, organization_id) WHERE scope = 'org'
+         DO UPDATE SET enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = now()
+         RETURNING *`,
+        [menuKey, organizationId, enabled, req.user.id]
+      );
+      setting = rows[0];
+    } else {
+      if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+      const project = await query(`SELECT id FROM projects WHERE id = $1`, [projectId]);
+      if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+      const { rows } = await query(
+        `INSERT INTO menu_settings (menu_key, scope, project_id, enabled, updated_by)
+         VALUES ($1, 'project', $2, $3, $4)
+         ON CONFLICT (menu_key, project_id) WHERE scope = 'project'
+         DO UPDATE SET enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = now()
+         RETURNING *`,
+        [menuKey, projectId, enabled, req.user.id]
+      );
+      setting = rows[0];
+    }
+
+    await logAudit({
+      actorId: req.user.id,
+      entityType: scope === 'org' ? 'organization' : 'project',
+      entityId: scope === 'org' ? organizationId : projectId,
+      action: 'set_menu_setting',
+      detail: { menuKey, scope, enabled },
+      ip: req.ip,
+    });
+    res.json({ setting });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/menus/:id', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `DELETE FROM menu_settings WHERE id = $1 RETURNING *`,
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Menu setting not found' });
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'menu_setting',
+      entityId: req.params.id,
+      action: 'delete_menu_setting',
+      detail: { menuKey: rows[0].menu_key, scope: rows[0].scope },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

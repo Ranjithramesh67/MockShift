@@ -29,6 +29,8 @@ const commentRoutes = require('./routes/comments');
 const reviewRoutes = require('./routes/reviews');
 const versionRoutes = require('./routes/versions');
 const sdkRoutes = require('./routes/sdk');
+const menuAccessRoutes = require('./routes/menuAccess');
+const { requireMenuEnabled } = require('./menuAccess');
 const { mockDispatch } = require('./mockDispatch');
 const { query } = require('./db');
 const { runWorkflow, syncAllSchedules } = require('./workflowService');
@@ -78,29 +80,39 @@ function createApp() {
   app.use('/api/docs/public', docsRoutes.publicRouter);
 
   app.use('/api/auth', authRoutes);
+  // Effective feature flags for the current user (rail + route guards).
+  app.use('/api/menu-access', menuAccessRoutes);
   app.use('/api/profile', profileRoutes);
   app.use('/api', shareRoutes);
   app.use('/api/admin', adminRoutes);
-  app.use('/api/manage', manageRoutes);
+  // Feature gates: a disabled menu must reject direct API access. Each gate runs
+  // before the router that serves its prefix; the gate authenticates the request
+  // itself, so the router's own requireAuth is a cheap no-op (see access.js).
+  app.use('/api/manage', requireMenuEnabled('manage'), manageRoutes);
   app.use('/api/workspaces', workspaceRoutes);
   app.use('/api', environmentRoutes);
-  app.use('/api/teams', teamRoutes);
+  app.use('/api/teams', requireMenuEnabled('teams'), teamRoutes);
   app.use('/api', serverRunRoutes);
   app.use('/api', contentRoutes);
   app.use('/api/tokens', tokenRoutes);
   app.use('/api', sendRoutes);
   app.use('/api', projectRoutes);
   app.use('/api', workflowRoutes);
+  app.use('/api/automations', requireMenuEnabled('automations'));
   app.use('/api', automationRoutes);
   app.use('/api', notificationRoutes);
-  app.use('/api/history', historyRoutes);
+  app.use('/api/history', requireMenuEnabled('history'), historyRoutes);
   app.use('/api', mockServerRoutes);
   app.use('/api', exportRoutes);
-  app.use('/api/docs', docsRoutes);
-  app.use('/api/contracts', contractsRoutes);
-  app.use('/api/monitors', monitorRoutes);
-  app.use('/api/copilot', copilotRoutes);
+  app.use('/api/docs', requireMenuEnabled('docs'), docsRoutes);
+  app.use('/api/contracts', requireMenuEnabled('contracts'), contractsRoutes);
+  app.use('/api/monitors', requireMenuEnabled('monitors'), monitorRoutes);
+  app.use('/api/copilot', requireMenuEnabled('copilot'), copilotRoutes);
+  app.use('/api/mock-scenarios', requireMenuEnabled('mock-scenarios'));
+  app.use('/api/mock-routes', requireMenuEnabled('mock-scenarios'));
   app.use('/api', mockScenarioRoutes);
+  app.use('/api/comments', requireMenuEnabled('collab'));
+  app.use('/api/reviews', requireMenuEnabled('collab'));
   app.use('/api', commentRoutes);
   app.use('/api', reviewRoutes);
   app.use('/api', versionRoutes);
