@@ -32,6 +32,9 @@ async function loadUserById(userId) {
  * loadUserById from this module).
  */
 async function requireAuth(req, res, next) {
+  // A previous middleware in the chain may have already authenticated (e.g. a
+  // mount-time feature gate); reuse it instead of re-loading the user.
+  if (req.user) return next();
   try {
     const sessionPayload = verifySession(readSessionToken(req));
     if (sessionPayload) {
