@@ -205,12 +205,13 @@ async function recordUsage(entry) {
 
 // Run one capability through the model, normalizing the result and recording
 // audit usage on both success and failure.
-async function runCapability(capability, ctx, { system, prompt }) {
+async function runCapability(capability, ctx, { system, prompt, config }) {
   try {
-    const result = await llm.callModel({ system, prompt, json: true });
+    const effective = config || (await llm.resolveConfig({ userId: ctx.userId, env: ctx.env }));
+    const result = await llm.callModel({ system, prompt, json: true, config: effective });
     const text = typeof result === 'string' ? result : (result && result.text) || '';
     const usage = (result && result.usage) || {};
-    const model = (result && result.model) || llm.readConfig(ctx.env).model || null;
+    const model = (result && result.model) || effective.model || null;
     const provider = (result && result.provider) || llm.PROVIDER_LABEL;
     await recordUsage({
       capability,
@@ -250,15 +251,21 @@ function notConfigured(res) {
 }
 
 // ---------------------------------------------------------------- endpoints
-// GET /api/copilot/status -> { configured, model, provider } (never the key).
-router.get('/status', (req, res) => {
-  res.json(llm.describeConfig());
+// GET /api/copilot/status -> { configured, model, provider, source } (never the key).
+router.get('/status', async (req, res, next) => {
+  try {
+    const cfg = await llm.resolveConfig({ userId: req.user.id });
+    res.json(llm.describeResolved(cfg));
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/copilot/generate-assertions { requestId, response? }
 router.post('/generate-assertions', async (req, res, next) => {
   try {
-    if (!llm.isConfigured()) return notConfigured(res);
+    const config = await llm.resolveConfig({ userId: req.user.id });
+    if (!config.configured) return notConfigured(res);
     const { requestId, response } = req.body || {};
     if (!requestId) return res.status(400).json({ error: 'requestId is required' });
 
@@ -293,7 +300,7 @@ router.post('/generate-assertions', async (req, res, next) => {
       workspaceId: row.workspace_id,
       projectId: row.project_id,
       requestId,
-    }, { system: ASSERTION_SYSTEM, prompt });
+    }, { system: ASSERTION_SYSTEM, prompt, config });
 
     res.json({
       assertions: normalizeAssertions(parseJsonLoose(result.text)),
@@ -309,7 +316,8 @@ router.post('/generate-assertions', async (req, res, next) => {
 // POST /api/copilot/explain-run { runId }
 router.post('/explain-run', async (req, res, next) => {
   try {
-    if (!llm.isConfigured()) return notConfigured(res);
+    const config = await llm.resolveConfig({ userId: req.user.id });
+    if (!config.configured) return notConfigured(res);
     const { runId } = req.body || {};
     if (!runId) return res.status(400).json({ error: 'runId is required' });
 
@@ -361,7 +369,7 @@ router.post('/explain-run', async (req, res, next) => {
       projectId: run.project_id,
       requestId: run.request_id,
       runId,
-    }, { system: EXPLAIN_SYSTEM, prompt });
+    }, { system: EXPLAIN_SYSTEM, prompt, config });
 
     res.json({
       explanation: coerceExplanation(result.text, parseJsonLoose(result.text)),
@@ -377,7 +385,8 @@ router.post('/explain-run', async (req, res, next) => {
 // POST /api/copilot/generate-docs { requestId }
 router.post('/generate-docs', async (req, res, next) => {
   try {
-    if (!llm.isConfigured()) return notConfigured(res);
+    const config = await llm.resolveConfig({ userId: req.user.id });
+    if (!config.configured) return notConfigured(res);
     const { requestId } = req.body || {};
     if (!requestId) return res.status(400).json({ error: 'requestId is required' });
 
@@ -397,7 +406,7 @@ router.post('/generate-docs', async (req, res, next) => {
       workspaceId: row.workspace_id,
       projectId: row.project_id,
       requestId,
-    }, { system: DOCS_SYSTEM, prompt });
+    }, { system: DOCS_SYSTEM, prompt, config });
 
     res.json({
       blocks: normalizeDocBlocks(parseJsonLoose(result.text)),
