@@ -10,9 +10,24 @@ const {
 } = require('../access');
 const { logAudit } = require('../audit');
 const { checkSeatGate } = require('../entitlements');
+const { notifyUsers, projectReviewerIds } = require('../notify');
 
 const router = Router();
 router.use(requireAuth);
+
+// Notify the project's reviewers (platform admins + assigned managers) that a
+// user has requested access. Shared by both the re-request and fresh-INSERT
+// branches of POST /projects/:projectId/access-requests.
+async function notifyReviewers(projectId, projectName, actor, requestedRole, requestId) {
+  const ids = await projectReviewerIds(projectId, actor.id);
+  await notifyUsers(ids, {
+    title: 'New project access request',
+    body: `${actor.name || actor.email} requested ${requestedRole} access to "${projectName}".`,
+    kind: 'request',
+    payload: { requestId, projectId, type: 'project_access_request' },
+    link: '/manage?tab=requests',
+  });
+}
 
 // ------------------------------------------------- Access request lifecycle
 // Any authenticated user may request access to a project. The project's
@@ -42,6 +57,15 @@ router.post('/projects/:projectId/access-requests', async (req, res, next) => {
           WHERE id = $3`,
         [reason || null, requestedRole, existing.rows[0].id]
       );
+      await logAudit({
+        actorId: req.user.id,
+        entityType: 'access_request',
+        entityId: existing.rows[0].id,
+        action: 'request_access',
+        detail: { projectId, reopened: true },
+        ip: req.ip,
+      });
+      await notifyReviewers(projectId, project.rows[0].name, req.user, requestedRole, existing.rows[0].id);
       const { rows } = await query(
         `SELECT id, project_id, user_id, role, reason, status, requested_at
            FROM access_requests WHERE id = $1`,
@@ -64,6 +88,7 @@ router.post('/projects/:projectId/access-requests', async (req, res, next) => {
       detail: { projectId },
       ip: req.ip,
     });
+    await notifyReviewers(projectId, project.rows[0].name, req.user, requestedRole, rows[0].id);
     res.status(201).json({ accessRequest: rows[0] });
   } catch (err) {
     next(err);
@@ -95,6 +120,35 @@ router.get('/access-requests/mine', async (req, res, next) => {
       [req.user.id]
     );
     res.json({ accessRequests: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Creator-only cancellation while the request is pending.
+router.post('/projects/:projectId/access-requests/:requestId/cancel', async (req, res, next) => {
+  try {
+    const { projectId, requestId } = req.params;
+    const { rows } = await query(
+      `SELECT id, user_id, status FROM access_requests WHERE id = $1 AND project_id = $2`,
+      [requestId, projectId]
+    );
+    if (rows.length === 0 || rows[0].user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Access request not found' });
+    }
+    if (rows[0].status !== 'PENDING') {
+      return res.status(409).json({ error: 'Only pending requests can be cancelled' });
+    }
+    await query(`UPDATE access_requests SET status = 'CANCELLED' WHERE id = $1`, [requestId]);
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'access_request',
+      entityId: requestId,
+      action: 'cancel',
+      detail: { projectId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
