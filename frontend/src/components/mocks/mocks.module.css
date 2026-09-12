@@ -552,3 +552,73 @@
   white-space: nowrap;
   max-width: 420px;
 }
+
+.picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.pickerPop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 340px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  background: var(--panel, #12161d);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.pickerList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.pickerOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pickerOptionActive {
+  background: rgba(57, 217, 138, 0.14);
+}
+
+.pickerMethod {
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 52px;
+  color: #39d98a;
+}
+
+.pickerPath {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerStatus {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.pickerEmpty {
+  margin: 8px 0 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
