@@ -15,12 +15,13 @@ import {
   type MenuKey,
 } from '@/lib/api';
 
-type Tab = 'users' | 'access' | 'menus';
+type Tab = 'users' | 'access' | 'menus' | 'ai';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'users', label: 'Users' },
   { id: 'access', label: 'Access' },
   { id: 'menus', label: 'Menus' },
+  { id: 'ai', label: 'AI' },
 ];
 
 const ROLES: UserRole[] = ['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'];
@@ -157,6 +158,8 @@ export function AdminView() {
       )}
 
       {tab === 'menus' && <MenusTab busy={busy} onRun={run} />}
+
+      {tab === 'ai' && <AiSettingsTab busy={busy} onRun={run} />}
 
       {createOpen && (
         <div className="modal-overlay" data-testid="create-user-modal" onClick={() => setCreateOpen(false)}>
@@ -713,6 +716,51 @@ function MenusTab({ busy, onRun }: {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function AiSettingsTab({ busy, onRun }: {
+  busy: boolean;
+  onRun: (label: string, fn: () => Promise<unknown>) => Promise<void>;
+}) {
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    adminApi
+      .individualLlm()
+      .then((res) => setAllowed(res.allowed))
+      .catch(() => setAllowed(null));
+  }, []);
+
+  if (allowed === null) return <p className="hint">Loading AI settings…</p>;
+
+  return (
+    <div data-testid="admin-ai-section">
+      <p className="hint">
+        When enabled, each user may store their own LLM API key. The key is encrypted at rest and
+        never returned to the browser. When disabled (default) the copilot uses the server&apos;s
+        USER_LLM_* environment configuration only.
+      </p>
+      <label className="field" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
+        <input
+          type="checkbox"
+          data-testid="admin-individual-llm-toggle"
+          checked={allowed}
+          disabled={busy}
+          onChange={(e) => {
+            const next = e.target.checked;
+            onRun(
+              next ? 'Individual model configuration enabled.' : 'Individual model configuration disabled.',
+              async () => {
+                const res = await adminApi.setIndividualLlm({ allowed: next });
+                setAllowed(res.allowed);
+              }
+            );
+          }}
+        />
+        <span>Allow individuals to bring their own LLM</span>
+      </label>
     </div>
   );
 }

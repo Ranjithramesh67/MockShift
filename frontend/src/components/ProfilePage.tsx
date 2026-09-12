@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useProfile } from '@/lib/profile';
-import { profileApi, type Profile, type ProfileAvatar } from '@/lib/api';
+import { profileApi, llmConfigApi, type Profile, type ProfileAvatar, type UserLlmConfig } from '@/lib/api';
+import { isLlmConfigComplete } from '@/lib/llmConfig';
 import { PORTAL_PLANS_URL, portalPlansUrl, portalUrlFor } from '@/lib/portalUrl';
 import { PresetAvatar, PRESET_AVATAR_KEYS, isPresetAvatarKey } from './AvatarPresets';
 import { UserAvatar } from './UserAvatar';
@@ -616,6 +617,13 @@ export function ProfilePage() {
             <AvatarSection profile={profile} reloadProfile={reload} onMessage={showSectionMsg} />
           </section>
 
+          <section className="profile-card" aria-labelledby="profile-llm-title">
+            <h2 className="profile-card-title" id="profile-llm-title">
+              AI model
+            </h2>
+            <LlmModelSection onMessage={showSectionMsg} />
+          </section>
+
           <section className="profile-card" aria-labelledby="profile-password-title">
             <h2 className="profile-card-title" id="profile-password-title">
               Change password
@@ -624,6 +632,125 @@ export function ProfilePage() {
           </section>
         </main>
       )}
+    </div>
+  );
+}
+
+function LlmModelSection({ onMessage }: { onMessage: (msg: { kind: 'ok' | 'err'; text: string } | null) => void }) {
+  const [state, setState] = useState<UserLlmConfig | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [model, setModel] = useState('');
+
+  const load = async () => {
+    try {
+      const res = await llmConfigApi.get();
+      setState(res);
+      setBaseUrl(res.baseUrl ?? '');
+      setModel(res.model ?? '');
+    } catch {
+      setState(null);
+    } finally {
+      setLoaded(true);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  if (!loaded || !state || !state.allowed) return null;
+
+  const save = async () => {
+    if (!isLlmConfigComplete({ apiKey, baseUrl, model })) {
+      onMessage({ kind: 'err', text: 'Enter an API key, an http(s) base URL and a model.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      await llmConfigApi.put({ apiKey, baseUrl, model });
+      setApiKey('');
+      onMessage({ kind: 'ok', text: 'AI model saved.' });
+      await load();
+    } catch (err) {
+      onMessage({ kind: 'err', text: err instanceof Error ? err.message : 'Could not save model' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forget = async () => {
+    setBusy(true);
+    try {
+      await llmConfigApi.remove();
+      setApiKey('');
+      setBaseUrl('');
+      setModel('');
+      onMessage({ kind: 'ok', text: 'AI model removed. Falling back to the server default.' });
+      await load();
+    } catch (err) {
+      onMessage({ kind: 'err', text: err instanceof Error ? err.message : 'Could not remove model' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div data-testid="profile-llm-section">
+      <p className="profile-section-sub" data-testid="profile-llm-status">
+        {state.configured && state.source === 'user'
+          ? `Using your model (${state.model}).`
+          : 'No personal model configured — the copilot uses the server default.'}
+      </p>
+      <div className="profile-form">
+        <label className="field">
+          <span className="field-label">API key</span>
+          <input
+            className="text-input"
+            type="password"
+            data-testid="profile-llm-key"
+            placeholder={state.configured && state.source === 'user' ? 'Replace stored key' : 'sk-...'}
+            value={apiKey}
+            disabled={busy}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="field-label">Base URL</span>
+          <input
+            className="text-input"
+            data-testid="profile-llm-base-url"
+            placeholder="https://api.openai.com/v1"
+            value={baseUrl}
+            disabled={busy}
+            onChange={(e) => setBaseUrl(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="field-label">Model</span>
+          <input
+            className="text-input"
+            data-testid="profile-llm-model"
+            placeholder="gpt-4o-mini"
+            value={model}
+            disabled={busy}
+            onChange={(e) => setModel(e.target.value)}
+          />
+        </label>
+        <div className="profile-form-actions">
+          <button type="button" className="primary-button" data-testid="profile-llm-save" disabled={busy} onClick={() => void save()}>
+            Save model
+          </button>
+          {state.configured && state.source === 'user' && (
+            <button type="button" className="ghost-button danger-text" data-testid="profile-llm-remove" disabled={busy} onClick={() => void forget()}>
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="profile-field-hint">The key is encrypted at rest and never shown again.</p>
     </div>
   );
 }
