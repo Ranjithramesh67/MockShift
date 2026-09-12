@@ -7,6 +7,8 @@ import { useAuth } from '@/lib/auth';
 import { useApp } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
+import { useMenuAccess } from '@/store/MenuAccessStore';
+import type { MenuKey } from '@/lib/api';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
@@ -33,6 +35,29 @@ const MonitorsPanel = dynamic(() => import('./monitors/MonitorsPanel').then((m) 
 const MockScenariosPanel = dynamic(() => import('./mocks/MockScenariosPanel').then((m) => m.MockScenariosPanel));
 const CopilotPanel = dynamic(() => import('./copilot/CopilotPanel').then((m) => m.CopilotPanel));
 const CollabView = dynamic(() => import('./collab/CollabPanel').then((m) => m.CollabView));
+
+const VIEW_MENU_KEY: Partial<Record<string, MenuKey>> = {
+  automations: 'automations',
+  manage: 'manage',
+  history: 'history',
+  docs: 'docs',
+  contracts: 'contracts',
+  monitors: 'monitors',
+  'mock-scenarios': 'mock-scenarios',
+  copilot: 'copilot',
+  collab: 'collab',
+};
+
+function FeatureDisabled({ menuKey }: { menuKey: string }) {
+  return (
+    <div className="auth-screen" data-testid="feature-disabled">
+      <div className="auth-card">
+        <h1 className="auth-title">Feature unavailable</h1>
+        <p>An administrator has disabled the &quot;{menuKey}&quot; feature for this organization.</p>
+      </div>
+    </div>
+  );
+}
 
 function WorkspaceArea({
   onOpenCurl,
@@ -103,6 +128,7 @@ function WorkspaceArea({
 export function AppShell() {
   const { loading, user } = useAuth();
   const { view } = useNav();
+  const menu = useMenuAccess();
   const ws = useWorkspace();
   const router = useRouter();
   const [curlOpen, setCurlOpen] = useState(false);
@@ -166,35 +192,39 @@ export function AppShell() {
               scratchpadOpen={scratchpadOpen}
               onCloseScratchpad={() => setScratchpadOpen(false)}
             />
-          ) : (
-            <div className="admin-view">
-              {view === 'automations' ? (
-                <AutomationsView />
-              ) : view === 'manage' ? (
-                <ManageView />
-              ) : view === 'history' ? (
-                <HistoryView />
-              ) : view === 'docs' ? (
-                <DocsView />
-              ) : view === 'inbox' ? (
-                <InboxView />
-              ) : view === 'settings' ? (
-                <ApiTokensView />
-              ) : view === 'contracts' ? (
-                <ContractPanel />
-              ) : view === 'monitors' ? (
-                <MonitorsPanel />
-              ) : view === 'mock-scenarios' ? (
-                <MockScenariosPanel projectId={mockProjectId} />
-              ) : view === 'copilot' ? (
-                <CopilotPanel />
-              ) : view === 'collab' ? (
-                <CollabView />
-              ) : (
-                <AdminView />
-              )}
-            </div>
-          )}
+          ) : (() => {
+            const menuKey = VIEW_MENU_KEY[view];
+            if (menuKey && !menu.isEnabled(menuKey)) return <FeatureDisabled menuKey={menuKey} />;
+            return (
+              <div className="admin-view">
+                {view === 'automations' ? (
+                  <AutomationsView />
+                ) : view === 'manage' ? (
+                  <ManageView />
+                ) : view === 'history' ? (
+                  <HistoryView />
+                ) : view === 'docs' ? (
+                  <DocsView />
+                ) : view === 'inbox' ? (
+                  <InboxView />
+                ) : view === 'settings' ? (
+                  <ApiTokensView />
+                ) : view === 'contracts' ? (
+                  <ContractPanel />
+                ) : view === 'monitors' ? (
+                  <MonitorsPanel />
+                ) : view === 'mock-scenarios' ? (
+                  <MockScenariosPanel projectId={mockProjectId} />
+                ) : view === 'copilot' ? (
+                  <CopilotPanel />
+                ) : view === 'collab' ? (
+                  <CollabView />
+                ) : (
+                  <AdminView />
+                )}
+              </div>
+            );
+          })()}
         </main>
       </div>
       {navOpen && (

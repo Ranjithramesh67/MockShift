@@ -11,6 +11,7 @@ import './settings/api-tokens/api-tokens.css';
 import { AuthProvider } from '@/lib/auth';
 import { AppProvider } from '@/store/AppStore';
 import { WorkspaceProvider } from '@/store/WorkspaceStore';
+import { MenuAccessProvider } from '@/store/MenuAccessStore';
 import { NavProvider } from '@/store/NavStore';
 import { RouteViewSync } from '@/components/RouteViewSync';
 
@@ -39,10 +40,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <AppProvider>
             <WorkspaceProvider>
-              <NavProvider initialView="workspace">
-                <RouteViewSync />
-                {children}
-              </NavProvider>
+              <MenuAccessProvider>
+                <NavProvider initialView="workspace">
+                  <RouteViewSync />
+                  {children}
+                </NavProvider>
+              </MenuAccessProvider>
             </WorkspaceProvider>
           </AppProvider>
         </AuthProvider>
