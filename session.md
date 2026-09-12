@@ -2016,6 +2016,13 @@ Marketing-grade rework of the narrated tour (media still gitignored):
 
 ## Completed
 
+- **Mock UX + formula autocomplete (2026-09-12)** — shareable mock link via a Next `/mock` proxy with
+  a `MockServerLink` copy button; a `MockRoutePicker` in add/edit request (`RequestConfigurator` +
+  `CreateModal`) that fills method + URL from the project's mock routes; in-editor formula
+  autocomplete from shared snippets plus `req`/`$vars`/`$utils`/JS built-ins
+  (`@codemirror/autocomplete`); and the 1274-line mock panel split into `useMockServerAdmin` + a
+  guided five-tab shell (Overview/Endpoints/Scenarios/Responses/Call log). Frontend tests 103/103,
+  typecheck clean.
 - **Multi-tenancy: personal vs company identity (2026-09-11)** — signups classified by email domain;
   company users auto-join one COMPANY org per domain (first ADMIN, rest EDITOR), personal users get
   their own org. New migration 039 + `emailDomain.js` + `accountProvision.js`; targeted shares and
