@@ -10,6 +10,9 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
 - Individual BYO LLM: admin toggle `portal_settings.allow_individual_llm` (default off), encrypted
   per-user `user_llm_configs`, `resolveConfig` precedence (user config when enabled, else `USER_LLM_*`),
   profile model form and admin AI tab.
+- Complete feature documentation: `docs/FEATURES.md` (end-to-end feature guide incl. the
+  access-request vs send-item inbox distinction, API token auth, plans, permission matrix, endpoint
+  reference, known gaps) and `docs/SDK.md` (apihub-sdk configuration, API, adapter, sync protocol).
 
 ### Admin-configurable menus (details)
 
@@ -45,3 +48,20 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
   only when `allowed`), and the admin AI tab toggle.
 - Tests: backend unit `llm.test.cjs`, integration `tests/individualLlm.integration.test.cjs`, frontend unit
   `llmConfig.test.cjs`.
+
+### Feature documentation (details)
+
+- `docs/FEATURES.md` — full product/engineering guide: architecture, auth + orgs/roles, configurable
+  menus, workspaces/projects/collections/folders/requests, execution + environments, docs + public
+  sharing, collab, contracts, monitors, mock servers/scenarios, automations/workflows, copilot BYO-LLM,
+  API tokens + scopes/binding, SDK summary, teams/sharing, the three-system access-request/inbox
+  breakdown, notifications, admin/governance, plans/entitlements, profile, permission matrix, endpoint
+  reference and known gaps.
+- `docs/SDK.md` — apihub-sdk deep dive: install, config/env vars, programmatic API, Express adapter
+  (incl. `app.all` gotcha), folder resolution, `hub.test` assertion mapping, CLI, `POST /api/sdk/sync`
+  manifest + response + server behaviour (token/scope, target resolution, upsert by `external_key`,
+  prune, plan gates, `sdk_sync_runs`), troubleshooting and tests.
+- Cross-checked every documented endpoint against the routers. Documented gaps: no password reset, no
+  workspace-access-request creation UI, `/inbox` is send items only, `api/openapi.json` omits SDK/copilot,
+  SDK plan checkboxes unticked, `SUPPORT` role unranked.
+- Commit `826a46b` — pushed to `master`.
