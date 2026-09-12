@@ -10,6 +10,7 @@ import { useMenuAccess } from '@/store/MenuAccessStore';
 import { useAuth } from '@/lib/auth';
 import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { accessRequestApi } from '@/lib/api';
+import { docsSharedApi } from '@/lib/docsApi';
 import { CreateModal, type CreateKind } from './CreateModal';
 import { SharingModal } from './SharingModal';
 import { SendItemDialog, type SendableItem } from './SendItemDialog';
@@ -55,10 +56,18 @@ const SIDEBAR_MAX_WIDTH = 560;
 const SIDEBAR_DEFAULT_WIDTH = 296;
 const SIDEBAR_WIDTH_KEY = 'apihub.sidebarWidth';
 
-function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: CreateKind) => void; onNavigate: () => void }) {
+function WorkspaceChips({
+  onOpenCreate,
+  onNavigate,
+  onRequestWorkspace,
+}: {
+  onOpenCreate: (kind: CreateKind) => void;
+  onNavigate: () => void;
+  onRequestWorkspace: (w: { id: string; name: string }) => void;
+}) {
   const ws = useWorkspace();
 
-  const renderChip = (w: { id: string; name: string; visibility: string }) => (
+  const renderChip = (w: { id: string; name: string; visibility: string; role: string | null }) => (
     <div key={w.id} className="workspace-chip-wrap">
       <button
         type="button"
@@ -76,6 +85,18 @@ function WorkspaceChips({ onOpenCreate, onNavigate }: { onOpenCreate: (kind: Cre
         <span className="workspace-chip-name">{w.name}</span>
         <span className={`vis-dot vis-${w.visibility.toLowerCase()}`} title={`${w.visibility} visibility`} />
       </button>
+      {!w.role && (
+        <button
+          type="button"
+          className="ghost-button small"
+          data-testid={`workspace-request-${w.id}`}
+          title={`Request access to ${w.name}`}
+          aria-label={`Request access to ${w.name}`}
+          onClick={() => onRequestWorkspace({ id: w.id, name: w.name })}
+        >
+          <LockIcon size={12} />
+        </button>
+      )}
       <button
         type="button"
         className="icon-button danger workspace-chip-delete"
@@ -1075,6 +1096,8 @@ export function Sidebar({
   const [mockProject, setMockProject] = useState<{ id: string; name: string } | null>(null);
   const [requestingProject, setRequestingProject] = useState<{ id: string; name: string } | null>(null);
   const [accessReason, setAccessReason] = useState('');
+  const [requestingWorkspace, setRequestingWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [workspaceReason, setWorkspaceReason] = useState('');
   const [importExportOpen, setImportExportOpen] = useState(false);
   const [width, setWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
@@ -1136,6 +1159,22 @@ export function Sidebar({
       setRequestingProject(null);
       setAccessReason('');
       await ws.reloadTree();
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Request failed' });
+    }
+  };
+
+  const submitWorkspaceRequest = async () => {
+    if (!requestingWorkspace) return;
+    try {
+      await docsSharedApi.requestWorkspaceAccess({
+        workspaceId: requestingWorkspace.id,
+        reason: workspaceReason || undefined,
+      });
+      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Access requested for "${requestingWorkspace.name}"` });
+      setRequestingWorkspace(null);
+      setWorkspaceReason('');
+      await ws.refresh();
     } catch (err) {
       dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Request failed' });
     }
@@ -1395,7 +1434,7 @@ export function Sidebar({
                 <>
                   {ws.loading && <p className="hint">Loading…</p>}
                   {ws.error && <p className="auth-error">{ws.error}</p>}
-                  <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} />
+                  <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} onRequestWorkspace={(w) => setRequestingWorkspace(w)} />
                 </>
               )}
             </div>
@@ -1514,6 +1553,42 @@ export function Sidebar({
               Cancel
             </button>
             <button type="button" className="primary-button" data-testid="access-request-confirm" onClick={submitAccessRequest}>
+              Request access
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {requestingWorkspace && (
+      <div className="modal-overlay" data-testid="workspace-request-modal" onClick={() => setRequestingWorkspace(null)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2>Request access</h2>
+          </div>
+          <div className="modal-body">
+            <p className="hint">
+              Request access to <strong>{requestingWorkspace.name}</strong>. A workspace admin will
+              review your request.
+            </p>
+            <div className="modal-form">
+              <label className="field">
+                <span className="field-label">Reason (optional)</span>
+                <textarea
+                  className="text-input"
+                  data-testid="workspace-request-reason"
+                  rows={3}
+                  placeholder="e.g. I need to collaborate on the payments workspace"
+                  value={workspaceReason}
+                  onChange={(e) => setWorkspaceReason(e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="ghost-button" data-testid="workspace-request-cancel" onClick={() => setRequestingWorkspace(null)}>
+              Cancel
+            </button>
+            <button type="button" className="primary-button" data-testid="workspace-request-confirm" onClick={submitWorkspaceRequest}>
               Request access
             </button>
           </div>
