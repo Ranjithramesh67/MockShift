@@ -1,5 +1,7 @@
 'use strict';
 
+const { query } = require('./db');
+
 // ============================================================================
 // AI copilot — provider abstraction.
 //
@@ -83,8 +85,9 @@ async function defaultCallModel({
   env,
   signal,
   timeoutMs,
+  config,
 } = {}) {
-  const cfg = readConfig(env);
+  const cfg = config || readConfig(env);
   // Guard before any I/O: an unconfigured project must not reach the network.
   if (!cfg.configured) throw new LlmNotConfiguredError();
 
@@ -150,6 +153,82 @@ async function defaultCallModel({
   }
 }
 
+// ------------------------------------------------------- per-user ("BYO") config
+// Pure validation for a user-supplied OpenAI-compatible config.
+function validateUserConfig({ apiKey, baseUrl, model } = {}) {
+  const key = String(apiKey || '').trim();
+  const base = String(baseUrl || '').trim();
+  const name = String(model || '').trim();
+  if (!key || key.length > 400) return { ok: false, error: 'A valid apiKey is required' };
+  if (!/^https?:\/\/.+/i.test(base) || base.length > 300) {
+    return { ok: false, error: 'baseUrl must be an http(s) URL' };
+  }
+  if (!name || name.length > 120) return { ok: false, error: 'A valid model name is required' };
+  return { ok: true, value: { apiKey: key, baseUrl: base, model: name } };
+}
+
+// Global admin toggle (portal_settings single row; default false).
+async function individualLlmAllowed() {
+  const { rows } = await query(
+    'SELECT allow_individual_llm FROM portal_settings ORDER BY id LIMIT 1'
+  );
+  return rows.length > 0 && rows[0].allow_individual_llm === true;
+}
+
+// Decrypt the caller's stored config. `query` with { userId } sets
+// app.current_user_id AND app.vault_key on the connection so pgp_sym_decrypt
+// can run. Returns null when absent or undecryptable (never throws).
+async function loadUserConfig(userId) {
+  if (!userId) return null;
+  try {
+    const { rows } = await query(
+      `SELECT pgp_sym_decrypt(api_key_encrypted, app.vault_key())::text AS api_key,
+              base_url, model
+         FROM user_llm_configs WHERE user_id = $1`,
+      [userId],
+      { userId }
+    );
+    const row = rows[0];
+    if (!row) return null;
+    const apiKey = String(row.api_key || '').trim();
+    const baseUrl = String(row.base_url || '').trim();
+    const model = String(row.model || '').trim();
+    if (!apiKey || !baseUrl || !model) return null;
+    return { apiKey, baseUrl, model, configured: true, source: 'user', provider: PROVIDER_LABEL };
+  } catch {
+    return null;
+  }
+}
+
+// Resolve the effective config for a request: the user's own config when the
+// admin toggle is on, otherwise the server environment. Never consults any
+// other ambient credential.
+async function resolveConfig({ userId = null, env = process.env } = {}) {
+  if (userId && (await individualLlmAllowed())) {
+    const userCfg = await loadUserConfig(userId);
+    if (userCfg) return userCfg;
+  }
+  const cfg = readConfig(env);
+  return {
+    apiKey: cfg.apiKey,
+    baseUrl: cfg.baseUrl,
+    model: cfg.model,
+    configured: cfg.configured,
+    source: cfg.configured ? 'env' : 'none',
+    provider: cfg.configured ? PROVIDER_LABEL : null,
+  };
+}
+
+// Safe-to-serve description of a resolved config: never includes the API key.
+function describeResolved(cfg) {
+  return {
+    configured: Boolean(cfg && cfg.configured),
+    model: (cfg && cfg.model) || null,
+    provider: cfg && cfg.configured ? PROVIDER_LABEL : null,
+    source: (cfg && cfg.source) || 'none',
+  };
+}
+
 // Injectable seam. Tests call `setCallModel(fake)` (or replace the exported
 // `callModel` property) so no real network/key is required.
 let callModelImpl = defaultCallModel;
@@ -179,4 +258,9 @@ module.exports = {
   setCallModel,
   resetCallModel,
   callModel,
+  validateUserConfig,
+  individualLlmAllowed,
+  loadUserConfig,
+  resolveConfig,
+  describeResolved,
 };
