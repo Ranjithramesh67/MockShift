@@ -204,6 +204,14 @@ test('manage lists and reviews workspace access requests', async () => {
   );
   assert.equal(badReview.status, 400);
 
+  const malformedReview = await manager.client.api(
+    'POST',
+    '/api/manage/workspace-access-requests/not-a-uuid/review',
+    { approve: true }
+  );
+  assert.equal(malformedReview.status, 404);
+  assert.notEqual(malformedReview.status, 500);
+
   const review = await manager.client.api(
     'POST',
     `/api/manage/workspace-access-requests/${requestId}/review`,

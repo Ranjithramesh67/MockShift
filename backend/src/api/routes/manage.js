@@ -11,6 +11,8 @@ const {
 } = require('../workspaceAccess');
 const { logAudit, managedProjectIds } = require('../audit');
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const router = Router();
 router.use(requireAuth, requireManagerOrAdmin);
 
@@ -276,6 +278,9 @@ router.post('/workspace-access-requests/:requestId/review', async (req, res, nex
   try {
     const { approve } = req.body || {};
     if (typeof approve !== 'boolean') return res.status(400).json({ error: 'approve must be a boolean' });
+    if (!UUID_RE.test(req.params.requestId)) {
+      return res.status(404).json({ error: 'Access request not found' });
+    }
     const request = await loadWorkspaceAccessRequest(req.params.requestId);
     if (!request) return res.status(404).json({ error: 'Access request not found' });
     const access = await workspaceAccessFor(req.user, request.workspace_id);
