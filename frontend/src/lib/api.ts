@@ -1090,3 +1090,22 @@ export const llmConfigApi = {
     apiFetch<UserLlmConfig>('/api/profile/llm', { method: 'PUT', body: input }),
   remove: () => apiFetch<{ ok: true }>('/api/profile/llm', { method: 'DELETE' }),
 };
+
+export interface SearchResult {
+  id: string;
+  name: string;
+  type: string;
+  rank: number;
+  projectId?: string | null;
+  workspaceId?: string | null;
+  method?: string | null;
+  url?: string | null;
+  subtitle?: string | null;
+}
+
+export const searchApi = {
+  query: (q: string, limit = 20) =>
+    apiFetch<{ query: string; groups: Record<string, SearchResult[]>; results: SearchResult[] }>(
+      `/api/search?q=${encodeURIComponent(q)}&limit=${limit}`
+    ),
+};
