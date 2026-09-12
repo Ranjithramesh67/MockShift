@@ -709,6 +709,12 @@ PUT    /api/admin/settings/individual-llm
 GET/PUT/DELETE /api/profile/llm
 ```
 
+### Search
+
+```
+GET    /api/search?q=&limit=
+```
+
 ### Mock (public)
 
 ```
@@ -718,7 +724,55 @@ POST   /api/webhooks/:token               (public)
 
 ---
 
-## 21. Known gaps and not-implemented features
+## 21. Global search and command palette
+
+`GET /api/search?q=&limit=` performs a single cross-entity search for the
+signed-in user. `q` is required (blank gates return `400`); `limit` defaults
+to `20` and is capped at `50`. The response shape is:
+
+```
+{
+  query,    // the normalized query string
+  groups,   // results keyed by entity type
+  results   // the same rows flattened and ranked
+}
+```
+
+`groups` is keyed by entity type (`workspace`, `project`, `collection`,
+`folder`, `request`, `doc`, `contract`, `monitor`, `mockScenario`); `results`
+is a flat array of `{ id, name, type, rank, projectId?, workspaceId?, method?,
+url?, subtitle? }` sorted by `rank` (exact match first, then prefix, then
+substring position) with a name tie-break. Matching is a case-insensitive
+`ILIKE '%q%'` over names (plus request URLs and doc titles). The leading
+wildcard lookups are backed by the pg_trgm GIN indexes added in
+`db/migrations/043_search_indexes.sql`, so they stay index-assisted rather
+than forcing sequential scans.
+
+Every result is filtered through the same access helpers the rest of the API
+uses - `canReadWorkspace` for workspaces, `canReadProject` for
+projects/collections/folders/requests, and `canReadPage` for docs (which also
+covers public-in-org pages and share grants); platform MANAGER/ADMIN bypass
+the workspace/project checks via `isGlobalHigh`. Search is additionally
+menu-gated: each result type maps to a configurable menu key and is omitted
+entirely when that menu is disabled for the relevant scope (`effectiveMenus`);
+`docs`/`contracts`/`monitors`/`mock-scenarios`/`apis` are gated.
+
+The frontend surfaces this through a command palette opened with Cmd+K
+(macOS) / Ctrl+K (elsewhere), implemented by `useGlobalSearchShortcut` +
+`CommandPalette` and mounted in `AppShell`. A `SearchIcon` trigger in the top
+bar (`data-testid="global-search-button"`, hinting `Cmd K` / `Ctrl K`) opens
+the same palette. Input is debounced, and responses carry a sequence number so
+an out-of-order reply cannot overwrite newer results. Selecting a result
+navigates by type: docs `/docs?p=<id>`; workspace/project/collection/request
+select in the workspace view (`/`); monitor `/monitors`; contract
+`/contracts`; mockScenario `/mock-scenarios`.
+
+Limit in v1: docs are matched by title only; doc block content is not
+searched.
+
+---
+
+## 22. Known gaps and not-implemented features
 
 1. **No password reset / forgot-password** flow anywhere.
 2. **`/inbox` does not surface notifications** - it now has a Requests tab for
@@ -738,7 +792,7 @@ POST   /api/webhooks/:token               (public)
 
 ---
 
-## 22. Testing
+## 23. Testing
 
 - Backend unit tests: `cd backend && npm run test:api:unit`
 - Frontend unit tests: `cd frontend && npm test`

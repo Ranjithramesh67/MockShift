@@ -17,6 +17,10 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
   and re-request, a creator-only project cancel endpoint (`CANCELLED`), a unified Manage
   workspace-request queue, an `/inbox` Requests tab, notification deep links, and a "Request access"
   workspace-switcher modal.
+- Global search + command palette: `GET /api/search` across workspaces, projects,
+  collections, folders, requests, docs, contracts, monitors and mock scenarios, with
+  per-type read scoping and menu gating, and a Cmd/Ctrl-K command palette with a top-bar
+  trigger.
 
 ### Admin-configurable menus (details)
 
@@ -95,3 +99,35 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
   for non-members (`docsSharedApi.requestWorkspaceAccess`).
 - Tests: backend integration `backend/tests/accessRequests.integration.test.cjs`, backend unit
   `src/api/__tests__/notify.test.cjs`, frontend unit `src/lib/__tests__/accessRequests.test.cjs`.
+
+### Global search + command palette (details)
+
+- Migration `043_search_indexes.sql`: `CREATE EXTENSION IF NOT EXISTS pg_trgm` plus GIN
+  `gin_trgm_ops` indexes on the searched name/title/url columns (`workspaces.name`,
+  `projects.name`, `collections.name`, `folders.name`, `api_requests.name`/`url`,
+  `doc_pages.title`, `contract_specs.name`, `monitors.name`, `mock_scenarios.name`,
+  `workflow_chains.name`), so the `ILIKE '%q%'` scans stay index-assisted.
+- `backend/src/api/search.js` (pure helpers): `escapeLike`, `normalizeQuery` (trims, requires
+  a non-empty `q`, defaults `limit` to 20, caps at 50), `rankResult` (exact < prefix <
+  substring position), `menuKeyForType`, `flattenGroups` (flattens grouped rows and sorts by
+  rank then name).
+- `backend/src/api/routes/search.js` (`GET /api/search?q=&limit=`, auth-required, mounted in
+  `server.js`): runs one `ILIKE` query per entity type, then filters each row through the
+  shared access helpers - `canReadWorkspace`, `canReadProject`, and `canReadPage` (exported
+  from `routes/docs.js`, also covering public-in-org pages and share grants); platform
+  MANAGER/ADMIN bypass workspace/project checks via `isGlobalHigh`. Menu gating uses
+  `effectiveMenus` per scope and drops any type whose menu key is disabled
+  (`docs`/`contracts`/`monitors`/`mock-scenarios`/`apis`). Response is
+  `{ query, groups, results }`, with `results` a flattened, ranked list of
+  `{ id, name, type, rank, projectId?, workspaceId?, method?, url?, subtitle? }`.
+- Frontend: `searchApi.query` in `src/lib/api.ts`; `src/lib/searchPalette.js`
+  (`groupLabel`, `takeTop`, `flattenResults`); `CommandPalette.tsx` +
+  `useGlobalSearchShortcut.ts` mounted in `AppShell` (Cmd/Ctrl-K in the capture phase,
+  debounced queries stamped with a sequence number to reject out-of-order responses). A
+  `SearchIcon` trigger in `TopBar` (`data-testid="global-search-button"`, `Cmd K` / `Ctrl K`
+  hint) opens the palette. Navigation by type: docs `/docs?p=<id>`, workspace/project/
+  collection/request select in the workspace view, monitor `/monitors`, contract
+  `/contracts`, mockScenario `/mock-scenarios`.
+- Tests: backend unit `src/api/__tests__/search.test.cjs`, backend integration
+  `backend/tests/search.integration.test.cjs`, frontend unit `src/lib/__tests__/searchPalette.test.cjs`.
+- v1 limitation: docs are searched by title only; doc block content is not searched.
