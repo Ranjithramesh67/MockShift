@@ -3020,3 +3020,27 @@ DONE — admin Users list is now **project-wise** (pushed as `a5b12bb`):
   enforcement in `before()` like the other suites, clearing the pre-existing baseline failures);
   `docsShareAudiences` 7/7 (new cross-org rejection test); `docsShares` 5/5; `docsTreeVisibility`
   12/12; API units 69/69; both Next.js frontends `tsc --noEmit` clean.
+
+### 10.17 Mock UX: shareable link, route picker, formula autocomplete, guided redesign (2026-09-12)
+
+- **Shareable mock link** — a Next `/mock/:path*` rewrite forwards to the backend, so the copied URL
+  uses the current origin. `frontend/src/lib/mockServer.js` is split into `mockBasePath(projectId)`
+  (relative, SSR-safe), `mockBaseUrl(projectId, origin?)` (shareable) and `mockRequestBaseUrl(projectId)`
+  (`NEXT_PUBLIC_MOCK_REQUEST_ORIGIN`, default `http://127.0.0.1:3001`). New `lib/clipboard.ts`
+  (`copyText`) and `mocks/MockServerLink` (base URL + Copy button), used in `MockServersModal` and the
+  panel header.
+- **Mock route picker** — `lib/mockRoutes.js` (`pathToRequestPath` converts `:id` → `{{id}}`,
+  `mockRouteUrl`, `filterMockRoutes`), `mocks/useProjectMockRoutes` (lazy loader) and
+  `mocks/MockRoutePicker`, embedded in `RequestConfigurator` and `CreateModal` (`kind="request"`).
+  Picking a route fills the method (omitted for the `*` wildcard) and the request URL.
+- **Formula autocomplete** — snippets extracted to `lib/formulaSnippets.js` (shared with
+  `FormulaHelper`); `lib/formulaCompletions.js` is a CodeMirror-free, unit-tested completion source
+  exposing `req.`, `$vars.`, `$utils.`, JS built-ins and snippets. `CodeEditor` gains a `completions`
+  prop (`@codemirror/autocomplete`), enabled for the formula editors in `RequestConfigurator`,
+  `ScratchpadWorkspace` and `WorkflowBuilder`.
+- **Guided mock redesign** — `mocks/useMockServerAdmin` holds all state/actions (moved verbatim out of
+  the 1274-line panel). `MockScenariosPanel` is now a five-tab shell (Overview, Endpoints, Scenarios,
+  Responses, Call log) built from `MockServerOverviewTab`, `MockEndpointsTab`, `MockScenariosTab`,
+  `MockResponsesTab`, `MockCallLogTab`, with plain-language labels and a “How it works” overview.
+- **Verification** — frontend unit suite 103/103 (`mockServer`, `mockRoutes`, `formulaCompletions`
+  added), `tsc --noEmit` clean, `/mock-scenarios` compiles (200), and `/mock/:id` proxies to Express.
