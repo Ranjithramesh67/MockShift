@@ -15,6 +15,8 @@ const { notifyUsers, projectReviewerIds } = require('../notify');
 const router = Router();
 router.use(requireAuth);
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Notify the project's reviewers (platform admins + assigned managers) that a
 // user has requested access. Shared by both the re-request and fresh-INSERT
 // branches of POST /projects/:projectId/access-requests.
@@ -129,6 +131,9 @@ router.get('/access-requests/mine', async (req, res, next) => {
 router.post('/projects/:projectId/access-requests/:requestId/cancel', async (req, res, next) => {
   try {
     const { projectId, requestId } = req.params;
+    if (!UUID_RE.test(requestId)) {
+      return res.status(404).json({ error: 'Access request not found' });
+    }
     const { rows } = await query(
       `SELECT id, user_id, status FROM access_requests WHERE id = $1 AND project_id = $2`,
       [requestId, projectId]

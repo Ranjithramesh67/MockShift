@@ -430,6 +430,7 @@ export function InboxView() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ sendId: string; text: string } | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [requestsLoadErr, setRequestsLoadErr] = useState<string | null>(null);
   const [unauthorized, setUnauthorized] = useState(false);
 
   useEffect(() => {
@@ -460,16 +461,24 @@ export function InboxView() {
 
   const loadRequests = useCallback(async () => {
     setLoadErr(null);
-    try {
-      const [p, w] = await Promise.all([
-        accessRequestApi.mine(),
-        docsSharedApi.listWorkspaceRequests({ mine: true }),
-      ]);
-      setMyRequests(mergeMyRequests(p.accessRequests, w.requests));
-      setRequestsLoaded(true);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) setUnauthorized(true);
-      else setLoadErr(err instanceof Error ? err.message : 'Failed to load requests');
+    setRequestsLoadErr(null);
+    setRequestError(null);
+    const [p, w] = await Promise.allSettled([
+      accessRequestApi.mine(),
+      docsSharedApi.listWorkspaceRequests({ mine: true }),
+    ]);
+    const isUnauthorized = (r: PromiseSettledResult<unknown>): boolean =>
+      r.status === 'rejected' && r.reason instanceof ApiError && r.reason.status === 401;
+    if (isUnauthorized(p) || isUnauthorized(w)) {
+      setUnauthorized(true);
+      return;
+    }
+    const projectRows = p.status === 'fulfilled' ? p.value.accessRequests : [];
+    const workspaceRows = w.status === 'fulfilled' ? w.value.requests : [];
+    setMyRequests(mergeMyRequests(projectRows, workspaceRows));
+    setRequestsLoaded(true);
+    if (p.status === 'rejected' || w.status === 'rejected') {
+      setRequestsLoadErr('Some requests could not be loaded.');
     }
   }, []);
 
@@ -639,21 +648,36 @@ export function InboxView() {
       )}
 
       {tab === 'requests' ? (
-        requestsEmpty ? (
-          <EmptyState tab="requests" />
-        ) : myRequests.length > 0 ? (
-          <ul className="inbox-list" data-testid="requests-list">
-            {myRequests.map((row) => (
-              <RequestRow
-                key={`${row.kind}-${row.id}`}
-                row={row}
-                busy={requestBusyId === row.id}
-                errorText={requestError && requestError.id === row.id ? requestError.text : null}
-                onCancel={cancelRequest}
-              />
-            ))}
-          </ul>
-        ) : null
+        <>
+          {requestsLoadErr ? (
+            <div className="inbox-error" role="alert" data-testid="requests-load-error">
+              <p>{requestsLoadErr}</p>
+              <button
+                type="button"
+                className="ghost-button small"
+                data-testid="requests-retry"
+                onClick={() => void loadRequests()}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {requestsEmpty && !requestsLoadErr ? (
+            <EmptyState tab="requests" />
+          ) : myRequests.length > 0 ? (
+            <ul className="inbox-list" data-testid="requests-list">
+              {myRequests.map((row) => (
+                <RequestRow
+                  key={`${row.kind}-${row.id}`}
+                  row={row}
+                  busy={requestBusyId === row.id}
+                  errorText={requestError && requestError.id === row.id ? requestError.text : null}
+                  onCancel={cancelRequest}
+                />
+              ))}
+            </ul>
+          ) : null}
+        </>
       ) : empty ? (
         <EmptyState tab={tab} />
       ) : sending ? (
