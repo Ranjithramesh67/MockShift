@@ -10,13 +10,17 @@ import {
   type AdminAccessOverview,
   type AdminAccessProject,
   type AdminAccessWorkspace,
+  type AdminMenuSettingRow,
+  type AdminMenusResponse,
+  type MenuKey,
 } from '@/lib/api';
 
-type Tab = 'users' | 'access';
+type Tab = 'users' | 'access' | 'menus';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'users', label: 'Users' },
   { id: 'access', label: 'Access' },
+  { id: 'menus', label: 'Menus' },
 ];
 
 const ROLES: UserRole[] = ['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'];
@@ -151,6 +155,8 @@ export function AdminView() {
       {tab === 'access' && (
         <AccessTab allUsers={users} busy={busy} onRun={run} />
       )}
+
+      {tab === 'menus' && <MenusTab busy={busy} onRun={run} />}
 
       {createOpen && (
         <div className="modal-overlay" data-testid="create-user-modal" onClick={() => setCreateOpen(false)}>
@@ -543,6 +549,169 @@ function MemberSection({ title, members, busy, candidateUsers, addLabel, addRole
         >
           {addLabel}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function MenusTab({ busy, onRun }: {
+  busy: boolean;
+  onRun: (label: string, fn: () => Promise<unknown>) => Promise<void>;
+}) {
+  const [data, setData] = useState<AdminMenusResponse | null>(null);
+  const [scope, setScope] = useState<'org' | 'project'>('org');
+  const [menuKey, setMenuKey] = useState<MenuKey>('docs');
+  const [targetId, setTargetId] = useState('');
+  const [enabled, setEnabled] = useState(false);
+
+  const load = async () => {
+    try {
+      setData(await adminApi.menus());
+    } catch (err) {
+      await onRun(err instanceof Error ? err.message : 'Failed to load menus', () => Promise.reject(new Error('load')));
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!data) return <p className="hint">Loading menu settings…</p>;
+
+  const targets = scope === 'org' ? data.organizations : data.projects;
+  const scopeLabel = (s: AdminMenuSettingRow) =>
+    s.scope === 'org' ? s.organization_name : `${s.workspace_name ?? ''} / ${s.project_name ?? ''}`;
+
+  return (
+    <div data-testid="admin-menus-section">
+      <p className="hint">
+        Disable a feature for an entire organization or a single project. A missing override means the
+        feature is enabled. Project overrides beat organization overrides.
+      </p>
+
+      <div className="admin-access-add" style={{ marginTop: 12 }}>
+        <select
+          className="compact-select"
+          data-testid="menu-key"
+          value={menuKey}
+          disabled={busy}
+          onChange={(e) => setMenuKey(e.target.value as MenuKey)}
+        >
+          {data.keys.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <select
+          className="compact-select"
+          data-testid="menu-scope"
+          value={scope}
+          disabled={busy}
+          onChange={(e) => {
+            setScope(e.target.value as 'org' | 'project');
+            setTargetId('');
+          }}
+        >
+          <option value="org">Organization</option>
+          <option value="project">Project</option>
+        </select>
+        <select
+          className="compact-select"
+          data-testid="menu-target"
+          value={targetId}
+          disabled={busy}
+          onChange={(e) => setTargetId(e.target.value)}
+        >
+          <option value="" disabled>
+            Choose a target…
+          </option>
+          {targets.map((t) => (
+            <option key={t.id} value={t.id}>
+              {scope === 'org' ? t.name : `${(t as { workspace_name?: string }).workspace_name} / ${t.name}`}
+            </option>
+          ))}
+        </select>
+        <label className="field" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            data-testid="menu-enabled"
+            checked={enabled}
+            disabled={busy}
+            onChange={(e) => setEnabled(e.target.checked)}
+          />
+          <span>Enabled</span>
+        </label>
+        <button
+          type="button"
+          className="primary-button small"
+          data-testid="menu-save"
+          disabled={busy || !targetId}
+          onClick={() =>
+            onRun(`Menu "${menuKey}" override saved.`, async () => {
+              await adminApi.setMenu({
+                menuKey,
+                scope,
+                organizationId: scope === 'org' ? targetId : undefined,
+                projectId: scope === 'project' ? targetId : undefined,
+                enabled,
+              });
+              await load();
+            })}
+        >
+          Save override
+        </button>
+      </div>
+
+      <div className="table-wrap table-stack" style={{ marginTop: 16 }}>
+        <table className="admin-table" data-testid="admin-menus-table">
+          <thead>
+            <tr>
+              <th>Menu</th>
+              <th>Scope</th>
+              <th>Target</th>
+              <th>State</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.settings.length === 0 && (
+              <tr>
+                <td colSpan={5} className="hint">
+                  No overrides — every feature is enabled.
+                </td>
+              </tr>
+            )}
+            {data.settings.map((s) => (
+              <tr key={s.id} data-testid={`menu-setting-${s.id}`}>
+                <td data-label="Menu">{s.menu_key}</td>
+                <td data-label="Scope">{s.scope}</td>
+                <td data-label="Target">{scopeLabel(s)}</td>
+                <td data-label="State">
+                  <span className={`vis-badge ${s.enabled ? 'vis-active' : 'vis-inactive'}`}>
+                    {s.enabled ? 'enabled' : 'disabled'}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="ghost-button small danger"
+                    disabled={busy}
+                    data-testid={`menu-remove-${s.id}`}
+                    onClick={() =>
+                      onRun('Override removed.', async () => {
+                        await adminApi.deleteMenu(s.id);
+                        await load();
+                      })}
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
