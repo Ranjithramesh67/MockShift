@@ -495,6 +495,9 @@ export const adminApi = {
     enabled: boolean;
   }) => apiFetch<{ setting: AdminMenuSettingRow }>('/api/admin/menus', { method: 'PUT', body: input }),
   deleteMenu: (id: string) => apiFetch<{ ok: true }>(`/api/admin/menus/${id}`, { method: 'DELETE' }),
+  individualLlm: () => apiFetch<{ allowed: boolean }>('/api/admin/settings/individual-llm'),
+  setIndividualLlm: (input: { allowed: boolean }) =>
+    apiFetch<{ allowed: boolean }>('/api/admin/settings/individual-llm', { method: 'PUT', body: input }),
 };
 
 export interface AdminAccessUser {
@@ -1057,4 +1060,20 @@ export const profileApi = {
     apiFetch<{ ok: true; avatar: ProfileAvatar }>('/api/profile/avatar', { method: 'POST', body: { remove: true } }),
   changePassword: (input: { current_password: string; new_password: string }) =>
     apiFetch<{ ok: true }>('/api/profile/password', { method: 'POST', body: input }),
+};
+
+export interface UserLlmConfig {
+  allowed: boolean;
+  configured: boolean;
+  source: 'user' | 'env' | 'none';
+  provider: string | null;
+  model: string | null;
+  baseUrl: string | null;
+}
+
+export const llmConfigApi = {
+  get: () => apiFetch<UserLlmConfig>('/api/profile/llm'),
+  put: (input: { apiKey: string; baseUrl: string; model: string }) =>
+    apiFetch<UserLlmConfig>('/api/profile/llm', { method: 'PUT', body: input }),
+  remove: () => apiFetch<{ ok: true }>('/api/profile/llm', { method: 'DELETE' }),
 };
