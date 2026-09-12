@@ -16,6 +16,7 @@ import {
   type ProjectDetail,
   type Workspace,
 } from '@/lib/api';
+import type { WorkspaceAccessRequest } from '@/lib/docsApi';
 
 type TabId = 'overview' | 'requests' | 'users' | 'projects' | 'teams' | 'audit' | 'history' | 'settings';
 
@@ -48,6 +49,7 @@ export function ManageView() {
   const [projects, setProjects] = useState<ManageProject[]>([]);
   const [teams, setTeams] = useState<ManageTeam[]>([]);
   const [requests, setRequests] = useState<AccessRequestRow[]>([]);
+  const [wsRequests, setWsRequests] = useState<WorkspaceAccessRequest[]>([]);
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [runs, setRuns] = useState<RunHistoryEntry[]>([]);
   const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null);
@@ -63,6 +65,7 @@ export function ManageView() {
   const loadProjects = () => manageApi.projects().then((r) => setProjects(r.projects)).catch(() => undefined);
   const loadTeams = () => manageApi.teams().then((r) => setTeams(r.teams)).catch(() => undefined);
   const loadRequests = () => manageApi.accessRequests().then((r) => setRequests(r.accessRequests)).catch(() => undefined);
+  const loadWsRequests = () => manageApi.workspaceAccessRequests().then((r) => setWsRequests(r.requests)).catch(() => undefined);
   const loadLogs = () => manageApi.auditLogs(100).then((r) => setLogs(r.logs)).catch(() => undefined);
   const loadHistory = () => manageApi.history(100).then((r) => setRuns(r.runs)).catch(() => undefined);
 
@@ -108,11 +111,19 @@ export function ManageView() {
     loadProjects();
     loadTeams();
     loadRequests();
+    loadWsRequests();
     loadLogs();
     loadHistory();
     loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab');
+    if (requested && TABS.some((t) => t.id === requested)) {
+      setTab(requested as TabId);
+    }
+  }, []);
 
   if (!user) return null;
   if (user.role !== 'ADMIN' && user.role !== 'MANAGER') {
@@ -137,6 +148,22 @@ export function ManageView() {
       await manageApi.reviewRequest(r.id, approve);
       setNotice(approve ? 'Request approved.' : 'Request denied.');
       loadRequests();
+      loadOverview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Review failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewWorkspace = async (r: WorkspaceAccessRequest, approve: boolean) => {
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      await manageApi.reviewWorkspaceRequest(r.id, approve);
+      setNotice(approve ? 'Workspace request approved.' : 'Workspace request denied.');
+      loadWsRequests();
       loadOverview();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Review failed');
@@ -188,6 +215,9 @@ export function ManageView() {
 
   const pendingRequests = requests.filter((r) => r.status === 'PENDING');
   const resolvedRequests = requests.filter((r) => r.status !== 'PENDING');
+  const wsPending = wsRequests.filter((r) => r.status === 'PENDING');
+  const wsResolved = wsRequests.filter((r) => r.status !== 'PENDING');
+  const totalPending = pendingRequests.length + wsPending.length;
 
   return (
     <main className="admin-main" data-testid="manage-page">
@@ -204,9 +234,9 @@ export function ManageView() {
               Admin console
             </button>
           )}
-          {pendingRequests.length > 0 && (
+          {totalPending > 0 && (
             <button type="button" className="primary-button" data-testid="goto-requests" onClick={() => setTab('requests')}>
-              {pendingRequests.length} pending approval{pendingRequests.length > 1 ? 's' : ''}
+              {totalPending} pending approval{totalPending > 1 ? 's' : ''}
             </button>
           )}
         </div>
@@ -233,7 +263,7 @@ export function ManageView() {
             onClick={() => setTab(t.id)}
           >
             {t.label}
-            {t.id === 'requests' && pendingRequests.length > 0 && <span className="bell-badge">{pendingRequests.length}</span>}
+            {t.id === 'requests' && totalPending > 0 && <span className="bell-badge">{totalPending}</span>}
           </button>
         ))}
       </div>
@@ -260,7 +290,8 @@ export function ManageView() {
 
       {tab === 'requests' && (
         <div data-testid="access-requests-section">
-          <h2 className="manage-section-title">Pending</h2>
+          <h2 className="manage-section-title">Project requests</h2>
+          <h3 className="manage-subsection-title">Pending</h3>
           {pendingRequests.length === 0 && <p className="hint">No pending access requests.</p>}
           {pendingRequests.map((r) => (
             <div key={r.id} className="request-row" data-testid={`request-row-${r.email}`}>
@@ -271,6 +302,7 @@ export function ManageView() {
                   <div className="admin-user-email">{r.email}</div>
                 </div>
                 <div className="request-row-meta">
+                  <span className="vis-badge request-type-badge">Project</span>
                   <span className="vis-badge api-type-badge">{r.project_name}</span>
                   <span className="role-badge">{r.role}</span>
                   <span className="hint">{fmtDate(r.requested_at)}</span>
@@ -288,7 +320,7 @@ export function ManageView() {
             </div>
           ))}
 
-          <h2 className="manage-section-title">Reviewed</h2>
+          <h3 className="manage-subsection-title">Reviewed</h3>
           {resolvedRequests.length === 0 && <p className="hint">Nothing reviewed yet.</p>}
           {resolvedRequests.map((r) => (
             <div key={r.id} className="request-row">
@@ -299,9 +331,71 @@ export function ManageView() {
                   <div className="admin-user-email">{r.email}</div>
                 </div>
                 <div className="request-row-meta">
+                  <span className="vis-badge request-type-badge">Project</span>
                   <span className="vis-badge api-type-badge">{r.project_name}</span>
                   <span className={`vis-badge ${r.status === 'APPROVED' ? 'vis-active' : 'vis-inactive'}`}>{r.status}</span>
                   <span className="hint">{fmtDate(r.reviewed_at)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <h2 className="manage-section-title">Workspace requests</h2>
+          <h3 className="manage-subsection-title">Pending</h3>
+          {wsPending.length === 0 && <p className="hint">No pending workspace requests.</p>}
+          {wsPending.map((r) => (
+            <div key={r.id} className="request-row" data-testid={`workspace-request-row-${r.id}`}>
+              <div className="request-row-main">
+                <span className="admin-avatar">{r.requester?.name?.charAt(0).toUpperCase() ?? '?'}</span>
+                <div>
+                  <div className="admin-user-name">{r.requester?.name}</div>
+                  <div className="admin-user-email">{r.requester?.email}</div>
+                </div>
+                <div className="request-row-meta">
+                  <span className="vis-badge request-type-badge workspace">Workspace</span>
+                  <span className="vis-badge api-type-badge">{r.workspaceName}</span>
+                  <span className="hint">{fmtDate(r.requestedAt)}</span>
+                </div>
+              </div>
+              {r.reason && <div className="request-reason">“{r.reason}”</div>}
+              <div className="request-row-actions">
+                <button
+                  type="button"
+                  className="ghost-button danger"
+                  data-testid={`workspace-deny-${r.id}`}
+                  disabled={busy}
+                  onClick={() => reviewWorkspace(r, false)}
+                >
+                  Deny
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  data-testid={`workspace-approve-${r.id}`}
+                  disabled={busy}
+                  onClick={() => reviewWorkspace(r, true)}
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <h3 className="manage-subsection-title">Reviewed</h3>
+          {wsResolved.length === 0 && <p className="hint">Nothing reviewed yet.</p>}
+          {wsResolved.map((r) => (
+            <div key={r.id} className="request-row" data-testid={`workspace-request-row-${r.id}`}>
+              <div className="request-row-main">
+                <span className="admin-avatar">{r.requester?.name?.charAt(0).toUpperCase() ?? '?'}</span>
+                <div>
+                  <div className="admin-user-name">{r.requester?.name}</div>
+                  <div className="admin-user-email">{r.requester?.email}</div>
+                </div>
+                <div className="request-row-meta">
+                  <span className="vis-badge request-type-badge workspace">Workspace</span>
+                  <span className="vis-badge api-type-badge">{r.workspaceName}</span>
+                  <span className={`vis-badge ${r.status === 'APPROVED' ? 'vis-active' : 'vis-inactive'}`}>{r.status}</span>
+                  <span className="hint">{fmtDate(r.reviewedAt)}</span>
                 </div>
               </div>
             </div>

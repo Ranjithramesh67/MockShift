@@ -3446,6 +3446,25 @@ body.is-col-dragging .sidebar {
   margin: 22px 0 10px;
 }
 
+.manage-subsection-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 14px 0 8px;
+}
+
+.request-type-badge {
+  background: rgba(88, 166, 255, 0.15);
+  color: #7cb8ff;
+}
+
+.request-type-badge.workspace {
+  background: rgba(124, 242, 156, 0.15);
+  color: var(--accent);
+}
+
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
