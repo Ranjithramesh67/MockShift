@@ -30,6 +30,7 @@ const reviewRoutes = require('./routes/reviews');
 const versionRoutes = require('./routes/versions');
 const sdkRoutes = require('./routes/sdk');
 const menuAccessRoutes = require('./routes/menuAccess');
+const userLlmRoutes = require('./routes/userLlm');
 const { requireMenuEnabled } = require('./menuAccess');
 const { mockDispatch } = require('./mockDispatch');
 const { query } = require('./db');
@@ -82,6 +83,7 @@ function createApp() {
   app.use('/api/auth', authRoutes);
   // Effective feature flags for the current user (rail + route guards).
   app.use('/api/menu-access', menuAccessRoutes);
+  app.use('/api/profile/llm', userLlmRoutes);
   app.use('/api/profile', profileRoutes);
   app.use('/api', shareRoutes);
   app.use('/api/admin', adminRoutes);

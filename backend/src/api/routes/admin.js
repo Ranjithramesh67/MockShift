@@ -454,4 +454,41 @@ router.delete('/menus/:id', async (req, res, next) => {
   }
 });
 
+// ------------------------------------------------- individual LLM master switch
+// When false (default) the per-user LLM config UI is hidden and the copilot
+// uses USER_LLM_* only. When true each user may store their own config.
+router.get('/settings/individual-llm', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      'SELECT allow_individual_llm FROM portal_settings ORDER BY id LIMIT 1'
+    );
+    res.json({ allowed: rows.length > 0 && rows[0].allow_individual_llm === true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/settings/individual-llm', async (req, res, next) => {
+  try {
+    const { allowed } = req.body || {};
+    if (typeof allowed !== 'boolean') return res.status(400).json({ error: 'allowed must be boolean' });
+    await query(
+      `UPDATE portal_settings
+          SET allow_individual_llm = $1, updated_by = $2, updated_at = now()`,
+      [allowed, req.user.id]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'portal_settings',
+      entityId: null,
+      action: 'set_individual_llm',
+      detail: { setting: 'individual_llm', allowed },
+      ip: req.ip,
+    });
+    res.json({ allowed });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
