@@ -30,6 +30,7 @@ const reviewRoutes = require('./routes/reviews');
 const versionRoutes = require('./routes/versions');
 const sdkRoutes = require('./routes/sdk');
 const menuAccessRoutes = require('./routes/menuAccess');
+const searchRoutes = require('./routes/search');
 const userLlmRoutes = require('./routes/userLlm');
 const { requireMenuEnabled } = require('./menuAccess');
 const { mockDispatch } = require('./mockDispatch');
@@ -99,6 +100,7 @@ function createApp() {
   app.use('/api/tokens', tokenRoutes);
   app.use('/api', sendRoutes);
   app.use('/api', projectRoutes);
+  app.use('/api/search', searchRoutes);
   app.use('/api', workflowRoutes);
   app.use('/api/automations', requireMenuEnabled('automations'));
   app.use('/api', automationRoutes);
