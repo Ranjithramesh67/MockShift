@@ -2154,3 +2154,5 @@ module.exports = router;
 // Pre-auth public share viewer (mounted by the coordinator in server.js ahead
 // of the authenticated /api routers, mirroring the /api/webhooks pattern).
 module.exports.publicRouter = publicDocRouter;
+// Reused by the global search endpoint to scope doc-page results.
+module.exports.canReadPage = canReadPage;
