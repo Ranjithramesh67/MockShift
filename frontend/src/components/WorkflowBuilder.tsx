@@ -476,6 +476,7 @@ export function WorkflowBuilder() {
                   language="javascript"
                   height="70px"
                   ariaLabel={`Loop condition for step ${index + 1}`}
+                  completions
                 />
               </div>
             )}
@@ -488,6 +489,7 @@ export function WorkflowBuilder() {
                 language="javascript"
                 height="60px"
                 ariaLabel={`Pre-step formula for step ${index + 1}`}
+                completions
               />
             </div>
 

@@ -335,6 +335,7 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
               height="100%"
               ariaLabel="Formula editor"
               onModEnter={runActive}
+              completions
             />
             <FormulaHelper
               onInsert={(code) => {
