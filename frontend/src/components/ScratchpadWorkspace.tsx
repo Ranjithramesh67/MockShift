@@ -311,6 +311,7 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
                   height="100%"
                   ariaLabel="Formula editor"
                   onModEnter={onSend}
+                  completions
                 />
                 <FormulaHelper
                   onInsert={(code) => {

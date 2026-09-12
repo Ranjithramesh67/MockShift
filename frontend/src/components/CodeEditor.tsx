@@ -7,6 +7,8 @@ import { xml } from '@codemirror/lang-xml';
 import { javascript } from '@codemirror/lang-javascript';
 import { Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
+import { autocompletion } from '@codemirror/autocomplete';
+import { formulaCompletionSource } from '@/lib/formulaCompletions';
 
 export type EditorLanguage = 'json' | 'xml' | 'javascript' | 'text';
 
@@ -37,6 +39,11 @@ interface CodeEditorProps {
    * blank line) so the shortcut runs the request instead of editing the text.
    */
   onModEnter?: () => void;
+  /**
+   * Enables in-editor suggestions from the formula sandbox globals (`req`,
+   * `$vars`, `$utils`), JavaScript built-ins and the shared snippet list.
+   */
+  completions?: boolean;
 }
 
 export function CodeEditor({
@@ -48,6 +55,7 @@ export function CodeEditor({
   readOnly = false,
   ariaLabel,
   onModEnter,
+  completions = false,
 }: CodeEditorProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -56,24 +64,27 @@ export function CodeEditor({
   // always be wrapped in an array before spreading into the extensions list.
   const baseExtensions = [extensionFor(language)] as any[];
 
-  const extensions = onModEnter
-    ? [
-        ...baseExtensions,
-        // Highest precedence so this binding wins over the default Mod-Enter
-        // (insertBlankLine) shipped with basicSetup.
-        Prec.highest(
-          keymap.of([
-            {
-              key: 'Mod-Enter',
-              run: () => {
-                onModEnter();
-                return true;
+  const extensions = [
+    ...baseExtensions,
+    ...(completions ? [autocompletion({ override: [formulaCompletionSource] })] : []),
+    ...(onModEnter
+      ? [
+          // Highest precedence so this binding wins over the default Mod-Enter
+          // (insertBlankLine) shipped with basicSetup.
+          Prec.highest(
+            keymap.of([
+              {
+                key: 'Mod-Enter',
+                run: () => {
+                  onModEnter();
+                  return true;
+                },
               },
-            },
-          ])
-        ),
-      ]
-    : baseExtensions;
+            ])
+          ),
+        ]
+      : []),
+  ];
 
   if (!mounted) {
     return <div className="editor-placeholder" style={{ height }} aria-label={ariaLabel} />;
