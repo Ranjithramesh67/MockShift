@@ -451,10 +451,15 @@ trigger configured actions with a secret token.
 There are **three separate systems** that are easy to confuse:
 
 ```
-Project access request    -> access_requests            (in-app, ManageView /manage)
-Workspace access request  -> workspace_access_requests  (API only, DocsHome tab)
-Send item ("inbox")       -> sends                      (/inbox)
+Project access request    -> access_requests            (request via /inbox or workspace UI; review in /manage)
+Workspace access request  -> workspace_access_requests  (request from the workspace switcher; review in /manage)
+Send item ("inbox")       -> sends                      (/inbox Received / Sent tabs)
 ```
+
+Access requests and send items share the `/inbox` page but are different tabs:
+the **Requests** tab tracks the caller's own access requests (project and
+workspace, cancellable while pending), while **Received** / **Sent** track the
+peer-to-peer send-item handshake.
 
 ### 15.1 Project access requests
 
@@ -467,11 +472,23 @@ A user who cannot access a project requests a role on it.
 - **Review queue**: `GET /api/manage/access-requests` (global MANAGER/ADMIN).
 - **Decision**: `POST /api/manage/access-requests/:requestId/review`
   (`{ approve, role? }`).
+- **Cancel**: `POST /api/projects/:projectId/access-requests/:requestId/cancel`
+  (creator only, `PENDING` only). Returns `200`; `404` when the row is missing
+  or belongs to someone else; `409` when the request is not `PENDING`. Sets
+  `status = 'CANCELLED'` and audit-logs `cancel`.
+- **Re-request (reopen)**: if a row already exists in a non-pending state,
+  `POST` reopens it (`status = 'PENDING'`, `reviewed_by`/`reviewed_at` cleared),
+  audit-logs `request_access` with `{ reopened: true }`, and re-notifies
+  reviewers.
+- **Reviewer notifications**: both the fresh-INSERT and reopen branches call
+  `notifyUsers` for the project's reviewers (platform admins + assigned
+  managers, resolved via `projectReviewerIds`) with `kind: 'request'` and a
+  `/manage?tab=requests` deep link.
 - Creation UI: the workspace sidebar plus an "API mention" chip in Docs.
 - Review UI: the Manage console at `/manage`.
 - Table columns: `id, project_id, user_id, role (default VIEWER), reason,
-  status (PENDING|APPROVED|DENIED), requested_at, reviewed_by, reviewed_at`,
-  with `UNIQUE(project_id, user_id)`.
+  status (PENDING|APPROVED|DENIED|CANCELLED), requested_at, reviewed_by,
+  reviewed_at`, with `UNIQUE(project_id, user_id)`.
 
 ### 15.2 Workspace access requests
 
@@ -479,15 +496,29 @@ A user who cannot access a project requests a role on it.
 - `GET /api/docs/workspace-access-requests?workspaceId=<uuid>[&mine=1][&status=PENDING]`
 - `POST /api/docs/workspace-access-requests/:id/review` (`{ approve }`)
 - `POST /api/docs/workspace-access-requests/:id/cancel` (creator only)
-- Non-terminal status is `PENDING`; cancellation sets `CANCELLED`.
-- Review UI: the Access requests tab on Docs home.
-- **Gap:** there is no dedicated creation UI for workspace access requests -
-  they can only be created through the API today.
+- **Manage queue**: `GET /api/manage/workspace-access-requests` lists every
+  workspace request (platform MANAGER/ADMIN, or the workspace's admins via
+  `workspaceAccessFor`); `POST /api/manage/workspace-access-requests/:requestId/review`
+  (`{ approve }`) decides it. Both are surfaced in the unified Manage Access
+  requests tab (`/manage?tab=requests`).
+- **Reviewer notifications**: creation calls `notifyUsers` for the workspace's
+  reviewers (platform admins + workspace admins, resolved via
+  `workspaceReviewerIds`) with `kind: 'request'` and a
+  `/manage?tab=requests` deep link. Decisions notify the requester.
+- **Creation UI**: the workspace switcher shows a "Request access" action on
+  chips for workspaces the caller is not a member of, opening a reason modal
+  that calls `docsSharedApi.requestWorkspaceAccess`.
+- **Requester visibility**: the `/inbox` **Requests** tab lists the caller's
+  own project and workspace requests and lets them cancel pending ones.
+- Non-terminal status is `PENDING`; a decision sets `APPROVED` or `DENIED`,
+  and a creator cancel sets `CANCELLED` (`status` accepts
+  `PENDING|APPROVED|DENIED|CANCELLED`). Creation and cancel are audit-logged
+  (`request_access`, `cancel`); decisions are audit-logged by the reviewer.
 
-### 15.3 The inbox is NOT access requests
+### 15.3 The inbox: send items and access requests
 
-`/inbox` (`frontend/src/components/InboxView.tsx`) displays **send items**, a
-peer-to-peer sharing handshake:
+`/inbox` (`frontend/src/components/InboxView.tsx`) has three tabs. **Received**
+and **Sent** display **send items**, a peer-to-peer sharing handshake:
 
 - `POST /api/sends` - send an item to a recipient.
 - `GET /api/sends/inbox` - items sent to me.
@@ -495,9 +526,17 @@ peer-to-peer sharing handshake:
 - `GET /api/sends/recipients` - candidate recipients.
 - `POST /api/sends/:sendId/accept`, `POST /api/sends/:sendId/reject`.
 
-The inbox does **not** show access requests or notifications. Access requests
-appear in `/manage` (project) or the Docs home tab (workspace); notifications
-appear in the top-bar bell.
+The third tab, **Requests**, is where a user tracks their own access requests
+(both project and workspace). It merges `accessRequestApi.mine()` with
+`docsSharedApi.listWorkspaceRequests({ mine: true })` via `mergeMyRequests`
+and offers a cancel action while a request is `PENDING`. Send items and access
+requests remain distinct systems - they only share this page - so use the tab
+name, not the page, to disambiguate.
+
+Notifications are separate again: the top-bar bell surfaces them, and each
+notification's `link` is followed as a deep link (for example
+`/manage?tab=requests` for reviewer notifications, `/inbox?tab=requests` for
+requester decisions). Bell rows style the `request` and `send` kinds.
 
 ---
 
@@ -645,9 +684,12 @@ POST   /api/notifications/read-all
 ```
 POST   /api/projects/:projectId/access-requests
 GET    /api/projects/:projectId/access-requests
+POST   /api/projects/:projectId/access-requests/:requestId/cancel
 GET    /api/access-requests/mine
 GET    /api/manage/access-requests
 POST   /api/manage/access-requests/:requestId/review
+GET    /api/manage/workspace-access-requests
+POST   /api/manage/workspace-access-requests/:requestId/review
 POST   /api/docs/workspace-access-requests
 GET    /api/docs/workspace-access-requests
 POST   /api/docs/workspace-access-requests/:id/review
@@ -679,18 +721,18 @@ POST   /api/webhooks/:token               (public)
 ## 21. Known gaps and not-implemented features
 
 1. **No password reset / forgot-password** flow anywhere.
-2. **No creation UI for workspace access requests** - API only.
-3. **`/inbox` is send items only** - it does not surface access requests or
-   notifications; this is a common point of confusion.
-4. **`api/openapi.json` is partial** - it documents the machine API but omits
+2. **`/inbox` does not surface notifications** - it now has a Requests tab for
+   the caller's own access requests, but notifications remain in the top-bar
+   bell.
+3. **`api/openapi.json` is partial** - it documents the machine API but omits
    SDK and copilot endpoints.
-5. **SDK plan checkboxes are unticked** in
+4. **SDK plan checkboxes are unticked** in
    `docs/superpowers/plans/2026-09-10-apihub-sdk-route-sync.md` even though the
    implementation exists; the plan document was not updated.
-6. **`SUPPORT` role** exists in the enum but has no rank or dedicated behavior.
-7. **Portal A/B** (`portal/`) is separate and its backend is not part of the
+5. **`SUPPORT` role** exists in the enum but has no rank or dedicated behavior.
+6. **Portal A/B** (`portal/`) is separate and its backend is not part of the
    main dev startup; it can drift from the main app.
-8. The doc claim in `sdk/README.md` that the SDK auto-syncs on
+7. The doc claim in `sdk/README.md` that the SDK auto-syncs on
    `app.listen` breaks if the app uses `app.all(...)` before attach - see
    `docs/SDK.md` for the workaround.
 

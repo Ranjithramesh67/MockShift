@@ -13,6 +13,10 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
 - Complete feature documentation: `docs/FEATURES.md` (end-to-end feature guide incl. the
   access-request vs send-item inbox distinction, API token auth, plans, permission matrix, endpoint
   reference, known gaps) and `docs/SDK.md` (apihub-sdk configuration, API, adapter, sync protocol).
+- Unified access requests: reviewer notifications and audit on project/workspace request creation
+  and re-request, a creator-only project cancel endpoint (`CANCELLED`), a unified Manage
+  workspace-request queue, an `/inbox` Requests tab, notification deep links, and a "Request access"
+  workspace-switcher modal.
 
 ### Admin-configurable menus (details)
 
@@ -65,3 +69,29 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
   workspace-access-request creation UI, `/inbox` is send items only, `api/openapi.json` omits SDK/copilot,
   SDK plan checkboxes unticked, `SUPPORT` role unranked.
 - Commit `826a46b` — pushed to `master`.
+
+### Unified access requests (details)
+
+- Migration `042_access_request_cancel.sql` widens the `access_requests.status` CHECK to include
+  `CANCELLED` (workspace requests already accepted it).
+- Shared notifications `backend/src/api/notify.js`: `notifyUser`, `notifyUsers`, `dedupeRecipients`,
+  `projectReviewerIds` (platform admins + assigned project managers) and `workspaceReviewerIds`
+  (platform admins + workspace admins).
+- Project requests (`backend/src/api/routes/projects.js`): fresh creation and reopen both audit-log
+  `request_access` (reopen tagged `{ reopened: true }`) and notify reviewers with `kind: 'request'` and
+  a `/manage?tab=requests` link. New creator-only
+  `POST /api/projects/:projectId/access-requests/:requestId/cancel` returns `200` (`404` missing/not
+  yours, `409` not `PENDING`), sets `CANCELLED`, and audit-logs `cancel`.
+- Workspace requests (`backend/src/api/workspaceAccess.js`, `routes/docs.js`): `workspaceAccessFor`,
+  `serializeWorkspaceAccessRequest`, `loadWorkspaceAccessRequest`, `reviewWorkspaceAccessRequest`
+  (approval grants VIEWER and notifies the requester); creation notifies reviewers; cancel is
+  audit-logged.
+- Manage queue (`backend/src/api/routes/manage.js`): `GET /api/manage/workspace-access-requests` and
+  `POST /api/manage/workspace-access-requests/:requestId/review` sit beside the project queue.
+- Frontend: `accessRequestApi.cancel`, `manageApi.workspaceAccessRequests` / `reviewWorkspaceRequest`,
+  `CANCELLED` in the status union, `request`/`send` notification kinds; `/inbox` gains a Requests tab
+  (own project + workspace requests, cancellable) via `mergeMyRequests`; `/manage?tab=requests` shows
+  both queues; the bell follows `link` deep links; the workspace switcher adds a "Request access" modal
+  for non-members (`docsSharedApi.requestWorkspaceAccess`).
+- Tests: backend integration `backend/tests/accessRequests.integration.test.cjs`, backend unit
+  `src/api/__tests__/notify.test.cjs`, frontend unit `src/lib/__tests__/accessRequests.test.cjs`.
