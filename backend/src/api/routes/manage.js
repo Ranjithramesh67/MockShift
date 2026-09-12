@@ -2,7 +2,13 @@
 
 const { Router } = require('express');
 const { query } = require('../db');
-const { requireAuth, requireManagerOrAdmin, getOrgIdsForUser } = require('../access');
+const { requireAuth, requireManagerOrAdmin, getOrgIdsForUser, roleAtLeast } = require('../access');
+const {
+  loadWorkspaceAccessRequest,
+  serializeWorkspaceAccessRequest,
+  reviewWorkspaceAccessRequest,
+  workspaceAccessFor,
+} = require('../workspaceAccess');
 const { logAudit, managedProjectIds } = require('../audit');
 
 const router = Router();
@@ -237,6 +243,49 @@ router.post('/access-requests/:requestId/review', requireReviewer, async (req, r
       detail: { projectId: request.project_id, userId: request.user_id },
       ip: req.ip,
     });
+    res.json({ ok: true, status });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Workspace access requests are reviewable by platform MANAGER/ADMIN or a
+// workspace admin (workspaceAccessFor). The manage router already requires
+// MANAGER/ADMIN globally, so all callers pass for workspaces they admin.
+router.get('/workspace-access-requests', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT war.*, w.name AS workspace_name,
+              ru.name AS requester_name, ru.email AS requester_email,
+              rb.name AS reviewer_name
+         FROM workspace_access_requests war
+         JOIN workspaces w ON w.id = war.workspace_id
+         JOIN users ru ON ru.id = war.user_id
+         LEFT JOIN users rb ON rb.id = war.reviewed_by
+        ORDER BY war.requested_at DESC`
+    );
+    const requests = [];
+    for (const row of rows) requests.push(await serializeWorkspaceAccessRequest(row));
+    res.json({ requests });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/workspace-access-requests/:requestId/review', async (req, res, next) => {
+  try {
+    const { approve } = req.body || {};
+    if (typeof approve !== 'boolean') return res.status(400).json({ error: 'approve must be a boolean' });
+    const request = await loadWorkspaceAccessRequest(req.params.requestId);
+    if (!request) return res.status(404).json({ error: 'Access request not found' });
+    const access = await workspaceAccessFor(req.user, request.workspace_id);
+    if (!roleAtLeast(access.role, 'ADMIN')) {
+      return res.status(403).json({ error: 'Workspace admin access required' });
+    }
+    if (request.status !== 'PENDING') {
+      return res.status(409).json({ error: 'This request has already been reviewed' });
+    }
+    const { status } = await reviewWorkspaceAccessRequest({ request, reviewer: req.user, approve, ip: req.ip });
     res.json({ ok: true, status });
   } catch (err) {
     next(err);
