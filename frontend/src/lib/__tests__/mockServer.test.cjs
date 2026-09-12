@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseMockHeaders, mockBaseUrl } = require('../mockServer');
+const { parseMockHeaders, mockBasePath, mockBaseUrl, mockRequestBaseUrl } = require('../mockServer');
 
 test('parseMockHeaders handles empty string as no headers', () => {
   assert.deepEqual(parseMockHeaders(''), {});
@@ -28,6 +28,18 @@ test('parseMockHeaders rejects invalid JSON', () => {
   assert.throws(() => parseMockHeaders('{broken'), /JSON/);
 });
 
-test('mockBaseUrl points at the backend mock dispatch path', () => {
-  assert.equal(mockBaseUrl('proj-123'), 'http://127.0.0.1:3001/mock/proj-123');
+test('mockBasePath is the relative dispatch path', () => {
+  assert.equal(mockBasePath('proj-123'), '/mock/proj-123');
+});
+
+test('mockBaseUrl returns the relative path without an origin', () => {
+  assert.equal(mockBaseUrl('proj-123'), '/mock/proj-123');
+});
+
+test('mockBaseUrl prefixes a browser origin and trims trailing slashes', () => {
+  assert.equal(mockBaseUrl('proj-123', 'https://app.example.com/'), 'https://app.example.com/mock/proj-123');
+});
+
+test('mockRequestBaseUrl targets the backend origin the runner can fetch', () => {
+  assert.equal(mockRequestBaseUrl('proj-123'), 'http://127.0.0.1:3001/mock/proj-123');
 });
