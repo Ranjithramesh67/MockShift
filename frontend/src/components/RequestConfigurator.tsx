@@ -21,6 +21,7 @@ import { CodeEditor } from './CodeEditor';
 import { TabBar } from './TabBar';
 import { CodeGenModal } from './CodeGenModal';
 import { FormulaHelper } from './FormulaHelper';
+import { MockRoutePicker } from './mocks/MockRoutePicker';
 import { AssertionsEditor } from './AssertionsEditor';
 import { ShareLinksModal } from './ShareLinksModal';
 import {
@@ -43,6 +44,8 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
   const [shareOpen, setShareOpen] = useState(false);
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
+  const activeCollection = ws.tree?.collections.find((c) => c.id === ws.activeCollectionId);
+  const mockProjectId = activeCollection?.project_id ?? ws.tree?.projects?.[0]?.id ?? '';
 
   // Ctrl+Enter / Cmd+Enter sends the active request. This effect lives above the
   // early return so the hook is always called the same number of times on every
@@ -190,6 +193,13 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           aria-label="Request URL"
           data-testid="url-input"
           onChange={(e) => onUrlChange(e.target.value)}
+        />
+        <MockRoutePicker
+          projectId={mockProjectId}
+          disabled={ws.requestRunning}
+          onPick={({ method: pickedMethod, url: pickedUrl }) =>
+            update(pickedMethod ? { method: pickedMethod, url: pickedUrl } : { url: pickedUrl })
+          }
         />
         <div className="request-bar-actions" style={{ display: 'contents' }}>
           <select
