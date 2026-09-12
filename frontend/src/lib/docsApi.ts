@@ -517,7 +517,7 @@ export const docsSharedApi = {
   projectAccessRequests: (projectId: string) =>
     apiFetch<{ accessRequests: ProjectAccessRow[] }>(`/api/projects/${projectId}/access-requests`),
   // All workspace docs-access-requests for the selected workspace / caller.
-  listWorkspaceRequests: (params: { workspaceId: string; status?: string; mine?: boolean }) =>
+  listWorkspaceRequests: (params: { workspaceId?: string; status?: string; mine?: boolean }) =>
     apiFetch<{ requests: WorkspaceAccessRequest[] }>(
       `/api/docs/workspace-access-requests${toQuery({ workspaceId: params.workspaceId, status: params.status, mine: params.mine ? 1 : undefined })}`
     ),

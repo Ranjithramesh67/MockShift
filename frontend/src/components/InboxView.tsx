@@ -3,7 +3,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { sendsApi, ApiError, type Send, type SendAcceptedPath, type SendItemType, type SendStatus } from '@/lib/api';
+import { sendsApi, ApiError, accessRequestApi, type Send, type SendAcceptedPath, type SendItemType, type SendStatus } from '@/lib/api';
+import { docsSharedApi } from '@/lib/docsApi';
+import { mergeMyRequests } from '@/lib/accessRequests';
 import { UserAvatar } from './UserAvatar';
 import {
   CheckIcon,
@@ -90,7 +92,7 @@ function TypeIcon({ type }: { type: SendItemType }) {
 
 // --------------------------------------------------------------- list pieces
 
-function EmptyState({ tab }: { tab: 'inbox' | 'sent' }) {
+function EmptyState({ tab }: { tab: 'inbox' | 'sent' | 'requests' }) {
   return (
     <div className="inbox-empty" data-testid="inbox-empty">
       {tab === 'inbox' ? (
@@ -102,12 +104,21 @@ function EmptyState({ tab }: { tab: 'inbox' | 'sent' }) {
             it to copy the item into your own account.
           </p>
         </>
-      ) : (
+      ) : tab === 'sent' ? (
         <>
           <SendIcon size={26} />
           <p className="inbox-empty-title">Nothing sent yet</p>
           <p className="inbox-empty-sub">
             Items you send to other users show up here so you can track whether they were accepted or rejected.
+          </p>
+        </>
+      ) : (
+        <>
+          <RequestIcon size={26} />
+          <p className="inbox-empty-title">No access requests</p>
+          <p className="inbox-empty-sub">
+            Requests you make for project or workspace access show up here so you can track their status or cancel them
+            while they are still pending.
           </p>
         </>
       )}
@@ -323,15 +334,98 @@ function SentRow({
   );
 }
 
+type MyRequestRow = ReturnType<typeof mergeMyRequests>[number];
+
+const REQUEST_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Pending',
+  APPROVED: 'Approved',
+  DENIED: 'Denied',
+  CANCELLED: 'Cancelled',
+};
+
+function RequestStatusChip({ status }: { status: string }) {
+  const key = String(status || '').toLowerCase();
+  return (
+    <span className={`inbox-chip inbox-chip-${key}`} data-testid={`request-status-${key}`}>
+      {REQUEST_STATUS_LABEL[status] ?? status}
+    </span>
+  );
+}
+
+function RequestRow({
+  row,
+  busy,
+  errorText,
+  onCancel,
+}: {
+  row: MyRequestRow;
+  busy: boolean;
+  errorText: string | null;
+  onCancel: (row: MyRequestRow) => void;
+}) {
+  const KindIcon = row.kind === 'project' ? LayersIcon : WorkspaceIcon;
+  return (
+    <li className="inbox-row" data-testid={`request-row-${row.kind}-${row.id}`}>
+      <div className="inbox-row-main">
+        <div className="inbox-row-head">
+          <span className="inbox-type" data-testid={`request-kind-${row.id}`}>
+            <KindIcon size={16} />
+            {row.kind === 'project' ? 'Project' : 'Workspace'}
+          </span>
+          <span className="inbox-time" data-testid={`request-time-${row.id}`}>
+            {timeAgo(row.requestedAt)}
+          </span>
+          <RequestStatusChip status={row.status} />
+        </div>
+        <p className="inbox-row-item" data-testid={`request-title-${row.id}`}>
+          <strong>{row.title}</strong>
+          {row.role ? <span className="inbox-row-by">Requested role: {row.role}</span> : null}
+        </p>
+        {row.reason ? (
+          <p className="inbox-row-note" data-testid={`request-reason-${row.id}`}>
+            {row.reason}
+          </p>
+        ) : null}
+        {errorText ? (
+          <p className="inbox-row-error" role="alert" data-testid={`request-error-${row.id}`}>
+            {errorText}
+          </p>
+        ) : null}
+      </div>
+      {row.cancellable ? (
+        <button
+          type="button"
+          className="ghost-button small inbox-request-cancel"
+          data-testid={`request-cancel-${row.id}`}
+          disabled={busy}
+          onClick={() => onCancel(row)}
+        >
+          Cancel
+        </button>
+      ) : null}
+    </li>
+  );
+}
+
 // ------------------------------------------------------------------ the view
 
 export function InboxView() {
   const router = useRouter();
   const { user, loading: authLoading, logout } = useAuth();
-  const [tab, setTab] = useState<'inbox' | 'sent'>('inbox');
+  const [tab, setTab] = useState<'inbox' | 'sent' | 'requests'>(() => {
+    if (typeof window !== 'undefined') {
+      const requested = new URLSearchParams(window.location.search).get('tab');
+      if (requested === 'requests') return 'requests';
+    }
+    return 'inbox';
+  });
   const [inboxFilter, setInboxFilter] = useState<SendStatus | 'all'>('all');
   const [inbox, setInbox] = useState<Send[] | null>(null);
   const [outbox, setOutbox] = useState<Send[] | null>(null);
+  const [myRequests, setMyRequests] = useState<MyRequestRow[]>([]);
+  const [requestsLoaded, setRequestsLoaded] = useState(false);
+  const [requestBusyId, setRequestBusyId] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState<{ id: string; text: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ sendId: string; text: string } | null>(null);
@@ -364,11 +458,27 @@ export function InboxView() {
     }
   }, []);
 
+  const loadRequests = useCallback(async () => {
+    setLoadErr(null);
+    try {
+      const [p, w] = await Promise.all([
+        accessRequestApi.mine(),
+        docsSharedApi.listWorkspaceRequests({ mine: true }),
+      ]);
+      setMyRequests(mergeMyRequests(p.accessRequests, w.requests));
+      setRequestsLoaded(true);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) setUnauthorized(true);
+      else setLoadErr(err instanceof Error ? err.message : 'Failed to load requests');
+    }
+  }, []);
+
   // Refetch the visible list whenever the tab/filter changes.
   useEffect(() => {
     if (tab === 'inbox') void loadInbox();
-    else void loadOutbox();
-  }, [tab, loadInbox, loadOutbox]);
+    else if (tab === 'sent') void loadOutbox();
+    else void loadRequests();
+  }, [tab, loadInbox, loadOutbox, loadRequests]);
 
   useEffect(() => {
     if (unauthorized) {
@@ -376,6 +486,25 @@ export function InboxView() {
       router.replace('/login');
     }
   }, [unauthorized, logout, router]);
+
+  const cancelRequest = async (row: MyRequestRow) => {
+    if (requestBusyId) return;
+    setRequestBusyId(row.id);
+    setRequestError(null);
+    try {
+      if (row.kind === 'project') await accessRequestApi.cancel(row.projectId!, row.id);
+      else await docsSharedApi.cancelWorkspaceRequest(row.id);
+      await loadRequests();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setUnauthorized(true);
+        return;
+      }
+      setRequestError({ id: row.id, text: err instanceof Error ? err.message : 'Cancel failed' });
+    } finally {
+      setRequestBusyId(null);
+    }
+  };
 
   const startConfirm = (sendId: string, action: 'accept' | 'reject') => {
     setRowError(null);
@@ -423,8 +552,9 @@ export function InboxView() {
   }
   if (!user) return null;
 
-  const sending = tab === 'inbox' ? inbox : outbox;
+  const sending = tab === 'inbox' ? inbox : tab === 'sent' ? outbox : null;
   const empty = sending !== null && sending.length === 0;
+  const requestsEmpty = tab === 'requests' && requestsLoaded && myRequests.length === 0;
 
   return (
     <main className="inbox-main" data-testid="inbox-page">
@@ -461,6 +591,18 @@ export function InboxView() {
           Sent
           {outbox ? <span className="inbox-tab-count">{outbox.length}</span> : null}
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'requests'}
+          className={`inbox-tab${tab === 'requests' ? ' active' : ''}`}
+          data-testid="inbox-tab-requests"
+          onClick={() => setTab('requests')}
+        >
+          <RequestIcon size={14} />
+          Requests
+          {requestsLoaded ? <span className="inbox-tab-count">{myRequests.length}</span> : null}
+        </button>
       </div>
 
       {tab === 'inbox' ? (
@@ -487,14 +629,32 @@ export function InboxView() {
             type="button"
             className="ghost-button small"
             data-testid="inbox-retry"
-            onClick={() => (tab === 'inbox' ? void loadInbox() : void loadOutbox())}
+            onClick={() =>
+              tab === 'inbox' ? void loadInbox() : tab === 'sent' ? void loadOutbox() : void loadRequests()
+            }
           >
             Retry
           </button>
         </div>
       )}
 
-      {empty ? (
+      {tab === 'requests' ? (
+        requestsEmpty ? (
+          <EmptyState tab="requests" />
+        ) : myRequests.length > 0 ? (
+          <ul className="inbox-list" data-testid="requests-list">
+            {myRequests.map((row) => (
+              <RequestRow
+                key={`${row.kind}-${row.id}`}
+                row={row}
+                busy={requestBusyId === row.id}
+                errorText={requestError && requestError.id === row.id ? requestError.text : null}
+                onCancel={cancelRequest}
+              />
+            ))}
+          </ul>
+        ) : null
+      ) : empty ? (
         <EmptyState tab={tab} />
       ) : sending ? (
         <ul className="inbox-list" data-testid={tab === 'inbox' ? 'inbox-list' : 'sent-list'}>
