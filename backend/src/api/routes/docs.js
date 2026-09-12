@@ -50,9 +50,16 @@ const {
   roleAtLeast,
   getWorkspaceRole,
   getProjectAccess,
-  canReadWorkspace,
 } = require('../access');
 const { logAudit } = require('../audit');
+const { notifyUser, notifyUsers, workspaceReviewerIds } = require('../notify');
+const {
+  isGlobalHigh,
+  workspaceAccessFor,
+  serializeWorkspaceAccessRequest,
+  loadWorkspaceAccessRequest,
+  reviewWorkspaceAccessRequest,
+} = require('../workspaceAccess');
 const {
   checkPublicSharingGate,
   checkCountGate,
@@ -95,23 +102,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function isUuid(value) {
   return typeof value === 'string' && UUID_RE.test(value);
-}
-
-// Platform MANAGER/ADMIN users act as workspace admins everywhere.
-function isGlobalHigh(user) {
-  return Boolean(user) && roleAtLeast(user.role, 'MANAGER');
-}
-
-// Effective workspace access for the caller:
-//   { role: 'ADMIN'|'MANAGER'|'EDITOR'|'VIEWER'|null, readable: boolean }
-// readable follows access.js canReadWorkspace (direct/team/org-admin
-// membership, PUBLIC visibility within an org, project grants) or the platform
-// MANAGER/ADMIN bypass.
-async function workspaceAccessFor(user, workspaceId) {
-  if (isGlobalHigh(user)) return { role: 'ADMIN', readable: true };
-  const role = await getWorkspaceRole(user.id, workspaceId);
-  const readable = Boolean(role) || (await canReadWorkspace(user.id, workspaceId));
-  return { role, readable };
 }
 
 async function pageRow(pageId) {
@@ -432,18 +422,6 @@ function blockContentError(type, content) {
     }
     default:
       return `block_type must be one of ${BLOCK_TYPES.join(', ')}`;
-  }
-}
-
-async function notifyUser({ userId, title, body, kind, link }) {
-  try {
-    await query(
-      `INSERT INTO notifications (user_id, title, body, kind, link) VALUES ($1, $2, $3, $4, $5)`,
-      [userId, title, body || null, kind || 'info', link || null]
-    );
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[docs] notification insert failed:', err.message);
   }
 }
 
@@ -2000,40 +1978,6 @@ router.delete('/:pageId/mentions/:mentionId', async (req, res, next) => {
 
 // ================================================= Workspace access requests
 
-// Request: {id,workspaceId,workspaceName,requesterId,requester:{id,name,email},
-// reason,status,requestedAt,reviewedBy:null|{id,name},reviewedAt}
-async function serializeAccessRequest(row) {
-  return {
-    id: row.id,
-    workspaceId: row.workspace_id,
-    workspaceName: row.workspace_name,
-    requesterId: row.user_id,
-    requester: { id: row.user_id, name: row.requester_name, email: row.requester_email },
-    reason: row.reason ?? null,
-    status: row.status,
-    requestedAt: row.requested_at,
-    reviewedBy: row.reviewed_by
-      ? { id: row.reviewed_by, name: row.reviewer_name }
-      : null,
-    reviewedAt: row.reviewed_at ?? null,
-  };
-}
-
-async function loadAccessRequest(id) {
-  const { rows } = await query(
-    `SELECT war.*, w.name AS workspace_name,
-            ru.name AS requester_name, ru.email AS requester_email,
-            rb.name AS reviewer_name
-       FROM workspace_access_requests war
-       JOIN workspaces w ON w.id = war.workspace_id
-       JOIN users ru ON ru.id = war.user_id
-       LEFT JOIN users rb ON rb.id = war.reviewed_by
-      WHERE war.id = $1`,
-    [id]
-  );
-  return rows[0] || null;
-}
-
 // POST /workspace-access-requests {workspaceId, reason?} -> 201 {request}.
 // Any authenticated user; 409 if already a member or a PENDING request exists;
 // 404 if the workspace does not exist.
@@ -2071,8 +2015,16 @@ accessRequestRouter.post('/', async (req, res, next) => {
       detail: { workspaceId },
       ip: req.ip,
     });
-    const row = await loadAccessRequest(created.rows[0].id);
-    res.status(201).json({ request: await serializeAccessRequest(row) });
+    const reviewerIds = await workspaceReviewerIds(workspaceId, req.user.id);
+    await notifyUsers(reviewerIds, {
+      title: 'New workspace access request',
+      body: `${req.user.name || req.user.email} requested access to the workspace.`,
+      kind: 'request',
+      payload: { requestId: created.rows[0].id, workspaceId, type: 'workspace_access_request' },
+      link: '/manage?tab=requests',
+    });
+    const row = await loadWorkspaceAccessRequest(created.rows[0].id);
+    res.status(201).json({ request: await serializeWorkspaceAccessRequest(row) });
   } catch (err) {
     next(err);
   }
@@ -2105,7 +2057,7 @@ accessRequestRouter.get('/', async (req, res, next) => {
         [req.user.id, (workspaceId && isUuid(workspaceId) && workspaceId) || null, status || null]
       );
       const requests = [];
-      for (const r of rows) requests.push(await serializeAccessRequest(r));
+      for (const r of rows) requests.push(await serializeWorkspaceAccessRequest(r));
       return res.json({ requests });
     }
 
@@ -2129,7 +2081,7 @@ accessRequestRouter.get('/', async (req, res, next) => {
       [workspaceId, status || null]
     );
     const requests = [];
-    for (const r of rows) requests.push(await serializeAccessRequest(r));
+    for (const r of rows) requests.push(await serializeWorkspaceAccessRequest(r));
     res.json({ requests });
   } catch (err) {
     next(err);
@@ -2148,7 +2100,7 @@ accessRequestRouter.post('/:id/review', async (req, res, next) => {
       return res.status(400).json({ error: 'approve must be a boolean' });
     }
     if (!isUuid(id)) return res.status(404).json({ error: 'Access request not found' });
-    const request = await loadAccessRequest(id);
+    const request = await loadWorkspaceAccessRequest(id);
     if (!request) return res.status(404).json({ error: 'Access request not found' });
     const access = await workspaceAccessFor(req.user, request.workspace_id);
     if (!roleAtLeast(access.role, 'ADMIN')) {
@@ -2158,50 +2110,12 @@ accessRequestRouter.post('/:id/review', async (req, res, next) => {
       return res.status(409).json({ error: 'This request has already been reviewed' });
     }
 
-    const status = approve ? 'APPROVED' : 'DENIED';
-    await query(
-      `UPDATE workspace_access_requests
-          SET status = $1, reviewed_by = $2, reviewed_at = now()
-        WHERE id = $3`,
-      [status, req.user.id, id]
-    );
-    if (approve) {
-      await query(
-        `INSERT INTO workspace_members (workspace_id, user_id, role, granted_by)
-         VALUES ($1, $2, 'VIEWER', $3)
-         ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-        [request.workspace_id, request.user_id, req.user.id]
-      );
-      await notifyUser({
-        userId: request.user_id,
-        title: 'Workspace access granted',
-        body: `Your request to join "${request.workspace_name}" was approved.`,
-        kind: 'success',
-      });
-      await logAudit({
-        actorId: req.user.id,
-        entityType: 'workspace_access_request',
-        entityId: id,
-        action: 'approve',
-        detail: { workspaceId: request.workspace_id, userId: request.user_id },
-        ip: req.ip,
-      });
-    } else {
-      await notifyUser({
-        userId: request.user_id,
-        title: 'Workspace access denied',
-        body: `Your request to join "${request.workspace_name}" was declined.`,
-        kind: 'info',
-      });
-      await logAudit({
-        actorId: req.user.id,
-        entityType: 'workspace_access_request',
-        entityId: id,
-        action: 'deny',
-        detail: { workspaceId: request.workspace_id, userId: request.user_id },
-        ip: req.ip,
-      });
-    }
+    const { status } = await reviewWorkspaceAccessRequest({
+      request,
+      reviewer: req.user,
+      approve,
+      ip: req.ip,
+    });
     res.json({ ok: true, status });
   } catch (err) {
     next(err);
@@ -2214,7 +2128,7 @@ accessRequestRouter.post('/:id/cancel', async (req, res, next) => {
   try {
     const { id } = req.params;
     if (!isUuid(id)) return res.status(404).json({ error: 'Access request not found' });
-    const request = await loadAccessRequest(id);
+    const request = await loadWorkspaceAccessRequest(id);
     if (!request || request.user_id !== req.user.id) {
       return res.status(404).json({ error: 'Access request not found' });
     }
@@ -2222,6 +2136,14 @@ accessRequestRouter.post('/:id/cancel', async (req, res, next) => {
       return res.status(409).json({ error: 'Only pending requests can be cancelled' });
     }
     await query(`UPDATE workspace_access_requests SET status = 'CANCELLED' WHERE id = $1`, [id]);
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'workspace_access_request',
+      entityId: id,
+      action: 'cancel',
+      detail: { workspaceId: request.workspace_id },
+      ip: req.ip,
+    });
     res.json({ ok: true });
   } catch (err) {
     next(err);
