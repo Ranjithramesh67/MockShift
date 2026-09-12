@@ -9,6 +9,7 @@ import { isCurlCommand, parseCurl } from '@/lib/curl';
 import { Modal } from './Modal';
 import { TabBar, type TabItem } from './TabBar';
 import { KeyValueRows } from './KeyValueRows';
+import { MockRoutePicker } from './mocks/MockRoutePicker';
 import { RestIcon, SoapIcon, GraphqlIcon, KeyIcon, RowsIcon, ListIcon, CodeIcon } from './icons';
 
 const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: typeof RestIcon }> = [
@@ -55,6 +56,10 @@ export function CreateModal({
 }) {
   const ws = useWorkspace();
   const { organizations } = useAuth();
+  const mockProjectId =
+    ws.tree?.collections.find((c) => c.id === (collectionId ?? ws.activeCollectionId))?.project_id ??
+    ws.tree?.projects?.[0]?.id ??
+    '';
   const [name, setName] = useState('');
   const [method, setMethod] = useState('GET');
   const [url, setUrl] = useState('');
@@ -378,6 +383,19 @@ export function CreateModal({
                     />
                   </label>
                 </div>
+
+                {kind === 'request' ? (
+                  <div className="create-mock-route">
+                    <MockRoutePicker
+                      projectId={mockProjectId}
+                      onPick={({ method: pickedMethod, url: pickedUrl }) => {
+                        if (pickedMethod) setMethod(pickedMethod);
+                        onUrlChange(pickedUrl);
+                      }}
+                    />
+                    <span className="hint">Fill the method and URL from a route on this project&apos;s mock server.</span>
+                  </div>
+                ) : null}
 
                 <div className="create-request-tabs" data-testid="create-request-tabs">
                   <TabBar tabs={formTabs} active={activeTab} onChange={onSelectFormTabFromBar} testIdPrefix="create" />
