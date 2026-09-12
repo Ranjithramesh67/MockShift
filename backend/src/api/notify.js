@@ -14,7 +14,8 @@ function dedupeRecipients(userIds, excludeUserId) {
   return out;
 }
 
-async function notifyUser({ userId, title, body, kind, payload, link }) {
+async function notifyUser(opts) {
+  const { userId, title, body, kind, payload, link } = opts || {};
   if (!userId) return;
   try {
     await query(
