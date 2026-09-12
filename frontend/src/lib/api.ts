@@ -486,6 +486,15 @@ export const adminApi = {
     apiFetch(`/api/admin/workspaces/${workspaceId}/members`, { method: 'POST', body: input }),
   revokeWorkspaceMember: (workspaceId: string, userId: string) =>
     apiFetch(`/api/admin/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' }),
+  menus: () => apiFetch<AdminMenusResponse>('/api/admin/menus'),
+  setMenu: (input: {
+    menuKey: MenuKey;
+    scope: 'org' | 'project';
+    organizationId?: string;
+    projectId?: string;
+    enabled: boolean;
+  }) => apiFetch<{ setting: AdminMenuSettingRow }>('/api/admin/menus', { method: 'PUT', body: input }),
+  deleteMenu: (id: string) => apiFetch<{ ok: true }>(`/api/admin/menus/${id}`, { method: 'DELETE' }),
 };
 
 export interface AdminAccessUser {
@@ -515,6 +524,26 @@ export interface AdminAccessWorkspace {
 export interface AdminAccessOverview {
   projects: AdminAccessProject[];
   workspaces: AdminAccessWorkspace[];
+}
+
+export interface AdminMenuSettingRow {
+  id: string;
+  menu_key: MenuKey;
+  scope: 'org' | 'project';
+  enabled: boolean;
+  updated_at: string;
+  organization_id: string | null;
+  organization_name: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  workspace_name: string | null;
+}
+
+export interface AdminMenusResponse {
+  keys: MenuKey[];
+  settings: AdminMenuSettingRow[];
+  organizations: Array<{ id: string; name: string; kind: string }>;
+  projects: Array<{ id: string; name: string; workspace_name: string }>;
 }
 
 // ---------------------------------------------------------------- Manage API
