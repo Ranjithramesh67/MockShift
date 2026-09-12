@@ -24,6 +24,7 @@ import {
   UserIcon,
   KeyIcon,
   SendIcon,
+  SearchIcon,
 } from './icons';
 
 const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string; icon: typeof LayoutIcon }> = [
@@ -135,11 +136,13 @@ function NotificationBell() {
 export function TopBar({
   onOpenCurl,
   onOpenScratchpad,
+  onOpenSearch,
   drawerOpen = false,
   onToggleDrawer,
 }: {
   onOpenCurl: () => void;
   onOpenScratchpad: () => void;
+  onOpenSearch: () => void;
   drawerOpen?: boolean;
   onToggleDrawer?: () => void;
 }) {
@@ -149,7 +152,12 @@ export function TopBar({
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewsOpen, setViewsOpen] = useState(false);
+  const [isMac, setIsMac] = useState(false);
   const viewsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
+  }, []);
 
   const avatar = profileData?.user?.avatar ?? null;
 
@@ -206,6 +214,19 @@ export function TopBar({
         </span>
       </div>
       <div className="top-bar-actions">
+        <button
+          type="button"
+          className="ghost-button"
+          data-testid="global-search-button"
+          aria-label="Search (Ctrl+K)"
+          title="Search"
+          onClick={onOpenSearch}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <SearchIcon size={14} />
+          <span>Search</span>
+          <kbd className="global-search-kbd">{isMac ? 'Cmd K' : 'Ctrl K'}</kbd>
+        </button>
         <div className="views-menu" ref={viewsRef} data-testid="views-menu">
           <button
             type="button"

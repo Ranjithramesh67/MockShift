@@ -19,6 +19,8 @@ import { ResponsePane } from './ResponsePane';
 import { ProjectOverview } from './ProjectOverview';
 import { ToastHost } from './ToastHost';
 import { useCloseRequestTabShortcut } from './useCloseRequestTabShortcut';
+import { useGlobalSearchShortcut } from './useGlobalSearchShortcut';
+import { CommandPalette } from './CommandPalette';
 
 const WorkflowBuilder = dynamic(() => import('./WorkflowBuilder').then((m) => m.WorkflowBuilder));
 const CurlModal = dynamic(() => import('./CurlModal').then((m) => m.CurlModal));
@@ -134,10 +136,12 @@ export function AppShell() {
   const [curlOpen, setCurlOpen] = useState(false);
   const [scratchpadOpen, setScratchpadOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const prevRequestId = useRef<string | null>(null);
   const mockProjectId = ws.overview?.project?.id ?? ws.tree?.projects?.[0]?.id ?? '';
 
   useCloseRequestTabShortcut();
+  useGlobalSearchShortcut(() => setSearchOpen(true));
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
@@ -180,6 +184,7 @@ export function AppShell() {
       <TopBar
         onOpenCurl={() => setCurlOpen(true)}
         onOpenScratchpad={() => setScratchpadOpen(true)}
+        onOpenSearch={() => setSearchOpen(true)}
         drawerOpen={navOpen}
         onToggleDrawer={() => setNavOpen((v) => !v)}
       />
@@ -236,6 +241,7 @@ export function AppShell() {
         />
       )}
       <CurlModal open={curlOpen} onClose={() => setCurlOpen(false)} />
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ToastHost />
     </div>
   );
