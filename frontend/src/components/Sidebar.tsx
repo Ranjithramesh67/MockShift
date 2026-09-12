@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
+import { useMenuAccess } from '@/store/MenuAccessStore';
 import { useAuth } from '@/lib/auth';
 import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { accessRequestApi } from '@/lib/api';
@@ -1054,6 +1055,7 @@ export function Sidebar({
   const { user } = useAuth();
   const { dispatch } = useApp();
   const { view, setView } = useNav();
+  const menu = useMenuAccess();
   const router = useRouter();
   const [rail, setRail] = useState<RailTab>('apis');
   const [collapsed, setCollapsed] = useState(false);
@@ -1182,126 +1184,144 @@ export function Sidebar({
         >
           <CollectionIcon size={17} />
         </button>
-        <button
-          type="button"
-          className={`rail-button ${view === 'workspace' && rail === 'teams' ? 'active' : ''}`}
-          data-testid="rail-teams"
-          title="Teams"
-          aria-label="Teams"
-          onClick={() => {
-            setRail('teams');
-            setCollapsed(false);
-            goWorkspace();
-          }}
-        >
-          <TeamIcon size={17} />
-        </button>
+        {menu.isEnabled('teams') && (
+          <button
+            type="button"
+            className={`rail-button ${view === 'workspace' && rail === 'teams' ? 'active' : ''}`}
+            data-testid="rail-teams"
+            title="Teams"
+            aria-label="Teams"
+            onClick={() => {
+              setRail('teams');
+              setCollapsed(false);
+              goWorkspace();
+            }}
+          >
+            <TeamIcon size={17} />
+          </button>
+        )}
         <div className="rail-sep" />
-        <Link
-          href="/automations"
-          className={`rail-button ${view === 'automations' ? 'active' : ''}`}
-          data-testid="rail-automations"
-          title="Automations"
-          aria-label="Automations"
-          onClick={() => {
-            setView('automations');
-            onRequestClose?.();
-          }}
-        >
-          <BoltIcon size={17} />
-        </Link>
-        <Link
-          href="/history"
-          className={`rail-button ${view === 'history' ? 'active' : ''}`}
-          data-testid="rail-history"
-          title="Run history"
-          aria-label="Run history"
-          onClick={() => {
-            setView('history');
-            onRequestClose?.();
-          }}
-        >
-          <HistoryIcon size={17} />
-        </Link>
-        <Link
-          href="/docs"
-          className={`rail-button ${view === 'docs' ? 'active' : ''}`}
-          data-testid="rail-docs"
-          title="Docs"
-          aria-label="Docs"
-          onClick={() => {
-            setView('docs');
-            onRequestClose?.();
-          }}
-        >
-          <FileIcon size={17} />
-        </Link>
-        <Link
-          href="/contracts"
-          className={`rail-button ${view === 'contracts' ? 'active' : ''}`}
-          data-testid="rail-contracts"
-          title="API contracts"
-          aria-label="API contracts"
-          onClick={() => {
-            setView('contracts');
-            onRequestClose?.();
-          }}
-        >
-          <LayersIcon size={17} />
-        </Link>
-        <Link
-          href="/monitors"
-          className={`rail-button ${view === 'monitors' ? 'active' : ''}`}
-          data-testid="rail-monitors"
-          title="Monitors"
-          aria-label="Monitors"
-          onClick={() => {
-            setView('monitors');
-            onRequestClose?.();
-          }}
-        >
-          <ClockIcon size={17} />
-        </Link>
-        <Link
-          href="/mock-scenarios"
-          className={`rail-button ${view === 'mock-scenarios' ? 'active' : ''}`}
-          data-testid="rail-mock-scenarios"
-          title="Mock scenarios"
-          aria-label="Mock scenarios"
-          onClick={() => {
-            setView('mock-scenarios');
-            onRequestClose?.();
-          }}
-        >
-          <ServerIcon size={17} />
-        </Link>
-        <Link
-          href="/copilot"
-          className={`rail-button ${view === 'copilot' ? 'active' : ''}`}
-          data-testid="rail-copilot"
-          title="AI copilot"
-          aria-label="AI copilot"
-          onClick={() => {
-            setView('copilot');
-            onRequestClose?.();
-          }}
-        >
-          <FormulaIcon size={17} />
-        </Link>
-        <Link
-          href="/collab"
-          className={`rail-button ${view === 'collab' ? 'active' : ''}`}
-          data-testid="rail-collab"
-          title="Collaboration"
-          aria-label="Collaboration"
-          onClick={() => {
-            setView('collab');
-            onRequestClose?.();
-          }}
-        >
-          <UsersIcon size={17} />
-        </Link>
-        {canManage && (
+        {menu.isEnabled('automations') && (
+          <Link
+            href="/automations"
+            className={`rail-button ${view === 'automations' ? 'active' : ''}`}
+            data-testid="rail-automations"
+            title="Automations"
+            aria-label="Automations"
+            onClick={() => {
+              setView('automations');
+              onRequestClose?.();
+            }}
+          >
+            <BoltIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('history') && (
+          <Link
+            href="/history"
+            className={`rail-button ${view === 'history' ? 'active' : ''}`}
+            data-testid="rail-history"
+            title="Run history"
+            aria-label="Run history"
+            onClick={() => {
+              setView('history');
+              onRequestClose?.();
+            }}
+          >
+            <HistoryIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('docs') && (
+          <Link
+            href="/docs"
+            className={`rail-button ${view === 'docs' ? 'active' : ''}`}
+            data-testid="rail-docs"
+            title="Docs"
+            aria-label="Docs"
+            onClick={() => {
+              setView('docs');
+              onRequestClose?.();
+            }}
+          >
+            <FileIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('contracts') && (
+          <Link
+            href="/contracts"
+            className={`rail-button ${view === 'contracts' ? 'active' : ''}`}
+            data-testid="rail-contracts"
+            title="API contracts"
+            aria-label="API contracts"
+            onClick={() => {
+              setView('contracts');
+              onRequestClose?.();
+            }}
+          >
+            <LayersIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('monitors') && (
+          <Link
+            href="/monitors"
+            className={`rail-button ${view === 'monitors' ? 'active' : ''}`}
+            data-testid="rail-monitors"
+            title="Monitors"
+            aria-label="Monitors"
+            onClick={() => {
+              setView('monitors');
+              onRequestClose?.();
+            }}
+          >
+            <ClockIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('mock-scenarios') && (
+          <Link
+            href="/mock-scenarios"
+            className={`rail-button ${view === 'mock-scenarios' ? 'active' : ''}`}
+            data-testid="rail-mock-scenarios"
+            title="Mock scenarios"
+            aria-label="Mock scenarios"
+            onClick={() => {
+              setView('mock-scenarios');
+              onRequestClose?.();
+            }}
+          >
+            <ServerIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('copilot') && (
+          <Link
+            href="/copilot"
+            className={`rail-button ${view === 'copilot' ? 'active' : ''}`}
+            data-testid="rail-copilot"
+            title="AI copilot"
+            aria-label="AI copilot"
+            onClick={() => {
+              setView('copilot');
+              onRequestClose?.();
+            }}
+          >
+            <FormulaIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('collab') && (
+          <Link
+            href="/collab"
+            className={`rail-button ${view === 'collab' ? 'active' : ''}`}
+            data-testid="rail-collab"
+            title="Collaboration"
+            aria-label="Collaboration"
+            onClick={() => {
+              setView('collab');
+              onRequestClose?.();
+            }}
+          >
+            <UsersIcon size={17} />
+          </Link>
+        )}
+        {canManage && menu.isEnabled('manage') && (
           <Link
             href="/manage"
             className={`rail-button ${view === 'manage' ? 'active' : ''}`}

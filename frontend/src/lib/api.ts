@@ -290,6 +290,35 @@ export const authApi = {
   me: () => apiFetch<Session>('/api/auth/me'),
 };
 
+export type MenuKey =
+  | 'teams'
+  | 'automations'
+  | 'history'
+  | 'docs'
+  | 'contracts'
+  | 'monitors'
+  | 'mock-scenarios'
+  | 'copilot'
+  | 'collab'
+  | 'manage';
+
+export interface MenuAccessResponse {
+  menus: Record<MenuKey, boolean>;
+  projectId: string | null;
+  orgId: string | null;
+  keys: MenuKey[];
+}
+
+export const menuApi = {
+  get: (params: { workspaceId?: string | null; projectId?: string | null } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.workspaceId) qs.set('workspaceId', params.workspaceId);
+    if (params.projectId) qs.set('projectId', params.projectId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return apiFetch<MenuAccessResponse>(`/api/menu-access${suffix}`);
+  },
+};
+
 export const workspaceApi = {
   list: () => apiFetch<{ workspaces: Workspace[] }>('/api/workspaces'),
   create: (input: { name: string; visibility?: WorkspaceVisibility; organizationId?: string }) =>
