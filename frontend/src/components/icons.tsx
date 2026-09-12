@@ -450,3 +450,10 @@ export const DotsIcon = (p: IconProps) => (
     <circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none" />
   </svg>
 );
+
+export const SearchIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m21 21-4.3-4.3" />
+  </svg>
+);
