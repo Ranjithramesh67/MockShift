@@ -176,3 +176,49 @@ test('workspace access request can be cancelled by its creator only', async () =
   assert.equal(mine.status, 200);
   assert.equal(mine.json.requests.find((r) => r.id === requestId).status, 'CANCELLED');
 });
+
+test('manage lists and reviews workspace access requests', async () => {
+  const ws = await manager.client.api('POST', '/api/workspaces', { name: 'WS Manage AR' });
+  assert.equal(ws.status, 201);
+  const workspaceId = ws.json.workspace.id;
+
+  const outsider = await signupAndLogin(base, 'ws-manage-outsider@test.io', 'wsmanageout123', 'WS Manage Outsider');
+
+  const created = await outsider.client.api('POST', '/api/docs/workspace-access-requests', {
+    workspaceId,
+    reason: 'need manage review',
+  });
+  assert.equal(created.status, 201);
+  const requestId = created.json.request.id;
+
+  const list = await manager.client.api('GET', '/api/manage/workspace-access-requests');
+  assert.equal(list.status, 200);
+  const found = list.json.requests.find((r) => r.id === requestId);
+  assert.ok(found);
+  assert.equal(found.status, 'PENDING');
+
+  const badReview = await manager.client.api(
+    'POST',
+    `/api/manage/workspace-access-requests/${requestId}/review`,
+    { approve: 'yes' }
+  );
+  assert.equal(badReview.status, 400);
+
+  const review = await manager.client.api(
+    'POST',
+    `/api/manage/workspace-access-requests/${requestId}/review`,
+    { approve: true }
+  );
+  assert.equal(review.status, 200);
+  assert.equal(review.json.status, 'APPROVED');
+
+  const content = await outsider.client.api('GET', `/api/workspaces/${workspaceId}/content`);
+  assert.equal(content.status, 200);
+
+  const reReview = await manager.client.api(
+    'POST',
+    `/api/manage/workspace-access-requests/${requestId}/review`,
+    { approve: true }
+  );
+  assert.equal(reReview.status, 409);
+});
