@@ -10,6 +10,10 @@ const nextConfig = {
         source: '/api/:path*',
         destination: 'http://127.0.0.1:3001/api/:path*',
       },
+      {
+        source: '/mock/:path*',
+        destination: 'http://127.0.0.1:3001/mock/:path*',
+      },
     ];
   },
 };
