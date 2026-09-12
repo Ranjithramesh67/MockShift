@@ -97,28 +97,30 @@ function WorkspaceChips({
           <LockIcon size={12} />
         </button>
       )}
-      <button
-        type="button"
-        className="icon-button danger workspace-chip-delete"
-        title="Delete workspace"
-        aria-label={`Delete workspace ${w.name}`}
-        data-testid={`delete-workspace-${w.name}`}
-        disabled={w.name === 'My Workspace'}
-        onClick={() => {
-          if (w.name === 'My Workspace') return;
-          if (
-            window.confirm(
-              `Delete workspace "${w.name}"? This removes all of its projects, collections and requests.`
-            )
-          ) {
-            ws.deleteWorkspace(w.id).catch((err) =>
-              alert(err instanceof Error ? err.message : 'Failed to delete workspace')
-            );
-          }
-        }}
-      >
-        <TrashIcon size={12} />
-      </button>
+      {w.role && (
+        <button
+          type="button"
+          className="icon-button danger workspace-chip-delete"
+          title="Delete workspace"
+          aria-label={`Delete workspace ${w.name}`}
+          data-testid={`delete-workspace-${w.name}`}
+          disabled={w.name === 'My Workspace'}
+          onClick={() => {
+            if (w.name === 'My Workspace') return;
+            if (
+              window.confirm(
+                `Delete workspace "${w.name}"? This removes all of its projects, collections and requests.`
+              )
+            ) {
+              ws.deleteWorkspace(w.id).catch((err) =>
+                alert(err instanceof Error ? err.message : 'Failed to delete workspace')
+              );
+            }
+          }}
+        >
+          <TrashIcon size={12} />
+        </button>
+      )}
     </div>
   );
 
@@ -1560,7 +1562,14 @@ export function Sidebar({
       </div>
     )}
     {requestingWorkspace && (
-      <div className="modal-overlay" data-testid="workspace-request-modal" onClick={() => setRequestingWorkspace(null)}>
+      <div
+        className="modal-overlay"
+        data-testid="workspace-request-modal"
+        onClick={() => {
+          setRequestingWorkspace(null);
+          setWorkspaceReason('');
+        }}
+      >
         <div className="modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
             <h2>Request access</h2>
@@ -1585,7 +1594,15 @@ export function Sidebar({
             </div>
           </div>
           <div className="modal-actions">
-            <button type="button" className="ghost-button" data-testid="workspace-request-cancel" onClick={() => setRequestingWorkspace(null)}>
+            <button
+              type="button"
+              className="ghost-button"
+              data-testid="workspace-request-cancel"
+              onClick={() => {
+                setRequestingWorkspace(null);
+                setWorkspaceReason('');
+              }}
+            >
               Cancel
             </button>
             <button type="button" className="primary-button" data-testid="workspace-request-confirm" onClick={submitWorkspaceRequest}>
