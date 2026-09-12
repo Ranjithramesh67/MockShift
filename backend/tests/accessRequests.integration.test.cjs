@@ -99,3 +99,80 @@ test('cancel is creator-only and only allowed while pending', async () => {
   );
   assert.equal(cancelReviewed.status, 409);
 });
+
+test('workspace access request notifies reviewers and is reviewable', async () => {
+  const wsManager = await signupAndLogin(base, 'ws-manager@test.io', 'wsmanagerpass123', 'WS Manager');
+  const wsOutsider = await signupAndLogin(base, 'ws-outsider@test.io', 'wsoutsiderpass123', 'WS Outsider');
+
+  const ws = await wsManager.client.api('POST', '/api/workspaces', { name: 'WS AR' });
+  assert.equal(ws.status, 201);
+  const workspaceId = ws.json.workspace.id;
+
+  const created = await wsOutsider.client.api('POST', '/api/docs/workspace-access-requests', {
+    workspaceId,
+    reason: 'need',
+  });
+  assert.equal(created.status, 201);
+  const requestId = created.json.request.id;
+
+  const reviewerNotes = await wsManager.client.api('GET', '/api/notifications');
+  assert.equal(reviewerNotes.status, 200);
+  assert.ok(reviewerNotes.json.notifications.some((n) => /workspace access request/i.test(n.title)));
+
+  const list = await wsManager.client.api(
+    'GET',
+    `/api/docs/workspace-access-requests?workspaceId=${workspaceId}`
+  );
+  assert.equal(list.status, 200);
+  const pending = list.json.requests.find((r) => r.id === requestId);
+  assert.ok(pending);
+  assert.equal(pending.status, 'PENDING');
+
+  const review = await wsManager.client.api(
+    'POST',
+    `/api/docs/workspace-access-requests/${requestId}/review`,
+    { approve: true }
+  );
+  assert.equal(review.status, 200);
+  assert.equal(review.json.status, 'APPROVED');
+
+  const requesterNotes = await wsOutsider.client.api('GET', '/api/notifications');
+  assert.equal(requesterNotes.status, 200);
+  assert.ok(requesterNotes.json.notifications.some((n) => /access granted/i.test(n.title)));
+
+  const content = await wsOutsider.client.api('GET', `/api/workspaces/${workspaceId}/content`);
+  assert.equal(content.status, 200);
+});
+
+test('workspace access request can be cancelled by its creator only', async () => {
+  const wsManager = await signupAndLogin(base, 'ws-mgr-cancel@test.io', 'wsmgrcancel123', 'WS Mgr Cancel');
+  const wsCancel = await signupAndLogin(base, 'ws-cancel@test.io', 'wscancelpass123', 'WS Cancel');
+  const wsOther = await signupAndLogin(base, 'ws-other@test.io', 'wsotherpass123', 'WS Other');
+
+  const ws = await wsManager.client.api('POST', '/api/workspaces', { name: 'WS AR 2' });
+  assert.equal(ws.status, 201);
+  const workspaceId = ws.json.workspace.id;
+
+  const created = await wsCancel.client.api('POST', '/api/docs/workspace-access-requests', {
+    workspaceId,
+    reason: 'let me in',
+  });
+  assert.equal(created.status, 201);
+  const requestId = created.json.request.id;
+
+  const strangerCancel = await wsOther.client.api(
+    'POST',
+    `/api/docs/workspace-access-requests/${requestId}/cancel`
+  );
+  assert.equal(strangerCancel.status, 404);
+
+  const cancel = await wsCancel.client.api(
+    'POST',
+    `/api/docs/workspace-access-requests/${requestId}/cancel`
+  );
+  assert.equal(cancel.status, 200);
+
+  const mine = await wsCancel.client.api('GET', '/api/docs/workspace-access-requests?mine=1');
+  assert.equal(mine.status, 200);
+  assert.equal(mine.json.requests.find((r) => r.id === requestId).status, 'CANCELLED');
+});
