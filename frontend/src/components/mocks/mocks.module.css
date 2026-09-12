@@ -538,3 +538,17 @@
     margin-left: auto;
   }
 }
+
+.linkRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.linkValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 420px;
+}

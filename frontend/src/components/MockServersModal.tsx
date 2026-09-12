@@ -2,8 +2,9 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { mockServerApi, type MockRoute, type MockServer } from '@/lib/api';
-import { parseMockHeaders, mockBaseUrl } from '@/lib/mockServer';
+import { parseMockHeaders, mockBasePath } from '@/lib/mockServer';
 import { Modal } from './Modal';
+import { MockServerLink } from './mocks/MockServerLink';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
 
@@ -75,8 +76,6 @@ export function MockServersModal({
   }, [open, projectId, loadServer]);
 
   if (!open) return null;
-
-  const mockBaseUrlValue = mockBaseUrl(projectId);
 
   const onCreate = async () => {
     setError('');
@@ -259,7 +258,7 @@ export function MockServersModal({
         <section className="modal-section">
           <p className="hint">
             Create a per-project mock API server. Its routes are served at{' '}
-            <code>{mockBaseUrlValue}/…</code> so you can point requests at it instead of a real upstream.
+            <code>{mockBasePath(projectId)}/…</code> so you can point requests at it instead of a real upstream.
           </p>
           <div className="env-create">
             <input
@@ -286,9 +285,7 @@ export function MockServersModal({
                   <span className={`status-dot ${server.enabled ? 'status-ok' : 'status-err'}`} />
                   {server.enabled ? 'Enabled' : 'Disabled'}
                 </span>
-                <code className="mock-base-url" data-testid="mock-base-url">
-                  {mockBaseUrlValue}
-                </code>
+                <MockServerLink projectId={projectId} />
               </div>
               <div className="mock-server-actions">
                 <button
@@ -312,7 +309,7 @@ export function MockServersModal({
               </div>
             </div>
             <p className="hint">
-              Requests to <code>{mockBaseUrlValue}/users/42</code> return the body of the route whose path
+              Requests to <code>{mockBasePath(projectId)}/users/42</code> return the body of the route whose path
               matches (<code>:name</code> segments are captured and echoed via <code>{'{{name}}'}</code>).
               Routes are matched in order; use <code>*</code> as the method to match any method.
             </p>
