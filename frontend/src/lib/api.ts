@@ -1,6 +1,7 @@
 'use client';
 
 import type { Assertion, BodyFormPart } from './types';
+import type { WorkspaceAccessRequest } from './docsApi';
 
 export type ApiType = 'REST' | 'SOAP' | 'GRAPHQL' | 'AUTH';
 export type WorkspaceVisibility = 'PRIVATE' | 'PUBLIC';
@@ -587,13 +588,14 @@ export interface AccessRequestRow {
   user_id: string;
   role: UserRole;
   reason: string | null;
-  status: 'PENDING' | 'APPROVED' | 'DENIED';
+  status: 'PENDING' | 'APPROVED' | 'DENIED' | 'CANCELLED';
   requested_at: string;
   reviewed_by: string | null;
   reviewed_at: string | null;
   email?: string;
   name?: string;
   project_name?: string;
+  workspaceId?: string;
 }
 
 export interface AuditLogEntry {
@@ -675,6 +677,13 @@ export const manageApi = {
   accessRequests: () => apiFetch<{ accessRequests: AccessRequestRow[] }>('/api/manage/access-requests'),
   reviewRequest: (requestId: string, approve: boolean) =>
     apiFetch(`/api/manage/access-requests/${requestId}/review`, { method: 'POST', body: { approve } }),
+  workspaceAccessRequests: () =>
+    apiFetch<{ requests: WorkspaceAccessRequest[] }>('/api/manage/workspace-access-requests'),
+  reviewWorkspaceRequest: (requestId: string, approve: boolean) =>
+    apiFetch<{ ok: boolean; status: string }>(
+      `/api/manage/workspace-access-requests/${requestId}/review`,
+      { method: 'POST', body: { approve } }
+    ),
   auditLogs: (limit = 100) => apiFetch<{ logs: AuditLogEntry[] }>(`/api/manage/audit-logs?limit=${limit}`),
   history: (limit = 100) => apiFetch<{ runs: RunHistoryEntry[] }>(`/api/manage/history?limit=${limit}`),
   assignManager: (projectId: string, userId: string) =>
@@ -691,6 +700,10 @@ export const accessRequestApi = {
       body: { reason, role },
     }),
   mine: () => apiFetch<{ accessRequests: AccessRequestRow[] }>('/api/access-requests/mine'),
+  cancel: (projectId: string, requestId: string) =>
+    apiFetch<{ ok: boolean }>(`/api/projects/${projectId}/access-requests/${requestId}/cancel`, {
+      method: 'POST',
+    }),
   members: (projectId: string) =>
     apiFetch<{ managers: Array<{ id: string; email: string; name: string }>; members: Array<{ id: string; email: string; name: string; role: UserRole }> }>(
       `/api/projects/${projectId}/members`
@@ -779,7 +792,7 @@ export interface Notification {
   id: string;
   title: string;
   body: string | null;
-  kind: 'info' | 'success' | 'error';
+  kind: 'info' | 'success' | 'error' | 'send' | 'request';
   read: boolean;
   payload: Record<string, unknown> | null;
   link: string | null;
