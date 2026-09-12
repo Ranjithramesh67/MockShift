@@ -35,6 +35,7 @@ const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string; icon: ty
 
 function NotificationBell() {
   const { user } = useAuth();
+  const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -108,7 +109,13 @@ function NotificationBell() {
                 className={`bell-item ${n.read ? '' : 'unread'}`}
                 data-testid="notification-item"
                 onClick={() => {
-                  if (!n.read) markRead(n.id);
+                  void (async () => {
+                    if (!n.read) await markRead(n.id);
+                    if (n.link) {
+                      router.push(n.link);
+                      setOpen(false);
+                    }
+                  })();
                 }}
               >
                 <div className="bell-title">
