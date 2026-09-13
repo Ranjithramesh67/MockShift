@@ -767,8 +767,13 @@ navigates by type: docs `/docs?p=<id>`; workspace/project/collection/request
 select in the workspace view (`/`); monitor `/monitors`; contract
 `/contracts`; mockScenario `/mock-scenarios`.
 
-Limit in v1: docs are matched by title only; doc block content is not
+Limitation in v1: docs are matched by title only; doc block content is not
 searched.
+
+Completeness limitation (accepted): each entity type applies `ORDER BY name
+LIMIT` before the per-row access/menu filter. On a large multi-tenant dataset a
+caller's readable matches can therefore be omitted from a capped result set.
+This only reduces completeness; it never exposes data the caller cannot read.
 
 ---
 
