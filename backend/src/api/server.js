@@ -13,6 +13,7 @@ const projectRoutes = require('./routes/projects');
 const workflowRoutes = require('./routes/workflows');
 const automationRoutes = require('./routes/automations').router;
 const notificationRoutes = require('./routes/notifications');
+const eventsRoutes = require('./routes/events');
 const historyRoutes = require('./routes/history');
 const mockServerRoutes = require('./routes/mockServers');
 const exportRoutes = require('./routes/exports');
@@ -105,6 +106,7 @@ function createApp() {
   app.use('/api/automations', requireMenuEnabled('automations'));
   app.use('/api', automationRoutes);
   app.use('/api', notificationRoutes);
+  app.use('/api/events', eventsRoutes);
   app.use('/api/history', requireMenuEnabled('history'), historyRoutes);
   app.use('/api', mockServerRoutes);
   app.use('/api', exportRoutes);
