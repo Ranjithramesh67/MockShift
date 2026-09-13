@@ -679,6 +679,12 @@ POST   /api/notifications/:notificationId/read
 POST   /api/notifications/read-all
 ```
 
+### Events
+
+```
+GET    /api/events?room=<kind>:<uuid>     (text/event-stream)
+```
+
 ### Access requests
 
 ```
@@ -812,3 +818,95 @@ PGPORT=5441 INTEGRATION_PGPORT=5441 INTEGRATION_PGDATABASE=apihub \
 Integration suites recreate the schema, re-apply `db/migrations/*.sql` in sorted
 order and set `portal_settings.restrictions_enforced = false`. Do not point them
 at the shared dev database on 5432.
+
+---
+
+## 24. Realtime collaboration
+
+`GET /api/events` is an authenticated Server-Sent Events stream. Each connection
+subscribes to exactly one room, selected by the `room` query parameter:
+
+```
+GET /api/events?room=<kind>:<uuid>
+```
+
+`<kind>` is one of `user`, `request`, `collection` or `doc`. The backend
+`roomKey(kind, id)` and the frontend `roomFor(kind, id)` both produce the same
+`<kind>:<id>` string. With no `room`, the connection defaults to the caller's
+`user:<id>` room, which carries notifications.
+
+Auth is the normal session cookie (`requireAuth`). The stream is deliberately
+cookie-authenticated over plain HTTP rather than WebSocket: the frontend consumes
+it through the Next `/api` rewrite, and HTTP-only cookie auth does not survive the
+WebSocket upgrade. Room access is checked before any frames are written:
+
+- `user:<id>` is readable only by that same user.
+- `request:<id>` and `collection:<id>` resolve to the owning project and pass
+  `canReadProject`.
+- `doc:<id>` passes `canReadPage` (covering public-in-org pages and share grants).
+
+An unknown kind or a non-UUID id returns `400`, a missing entity returns `404`, and
+an entity the caller cannot read returns `403`.
+
+The transport is an in-process pub/sub hub (`backend/src/api/realtime.js`).
+`subscribe(room, subscriber)` registers a sender, `publish(room, event)` fans a
+JSON payload out to every subscriber of that room, and `viewersFor(room)` returns
+the distinct `{ id, name }` of the users currently connected. The API process also
+hosts the BullMQ workers, so publishers and subscribers share one process. This is
+a v1 single-process assumption: a future split into separate worker processes must
+replace the hub's transport with Redis pub/sub (`realtime.js` keeps a deliberately
+small publish/subscribe interface for that reason).
+
+Frames are `event: message` plus a single `data:` line of JSON, so `data.type`
+identifies the event and `data.at` is an ISO timestamp. Response headers are:
+
+```
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-cache, no-transform
+Connection: keep-alive
+X-Accel-Buffering: no
+```
+
+A `: ping` comment is emitted on an interval to keep idle connections open. The
+default is 25000 ms, overridable with `REALTIME_HEARTBEAT_MS`.
+
+### 24.1 What streams today
+
+- `user:<id>` - `notification` events when `notifyUser` inserts a row, so the
+  top-bar bell updates live.
+- `request:<id>` and `collection:<id>` - `comment:created`, `comment:resolved`,
+  `comment:unresolved` and `comment:deleted`; the room kind follows the comment's
+  `target_type`.
+- `collection:<id>` - `review:created` and `review:decided`.
+- `request:<id>` and `doc:<id>` - `entity:updated` after a save, carrying
+  `entityType`, `entityId` and `by: { id, name }`. Updates without an author id are
+  ignored by clients.
+- Every room also receives `presence` frames of the shape
+  `{ type: 'presence', viewers: [{ id, name }] }`, published on join and on
+  disconnect.
+
+### 24.2 Presence and the concurrent-edit warning
+
+A request or doc view subscribes to its entity room through the `useRoomEvents`
+hook, which tracks `connected` and the current `viewers`. The Collab panel and the
+editor headers render a viewer summary (for example "1 other viewing"), derived
+from the `{ id, name }` list minus the current user.
+
+A lightweight conflict signal guards against silent overwrites. When a remote
+`entity:updated` arrives whose author is not the current user, the request
+configurator and the doc editor set a remote-update flag. If the local editor is
+dirty, a banner appears (`request-conflict-banner` / `doc-conflict-banner`) with a
+Reload action; Reload refetches the saved server version, discarding local edits.
+No banner is shown while the local editor is clean.
+
+### 24.3 v1 limitations
+
+- No character-level co-editing. Realtime v1 signals changes and collisions; it does
+  not merge concurrent edits, so two writers editing one entity are still
+  last-write-wins on save.
+- Presence is ephemeral. It reflects in-process SSE subscribers only and is lost on
+  restart or reconnect.
+- The hub is not durable. Events missed while a client is offline are not replayed;
+  the client refetches on navigation.
+- Single-process only. Running more than one API process would partition rooms until
+  the Redis transport replaces the in-memory hub.
