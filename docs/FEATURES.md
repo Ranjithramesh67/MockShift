@@ -998,9 +998,13 @@ Migration `045_session_epoch.sql` adds `users.session_epoch` (integer, default
 `0`). `createSessionToken(userId, epoch)` in `backend/src/api/authLib.js` stamps
 the current epoch into the signed cookie as `sv`. `requireAuth` in
 `backend/src/api/access.js` rejects the session with `401` when `sv` is present
-and does not equal the user's current `session_epoch`. A reset increments
-`session_epoch` in the same transaction as the password update, so every browser
-session carrying a prior `sv` stops working immediately.
+and does not equal the user's current `session_epoch`. A password reset (and the
+authenticated change-password route in `backend/src/api/routes/profile.js`)
+increments `session_epoch` in the same transaction as the password update, so
+every browser session carrying a prior `sv` stops working immediately; the
+change-password route also re-issues a fresh cookie for the acting session.
+`users.password_changed_at` is stamped on both paths but is audit-only — it is
+never consulted for authorization.
 
 This avoids comparing the Node process clock with the Postgres clock (or relying
 on a shared `iat`/`exp` timeline): the epoch is a monotonic integer stored in the

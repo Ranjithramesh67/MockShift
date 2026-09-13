@@ -93,7 +93,7 @@ router.post('/signup', async (req, res, next) => {
       const role = userCount.rows[0].n === 0 ? 'ADMIN' : 'EDITOR';
       const { rows } = await client.query(
         `INSERT INTO users (email, password_hash, name, role, username)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id, email, name, role, username`,
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, email, name, role, username, session_epoch`,
         [email, await hashPassword(password), displayName, role, usernameValue]
       );
       const userId = rows[0].id;
@@ -107,7 +107,7 @@ router.post('/signup', async (req, res, next) => {
         console.error('[auth] verification email failed:', err.message);
       }
 
-      res.setHeader('Set-Cookie', sessionCookie(createSessionToken(userId)));
+      res.setHeader('Set-Cookie', sessionCookie(createSessionToken(userId, rows[0].session_epoch)));
       res.status(201).json({ user: await userSummary(userId) });
     } catch (err) {
       await client.query('ROLLBACK');
@@ -192,44 +192,47 @@ router.post('/forgot-password', async (req, res, next) => {
       return res.status(400).json({ error: 'A valid email is required' });
     }
     // Always answer the same way, and only send/act within the throttle, so the
-    // endpoint cannot be used to enumerate accounts or spam a mailbox.
-    if (forgotThrottle.allow(address.toLowerCase())) {
+    // endpoint cannot be used to enumerate accounts or spam a mailbox. The DB
+    // work and mail send are detached from the response so their timing cannot
+    // be observed by the caller.
+    const allowed = forgotThrottle.allow(address.toLowerCase());
+    res.json({ ok: true });
+    if (!allowed) return;
+    void (async () => {
       try {
         const { rows } = await query(
           'SELECT id, email FROM users WHERE email = $1 AND is_active = true',
           [address]
         );
-        if (rows[0]) {
-          const client = await require('../db').pool.connect();
-          let raw;
-          try {
-            await client.query('BEGIN');
-            await client.query(
-              `UPDATE auth_tokens SET used_at = now()
-                WHERE user_id = $1 AND kind = 'password_reset' AND used_at IS NULL`,
-              [rows[0].id]
-            );
-            raw = generateToken();
-            await client.query(
-              `INSERT INTO auth_tokens (user_id, kind, token_hash, expires_at)
-               VALUES ($1, 'password_reset', $2, $3)`,
-              [rows[0].id, hashToken(raw), expiryFor('password_reset')]
-            );
-            await client.query('COMMIT');
-          } catch (err) {
-            await client.query('ROLLBACK');
-            throw err;
-          } finally {
-            client.release();
-          }
-          const link = `${email.appUrl()}/reset-password?token=${encodeURIComponent(raw)}`;
-          await email.sendMail({ to: rows[0].email, ...email.passwordResetMessage(link) });
+        if (!rows[0]) return;
+        const client = await require('../db').pool.connect();
+        let raw;
+        try {
+          await client.query('BEGIN');
+          await client.query(
+            `UPDATE auth_tokens SET used_at = now()
+              WHERE user_id = $1 AND kind = 'password_reset' AND used_at IS NULL`,
+            [rows[0].id]
+          );
+          raw = generateToken();
+          await client.query(
+            `INSERT INTO auth_tokens (user_id, kind, token_hash, expires_at)
+             VALUES ($1, 'password_reset', $2, $3)`,
+            [rows[0].id, hashToken(raw), expiryFor('password_reset')]
+          );
+          await client.query('COMMIT');
+        } catch (err) {
+          await client.query('ROLLBACK');
+          throw err;
+        } finally {
+          client.release();
         }
+        const link = `${email.appUrl()}/reset-password?token=${encodeURIComponent(raw)}`;
+        await email.sendMail({ to: rows[0].email, ...email.passwordResetMessage(link) });
       } catch (err) {
         console.error('[auth] forgot-password failed:', err && err.message);
       }
-    }
-    res.json({ ok: true });
+    })();
   } catch (err) {
     next(err);
   }
@@ -250,6 +253,7 @@ router.post('/reset-password', async (req, res, next) => {
     );
     if (!rows[0]) return res.status(400).json({ error: 'This reset link is invalid or has expired' });
 
+    const passwordHash = await hashPassword(new_password);
     const client = await require('../db').pool.connect();
     try {
       await client.query('BEGIN');
@@ -267,7 +271,7 @@ router.post('/reset-password', async (req, res, next) => {
         `UPDATE users
             SET password_hash = $1, password_changed_at = now(), session_epoch = session_epoch + 1
           WHERE id = $2`,
-        [await hashPassword(new_password), claimed.rows[0].user_id]
+        [passwordHash, claimed.rows[0].user_id]
       );
       await client.query(
         `UPDATE auth_tokens SET used_at = now()
