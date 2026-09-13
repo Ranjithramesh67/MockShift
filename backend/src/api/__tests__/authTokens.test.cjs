@@ -44,3 +44,14 @@ test('createThrottle limits calls per key inside the window', () => {
   assert.equal(throttle.allow('b@x', t0 + 2), true);
   assert.equal(throttle.allow('a@x', t0 + 1001), true);
 });
+
+test('createThrottle evicts expired keys so the map stays bounded', () => {
+  const throttle = createThrottle({ windowMs: 1000, max: 1 });
+  assert.equal(throttle.allow('a@x', 0), true);
+  assert.equal(throttle.allow('b@x', 0), true);
+  assert.equal(throttle.size(), 2);
+  // Enough calls at a later time to trigger the periodic sweep; a and b are
+  // outside the window and should be dropped.
+  for (let i = 0; i < 500; i += 1) throttle.allow('c@x', 5000);
+  assert.equal(throttle.size(), 1);
+});
