@@ -104,9 +104,6 @@ test('a password reset invalidates sessions issued before it', async () => {
   await client.api('POST', '/api/auth/forgot-password', { email: 'reset-session@example.com' });
   const token = resetTokenFor('reset-session@example.com');
 
-  // Ensure the reset timestamp is strictly after the session's iat (ms clock).
-  await new Promise((resolve) => setTimeout(resolve, 1100));
-
   const resetter = makeClient(app.base);
   assert.equal(
     (await resetter.api('POST', '/api/auth/reset-password', { token, new_password: 'newpassword2' })).status,
@@ -114,4 +111,11 @@ test('a password reset invalidates sessions issued before it', async () => {
   );
 
   assert.equal((await client.api('GET', '/api/auth/me')).status, 401);
+  assert.equal((await client.api('GET', '/api/auth/session')).json.authenticated, false);
+
+  const freshLogin = makeClient(app.base);
+  assert.equal(
+    (await freshLogin.api('POST', '/api/auth/login', { email: 'reset-session@example.com', password: 'newpassword2' })).status,
+    200
+  );
 });

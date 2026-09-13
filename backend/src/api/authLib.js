@@ -72,8 +72,8 @@ function verifySession(token) {
   }
 }
 
-function createSessionToken(userId) {
-  return signSession({ userId, iat: Date.now(), exp: Date.now() + SESSION_TTL_MS });
+function createSessionToken(userId, sessionEpoch = 0) {
+  return signSession({ userId, sv: sessionEpoch, iat: Date.now(), exp: Date.now() + SESSION_TTL_MS });
 }
 
 function sessionCookie(token) {

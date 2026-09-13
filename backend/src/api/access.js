@@ -17,7 +17,7 @@ function roleAtLeast(role, min) {
 
 async function loadUserById(userId) {
   const { rows } = await query(
-    `SELECT id, email, username, name, role, is_active, email_verified, password_changed_at, created_at
+    `SELECT id, email, username, name, role, is_active, email_verified, password_changed_at, session_epoch, created_at
        FROM users WHERE id = $1`,
     [userId]
   );
@@ -41,13 +41,11 @@ async function requireAuth(req, res, next) {
       const user = await loadUserById(sessionPayload.userId);
       if (!user || !user.is_active) return res.status(401).json({ error: 'Not authenticated' });
       req.user = user;
-      // Sessions issued before the last password change are no longer valid.
-      // Tokens minted before this feature existed have no `iat` and are kept.
-      if (typeof sessionPayload.iat === 'number' && user.password_changed_at) {
-        const changedAt = new Date(user.password_changed_at).getTime();
-        if (sessionPayload.iat < changedAt) {
-          return res.status(401).json({ error: 'Session expired — please sign in again' });
-        }
+      // Sessions are stamped with the user's session generation. A password
+      // reset bumps it, invalidating every session minted before the reset.
+      // Tokens minted before this feature had no `sv` and are grandfathered.
+      if (typeof sessionPayload.sv === 'number' && typeof user.session_epoch === 'number' && sessionPayload.sv !== user.session_epoch) {
+        return res.status(401).json({ error: 'Session expired — please sign in again' });
       }
       return next();
     }
