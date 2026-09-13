@@ -10,6 +10,11 @@
 // Frames: `event: message` + `data: <json>`; `data.type` is the event type and
 // `data.at` an ISO timestamp. A `: ping` comment is sent on an interval to keep
 // intermediaries from closing idle connections.
+//
+// v1 limitation: room access is authorized once at connect time. A stream that
+// outlives a permission change (member removed, role downgraded, share revoked)
+// keeps receiving frames until the client disconnects. Re-checking on an
+// interval is a planned follow-up; see docs/FEATURES.md §24.
 // ============================================================================
 
 const { Router } = require('express');
@@ -67,8 +72,36 @@ async function authorizeRoom(user, room) {
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const room = req.query.room ? String(req.query.room) : realtime.roomKey('user', req.user.id);
+
+    // Register cleanup before the first await so a client that disconnects
+    // during room authorization cannot leak a subscriber or heartbeat timer.
+    let unsubscribe = null;
+    let timer = null;
+    let done = false;
+    const cleanup = () => {
+      if (done) return;
+      done = true;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      if (unsubscribe) {
+        unsubscribe();
+        realtime.publish(room, { type: 'presence', room, viewers: realtime.viewersFor(room) });
+      }
+    };
+    res.on('close', cleanup);
+    req.on('close', cleanup);
+
     const auth = await authorizeRoom(req.user, room);
-    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!auth.ok) {
+      cleanup();
+      return res.status(auth.status).json({ error: auth.error });
+    }
+    if (req.destroyed || res.writableEnded) {
+      cleanup();
+      return;
+    }
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
@@ -79,22 +112,16 @@ router.get('/', requireAuth, async (req, res, next) => {
     res.write(': connected\n\n');
 
     const send = (event) => {
-      if (res.writableEnded) return;
+      if (res.writableEnded || req.destroyed) return;
       res.write(`event: message\ndata: ${JSON.stringify(event)}\n\n`);
     };
 
-    const unsubscribe = realtime.subscribe(room, { userId: req.user.id, name: req.user.name, send });
+    unsubscribe = realtime.subscribe(room, { userId: req.user.id, name: req.user.name, send });
     realtime.publish(room, { type: 'presence', room, viewers: realtime.viewersFor(room) });
 
-    const timer = setInterval(() => {
-      if (!res.writableEnded) res.write(': ping\n\n');
+    timer = setInterval(() => {
+      if (!res.writableEnded && !req.destroyed) res.write(': ping\n\n');
     }, heartbeatMs());
-
-    req.on('close', () => {
-      clearInterval(timer);
-      unsubscribe();
-      realtime.publish(room, { type: 'presence', room, viewers: realtime.viewersFor(room) });
-    });
   } catch (err) {
     next(err);
   }

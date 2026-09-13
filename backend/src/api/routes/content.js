@@ -659,12 +659,14 @@ router.put('/requests/:requestId', async (req, res, next) => {
       `SELECT id, name, method, url, api_type, collection_id, folder_id FROM api_requests WHERE id = $1`,
       [requestId]
     );
-    publish(roomKey('request', requestId), {
-      type: 'entity:updated',
-      entityType: 'request',
-      entityId: requestId,
-      by: { id: req.user.id, name: req.user.name || null },
-    });
+    if (sets.length) {
+      publish(roomKey('request', requestId), {
+        type: 'entity:updated',
+        entityType: 'request',
+        entityId: requestId,
+        by: { id: req.user.id, name: req.user.name || null },
+      });
+    }
     res.json({ request: fresh.rows[0] });
   } catch (err) {
     next(err);

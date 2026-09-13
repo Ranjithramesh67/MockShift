@@ -835,10 +835,10 @@ GET /api/events?room=<kind>:<uuid>
 `<kind>:<id>` string. With no `room`, the connection defaults to the caller's
 `user:<id>` room, which carries notifications.
 
-Auth is the normal session cookie (`requireAuth`). The stream is deliberately
-cookie-authenticated over plain HTTP rather than WebSocket: the frontend consumes
-it through the Next `/api` rewrite, and HTTP-only cookie auth does not survive the
-WebSocket upgrade. Room access is checked before any frames are written:
+Auth is the normal session cookie (`requireAuth`). SSE is used rather than
+WebSocket because the frontend consumes the stream through the Next `/api`
+rewrite, which does not forward the HTTP upgrade handshake to the backend. Room
+access is checked before any frames are written:
 
 - `user:<id>` is readable only by that same user.
 - `request:<id>` and `collection:<id>` resolve to the owning project and pass
@@ -882,8 +882,8 @@ default is 25000 ms, overridable with `REALTIME_HEARTBEAT_MS`.
   `entityType`, `entityId` and `by: { id, name }`. Updates without an author id are
   ignored by clients.
 - Every room also receives `presence` frames of the shape
-  `{ type: 'presence', viewers: [{ id, name }] }`, published on join and on
-  disconnect.
+  `{ type: 'presence', room, at, viewers: [{ id, name }] }`, published on join and
+  on disconnect.
 
 ### 24.2 Presence and the concurrent-edit warning
 
@@ -895,9 +895,9 @@ from the `{ id, name }` list minus the current user.
 A lightweight conflict signal guards against silent overwrites. When a remote
 `entity:updated` arrives whose author is not the current user, the request
 configurator and the doc editor set a remote-update flag. If the local editor is
-dirty, a banner appears (`request-conflict-banner` / `doc-conflict-banner`) with a
-Reload action; Reload refetches the saved server version, discarding local edits.
-No banner is shown while the local editor is clean.
+dirty, a banner appears (`request-conflict-banner` / `doc-conflict-banner` test
+ids) with a Reload action; Reload refetches the saved server version, discarding
+local edits. No banner is shown while the local editor is clean.
 
 ### 24.3 v1 limitations
 
@@ -910,3 +910,6 @@ No banner is shown while the local editor is clean.
   the client refetches on navigation.
 - Single-process only. Running more than one API process would partition rooms until
   the Redis transport replaces the in-memory hub.
+- Room access is authorized once at connect. A stream that outlives a permission
+  change (member removed, role downgraded, share revoked) keeps receiving frames
+  until the client disconnects; re-checking on an interval is a planned follow-up.
