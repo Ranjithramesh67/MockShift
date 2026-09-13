@@ -37,7 +37,7 @@ async function selfServiceOpen() {
 async function userSummary(userId) {
   const loaded = await loadUserById(userId);
   if (!loaded) return null;
-  const { password_changed_at, ...user } = loaded;
+  const { password_changed_at, session_epoch, ...user } = loaded;
   const { rows: orgs } = await query(
     `SELECT o.id, o.name, o.kind, o.domain,
             (SELECT role FROM organization_members om WHERE om.org_id = o.id AND om.user_id = $1) AS role
@@ -141,7 +141,7 @@ router.post('/login', async (req, res, next) => {
     if (!user.is_active) {
       return res.status(403).json({ error: 'This account has been deactivated' });
     }
-    res.setHeader('Set-Cookie', sessionCookie(createSessionToken(user.id)));
+    res.setHeader('Set-Cookie', sessionCookie(createSessionToken(user.id, user.session_epoch)));
     res.json({ user: await userSummary(user.id) });
   } catch (err) {
     next(err);
@@ -194,24 +194,39 @@ router.post('/forgot-password', async (req, res, next) => {
     // Always answer the same way, and only send/act within the throttle, so the
     // endpoint cannot be used to enumerate accounts or spam a mailbox.
     if (forgotThrottle.allow(address.toLowerCase())) {
-      const { rows } = await query(
-        'SELECT id, email FROM users WHERE email = $1 AND is_active = true',
-        [address]
-      );
-      if (rows[0]) {
-        await query(
-          `UPDATE auth_tokens SET used_at = now()
-            WHERE user_id = $1 AND kind = 'password_reset' AND used_at IS NULL`,
-          [rows[0].id]
+      try {
+        const { rows } = await query(
+          'SELECT id, email FROM users WHERE email = $1 AND is_active = true',
+          [address]
         );
-        const raw = generateToken();
-        await query(
-          `INSERT INTO auth_tokens (user_id, kind, token_hash, expires_at)
-           VALUES ($1, 'password_reset', $2, $3)`,
-          [rows[0].id, hashToken(raw), expiryFor('password_reset')]
-        );
-        const link = `${email.appUrl()}/reset-password?token=${encodeURIComponent(raw)}`;
-        await email.sendMail({ to: rows[0].email, ...email.passwordResetMessage(link) });
+        if (rows[0]) {
+          const client = await require('../db').pool.connect();
+          let raw;
+          try {
+            await client.query('BEGIN');
+            await client.query(
+              `UPDATE auth_tokens SET used_at = now()
+                WHERE user_id = $1 AND kind = 'password_reset' AND used_at IS NULL`,
+              [rows[0].id]
+            );
+            raw = generateToken();
+            await client.query(
+              `INSERT INTO auth_tokens (user_id, kind, token_hash, expires_at)
+               VALUES ($1, 'password_reset', $2, $3)`,
+              [rows[0].id, hashToken(raw), expiryFor('password_reset')]
+            );
+            await client.query('COMMIT');
+          } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+          } finally {
+            client.release();
+          }
+          const link = `${email.appUrl()}/reset-password?token=${encodeURIComponent(raw)}`;
+          await email.sendMail({ to: rows[0].email, ...email.passwordResetMessage(link) });
+        }
+      } catch (err) {
+        console.error('[auth] forgot-password failed:', err && err.message);
       }
     }
     res.json({ ok: true });
@@ -233,21 +248,31 @@ router.post('/reset-password', async (req, res, next) => {
           AND used_at IS NULL AND expires_at > now()`,
       [hashToken(token)]
     );
-    const row = rows[0];
-    if (!row) return res.status(400).json({ error: 'This reset link is invalid or has expired' });
+    if (!rows[0]) return res.status(400).json({ error: 'This reset link is invalid or has expired' });
 
     const client = await require('../db').pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(
-        'UPDATE users SET password_hash = $1, password_changed_at = now() WHERE id = $2',
-        [await hashPassword(new_password), row.user_id]
+      const claimed = await client.query(
+        `UPDATE auth_tokens SET used_at = now()
+          WHERE id = $1 AND used_at IS NULL
+          RETURNING user_id`,
+        [rows[0].id]
       );
-      await client.query('UPDATE auth_tokens SET used_at = now() WHERE id = $1', [row.id]);
+      if (!claimed.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'This reset link is invalid or has expired' });
+      }
+      await client.query(
+        `UPDATE users
+            SET password_hash = $1, password_changed_at = now(), session_epoch = session_epoch + 1
+          WHERE id = $2`,
+        [await hashPassword(new_password), claimed.rows[0].user_id]
+      );
       await client.query(
         `UPDATE auth_tokens SET used_at = now()
           WHERE user_id = $1 AND kind = 'password_reset' AND used_at IS NULL`,
-        [row.user_id]
+        [claimed.rows[0].user_id]
       );
       await client.query('COMMIT');
     } catch (err) {
@@ -275,9 +300,19 @@ router.get('/me', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/session', async (req, res) => {
-  const payload = verifySession(readSessionToken(req));
-  res.json({ authenticated: Boolean(payload) });
+router.get('/session', async (req, res, next) => {
+  try {
+    const payload = verifySession(readSessionToken(req));
+    if (!payload) return res.json({ authenticated: false });
+    const user = await loadUserById(payload.userId);
+    if (!user || !user.is_active) return res.json({ authenticated: false });
+    if (typeof payload.sv === 'number' && typeof user.session_epoch === 'number' && payload.sv !== user.session_epoch) {
+      return res.json({ authenticated: false });
+    }
+    res.json({ authenticated: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;
