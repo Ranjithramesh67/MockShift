@@ -187,3 +187,38 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
   only signals conflicts); presence is ephemeral (in-process subscribers, lost on restart);
   the hub is not durable (no replay for missed events); single process only until the Redis
   transport lands.
+
+### Password reset + email verification (details)
+
+- Migration `044_auth_tokens.sql`: `auth_tokens` (`user_id` FK ON DELETE CASCADE, `kind IN
+  ('password_reset','email_verification')`, unique `token_hash` = `sha256(raw)`, `expires_at`,
+  `used_at`, `created_at`; indexes on `(user_id, kind)` and `expires_at`). Also adds
+  `users.email_verified boolean NOT NULL DEFAULT false` and grandfathers existing rows to `true`,
+  plus `users.password_changed_at`.
+- Migration `045_session_epoch.sql`: `users.session_epoch integer NOT NULL DEFAULT 0`, a monotonic
+  generation bumped on reset so old sessions are rejected without comparing clocks.
+- `backend/src/api/authTokens.js`: `generateToken` (32 random bytes, base64url), `hashToken`
+  (`sha256` hex), `expiryFor` (1 h reset / 24 h verification), `ttlFor`, `KINDS`, and
+  `createThrottle({ windowMs, max })` (in-process fixed window with periodic sweep).
+- `backend/src/api/email.js`: `smtpConfig` (`SMTP_URL` or `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/
+  `SMTP_USER`/`SMTP_PASS`), `appUrl`, `fromAddress` (`SMTP_FROM`), `sendMail`, `passwordResetMessage`,
+  `verifyEmailMessage`, `setTransportForTest`/`resetTransportForTest`. Best-effort: unconfigured SMTP
+  logs and returns `{ skipped: true }`; errors are redacted and never fail the request.
+- Routes `backend/src/api/routes/auth.js`: `POST /forgot-password` (always `200`, per-email throttle
+  5/15 min, single-use token, delete-then-insert in a transaction), `POST /reset-password` (atomic
+  `used_at` claim; updates `password_hash`, `password_changed_at`, `session_epoch = session_epoch + 1`
+  in one transaction), `POST /verify-email` (atomic claim + `email_verified = true`), and
+  `POST /resend-verification` (`requireAuth`; no-op when already verified).
+- Session invalidation: `authLib.createSessionToken(userId, epoch)` stamps `sv`; `access.js`
+  `requireAuth` rejects a cookie whose numeric `sv` differs from `users.session_epoch` (`401`).
+  Tokens minted before the feature (no `sv`) and API bearer tokens are grandfathered.
+- Frontend: `src/lib/authLinks.js` (`tokenFromSearch`, `passwordProblem`); pages
+  `app/forgot-password/page.tsx`, `app/reset-password/page.tsx`, `app/verify-email/page.tsx`; login
+  "Forgot password?" link; `AppShell` unverified banner (`data-testid="verify-banner"`) with resend.
+- Tests: backend unit `src/api/__tests__/authTokens.test.cjs` and `src/api/__tests__/email.test.cjs`;
+  backend integration `tests/authEmail.integration.test.cjs` and `tests/authReset.integration.test.cjs`.
+  Run a suite against the isolated DB:
+  `PGPORT=5441 INTEGRATION_PGPORT=5441 INTEGRATION_PGDATABASE=apihub ALLOW_SELF_SIGNUP=1 node --test tests/authReset.integration.test.cjs`
+- v1 limitations: the forgot throttle is in-process (not shared across API processes); expired
+  `auth_tokens` rows are not garbage-collected automatically; API bearer tokens and pre-feature
+  sessions survive a password reset; SMTP is best-effort with no bounce/retry queue.
