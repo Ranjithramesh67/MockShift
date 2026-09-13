@@ -204,10 +204,11 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
   `SMTP_USER`/`SMTP_PASS`), `appUrl`, `fromAddress` (`SMTP_FROM`), `sendMail`, `passwordResetMessage`,
   `verifyEmailMessage`, `setTransportForTest`/`resetTransportForTest`. Best-effort: unconfigured SMTP
   logs and returns `{ skipped: true }`; errors are redacted and never fail the request.
-- Routes `backend/src/api/routes/auth.js`: `POST /forgot-password` (always `200`, per-email throttle
-  5/15 min, single-use token, delete-then-insert in a transaction), `POST /reset-password` (atomic
-  `used_at` claim; updates `password_hash`, `password_changed_at`, `session_epoch = session_epoch + 1`
-  in one transaction), `POST /verify-email` (atomic claim + `email_verified = true`), and
+- Routes `backend/src/api/routes/auth.js`: `POST /forgot-password` (always `200` for a well-formed
+  email, per-email throttle 5/15 min, marks outstanding reset tokens used and inserts a new one in a
+  transaction), `POST /reset-password` (atomic `used_at` claim; updates `password_hash`,
+  `password_changed_at`, `session_epoch = session_epoch + 1` in one transaction),
+  `POST /verify-email` (atomic claim + `email_verified = true`), and
   `POST /resend-verification` (`requireAuth`; no-op when already verified).
 - Session invalidation: `authLib.createSessionToken(userId, epoch)` stamps `sv`; `access.js`
   `requireAuth` rejects a cookie whose numeric `sv` differs from `users.session_epoch` (`401`).
