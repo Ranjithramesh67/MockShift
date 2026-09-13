@@ -164,3 +164,31 @@ test('room authorization rejects other users and unknown rooms', async () => {
   });
   assert.equal(bad.status, 400);
 });
+
+test('comment resolve and review decision publish to the entity room', async () => {
+  const stream = await openSse(userA.cookie, `/api/events?room=collection:${collectionId}`);
+  await nextEvent(stream.queue, (e) => e.type === 'presence');
+
+  const c = await userA.client.api('POST', '/api/comments', {
+    targetType: 'collection',
+    targetId: collectionId,
+    body: 'to resolve',
+  });
+  await nextEvent(stream.queue, (e) => e.type === 'comment:created');
+  const resolved = await userA.client.api('POST', `/api/comments/${c.json.comment.id}/resolve`);
+  assert.equal(resolved.status, 200);
+  const resolvedEvent = await nextEvent(stream.queue, (e) => e.type === 'comment:resolved');
+  assert.equal(resolvedEvent.commentId, c.json.comment.id);
+
+  const review = await userA.client.api('POST', '/api/reviews', { collectionId, comment: 'review please' });
+  assert.equal(review.status, 201);
+  await nextEvent(stream.queue, (e) => e.type === 'review:created');
+  const decision = await userA.client.api('POST', `/api/reviews/${review.json.review.id}/decision`, {
+    decision: 'approved',
+    comment: 'lgtm',
+  });
+  assert.equal(decision.status, 200);
+  const decided = await nextEvent(stream.queue, (e) => e.type === 'review:decided');
+  assert.equal(decided.status, 'approved');
+  stream.controller.abort();
+});

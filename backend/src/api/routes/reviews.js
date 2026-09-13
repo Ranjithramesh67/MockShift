@@ -27,6 +27,7 @@ const { query } = require('../db');
 const { requireAuth, getProjectAccess, roleAtLeast } = require('../access');
 const { logAudit } = require('../audit');
 const { notifyUser } = require('../notify');
+const { publish, roomKey } = require('../realtime');
 
 const router = Router();
 router.use(requireAuth);
@@ -202,6 +203,8 @@ router.post('/reviews', async (req, res, next) => {
       ip: req.ip,
     });
 
+    publish(roomKey('collection', collectionId), { type: 'review:created', reviewId: row.id });
+
     res.status(201).json({ review: serializeReview(row), status: row.status });
   } catch (err) {
     next(err);
@@ -265,6 +268,8 @@ router.post('/reviews/:reviewId/decision', async (req, res, next) => {
       detail: { reviewId: row.id, decision },
       ip: req.ip,
     });
+
+    publish(roomKey('collection', row.collection_id), { type: 'review:decided', reviewId: row.id, status: row.status });
 
     res.json({ review: serializeReview(row), status: row.status });
   } catch (err) {
