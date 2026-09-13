@@ -146,13 +146,26 @@ async function withUserTransaction(userId, fn) {
   });
 }
 
-// Optional session: returns the authenticated active user or null.
+// Optional session: returns the authenticated active user or null. Mirrors the
+// epoch guard in access.requireAuth so a reset/change-revoked cookie is not
+// accepted here either.
 async function sessionUser(req) {
   const payload = authLib.verifySession(authLib.readSessionToken(req));
   if (!payload) return null;
-  const { rows } = await query('SELECT id, email, name FROM users WHERE id = $1', [payload.userId]);
+  const { rows } = await query(
+    'SELECT id, email, name, is_active, session_epoch FROM users WHERE id = $1',
+    [payload.userId]
+  );
   const user = rows[0];
-  return user ? user : null;
+  if (!user || !user.is_active) return null;
+  if (
+    typeof payload.sv === 'number' &&
+    typeof user.session_epoch === 'number' &&
+    payload.sv !== user.session_epoch
+  ) {
+    return null;
+  }
+  return { id: user.id, email: user.email, name: user.name };
 }
 
 // Next invoice number for the current calendar year, e.g. INV-2026-0007.
