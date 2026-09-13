@@ -25,7 +25,10 @@ export function useRoomEvents(
     }
     const source = new EventSource(eventsUrl(room));
     source.onopen = () => setConnected(true);
-    source.onerror = () => setConnected(false);
+    source.onerror = () => {
+      setConnected(false);
+      setViewers([]);
+    };
     source.onmessage = (message) => {
       const event = parseSseFrame(message.data);
       if (!event) return;
