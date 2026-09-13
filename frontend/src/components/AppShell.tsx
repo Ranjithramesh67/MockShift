@@ -9,6 +9,7 @@ import { useNav } from '@/store/NavStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useMenuAccess } from '@/store/MenuAccessStore';
 import type { MenuKey } from '@/lib/api';
+import { authApi } from '@/lib/api';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
@@ -189,6 +190,25 @@ export function AppShell() {
         drawerOpen={navOpen}
         onToggleDrawer={() => setNavOpen((v) => !v)}
       />
+      {user && user.email_verified === false && (
+        <div className="verify-banner" data-testid="verify-banner">
+          <span>Please verify your email address.</span>
+          <button
+            type="button"
+            className="ghost-button small"
+            data-testid="verify-resend"
+            onClick={async () => {
+              try {
+                await authApi.resendVerification();
+              } catch {
+                /* best-effort; the banner persists until verified */
+              }
+            }}
+          >
+            Resend email
+          </button>
+        </div>
+      )}
       <div className="app-body">
         <Sidebar panelHidden={view !== 'workspace'} onRequestClose={() => setNavOpen(false)} />
         <main className="main-area">
