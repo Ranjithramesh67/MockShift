@@ -228,9 +228,15 @@ router.post('/comments', async (req, res, next) => {
 async function setResolved(req, res, next, resolved) {
   try {
     const { commentId } = req.params;
-    if (!isUuid(commentId)) return res.status(404).json({ error: 'Comment not found' });
+    if (!isUuid(commentId)) {
+      res.status(404).json({ error: 'Comment not found' });
+      return null;
+    }
     const comment = await commentRow(commentId);
-    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    if (!comment) {
+      res.status(404).json({ error: 'Comment not found' });
+      return null;
+    }
 
     let root = comment;
     if (comment.parent_id) {
@@ -239,10 +245,14 @@ async function setResolved(req, res, next, resolved) {
     }
 
     const target = await resolveTarget(root.target_type, root.target_id);
-    if (!target) return res.status(404).json({ error: 'Comment target not found' });
+    if (!target) {
+      res.status(404).json({ error: 'Comment target not found' });
+      return null;
+    }
     const isAuthor = root.author_id === req.user.id;
     if (!isAuthor && !(await canWrite(req.user.id, target.projectId))) {
-      return res.status(403).json({ error: 'Only the author or an editor can resolve this thread' });
+      res.status(403).json({ error: 'Only the author or an editor can resolve this thread' });
+      return null;
     }
 
     const updated = await query(
@@ -275,11 +285,11 @@ async function setResolved(req, res, next, resolved) {
 
 router.post('/comments/:commentId/resolve', async (req, res, next) => {
   const row = await setResolved(req, res, next, true);
-  if (row) publish(roomKey(row.target_type, row.target_id), { type: 'comment:resolved', commentId: row.id });
+  if (row && row.id) publish(roomKey(row.target_type, row.target_id), { type: 'comment:resolved', commentId: row.id });
 });
 router.post('/comments/:commentId/unresolve', async (req, res, next) => {
   const row = await setResolved(req, res, next, false);
-  if (row) publish(roomKey(row.target_type, row.target_id), { type: 'comment:unresolved', commentId: row.id });
+  if (row && row.id) publish(roomKey(row.target_type, row.target_id), { type: 'comment:unresolved', commentId: row.id });
 });
 
 // DELETE /api/comments/:commentId — author or editor+.
