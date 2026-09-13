@@ -152,9 +152,10 @@ router.post('/verify-email', async (req, res, next) => {
     const { token } = req.body || {};
     if (!token) return res.status(400).json({ error: 'token is required' });
     const { rows } = await query(
-      `SELECT id, user_id FROM auth_tokens
+      `UPDATE auth_tokens SET used_at = now()
         WHERE token_hash = $1 AND kind = 'email_verification'
-          AND used_at IS NULL AND expires_at > now()`,
+          AND used_at IS NULL AND expires_at > now()
+        RETURNING id, user_id`,
       [hashToken(token)]
     );
     const row = rows[0];
@@ -162,7 +163,6 @@ router.post('/verify-email', async (req, res, next) => {
       return res.status(400).json({ error: 'This verification link is invalid or has expired' });
     }
     await query('UPDATE users SET email_verified = true WHERE id = $1', [row.user_id]);
-    await query('UPDATE auth_tokens SET used_at = now() WHERE id = $1', [row.id]);
     res.json({ ok: true });
   } catch (err) {
     next(err);
