@@ -7,7 +7,12 @@ function tokenFromSearch(search) {
     const idx = part.indexOf('=');
     if (idx <= 0) continue;
     if (part.slice(0, idx) === 'token') {
-      const value = decodeURIComponent(part.slice(idx + 1));
+      let value;
+      try {
+        value = decodeURIComponent(part.slice(idx + 1));
+      } catch {
+        return null;
+      }
       return value || null;
     }
   }

@@ -8,6 +8,7 @@ test('tokenFromSearch reads a token, with or without a leading ?', () => {
   assert.equal(tokenFromSearch('?token=abc_123-XYZ'), 'abc_123-XYZ');
   assert.equal(tokenFromSearch('foo=1&token=abc_123-XYZ'), 'abc_123-XYZ');
   assert.equal(tokenFromSearch('?foo=1'), null);
+  assert.equal(tokenFromSearch('?token=%'), null);
   assert.equal(tokenFromSearch(''), null);
 });
 
