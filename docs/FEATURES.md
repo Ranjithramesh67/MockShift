@@ -934,14 +934,14 @@ POST   /api/auth/forgot-password
 POST   /api/auth/reset-password
 ```
 
-`forgot-password` takes `{ email }` and always returns `200 { ok: true }`,
-whether or not the address belongs to an active account, so it cannot be used
-to enumerate users. A fixed-window, in-process throttle accepts at most 5
-requests per email address per 15 minutes; once the window is full the request
-is still `200`, but no token is minted and no mail is sent. When the address
-matches an active user, any outstanding `password_reset` token is marked used
-and a new one is emailed. Mail is best-effort: delivery failure is logged and
-never changes the response.
+`forgot-password` takes `{ email }` and always returns `200 { ok: true }` for
+any well-formed email address, whether or not it belongs to an active account,
+so it cannot be used to enumerate users. A fixed-window, in-process throttle
+accepts at most 5 requests per email address per 15 minutes; once the window is
+full the request is still `200`, but no token is minted and no mail is sent.
+When the address matches an active user, any outstanding `password_reset` token
+is marked used and a new one is emailed. Mail is best-effort: delivery failure is
+logged and never changes the response.
 
 `reset-password` takes `{ token, new_password }` (minimum 8 characters). The raw
 token exists only in the emailed link; the backend stores `sha256(raw)` and
@@ -1000,7 +1000,7 @@ the current epoch into the signed cookie as `sv`. `requireAuth` in
 `backend/src/api/access.js` rejects the session with `401` when `sv` is present
 and does not equal the user's current `session_epoch`. A reset increments
 `session_epoch` in the same transaction as the password update, so every browser
-session minted before the reset stops working immediately.
+session carrying a prior `sv` stops working immediately.
 
 This avoids comparing the Node process clock with the Postgres clock (or relying
 on a shared `iat`/`exp` timeline): the epoch is a monotonic integer stored in the
