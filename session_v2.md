@@ -103,10 +103,12 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
 ### Global search + command palette (details)
 
 - Migration `043_search_indexes.sql`: `CREATE EXTENSION IF NOT EXISTS pg_trgm` plus GIN
-  `gin_trgm_ops` indexes on the searched name/title/url columns (`workspaces.name`,
+  `gin_trgm_ops` indexes on the name/title/url columns (`workspaces.name`,
   `projects.name`, `collections.name`, `folders.name`, `api_requests.name`/`url`,
   `doc_pages.title`, `contract_specs.name`, `monitors.name`, `mock_scenarios.name`,
-  `workflow_chains.name`), so the `ILIKE '%q%'` scans stay index-assisted.
+  `workflow_chains.name`). These columns are indexed to keep `ILIKE '%q%'` scans
+  index-assisted; note that `GET /api/search` does not query `workflow_chains`, so that
+  index is not exercised by the endpoint.
 - `backend/src/api/search.js` (pure helpers): `escapeLike`, `normalizeQuery` (trims, requires
   a non-empty `q`, defaults `limit` to 20, caps at 50), `rankResult` (exact < prefix <
   substring position), `menuKeyForType`, `flattenGroups` (flattens grouped rows and sorts by
@@ -131,3 +133,7 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
 - Tests: backend unit `src/api/__tests__/search.test.cjs`, backend integration
   `backend/tests/search.integration.test.cjs`, frontend unit `src/lib/__tests__/searchPalette.test.cjs`.
 - v1 limitation: docs are searched by title only; doc block content is not searched.
+- v1 completeness limitation (accepted): each entity type applies `ORDER BY name LIMIT`
+  before the per-row access/menu filter. On a large multi-tenant dataset, a caller's
+  readable matches can therefore be omitted from a capped result set. This is strictly a
+  completeness limitation - it never exposes data the caller cannot read.
