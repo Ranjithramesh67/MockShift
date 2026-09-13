@@ -3,6 +3,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { accessRequestApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { roomFor, viewerSummary } from '@/lib/realtime';
+import { useRoomEvents } from '@/components/useRoomEvents';
 import {
   collabApi,
   type CollabComment,
@@ -161,6 +164,11 @@ function CommentsSection({ targetType, targetId }: { targetType: CollabTargetTyp
     void load();
   }, [load]);
 
+  const { user } = useAuth();
+  const { viewers } = useRoomEvents(roomFor(targetType, targetId), (event) => {
+    if (String(event.type || '').startsWith('comment:')) void load();
+  });
+
   const submitRoot = async () => {
     const body = draft.trim();
     if (!body || busy) return;
@@ -227,6 +235,9 @@ function CommentsSection({ targetType, targetId }: { targetType: CollabTargetTyp
     <section className={styles.section}>
       <div className={styles.sectionHead}>
         <span className={styles.sectionTitle}>Comments{count ? ` (${count})` : ''}</span>
+        {viewerSummary(viewers, user?.id).label && (
+          <span className="presence" data-testid="presence-count">{viewerSummary(viewers, user?.id).label}</span>
+        )}
         {loading && <span className={styles.subtle}>Loading…</span>}
       </div>
       {error && <div className={styles.error}>{error}</div>}
@@ -321,6 +332,10 @@ function ReviewSection({ collectionId, projectId }: { collectionId: string; proj
   useEffect(() => {
     void load();
   }, [load]);
+
+  useRoomEvents(roomFor('collection', collectionId), (event) => {
+    if (String(event.type || '').startsWith('review:')) void load();
+  });
 
   useEffect(() => {
     if (!projectId) {
