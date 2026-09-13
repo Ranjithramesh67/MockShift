@@ -67,6 +67,7 @@ const {
   resolveLimits,
   countPoolUsage,
 } = require('../entitlements');
+const { publish, roomKey } = require('../realtime');
 
 const router = Router();
 
@@ -1715,6 +1716,12 @@ router.put('/:pageId', async (req, res, next) => {
       params
     );
     const summary = await serializePageSummary(updated.rows[0]);
+    publish(roomKey('doc', req.params.pageId), {
+      type: 'entity:updated',
+      entityType: 'doc',
+      entityId: req.params.pageId,
+      by: { id: req.user.id, name: req.user.name || null },
+    });
     res.json({ page: { ...summary, canEdit: true } });
   } catch (err) {
     next(err);
@@ -1861,6 +1868,12 @@ router.put('/:pageId/blocks', async (req, res, next) => {
         WHERE page_id = $1 ORDER BY position`,
       [pageId]
     );
+    publish(roomKey('doc', req.params.pageId), {
+      type: 'entity:updated',
+      entityType: 'doc',
+      entityId: req.params.pageId,
+      by: { id: req.user.id, name: req.user.name || null },
+    });
     res.json({ blocks: rows.map((b) => ({ id: b.id, position: b.position, type: b.block_type, content: b.content })) });
   } catch (err) {
     if (client) {
