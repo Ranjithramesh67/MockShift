@@ -100,6 +100,7 @@ export interface User {
   role: UserRole;
   is_active: boolean;
   created_at?: string;
+  email_verified?: boolean;
 }
 
 export interface Organization {
@@ -289,6 +290,19 @@ export const authApi = {
     apiFetch<{ user: Session }>('/api/auth/login', { method: 'POST', body: input }),
   logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
   me: () => apiFetch<Session>('/api/auth/me'),
+  forgotPassword: (email: string) =>
+    apiFetch<{ ok: true }>('/api/auth/forgot-password', { method: 'POST', body: { email } }),
+  resetPassword: (token: string, new_password: string) =>
+    apiFetch<{ ok: true }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: { token, new_password },
+    }),
+  verifyEmail: (token: string) =>
+    apiFetch<{ ok: true }>('/api/auth/verify-email', { method: 'POST', body: { token } }),
+  resendVerification: () =>
+    apiFetch<{ ok: true; alreadyVerified?: boolean }>('/api/auth/resend-verification', {
+      method: 'POST',
+    }),
 };
 
 export type MenuKey =
