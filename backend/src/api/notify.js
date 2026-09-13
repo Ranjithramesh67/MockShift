@@ -1,6 +1,7 @@
 'use strict';
 
 const { query } = require('./db');
+const { publish, roomKey } = require('./realtime');
 
 // De-duplicate a recipient id list, dropping the actor and any falsy ids.
 function dedupeRecipients(userIds, excludeUserId) {
@@ -16,16 +17,21 @@ function dedupeRecipients(userIds, excludeUserId) {
 
 async function notifyUser(opts) {
   const { userId, title, body, kind, payload, link } = opts || {};
-  if (!userId) return;
+  if (!userId) return null;
   try {
-    await query(
+    const { rows } = await query(
       `INSERT INTO notifications (user_id, title, body, kind, payload, link)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, user_id, title, body, kind, read, payload, link, created_at`,
       [userId, title, body || null, kind || 'info', JSON.stringify(payload || {}), link || null]
     );
+    const notification = rows[0];
+    publish(roomKey('user', userId), { type: 'notification', notification });
+    return notification;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[notify] insert failed:', err.message);
+    return null;
   }
 }
 

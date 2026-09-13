@@ -26,6 +26,7 @@ const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth, getProjectAccess, roleAtLeast } = require('../access');
 const { logAudit } = require('../audit');
+const { notifyUser } = require('../notify');
 
 const router = Router();
 router.use(requireAuth);
@@ -59,20 +60,6 @@ async function projectAccess(userId, projectId) {
 async function canWrite(userId, projectId) {
   const access = await projectAccess(userId, projectId);
   return Boolean(access && roleAtLeast(access.level, 'EDITOR'));
-}
-
-async function notifyUser({ userId, title, body, kind, link }) {
-  if (!userId) return;
-  try {
-    await query(
-      `INSERT INTO notifications (user_id, title, body, kind, link, payload)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId, title, body || null, kind || 'info', link || null, JSON.stringify({ source: 'review' })]
-    );
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[reviews] notification insert failed:', err.message);
-  }
 }
 
 const REVIEW_ROW_SQL = `
