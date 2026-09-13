@@ -72,10 +72,10 @@ function NotificationBell() {
 
   useRoomEvents(roomFor('user', user?.id), (event) => {
     const notification = (event as { notification?: Notification }).notification;
-    if (String(event.type || '') === 'notification' && notification) {
-      setNotifications((prev) => [notification, ...prev].slice(0, 50));
-      setUnread((prev) => (notification.read ? prev : prev + 1));
-    }
+    if (String(event.type || '') !== 'notification' || !notification) return;
+    if (notifications.some((n) => n.id === notification.id)) return;
+    setNotifications((prev) => [notification, ...prev].slice(0, 50));
+    if (!notification.read) setUnread((prev) => prev + 1);
   });
 
   const markRead = async (id: string) => {
