@@ -14,12 +14,13 @@ const {
 const { requireAuth, loadUserById } = require('../access');
 const { allocateUsername } = require('../username');
 const { provisionNewAccount } = require('../accountProvision');
-const { generateToken, hashToken, expiryFor } = require('../authTokens');
+const { generateToken, hashToken, expiryFor, createThrottle } = require('../authTokens');
 const email = require('../email');
 
 const router = Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const forgotThrottle = createThrottle({ windowMs: 15 * 60 * 1000, max: 5 });
 
 async function selfServiceOpen() {
   // Self-service signup is closed by default: accounts are created through the
@@ -178,6 +179,83 @@ router.post('/resend-verification', requireAuth, async (req, res, next) => {
       [req.user.id]
     );
     await issueEmailVerification(req.user.id, req.user.email);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    const address = String((req.body || {}).email || '').trim();
+    if (!EMAIL_RE.test(address)) {
+      return res.status(400).json({ error: 'A valid email is required' });
+    }
+    // Always answer the same way, and only send/act within the throttle, so the
+    // endpoint cannot be used to enumerate accounts or spam a mailbox.
+    if (forgotThrottle.allow(address.toLowerCase())) {
+      const { rows } = await query(
+        'SELECT id, email FROM users WHERE email = $1 AND is_active = true',
+        [address]
+      );
+      if (rows[0]) {
+        await query(
+          `UPDATE auth_tokens SET used_at = now()
+            WHERE user_id = $1 AND kind = 'password_reset' AND used_at IS NULL`,
+          [rows[0].id]
+        );
+        const raw = generateToken();
+        await query(
+          `INSERT INTO auth_tokens (user_id, kind, token_hash, expires_at)
+           VALUES ($1, 'password_reset', $2, $3)`,
+          [rows[0].id, hashToken(raw), expiryFor('password_reset')]
+        );
+        const link = `${email.appUrl()}/reset-password?token=${encodeURIComponent(raw)}`;
+        await email.sendMail({ to: rows[0].email, ...email.passwordResetMessage(link) });
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    const { token, new_password } = req.body || {};
+    if (!token) return res.status(400).json({ error: 'token is required' });
+    if (!new_password || String(new_password).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const { rows } = await query(
+      `SELECT id, user_id FROM auth_tokens
+        WHERE token_hash = $1 AND kind = 'password_reset'
+          AND used_at IS NULL AND expires_at > now()`,
+      [hashToken(token)]
+    );
+    const row = rows[0];
+    if (!row) return res.status(400).json({ error: 'This reset link is invalid or has expired' });
+
+    const client = await require('../db').pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'UPDATE users SET password_hash = $1, password_changed_at = now() WHERE id = $2',
+        [await hashPassword(new_password), row.user_id]
+      );
+      await client.query('UPDATE auth_tokens SET used_at = now() WHERE id = $1', [row.id]);
+      await client.query(
+        `UPDATE auth_tokens SET used_at = now()
+          WHERE user_id = $1 AND kind = 'password_reset' AND used_at IS NULL`,
+        [row.user_id]
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
     res.json({ ok: true });
   } catch (err) {
     next(err);
