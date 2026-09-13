@@ -192,3 +192,27 @@ test('comment resolve and review decision publish to the entity room', async () 
   assert.equal(decided.status, 'approved');
   stream.controller.abort();
 });
+
+test('saving a request publishes entity:updated to its room', async () => {
+  const created = await userA.client.api('POST', '/api/requests', {
+    collectionId,
+    name: 'Live request',
+    method: 'GET',
+    url: 'https://example.com/live',
+  });
+  assert.equal(created.status, 201);
+  const requestId = created.json.request.id;
+
+  const stream = await openSse(userA.cookie, `/api/events?room=request:${requestId}`);
+  await nextEvent(stream.queue, (e) => e.type === 'presence');
+
+  const saved = await userA.client.api('PUT', `/api/requests/${requestId}`, {
+    name: 'Live request edited',
+  });
+  assert.equal(saved.status, 200);
+  const event = await nextEvent(stream.queue, (e) => e.type === 'entity:updated');
+  assert.equal(event.entityId, requestId);
+  assert.equal(event.entityType, 'request');
+  assert.equal(event.by.id, userA.id);
+  stream.controller.abort();
+});

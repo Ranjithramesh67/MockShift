@@ -7,6 +7,7 @@ const { runRequest, runInMemoryRequest, runTokenRequest } = require('../runner')
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
 const { fireWorkflowEvent } = require('../workflowService');
 const { checkCountGate, checkSeatGate, checkPublicSharingGate, chargeRuns, orgOfProject, orgOfCollection } = require('../entitlements');
+const { publish, roomKey } = require('../realtime');
 
 const router = Router();
 router.use(requireAuth);
@@ -658,6 +659,12 @@ router.put('/requests/:requestId', async (req, res, next) => {
       `SELECT id, name, method, url, api_type, collection_id, folder_id FROM api_requests WHERE id = $1`,
       [requestId]
     );
+    publish(roomKey('request', requestId), {
+      type: 'entity:updated',
+      entityType: 'request',
+      entityId: requestId,
+      by: { id: req.user.id, name: req.user.name || null },
+    });
     res.json({ request: fresh.rows[0] });
   } catch (err) {
     next(err);
