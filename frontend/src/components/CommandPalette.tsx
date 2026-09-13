@@ -72,6 +72,9 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     }
     setLoading(true);
     setErrored(false);
+    // A new query invalidates the previous highlight immediately, so Enter can
+    // never open a row from the previous result set while this one loads.
+    setActiveIndex(0);
     const timer = setTimeout(() => {
       searchApi
         .query(q, SEARCH_LIMIT)
@@ -137,6 +140,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         await ws.selectRequest(r.id);
         return;
       }
+      if (r.type === 'folder') {
+        router.push('/');
+        nav.setView('workspace');
+        await ws.selectWorkspace(r.workspaceId!);
+        if (r.collectionId) await ws.selectCollection(r.collectionId, r.collectionName ?? '');
+        return;
+      }
       const route: Record<string, string> = {
         monitor: '/monitors',
         contract: '/contracts',
@@ -165,6 +175,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       return;
     }
     if (e.key === 'Enter') {
+      if (loading) return;
       const r = flat[activeIndex];
       if (r) {
         e.preventDefault();
@@ -201,6 +212,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Search"
+            aria-busy={loading}
           />
           <button
             type="button"
@@ -213,6 +225,11 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           </button>
         </div>
         <div className="command-palette-results">
+          {loading && (
+            <p className="command-palette-empty" data-testid="command-palette-loading">
+              Searching…
+            </p>
+          )}
           {showEmpty ? (
             <p className="command-palette-empty" data-testid="command-palette-empty">
               {errored ? 'Search failed. Try again.' : `No results for "${trimmed}".`}

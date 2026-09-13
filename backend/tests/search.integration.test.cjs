@@ -45,6 +45,12 @@ before(async () => {
   });
   assert.equal(req.status, 201, `request failed: ${JSON.stringify(req.json)}`);
 
+  const folder = await userA.client.api('POST', '/api/folders', {
+    collectionId: col.json.collection.id,
+    name: 'Search folder',
+  });
+  assert.equal(folder.status, 201, `folder failed: ${JSON.stringify(folder.json)}`);
+
   const secret = await userB.client.api('POST', '/api/workspaces', { name: 'Secret WS' });
   assert.equal(secret.status, 201, `workspace B failed: ${JSON.stringify(secret.json)}`);
 });
@@ -76,6 +82,14 @@ test('search returns only entities the caller can read', async () => {
     `expected no results for another org's workspace, got ${JSON.stringify(secret.json.results)}`
   );
   assert.deepEqual(secret.json.groups, {});
+});
+
+test('search returns folder results with their parent collection id', async () => {
+  const res = await userA.client.api('GET', '/api/search?q=Search folder');
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  const folder = (res.json.results || []).find((r) => r.type === 'folder' && r.name === 'Search folder');
+  assert.ok(folder, `expected folder result in ${JSON.stringify(res.json.results)}`);
+  assert.ok(folder.collectionId, `folder result missing collectionId: ${JSON.stringify(folder)}`);
 });
 
 test('search omits results for disabled menus but keeps unrelated ones', async () => {

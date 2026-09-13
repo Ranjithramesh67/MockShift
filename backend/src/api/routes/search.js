@@ -5,7 +5,7 @@ const { query } = require('../db');
 const { requireAuth, canReadProject, canReadWorkspace } = require('../access');
 const { effectiveMenus } = require('../menuAccess');
 const { escapeLike, normalizeQuery, rankResult, menuKeyForType, flattenGroups } = require('../search');
-// Lazy-require docs to avoid a require cycle through the huge router module.
+// Require the docs router to reuse its exported `canReadPage` access helper.
 const docsRoutes = require('./docs');
 
 const router = Router();
@@ -77,11 +77,18 @@ router.get('/', async (req, res, next) => {
     );
     await collect(
       'folder',
-      `SELECT f.id, f.name, p.id AS project_id, p.workspace_id
+      `SELECT f.id, f.name, c.id AS collection_id, c.name AS collection_name, p.id AS project_id, p.workspace_id
          FROM folders f JOIN collections c ON c.id = f.collection_id JOIN projects p ON p.id = c.project_id
         WHERE f.name ILIKE $1 ESCAPE '\\' ORDER BY f.name LIMIT $2`,
       [],
-      (r) => ({ id: r.id, name: r.name, projectId: r.project_id, workspaceId: r.workspace_id })
+      (r) => ({
+        id: r.id,
+        name: r.name,
+        collectionId: r.collection_id,
+        collectionName: r.collection_name,
+        projectId: r.project_id,
+        workspaceId: r.workspace_id,
+      })
     );
     await collect(
       'request',

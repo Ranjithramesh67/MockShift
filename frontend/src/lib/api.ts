@@ -1098,6 +1098,8 @@ export interface SearchResult {
   rank: number;
   projectId?: string | null;
   workspaceId?: string | null;
+  collectionId?: string | null;
+  collectionName?: string | null;
   method?: string | null;
   url?: string | null;
   subtitle?: string | null;

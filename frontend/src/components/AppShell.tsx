@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -141,7 +141,8 @@ export function AppShell() {
   const mockProjectId = ws.overview?.project?.id ?? ws.tree?.projects?.[0]?.id ?? '';
 
   useCloseRequestTabShortcut();
-  useGlobalSearchShortcut(() => setSearchOpen(true));
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  useGlobalSearchShortcut(openSearch);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
@@ -184,7 +185,7 @@ export function AppShell() {
       <TopBar
         onOpenCurl={() => setCurlOpen(true)}
         onOpenScratchpad={() => setScratchpadOpen(true)}
-        onOpenSearch={() => setSearchOpen(true)}
+        onOpenSearch={openSearch}
         drawerOpen={navOpen}
         onToggleDrawer={() => setNavOpen((v) => !v)}
       />
