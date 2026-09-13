@@ -22,7 +22,7 @@
 const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth } = require('../access');
-const { hashPassword, verifyPassword } = require('../authLib');
+const { hashPassword, verifyPassword, createSessionToken, sessionCookie } = require('../authLib');
 const { usernameError } = require('../username');
 const { resolveLimits, countPoolUsage, currentRunUsage } = require('../entitlements');
 
@@ -337,10 +337,14 @@ router.post('/password', async (req, res, next) => {
     if (!stored || !(await verifyPassword(current_password, stored))) {
       return res.status(400).json({ error: 'Current password is incorrect' });
     }
-    await query('UPDATE users SET password_hash = $1 WHERE id = $2', [
-      await hashPassword(new_password),
-      req.user.id,
-    ]);
+    const { rows: updated } = await query(
+      `UPDATE users
+          SET password_hash = $1, password_changed_at = now(), session_epoch = session_epoch + 1
+        WHERE id = $2
+        RETURNING session_epoch`,
+      [await hashPassword(new_password), req.user.id]
+    );
+    res.setHeader('Set-Cookie', sessionCookie(createSessionToken(req.user.id, updated[0].session_epoch)));
     res.json({ ok: true });
   } catch (err) {
     next(err);

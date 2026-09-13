@@ -29,6 +29,13 @@ async function authenticate(req) {
   if (!payload) return null;
   const user = await loadUserById(payload.userId);
   if (!user || !user.is_active) return null;
+  if (
+    typeof payload.sv === 'number' &&
+    typeof user.session_epoch === 'number' &&
+    payload.sv !== user.session_epoch
+  ) {
+    return null;
+  }
   return { user, kind: 'session', apiToken: null };
 }
 

@@ -55,7 +55,7 @@ function getTransport() {
   try {
     return buildTransport(cfg);
   } catch (err) {
-    console.error('[email] transport init failed:', err.message);
+    console.error('[email] transport init failed:', redact(err && err.message));
     return null;
   }
 }
