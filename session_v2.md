@@ -212,7 +212,16 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
   `POST /resend-verification` (`requireAuth`; no-op when already verified).
 - Session invalidation: `authLib.createSessionToken(userId, epoch)` stamps `sv`; `access.js`
   `requireAuth` rejects a cookie whose numeric `sv` differs from `users.session_epoch` (`401`).
-  Tokens minted before the feature (no `sv`) and API bearer tokens are grandfathered.
+  The same guard is applied by the `POST /api/runs` route's own session auth
+  (`backend/src/api/routes/serverRuns.js`) and the Portal public-checkout session resolver
+  (`portal/backend/src/routes/publicCheckout.js`). Authenticated password change
+  (`POST /api/profile/password`) also bumps the epoch in the same statement and re-issues a fresh
+  cookie for the acting session. Tokens minted before the feature (no `sv`) and API bearer tokens
+  are grandfathered.
+- Review fix wave: `POST /forgot-password` now sends `200` before doing DB work and the mail send
+  (detached, error-contained) so account existence is not timing-observable; the reset hash is
+  computed before opening the transaction; SMTP transport-init errors are redacted;
+  `password_changed_at` is audit-only (044 comment corrected).
 - Frontend: `src/lib/authLinks.js` (`tokenFromSearch`, `passwordProblem`); pages
   `app/forgot-password/page.tsx`, `app/reset-password/page.tsx`, `app/verify-email/page.tsx`; login
   "Forgot password?" link; `AppShell` unverified banner (`data-testid="verify-banner"`) with resend.
