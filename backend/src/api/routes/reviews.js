@@ -188,6 +188,7 @@ router.post('/reviews', async (req, res, next) => {
         title: `${req.user.name || 'Someone'} requested your review`,
         body: requestComment ? requestComment.slice(0, 200) : `Collection: ${collection.name}`,
         kind: 'info',
+        payload: { source: 'review' },
         link: `/collab?targetType=collection&targetId=${collectionId}`,
       });
     }
@@ -251,6 +252,7 @@ router.post('/reviews/:reviewId/decision', async (req, res, next) => {
         title: `${req.user.name || 'Someone'} ${decision === 'approved' ? 'approved' : 'requested changes on'} your review`,
         body: decisionComment ? decisionComment.slice(0, 200) : `Collection: ${collection.name}`,
         kind: decision === 'approved' ? 'success' : 'info',
+        payload: { source: 'review' },
         link: `/collab?targetType=collection&targetId=${row.collection_id}`,
       });
     }

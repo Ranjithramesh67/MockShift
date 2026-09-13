@@ -200,6 +200,7 @@ router.post('/comments', async (req, res, next) => {
           title: `${req.user.name || 'Someone'} replied to your comment`,
           body: text.slice(0, 200),
           kind: 'info',
+          payload: { source: 'collab' },
           link: `/collab?targetType=${type}&targetId=${targetId}`,
         });
       }
