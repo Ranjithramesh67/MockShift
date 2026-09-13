@@ -41,6 +41,14 @@ async function requireAuth(req, res, next) {
       const user = await loadUserById(sessionPayload.userId);
       if (!user || !user.is_active) return res.status(401).json({ error: 'Not authenticated' });
       req.user = user;
+      // Sessions issued before the last password change are no longer valid.
+      // Tokens minted before this feature existed have no `iat` and are kept.
+      if (typeof sessionPayload.iat === 'number' && user.password_changed_at) {
+        const changedAt = new Date(user.password_changed_at).getTime();
+        if (sessionPayload.iat < changedAt) {
+          return res.status(401).json({ error: 'Session expired — please sign in again' });
+        }
+      }
       return next();
     }
     if (readBearerTokenHeader(req)) {

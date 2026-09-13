@@ -73,7 +73,7 @@ function verifySession(token) {
 }
 
 function createSessionToken(userId) {
-  return signSession({ userId, exp: Date.now() + SESSION_TTL_MS });
+  return signSession({ userId, iat: Date.now(), exp: Date.now() + SESSION_TTL_MS });
 }
 
 function sessionCookie(token) {
