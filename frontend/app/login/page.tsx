@@ -93,6 +93,9 @@ export default function LoginPage() {
                 required
               />
             </label>
+            <p className="auth-alt">
+              <Link href="/forgot-password" data-testid="goto-forgot">Forgot password?</Link>
+            </p>
             <button
               type="submit"
               className="primary-button auth-submit"
