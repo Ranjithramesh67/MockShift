@@ -7,6 +7,8 @@ import { useProfile } from '@/lib/profile';
 import { useApp } from '@/store/AppStore';
 import type { ViewMode } from '@/lib/types';
 import { notificationApi, type Notification } from '@/lib/api';
+import { roomFor } from '@/lib/realtime';
+import { useRoomEvents } from './useRoomEvents';
 import { UserAvatar } from './UserAvatar';
 import {
   ImportIcon,
@@ -67,6 +69,14 @@ function NotificationBell() {
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useRoomEvents(roomFor('user', user?.id), (event) => {
+    const notification = (event as { notification?: Notification }).notification;
+    if (String(event.type || '') === 'notification' && notification) {
+      setNotifications((prev) => [notification, ...prev].slice(0, 50));
+      setUnread((prev) => (notification.read ? prev : prev + 1));
+    }
+  });
 
   const markRead = async (id: string) => {
     await notificationApi.markRead(id).catch(() => undefined);
