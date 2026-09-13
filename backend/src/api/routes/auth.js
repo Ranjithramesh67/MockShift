@@ -14,6 +14,8 @@ const {
 const { requireAuth, loadUserById } = require('../access');
 const { allocateUsername } = require('../username');
 const { provisionNewAccount } = require('../accountProvision');
+const { generateToken, hashToken, expiryFor } = require('../authTokens');
+const email = require('../email');
 
 const router = Router();
 
@@ -32,8 +34,9 @@ async function selfServiceOpen() {
 }
 
 async function userSummary(userId) {
-  const user = await loadUserById(userId);
-  if (!user) return null;
+  const loaded = await loadUserById(userId);
+  if (!loaded) return null;
+  const { password_changed_at, ...user } = loaded;
   const { rows: orgs } = await query(
     `SELECT o.id, o.name, o.kind, o.domain,
             (SELECT role FROM organization_members om WHERE om.org_id = o.id AND om.user_id = $1) AS role
@@ -44,6 +47,17 @@ async function userSummary(userId) {
     [userId]
   );
   return { user, organizations: orgs };
+}
+
+async function issueEmailVerification(userId, to) {
+  const raw = generateToken();
+  await query(
+    `INSERT INTO auth_tokens (user_id, kind, token_hash, expires_at)
+     VALUES ($1, 'email_verification', $2, $3)`,
+    [userId, hashToken(raw), expiryFor('email_verification')]
+  );
+  const link = `${email.appUrl()}/verify-email?token=${encodeURIComponent(raw)}`;
+  await email.sendMail({ to, ...email.verifyEmailMessage(link) });
 }
 
 router.post('/signup', async (req, res, next) => {
@@ -86,6 +100,12 @@ router.post('/signup', async (req, res, next) => {
       await provisionNewAccount(client, { userId, email, displayName });
       await client.query('COMMIT');
 
+      try {
+        await issueEmailVerification(userId, email);
+      } catch (err) {
+        console.error('[auth] verification email failed:', err.message);
+      }
+
       res.setHeader('Set-Cookie', sessionCookie(createSessionToken(userId)));
       res.status(201).json({ user: await userSummary(userId) });
     } catch (err) {
@@ -122,6 +142,43 @@ router.post('/login', async (req, res, next) => {
     }
     res.setHeader('Set-Cookie', sessionCookie(createSessionToken(user.id)));
     res.json({ user: await userSummary(user.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/verify-email', async (req, res, next) => {
+  try {
+    const { token } = req.body || {};
+    if (!token) return res.status(400).json({ error: 'token is required' });
+    const { rows } = await query(
+      `SELECT id, user_id FROM auth_tokens
+        WHERE token_hash = $1 AND kind = 'email_verification'
+          AND used_at IS NULL AND expires_at > now()`,
+      [hashToken(token)]
+    );
+    const row = rows[0];
+    if (!row) {
+      return res.status(400).json({ error: 'This verification link is invalid or has expired' });
+    }
+    await query('UPDATE users SET email_verified = true WHERE id = $1', [row.user_id]);
+    await query('UPDATE auth_tokens SET used_at = now() WHERE id = $1', [row.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/resend-verification', requireAuth, async (req, res, next) => {
+  try {
+    if (req.user.email_verified) return res.json({ ok: true, alreadyVerified: true });
+    await query(
+      `UPDATE auth_tokens SET used_at = now()
+        WHERE user_id = $1 AND kind = 'email_verification' AND used_at IS NULL`,
+      [req.user.id]
+    );
+    await issueEmailVerification(req.user.id, req.user.email);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
