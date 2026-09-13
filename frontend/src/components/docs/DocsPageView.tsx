@@ -84,7 +84,8 @@ export function DocsPageView({
 
   const [remoteUpdate, setRemoteUpdate] = useState(false);
   const { viewers } = useRoomEvents(roomFor('doc', pageId), (event) => {
-    if (event.type === 'entity:updated' && (event.by as { id?: string } | undefined)?.id !== user?.id) {
+    const byId = (event.by as { id?: string } | undefined)?.id;
+    if (event.type === 'entity:updated' && byId && byId !== user?.id) {
       setRemoteUpdate(true);
     }
   });
