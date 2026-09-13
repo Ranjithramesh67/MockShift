@@ -24,6 +24,7 @@ const { query } = require('../db');
 const { requireAuth, getProjectAccess, roleAtLeast } = require('../access');
 const { logAudit } = require('../audit');
 const { notifyUser } = require('../notify');
+const { publish, roomKey } = require('../realtime');
 
 const router = Router();
 router.use(requireAuth);
@@ -192,6 +193,8 @@ router.post('/comments', async (req, res, next) => {
     );
     const row = await commentRow(created.rows[0].id);
 
+    publish(roomKey(type, targetId), { type: 'comment:created', commentId: row.id });
+
     if (resolvedParentId) {
       const parent = await commentRow(resolvedParentId);
       if (parent && parent.author_id !== req.user.id) {
@@ -264,13 +267,20 @@ async function setResolved(req, res, next, resolved) {
     });
 
     res.json({ comment: serializeComment(row) });
+    return row;
   } catch (err) {
     next(err);
   }
 }
 
-router.post('/comments/:commentId/resolve', (req, res, next) => setResolved(req, res, next, true));
-router.post('/comments/:commentId/unresolve', (req, res, next) => setResolved(req, res, next, false));
+router.post('/comments/:commentId/resolve', async (req, res, next) => {
+  const row = await setResolved(req, res, next, true);
+  if (row) publish(roomKey(row.target_type, row.target_id), { type: 'comment:resolved', commentId: row.id });
+});
+router.post('/comments/:commentId/unresolve', async (req, res, next) => {
+  const row = await setResolved(req, res, next, false);
+  if (row) publish(roomKey(row.target_type, row.target_id), { type: 'comment:unresolved', commentId: row.id });
+});
 
 // DELETE /api/comments/:commentId — author or editor+.
 router.delete('/comments/:commentId', async (req, res, next) => {
@@ -286,6 +296,7 @@ router.delete('/comments/:commentId', async (req, res, next) => {
       return res.status(403).json({ error: 'Only the author or an editor can delete this comment' });
     }
     await query(`DELETE FROM collab_comments WHERE id = $1`, [commentId]);
+    publish(roomKey(comment.target_type, comment.target_id), { type: 'comment:deleted', commentId });
     await logAudit({
       actorId: req.user.id,
       entityType: 'comment',
