@@ -137,3 +137,53 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
   before the per-row access/menu filter. On a large multi-tenant dataset, a caller's
   readable matches can therefore be omitted from a capped result set. This is strictly a
   completeness limitation - it never exposes data the caller cannot read.
+
+### Realtime collaboration (details)
+
+- In-process hub `backend/src/api/realtime.js`: `roomKey(kind, id)` -> `<kind>:<id>` for
+  `user|request|collection|doc`, `subscribe`/`publish` over a
+  `Map<room, Map<subId, { userId, name, send }>>`, `viewersFor` (deduped `{ id, name }`),
+  `subscriberCount`, `reset`. Single process by design (the API process also hosts the
+  BullMQ workers); a future split must swap the transport for Redis pub/sub, and the
+  publish/subscribe interface is intentionally small for that reason.
+- SSE route `backend/src/api/routes/events.js` (`GET /api/events?room=<kind>:<uuid>`,
+  `requireAuth`, mounted in `server.js`): no `room` defaults to `user:<id>`; `authorizeRoom`
+  validates a UUID id and enforces `user` self-only, `request`/`collection` via
+  `canReadProject`, and `doc` via `canReadPage` (400/404/403). Headers `text/event-stream;
+  charset=utf-8`, `Cache-Control: no-cache, no-transform`, `Connection: keep-alive`,
+  `X-Accel-Buffering: no`; frames `event: message` + `data:` JSON; `: ping` heartbeat
+  (default 25000 ms, `REALTIME_HEARTBEAT_MS`); presence published on join and on close.
+- Notification streaming + shared notifier refactor: `backend/src/api/notify.js` imports
+  `publish`/`roomKey` and `notifyUser` publishes `{ type: 'notification', notification }`
+  to `user:<id>` after insert; `notifyUsers`, `dedupeRecipients`, `projectReviewerIds` and
+  `workspaceReviewerIds` continue to back the other notification flows.
+- Comment events (`routes/comments.js`): create publishes `comment:created` to the target
+  room (`request:<id>` or `collection:<id>`); resolve/unresolve publish
+  `comment:resolved`/`comment:unresolved` only on a real state change; delete publishes
+  `comment:deleted`.
+- Review events (`routes/reviews.js`): `review:created` and `review:decided` (with
+  `status`) to `collection:<collectionId>`.
+- Entity-updated events: request saves (`routes/content.js`) publish to `request:<id>`;
+  doc metadata and block saves (`routes/docs.js`) publish to `doc:<id>`. Payload
+  `{ type: 'entity:updated', entityType, entityId, by: { id, name } }`; updates without an
+  author id are ignored by clients.
+- Frontend helpers `src/lib/realtime.js`: `roomFor`, `eventsUrl`, `parseSseFrame` (accepts a
+  raw `event:`/`data:` block or a bare payload) and `viewerSummary`. `useRoomEvents`
+  (`src/components/useRoomEvents.ts`) wraps `EventSource` over the Next `/api` rewrite
+  (cookie auth; WS upgrades do not pass, which is why SSE is used), exposing `connected` and
+  `viewers` and forwarding non-presence events to a callback.
+- Live bell and collab presence: `TopBar` subscribes to `user:<id>` and prepends live
+  `notification` events (deduped against refetches); `CollabPanel` and the editor headers
+  subscribe to the entity room and render the viewer summary; `DocsPageView` and
+  `RequestConfigurator` subscribe to `doc:<id>` / `request:<id>`.
+- Editor conflict banner: a remote `entity:updated` from another author sets a remote-update
+  flag; when the local editor is dirty a lightweight banner
+  (`request-conflict-banner` / `doc-conflict-banner`) offers Reload, which refetches the
+  saved version and discards local edits.
+- Tests: backend unit `src/api/__tests__/realtime.test.cjs` and
+  `src/api/__tests__/notifyRealtime.test.cjs`; backend integration
+  `tests/realtime.integration.test.cjs`; frontend unit `src/lib/__tests__/realtime.test.cjs`.
+- v1 limitations: no character-level co-editing (saves are still last-write-wins; realtime
+  only signals conflicts); presence is ephemeral (in-process subscribers, lost on restart);
+  the hub is not durable (no replay for missed events); single process only until the Redis
+  transport lands.
