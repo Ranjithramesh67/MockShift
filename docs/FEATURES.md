@@ -60,8 +60,8 @@ Workspace and project membership layer on top of the organization role, so a
 user's effective permission is the maximum of their org role and their
 per-resource role.
 
-> **Gap:** there is no password reset / "forgot password" flow anywhere in the
-> backend, frontend or portal. Recovery currently requires an admin action.
+> Password reset and email verification shipped for the main app (backend +
+> frontend); see section 25. The portal (`portal/`) does not surface them.
 
 ---
 
@@ -638,6 +638,8 @@ All paths are relative to the backend base URL (`http://localhost:3001`).
 POST   /signup                GET  /signup-status
 POST   /login                 POST /logout
 GET    /me                    GET  /session
+POST   /forgot-password       POST /reset-password
+POST   /verify-email          POST /resend-verification   (auth)
 ```
 
 ### Runs and history
@@ -785,7 +787,9 @@ This only reduces completeness; it never exposes data the caller cannot read.
 
 ## 22. Known gaps and not-implemented features
 
-1. **No password reset / forgot-password** flow anywhere.
+1. **Password reset / email verification are best-effort** - the forgot-password
+   throttle is in-process, expired `auth_tokens` rows are not cleaned up
+   automatically, and API bearer tokens survive a reset (section 25).
 2. **`/inbox` does not surface notifications** - it now has a Requests tab for
    the caller's own access requests, but notifications remain in the top-bar
    bell.
@@ -913,3 +917,126 @@ local edits. No banner is shown while the local editor is clean.
 - Room access is authorized once at connect. A stream that outlives a permission
   change (member removed, role downgraded, share revoked) keeps receiving frames
   until the client disconnects; re-checking on an interval is a planned follow-up.
+
+---
+
+## 25. Password reset and email verification
+
+Two account-recovery flows share one token table. A user who forgot their
+password asks for a reset link, and a new account can confirm its email
+address. Both are delivered by email; the client only ever learns that the
+request was accepted.
+
+### 25.1 Password reset
+
+```
+POST   /api/auth/forgot-password
+POST   /api/auth/reset-password
+```
+
+`forgot-password` takes `{ email }` and always returns `200 { ok: true }`,
+whether or not the address belongs to an active account, so it cannot be used
+to enumerate users. A fixed-window, in-process throttle accepts at most 5
+requests per email address per 15 minutes; once the window is full the request
+is still `200`, but no token is minted and no mail is sent. When the address
+matches an active user, any outstanding `password_reset` token is marked used
+and a new one is emailed. Mail is best-effort: delivery failure is logged and
+never changes the response.
+
+`reset-password` takes `{ token, new_password }` (minimum 8 characters). The raw
+token exists only in the emailed link; the backend stores `sha256(raw)` and
+looks it up by hash. On success the token is claimed atomically (`used_at` is
+set inside a transaction, so two concurrent uses race and only one wins), the
+password hash is replaced, `password_changed_at` is stamped, and
+`users.session_epoch` is incremented in the same transaction (see 25.4).
+
+### 25.2 Email verification
+
+```
+POST   /api/auth/verify-email
+POST   /api/auth/resend-verification        (auth required)
+```
+
+New signups have `users.email_verified = false`; accounts that predate migration
+`044_auth_tokens.sql` were grandfathered to `true` so the migration could not
+lock anyone out. Verification is a **soft** policy: login and every other
+endpoint work regardless of the flag, and the flag is surfaced to the client via
+the normal user record.
+
+`verify-email` takes `{ token }`, atomically claims the `email_verification`
+token, and sets `email_verified = true`. `resend-verification` requires auth,
+is a no-op when already verified (`{ ok: true, alreadyVerified: true }`),
+invalidates any outstanding verification tokens, and issues a fresh one.
+
+The frontend flow lives in `frontend/app/forgot-password/page.tsx`,
+`frontend/app/reset-password/page.tsx` and `frontend/app/verify-email/page.tsx`,
+with `frontend/src/lib/authLinks.js` handling token extraction from the query
+string and password validation. Unverified users see a banner in `AppShell`
+(`data-testid="verify-banner"`) with a resend action.
+
+### 25.3 The token model
+
+Migration `044_auth_tokens.sql` adds `auth_tokens`:
+
+| Column | Notes |
+| --- | --- |
+| `id` | uuid primary key |
+| `user_id` | FK to `users`, `ON DELETE CASCADE` |
+| `kind` | `password_reset` or `email_verification` |
+| `token_hash` | `sha256(raw)`, unique; the raw secret is never stored |
+| `expires_at` | 1 hour for `password_reset`, 24 hours for `email_verification` |
+| `used_at` | set on first use; tokens are single-use |
+| `created_at` | insert timestamp |
+
+`backend/src/api/authTokens.js` owns `generateToken` (32 random bytes,
+base64url), `hashToken`, `expiryFor`, and the `createThrottle` helper. Indexes
+on `(user_id, kind)` and `(expires_at)` support lookup and expiry.
+
+### 25.4 Session invalidation
+
+Migration `045_session_epoch.sql` adds `users.session_epoch` (integer, default
+`0`). `createSessionToken(userId, epoch)` in `backend/src/api/authLib.js` stamps
+the current epoch into the signed cookie as `sv`. `requireAuth` in
+`backend/src/api/access.js` rejects the session with `401` when `sv` is present
+and does not equal the user's current `session_epoch`. A reset increments
+`session_epoch` in the same transaction as the password update, so every browser
+session minted before the reset stops working immediately.
+
+This avoids comparing the Node process clock with the Postgres clock (or relying
+on a shared `iat`/`exp` timeline): the epoch is a monotonic integer stored in the
+database, so there is no clock skew to reconcile. Two things are deliberately
+not revoked:
+
+- Sessions minted before this feature carry no `sv` and are grandfathered.
+- API bearer tokens (`tkh_...`) do not embed an epoch and survive a reset.
+
+### 25.5 SMTP configuration
+
+Email is configured entirely from the environment; no credential is committed:
+
+```
+SMTP_URL                    e.g. smtp://user:pass@host:587
+SMTP_HOST, SMTP_PORT        port defaults to 587
+SMTP_SECURE=1               implicit TLS, usually port 465
+SMTP_USER, SMTP_PASS
+SMTP_FROM                   default "API Hub <noreply@keerainnovations.com>"
+APP_URL                     public base URL for links, default http://localhost:3000
+```
+
+`backend/src/api/email.js` builds a nodemailer transport lazily. When neither
+`SMTP_URL` nor `SMTP_HOST` is set (or transport construction fails), `sendMail`
+logs `[email] SMTP not configured; skipped "..."` and returns
+`{ skipped: true }`. Email is never on the critical path, so no request fails
+because mail could not be sent. `backend/.env.example` lists the variables with
+placeholders.
+
+### 25.6 v1 limitations
+
+- The forgot-password throttle is in-process. Multiple API processes each keep
+  their own window; a shared store (for example Redis) would be needed to
+  enforce it globally.
+- Expired `auth_tokens` rows are not garbage-collected automatically. The
+  `expires_at` index keeps lookups cheap, but old rows accumulate.
+- API bearer tokens and sessions minted before the feature survive a password
+  reset; only `ah.session` cookies carrying a stale `sv` are revoked.
+- SMTP is best-effort and there is no bounce or retry queue.
