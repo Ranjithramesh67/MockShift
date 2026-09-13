@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth';
+import { useRoomEvents } from '@/components/useRoomEvents';
+import { roomFor, viewerSummary } from '@/lib/realtime';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import {
@@ -79,6 +81,16 @@ export function DocsPageView({
     const blocksChanged = !blocksEqual(blocksDraft, stripPositions(detail.blocks));
     return titleChanged || blocksChanged;
   }, [detail, titleDraft, blocksDraft]);
+
+  const [remoteUpdate, setRemoteUpdate] = useState(false);
+  const { viewers } = useRoomEvents(roomFor('doc', pageId), (event) => {
+    if (event.type === 'entity:updated' && (event.by as { id?: string } | undefined)?.id !== user?.id) {
+      setRemoteUpdate(true);
+    }
+  });
+  useEffect(() => {
+    setRemoteUpdate(false);
+  }, [pageId]);
 
   const exitGuard = useCallback((): boolean => {
     if (editing && dirty) {
@@ -274,6 +286,22 @@ export function DocsPageView({
         </div>
       </div>
 
+      {remoteUpdate && dirty && (
+        <div className="conflict-banner" data-testid="doc-conflict-banner">
+          <span>This page changed elsewhere.</span>
+          <button
+            type="button"
+            className="ghost-button small"
+            onClick={() => {
+              setRemoteUpdate(false);
+              void load();
+            }}
+          >
+            Reload
+          </button>
+        </div>
+      )}
+
       {editing ? (
         <input
           className={styles.pageTitleInput}
@@ -287,6 +315,12 @@ export function DocsPageView({
         <h1 className={styles.docsHeaderTitle} data-testid="docs-page-title">
           {detail.page.title || 'Untitled page'}
         </h1>
+      )}
+
+      {viewerSummary(viewers, user?.id).label && (
+        <span className="presence" data-testid="editor-presence">
+          {viewerSummary(viewers, user?.id).label}
+        </span>
       )}
 
       <p className={styles.docMetaLine}>

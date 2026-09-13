@@ -210,6 +210,7 @@ interface WorkspaceState {
   refresh: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
   selectRequest: (requestId: string) => Promise<void>;
+  reloadActiveRequest: () => Promise<void>;
   selectCollection: (collectionId: string, collectionName: string) => Promise<void>;
   updateActiveRequest: (patch: Partial<ApiRequest>) => void;
   saveActiveRequest: () => Promise<void>;
@@ -525,6 +526,25 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setOpenRequestIds((ids) => openTab(ids, requestId));
     setActiveRequestId(requestId);
   }, [openRequestIds, requestCopies, requestRuns]);
+
+  const reloadActiveRequest = useCallback(async () => {
+    const id = activeRequestId;
+    if (!id) return;
+    setError(null);
+    const seq = ++selectSeqRef.current;
+    selectTargetRef.current = id;
+    try {
+      const { request } = await contentApi.getRequest(id);
+      if (selectSeqRef.current !== seq || selectTargetRef.current !== id) return;
+      const editorRequest = toEditorRequest(request);
+      setRequestCopies((c) => ({ ...c, [id]: editorRequest }));
+      setBaselines((b) => ({ ...b, [id]: dirtySnapshot(editorRequest) }));
+      setActiveRequest(editorRequest);
+      clearEditHistory(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reload request');
+    }
+  }, [activeRequestId, clearEditHistory]);
 
   const updateActiveRequest = useCallback((patch: Partial<ApiRequest>) => {
     const prev = activeRequestRef.current;
@@ -1300,6 +1320,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refresh,
       selectWorkspace,
       selectRequest,
+      reloadActiveRequest,
       selectCollection,
       updateActiveRequest,
       saveActiveRequest,
@@ -1343,7 +1364,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       activateRequestTab, closeRequestTab, reopenLastClosedTab, isTabDirty,
       canUndoRequest, canRedoRequest, canGoBackRequest,
       undoActiveRequest, redoActiveRequest, goBackRequest,
-      refresh, selectWorkspace, selectRequest, selectCollection, updateActiveRequest,
+      refresh, selectWorkspace, selectRequest, reloadActiveRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun, clearScratchpadRun,
       createWorkspace, createCollection, createRequest,
       createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, moveFolder, duplicateRequest, duplicateFolder,

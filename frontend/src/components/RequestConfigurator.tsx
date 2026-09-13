@@ -4,6 +4,9 @@ import React, { useEffect, useState } from 'react';
 import type { ApiRequest, ApiType, HttpMethod, RequestContentType } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
+import { useAuth } from '@/lib/auth';
+import { useRoomEvents } from '@/components/useRoomEvents';
+import { roomFor, viewerSummary } from '@/lib/realtime';
 import { isCurlCommand, parseCurl } from '@/lib/curl';
 import { seedPartsFromLegacy } from '@/lib/multipartParts';
 import {
@@ -44,6 +47,16 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
   const [shareOpen, setShareOpen] = useState(false);
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
+  const { user } = useAuth();
+  const [remoteUpdate, setRemoteUpdate] = useState(false);
+  const { viewers } = useRoomEvents(roomFor('request', ws.activeRequestId), (event) => {
+    if (event.type === 'entity:updated' && (event.by as { id?: string } | undefined)?.id !== user?.id) {
+      setRemoteUpdate(true);
+    }
+  });
+  useEffect(() => {
+    setRemoteUpdate(false);
+  }, [ws.activeRequestId]);
   const activeCollection = ws.tree?.collections.find((c) => c.id === ws.activeCollectionId);
   const mockProjectId = activeCollection?.project_id ?? ws.tree?.projects?.[0]?.id ?? '';
 
@@ -169,6 +182,21 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
 
   return (
     <div className="request-configurator" data-testid="request-configurator">
+      {remoteUpdate && ws.isDirty && (
+        <div className="conflict-banner" data-testid="request-conflict-banner">
+          <span>This request changed elsewhere.</span>
+          <button
+            type="button"
+            className="ghost-button small"
+            onClick={() => {
+              setRemoteUpdate(false);
+              void ws.reloadActiveRequest();
+            }}
+          >
+            Reload
+          </button>
+        </div>
+      )}
       <div className="request-bar">
         <select
           className="method-select"
@@ -202,6 +230,11 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           }
         />
         <div className="request-bar-actions" style={{ display: 'contents' }}>
+          {viewerSummary(viewers, user?.id).label && (
+            <span className="presence" data-testid="editor-presence">
+              {viewerSummary(viewers, user?.id).label}
+            </span>
+          )}
           <select
             className="compact-select"
             aria-label="API type"
