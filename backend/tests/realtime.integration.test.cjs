@@ -150,6 +150,7 @@ test('user room delivers notifications', async () => {
   assert.equal(reply.status, 201);
   const note = await nextEvent(stream.queue, (e) => e.type === 'notification');
   assert.match(note.notification.title, /replied/i);
+  assert.equal(note.notification.payload.source, 'collab');
   stream.controller.abort();
 });
 
