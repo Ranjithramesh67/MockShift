@@ -20,6 +20,7 @@ CREATE INDEX auth_tokens_expires_idx ON auth_tokens (expires_at);
 ALTER TABLE users ADD COLUMN email_verified boolean NOT NULL DEFAULT false;
 UPDATE users SET email_verified = true;
 
--- Set when a password is reset/changed; sessions issued before this instant are
--- rejected (see requireAuth). Null means "no password change on record".
+-- Audit-only timestamp set when a password is reset/changed. Session
+-- invalidation is enforced by users.session_epoch (see migration 045 and
+-- requireAuth), not by this column. Null means "no password change on record".
 ALTER TABLE users ADD COLUMN password_changed_at timestamptz;
