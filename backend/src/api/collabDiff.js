@@ -43,7 +43,7 @@ function stableStringify(value) {
   if (value === undefined) return 'undefined';
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) {
-    return `[${value.map((v) => stableStringify(v)).join(',')}]`;
+    return `[${value.map((v) => stableStringify(v)).sort().join(',')}]`;
   }
   const keys = Object.keys(value).sort();
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
@@ -144,4 +144,4 @@ function diffSnapshots(fromSnapshot, toSnapshot) {
   };
 }
 
-module.exports = { diffSnapshots, stableStringify, COMPARED_FIELDS };
+module.exports = { diffSnapshots, stableStringify, COMPARED_FIELDS, changedFields };
