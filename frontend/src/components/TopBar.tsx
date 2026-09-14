@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useProfile } from '@/lib/profile';
+import { subscriptionChip } from '@/lib/subscription';
 import { useApp } from '@/store/AppStore';
 import type { ViewMode } from '@/lib/types';
 import { notificationApi, type Notification } from '@/lib/api';
@@ -170,6 +171,7 @@ export function TopBar({
   }, []);
 
   const avatar = profileData?.user?.avatar ?? null;
+  const planChip = subscriptionChip(profileData?.subscription ?? null);
 
   const goProfile = () => {
     setMenuOpen(false);
@@ -296,6 +298,17 @@ export function TopBar({
           Test cURL
         </button>
         <NotificationBell />
+        <button
+          type="button"
+          className={`subscription-chip tone-${planChip.tone} ${planChip.urgent ? 'is-urgent' : ''}`}
+          data-testid="subscription-chip"
+          title={planChip.title}
+          aria-label={planChip.title}
+          onClick={goProfile}
+        >
+          {planChip.urgent && <span className="subscription-chip-dot" aria-hidden="true" />}
+          <span className="subscription-chip-label">{planChip.label}</span>
+        </button>
         <div className="user-menu">
           <button
             type="button"
@@ -316,6 +329,18 @@ export function TopBar({
                   <span className="user-dropdown-name">{user?.name}</span>
                   <span className="user-dropdown-email">{user?.email}</span>
                 </div>
+              </div>
+              <div
+                className={`user-dropdown-plan tone-${planChip.tone} ${planChip.urgent ? 'is-urgent' : ''}`}
+                data-testid="user-menu-plan"
+              >
+                <span className="user-dropdown-plan-name">{planChip.label}</span>
+                <span className="user-dropdown-plan-status">
+                  {profileData?.subscription ? planChip.status : 'FREE'}
+                </span>
+                {planChip.urgent && (
+                  <span className="user-dropdown-plan-note">{planChip.title}</span>
+                )}
               </div>
               <button
                 type="button"
