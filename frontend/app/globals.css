@@ -2935,6 +2935,103 @@ body.is-col-dragging .sidebar {
   background: var(--bg-hover);
 }
 
+/* Subscription surfaced in the top bar: always visible, and turns amber with
+   a pulsing dot when a renewal, trial end or payment issue needs attention. */
+.subscription-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel-2);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease),
+    color var(--speed) var(--ease);
+}
+
+.subscription-chip:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.subscription-chip.tone-ok {
+  color: var(--ok);
+  border-color: rgba(63, 185, 80, 0.4);
+}
+
+.subscription-chip.tone-info {
+  color: var(--info);
+  border-color: rgba(88, 166, 255, 0.4);
+}
+
+.subscription-chip.tone-warn,
+.subscription-chip.is-urgent {
+  color: var(--warn);
+  border-color: rgba(210, 153, 34, 0.55);
+  background: rgba(210, 153, 34, 0.12);
+}
+
+.subscription-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.subscription-chip.is-urgent .subscription-chip-dot {
+  animation: subscription-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes subscription-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.user-dropdown-plan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg-panel-2);
+  font-size: 11px;
+}
+
+.user-dropdown-plan-name {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.user-dropdown-plan-status {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.user-dropdown-plan-note {
+  flex-basis: 100%;
+  color: var(--warn);
+}
+
+.user-dropdown-plan.is-urgent {
+  border-color: rgba(210, 153, 34, 0.45);
+}
+
 .user-avatar {
   display: inline-flex;
   align-items: center;
