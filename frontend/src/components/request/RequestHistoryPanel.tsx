@@ -146,7 +146,7 @@ export function RequestHistoryPanel({
       {error ? (
         <div className={styles.error}>
           {error}
-          <button type="button" data-testid="history-retry" onClick={() => void load()}>
+          <button type="button" data-testid="history-retry" disabled={loading} onClick={() => void load()}>
             Retry
           </button>
         </div>

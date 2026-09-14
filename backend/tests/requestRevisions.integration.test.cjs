@@ -158,3 +158,40 @@ test('a revision from a different request cannot be rolled back onto this reques
   const bNow = await user.client.api('GET', `/api/requests/${b.json.request.id}`);
   assert.equal(bNow.json.request.url, 'https://example.com/b');
 });
+
+test('rollback drops a stale folder reference instead of failing', async () => {
+  const folder = await user.client.api('POST', '/api/folders', {
+    collectionId: user.collectionId,
+    name: 'Stale folder',
+  });
+  assert.equal(folder.status, 201);
+  const folderId = folder.json.folder.id;
+
+  const req = await user.client.api('POST', '/api/requests', {
+    collectionId: user.collectionId,
+    name: 'Folded request',
+    method: 'GET',
+    url: 'https://example.com/folded/v1',
+    folderId,
+  });
+  assert.equal(req.status, 201);
+  const id = req.json.request.id;
+
+  const put = await user.client.api('PUT', `/api/requests/${id}`, { url: 'https://example.com/folded/v2' });
+  assert.equal(put.status, 200);
+
+  const del = await user.client.api('DELETE', `/api/folders/${folderId}`);
+  assert.equal(del.status, 200);
+
+  const list = await user.client.api('GET', `/api/requests/${id}/revisions`);
+  const v1 = list.json.revisions.find((r) => r.revisionNumber === 1);
+
+  const rb = await user.client.api('POST', `/api/requests/${id}/revisions/${v1.id}/rollback`);
+  assert.equal(rb.status, 200);
+  assert.equal(rb.json.revision.changeKind, 'rollback');
+
+  const after = await user.client.api('GET', `/api/requests/${id}`);
+  assert.equal(after.status, 200);
+  assert.equal(after.json.request.folderId, null);
+  assert.equal(after.json.request.url, 'https://example.com/folded/v1');
+});
