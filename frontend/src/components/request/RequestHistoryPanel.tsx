@@ -28,16 +28,21 @@ function RevRow({
       : revision.changeKind === 'create'
         ? styles.kindCreate
         : styles.kindUpdate;
+  const meta = [
+    revision.createdBy.name || 'Unknown',
+    formatDate(revision.createdAt),
+    revisionSummary(revision),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
-    <div className={styles.row} data-testid="revision-row">
+    <div className={styles.row} data-testid="revision-row" role="listitem">
       <div className={styles.rowHead}>
         <div className={styles.meta}>
           <span className={`${styles.mono} ${styles.subtle}`}>v{revision.revisionNumber}</span>
           <span className={`${styles.kind} ${kindClass}`}>{revision.changeKind}</span>
-          <span className={styles.subtle}>
-            {revision.createdBy.name || 'Unknown'} · {formatDate(revision.createdAt)} · {revisionSummary(revision)}
-          </span>
+          <span className={styles.subtle}>{meta}</span>
         </div>
         <div className={styles.meta}>
           {revision.changedFields.length > 0 && (
@@ -45,6 +50,7 @@ function RevRow({
               type="button"
               className={styles.restore}
               data-testid="revision-details"
+              aria-expanded={open}
               onClick={() => setOpen((v) => !v)}
             >
               {open ? 'Hide' : 'Diff'}
@@ -137,11 +143,17 @@ export function RequestHistoryPanel({
         <span className={styles.title}>Change history</span>
         {loading && <span className={styles.subtle}>Loading…</span>}
       </div>
-      {error && <div className={styles.error}>{error}</div>}
-      {!loading && revisions.length === 0 ? (
+      {error ? (
+        <div className={styles.error}>
+          {error}
+          <button type="button" data-testid="history-retry" onClick={() => void load()}>
+            Retry
+          </button>
+        </div>
+      ) : !loading && revisions.length === 0 ? (
         <div className={styles.empty}>No history yet.</div>
       ) : (
-        <div className={styles.list}>
+        <div className={styles.list} role="list">
           {revisions.map((r) => (
             <RevRow key={r.id} revision={r} busy={busy} onRestore={restore} />
           ))}
