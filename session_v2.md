@@ -235,7 +235,7 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
 
 ### Request change history + rollback (details)
 
-- Migration `046_request_revisions.sql`: `request_revisions` (per-request append-only log:
+- Migration `db/migrations/046_request_revisions.sql`: `request_revisions` (per-request append-only log:
   `revision_number` unique per request, `change_kind IN ('create','update','rollback')`, `snapshot`
   jsonb = post-change request in the `requestSnapshot.js` camelCase shape, `changed_fields` jsonb =
   `[{field,from,to}]`, `rolled_back_from`, `created_by`, `created_at`; indexes on
@@ -243,10 +243,14 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
   only `SELECT, INSERT`, and RLS gates reads by `app.workspace_readable` and writes by
   `app.can_mutate_workspace`.
 - Capture `backend/src/api/routes/content.js`: `insertRevision(exec, {...})` numbers a new revision as
-  `MAX(revision_number)+1` and is called on request create (`create`), request update (`update`, with
-  the `collabDiff.changedFields` diff), and rollback (`rollback`). Callers inside the update
+  `MAX(revision_number)+1` and is called on request create (`create`, ~line 574), request update
+  (`update`, with the `collabDiff.changedFields` diff, ~line 712), and duplicate-as-create
+  (`create`, ~line 834). Callers inside the update
   transaction pass `(sql, p) => client.query(sql, p)` so the `api_requests` row lock serializes the
-  number; the create path passes `null` to use the pool.
+  number; the create/duplicate paths pass `null` to use the pool. The `rollback` revision is NOT
+  written by `insertRevision`: it is recorded by an inline
+  `INSERT INTO request_revisions ... SELECT ..., COALESCE(MAX(revision_number),0)+1 ...`
+  in `backend/src/api/routes/requestRevisions.js` (~lines 185-203), inside the rollback transaction.
 - Routes `backend/src/api/routes/requestRevisions.js` (all routes `requireAuth`):
   `GET /api/requests/:requestId/revisions` (newest-first metadata list),
   `GET /api/requests/:requestId/revisions/:revisionId` (metadata plus full snapshot), and
