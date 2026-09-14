@@ -158,8 +158,9 @@ router.post('/requests/:requestId/revisions/:revisionId/rollback', async (req, r
     }
     const target = await revisionRow(requestId, revisionId);
     if (!target) return res.status(404).json({ error: 'Revision not found' });
-    const targetSnap = (await query(`SELECT snapshot FROM request_revisions WHERE id = $1`, [revisionId]))
-      .rows[0].snapshot;
+    const targetRow = (await query(`SELECT snapshot FROM request_revisions WHERE id = $1`, [revisionId])).rows[0];
+    if (!targetRow) return res.status(404).json({ error: 'Revision not found' });
+    const targetSnap = targetRow.snapshot;
 
     const client = await pool.connect();
     let before;
@@ -189,7 +190,7 @@ router.post('/requests/:requestId/revisions/:revisionId/rollback', async (req, r
                 'rollback', $5::jsonb, $6::jsonb, $7, $8
            FROM request_revisions
           WHERE request_id = $1
-         RETURNING id, revision_number, change_kind, changed_fields, rolled_back_from, created_by, created_at`,
+         RETURNING id, request_id, revision_number, change_kind, changed_fields, rolled_back_from, created_by, created_at`,
         [
           requestId,
           scope.collection_id,

@@ -46,6 +46,7 @@ test('updating a request records an update revision with a field diff', async ()
     headers: [{ key: 'X-Test', value: '1', enabled: true }],
   });
   assert.equal(put.status, 200);
+  assert.equal(put.json.request.collection_id, user.collectionId);
 
   const res = await user.client.api('GET', `/api/requests/${user.requestId}/revisions`);
   assert.equal(res.json.revisions[0].changeKind, 'update');
@@ -116,6 +117,7 @@ test('rollback restores an earlier snapshot and records a rollback revision', as
   assert.equal(after.json.request.url, 'https://example.com/v1');
 
   const list2 = await user.client.api('GET', `/api/requests/${id}/revisions`);
+  assert.equal(list2.json.revisions.length, 3);
   assert.equal(list2.json.revisions[0].changeKind, 'rollback');
   const fields = list2.json.revisions[0].changedFields;
   assert.deepEqual(fields.find((f) => f.field === 'url'), {
