@@ -703,6 +703,10 @@ router.put('/requests/:requestId', async (req, res, next) => {
           `SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1 FOR UPDATE`,
           [requestId]
         );
+        if (!preRows[0]) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Request not found' });
+        }
         const before = serializeRequest(preRows[0]);
         await client.query(`UPDATE api_requests SET ${sets.join(', ')} WHERE id = $1`, params);
         const { rows: postRows } = await client.query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [requestId]);
@@ -752,7 +756,7 @@ router.put('/requests/:requestId', async (req, res, next) => {
         method: fresh.method,
         url: fresh.url,
         api_type: fresh.api_type,
-        collection_id: fresh.collection_id,
+        collection_id: current.collection_id,
         folder_id: fresh.folder_id,
       },
     });

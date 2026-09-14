@@ -53,8 +53,11 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
   const [remoteUpdate, setRemoteUpdate] = useState(false);
   const { viewers } = useRoomEvents(roomFor('request', ws.activeRequestId), (event) => {
     const byId = (event.by as { id?: string } | undefined)?.id;
-    if (event.type === 'entity:updated' && byId && byId !== user?.id) {
+    if (event.type !== 'entity:updated' || !byId || byId === user?.id) return;
+    if (ws.isDirty) {
       setRemoteUpdate(true);
+    } else {
+      void ws.reloadActiveRequest();
     }
   });
   useEffect(() => {
