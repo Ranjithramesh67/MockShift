@@ -269,3 +269,36 @@ New work is recorded here to keep the original, very large `session.md` / `docs/
 - v1 limitations: revisions are per-request only (no collection/workspace activity feed); deleting a
   request cascades its revisions away (no tombstone); rollback restores the name verbatim without
   re-uniquification; revisions are bounded by request lifetime, so no GC/throttle is needed.
+
+### Issue Part 1: APIs & Collection page fixes
+
+User-reported UI/UX batch addressed page-by-page (fix, verify, commit each before the next). Base
+`a1caf31`; commits `be4d18c` → `022dd3f` → `5f56626` → `8f46426` → `be6773d` → issue 12.
+
+- `be4d18c` Issues 1&2 (active environment + secret toggle): new shared
+  `frontend/src/components/ToggleSwitch.tsx`; `EnvironmentsModal.tsx` marks the active env with
+  `env-row … is-active` and replaces the bare secret checkbox with `<ToggleSwitch testId="var-secret">`;
+  `globals.css` `.env-row.is-active` accent treatment + `.toggle-switch*`.
+- `022dd3f` Issue 3 (collections vs folders): `Sidebar.tsx` gives collection rows an accent
+  `CollectionIcon` and project heads a `LayersIcon`; `.tree-collection-name` bold, nested
+  `.tree-folder-name` dimmer.
+- `5f56626` Issues 6–9 (request editor): `RequestConfigurator` drops the API-type select and Import
+  button (cURL still reachable via the top bar and URL paste) and gives the Formula tab a draggable
+  `SplitPane` with a `formula-layout-toggle`; `AppShell.tsx` removes the now-dead `onOpenCurl`
+  plumbing; `MockRoutePicker` button becomes icon-only.
+- `8f46426` Issue 10 (project members): `ProjectOverview.tsx` surfaces the signed-in user as a
+  synthetic `po-you-badge` row, hides self Remove and excludes self from the add picker;
+  `projects.js` rejects self add/remove with 400; `tests/projectMembers.integration.test.cjs`.
+- `be6773d` Issue 11 (subscription surface): `frontend/src/lib/subscription.js` helpers
+  (`subscriptionChip`/`daysUntil`/`normalizeStatus`) with unit tests; `TopBar.tsx` always-visible
+  `subscription-chip` (click → profile) and a `user-menu-plan` row with an amber pulsing dot when
+  past-due / cancel-scheduled / ≤7 days to renewal or trial end.
+- Issue 12 (send to any user) — this commit: `POST /api/sends` accepts `recipientId` **or**
+  `recipientEmail` (resolved by id or `lower(email)`), and the old "only people in your organization
+  or workspace" 403 reachability gate is gone (self-send still 400, unknown email 404). FE
+  `SendItemDialog.tsx` adds an "Or send to any user by email" input plus `send-by-email-btn`, and the
+  dead-end empty state now points to it; `SendCreateInput.recipientId` is optional with a new
+  `recipientEmail`. New `tests/sends.integration.test.cjs` (3 tests, scratch cluster 5441): send to an
+  unshared recipient by email, self-send rejected, unknown email 404.
+- Still open in this batch: issue 4 (login-gated sharing readable by recipients without a
+  subscription) and issue 5 (change history on the public `/s/<token>` page).

@@ -905,7 +905,8 @@ export interface SendRecipient {
 }
 
 export interface SendCreateInput {
-  recipientId: string;
+  recipientId?: string;
+  recipientEmail?: string;
   itemType: SendItemType;
   itemId: string;
   message?: string;

@@ -780,39 +780,37 @@ async function loadSendForParticipant(sendId, userId) {
 // POST /api/sends — create a send (status 'pending').
 router.post('/sends', async (req, res, next) => {
   try {
-    const { recipientId, itemType, itemId, message } = req.body || {};
-    if (!recipientId) return res.status(400).json({ error: 'recipientId is required' });
+    const { recipientId, recipientEmail, itemType, itemId, message } = req.body || {};
+    if (!recipientId && !recipientEmail) {
+      return res.status(400).json({ error: 'recipientId or recipientEmail is required' });
+    }
     if (!ITEM_TYPES.includes(itemType)) {
       return res.status(400).json({ error: 'itemType must be one of: request, folder, collection, project, workspace' });
     }
     if (!itemId) return res.status(400).json({ error: 'itemId is required' });
-    if (recipientId === req.user.id) {
-      return res.status(400).json({ error: 'You cannot send an item to yourself' });
+
+    // Resolve the recipient either by id (preferred, from the picker) or by
+    // exact email so an item can be sent to any active user, not just those in
+    // a shared organization or workspace. The recipient still has to accept,
+    // and the inbox only ever exposes the sender's name.
+    let recipientRows;
+    if (recipientId) {
+      ({ rows: recipientRows } = await query(
+        `SELECT id, name, email FROM users WHERE id = $1 AND is_active = true`,
+        [recipientId]
+      ));
+    } else {
+      ({ rows: recipientRows } = await query(
+        `SELECT id, name, email FROM users WHERE lower(email) = lower($1) AND is_active = true`,
+        [String(recipientEmail).trim()]
+      ));
     }
-    const { rows: recipientRows } = await query(
-      `SELECT id, name, email FROM users WHERE id = $1 AND is_active = true`,
-      [recipientId]
-    );
     if (recipientRows.length === 0) {
       return res.status(404).json({ error: 'Recipient not found' });
     }
-    // Sending copies a whole item to another account, so keep it inside the
-    // caller's organization (or a workspace they already share) — the same
-    // boundary the recipient picker enforces.
-    const { rows: reachable } = await query(
-      `SELECT 1 WHERE
-         EXISTS (SELECT 1 FROM organization_members a
-                   JOIN organization_members b ON b.org_id = a.org_id
-                  WHERE a.user_id = $1 AND b.user_id = $2)
-         OR EXISTS (SELECT 1 FROM workspace_members a
-                      JOIN workspace_members b ON b.workspace_id = a.workspace_id
-                     WHERE a.user_id = $1 AND b.user_id = $2)`,
-      [req.user.id, recipientId]
-    );
-    if (reachable.length === 0) {
-      return res
-        .status(403)
-        .json({ error: 'You can only send items to people in your organization' });
+    const recipientIdResolved = recipientRows[0].id;
+    if (recipientIdResolved === req.user.id) {
+      return res.status(400).json({ error: 'You cannot send an item to yourself' });
     }
 
     const itemRes = await itemForSend(itemType, itemId);
@@ -824,12 +822,12 @@ router.post('/sends', async (req, res, next) => {
       `INSERT INTO sends (sender_id, recipient_id, item_type, item_id, message)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [req.user.id, recipientId, itemType, itemId, message ? String(message) : null]
+      [req.user.id, recipientIdResolved, itemType, itemId, message ? String(message) : null]
     );
     const send = rows[0];
     const itemLabel = `${capitalize(itemType)} "${itemRes.item.name}"`;
     await notifyUser({
-      userId: recipientId,
+      userId: recipientIdResolved,
       title: `${req.user.name} sent you: ${itemLabel}`,
       body: message ? String(message) : `${req.user.name} shared ${itemLabel} with you. Accept it to copy it into your workspace.`,
       kind: 'send',
@@ -840,7 +838,7 @@ router.post('/sends', async (req, res, next) => {
         itemName: itemRes.item.name,
         status: 'pending',
         senderId: req.user.id,
-        recipientId,
+        recipientId: recipientIdResolved,
       },
       link: '/inbox',
     });
@@ -849,7 +847,7 @@ router.post('/sends', async (req, res, next) => {
       entityType: 'send',
       entityId: send.id,
       action: 'send_item',
-      detail: { itemType, itemId, recipientId },
+      detail: { itemType, itemId, recipientId: recipientIdResolved },
       ip: req.ip,
     });
     const json = await serializeSend(send, { withSender: true, withRecipient: true });
