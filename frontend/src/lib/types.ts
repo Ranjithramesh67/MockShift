@@ -136,7 +136,7 @@ export interface AppState {
   requests: ApiRequest[];
   activeWorkflowId: string;
   workflows: Workflow[];
-  activeRequestTab: 'params' | 'headers' | 'body' | 'formula' | 'tests';
+  activeRequestTab: 'params' | 'headers' | 'body' | 'formula' | 'tests' | 'history';
   lastResponse: MockResponse | null;
   viewMode: ViewMode;
   toast: { id: number; kind: 'success' | 'error' | 'info'; message: string } | null;

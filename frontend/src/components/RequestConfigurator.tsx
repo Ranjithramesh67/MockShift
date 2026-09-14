@@ -27,6 +27,7 @@ import { FormulaHelper } from './FormulaHelper';
 import { MockRoutePicker } from './mocks/MockRoutePicker';
 import { AssertionsEditor } from './AssertionsEditor';
 import { ShareLinksModal } from './ShareLinksModal';
+import { RequestHistoryPanel } from './request/RequestHistoryPanel';
 import {
   SendIcon,
   SaveIcon,
@@ -38,6 +39,7 @@ import {
   RequestIcon,
   CheckIcon,
   ShareIcon,
+  HistoryIcon,
 } from './icons';
 
 export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) {
@@ -297,6 +299,7 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           { id: 'body', label: 'Body', icon: CodeIcon },
           { id: 'formula', label: 'Formula', icon: FormulaIcon },
           { id: 'tests', label: 'Tests', icon: CheckIcon },
+          { id: 'history', label: 'History', icon: HistoryIcon },
         ]}
         active={activeTab}
         onChange={(tab) => dispatch({ type: 'SET_REQUEST_TAB', tab })}
@@ -383,6 +386,14 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           <AssertionsEditor
             assertions={request.assertions}
             onChange={(assertions) => update({ assertions })}
+          />
+        )}
+        {activeTab === 'history' && (
+          <RequestHistoryPanel
+            requestId={request.id}
+            onRestored={() => {
+              void ws.reloadActiveRequest();
+            }}
           />
         )}
       </div>

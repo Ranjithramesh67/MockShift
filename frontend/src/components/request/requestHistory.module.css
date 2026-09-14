@@ -1,0 +1,133 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #8b93a7);
+}
+
+.empty,
+.error {
+  font-size: 12px;
+  color: var(--text-muted, #8b93a7);
+}
+
+.error {
+  color: var(--err, #e5534b);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--panel-2, rgba(255, 255, 255, 0.02));
+}
+
+.rowHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.subtle {
+  font-size: 12px;
+  color: var(--text-muted, #8b93a7);
+}
+
+.kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #2a2f3a);
+}
+
+.kindCreate { color: var(--info, #4c9aff); }
+.kindUpdate { color: var(--info, #4c9aff); }
+.kindRollback { color: var(--warn, #d29922); }
+
+.restore {
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: 5px;
+  padding: 2px 8px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.restore:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fieldLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #8b93a7);
+}
+
+.before,
+.after {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.before {
+  color: var(--err, #e5534b);
+  background: rgba(229, 83, 75, 0.08);
+}
+
+.after {
+  color: var(--ok, #3fb950);
+  background: rgba(63, 185, 80, 0.08);
+}
