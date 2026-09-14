@@ -1061,14 +1061,15 @@ placeholders.
 ## 26. Request change history
 
 Every stored request keeps an append-only revision log. Saving a request records
-a revision with the author, timestamp, and the exact field-level diff; the
+a revision with the author, timestamp, and the exact field-level diff when real
+field changes are made (a no-op save records nothing); the
 initial creation and every rollback are recorded too. Any project member can
 read a request's history; editors (EDITOR+) can roll a request back to any
 earlier revision, which creates a *new* revision (history is never rewritten).
 
 - `GET /api/requests/:requestId/revisions` — newest-first metadata list
-  (`revisionNumber`, `changeKind` = `create|update|rollback`, `changedFields`,
-  `createdBy`, `createdAt`).
+  (`id`, `revisionNumber`, `changeKind` = `create|update|rollback`, `changedFields`,
+  `rolledBackFrom`, `createdBy`, `createdAt`).
 - `GET /api/requests/:requestId/revisions/:revisionId` — metadata plus the full
   post-change snapshot.
 - `POST /api/requests/:requestId/revisions/:revisionId/rollback` — restores the
