@@ -4025,7 +4025,39 @@ body.is-col-dragging .sidebar {
   gap: 10px;
   height: 100%;
   min-height: 0;
-  max-width: 860px;
+}
+
+.formula-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.formula-toolbar-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* The code editor fills its split pane so the divider can be dragged. */
+.formula-code-pane {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* In the resizable split the helper fills its pane instead of capping at 45%. */
+.formula-editor .split-pane-second .formula-helper {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
 }
 
 /* The code editor fills the remaining space and scrolls internally instead of

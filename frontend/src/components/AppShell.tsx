@@ -63,11 +63,9 @@ function FeatureDisabled({ menuKey }: { menuKey: string }) {
 }
 
 function WorkspaceArea({
-  onOpenCurl,
   scratchpadOpen,
   onCloseScratchpad,
 }: {
-  onOpenCurl: () => void;
   scratchpadOpen: boolean;
   onCloseScratchpad: () => void;
 }) {
@@ -101,19 +99,19 @@ function WorkspaceArea({
           <>
             <RequestTabs />
             {state.viewMode === 'request' ? (
-              <RequestConfigurator onOpenCurl={onOpenCurl} />
+              <RequestConfigurator />
             ) : state.viewMode === 'response' ? (
               <ResponsePane />
             ) : state.viewMode === 'side' ? (
               <SplitPane
                 orientation="horizontal"
-                top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
+                top={<RequestConfigurator />}
                 bottom={<ResponsePane />}
               />
             ) : (
               <SplitPane
                 orientation="vertical"
-                top={<RequestConfigurator onOpenCurl={onOpenCurl} />}
+                top={<RequestConfigurator />}
                 bottom={<ResponsePane />}
               />
             )}
@@ -214,7 +212,6 @@ export function AppShell() {
         <main className="main-area">
           {view === 'workspace' ? (
             <WorkspaceArea
-              onOpenCurl={() => setCurlOpen(true)}
               scratchpadOpen={scratchpadOpen}
               onCloseScratchpad={() => setScratchpadOpen(false)}
             />

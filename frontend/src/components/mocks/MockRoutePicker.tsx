@@ -5,6 +5,7 @@ import type { HttpMethod } from '@/lib/types';
 import type { MockRoute } from '@/lib/api';
 import { mockRequestBaseUrl } from '@/lib/mockServer';
 import { filterMockRoutes, mockRouteUrl } from '@/lib/mockRoutes';
+import { ServerIcon } from '../icons';
 import { useProjectMockRoutes } from './useProjectMockRoutes';
 import styles from './mocks.module.css';
 
@@ -76,13 +77,14 @@ export function MockRoutePicker({
     <div className={styles.picker} ref={boxRef}>
       <button
         type="button"
-        className={`${styles.btn} ${styles.btnGhost}`}
+        className={`${styles.btn} ${styles.btnGhost} ${styles.btnIcon}`}
         data-testid="mock-route-picker-open"
         disabled={disabled || !projectId}
         onClick={() => setOpen((value) => !value)}
         title="Pick a mock server route to fill the method and URL"
+        aria-label="Pick a mock server route"
       >
-        Mock route
+        <ServerIcon size={15} />
       </button>
       {open ? (
         <div className={styles.pickerPop} role="listbox" data-testid="mock-route-picker-pop">

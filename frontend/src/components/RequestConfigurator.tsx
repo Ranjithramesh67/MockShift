@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import type { ApiRequest, ApiType, HttpMethod, RequestContentType } from '@/lib/types';
+import type { ApiRequest, HttpMethod } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
@@ -11,7 +11,6 @@ import { isCurlCommand, parseCurl } from '@/lib/curl';
 import { seedPartsFromLegacy } from '@/lib/multipartParts';
 import {
   METHODS,
-  API_TYPES,
   METHOD_COLORS,
   BODY_KIND_OPTIONS,
   bodyKindOf,
@@ -22,6 +21,7 @@ import { KeyValueRows } from './KeyValueRows';
 import { MultipartRows } from './MultipartRows';
 import { CodeEditor } from './CodeEditor';
 import { TabBar } from './TabBar';
+import { SplitPane } from './SplitPane';
 import { CodeGenModal } from './CodeGenModal';
 import { FormulaHelper } from './FormulaHelper';
 import { MockRoutePicker } from './mocks/MockRoutePicker';
@@ -32,7 +32,6 @@ import {
   SendIcon,
   SaveIcon,
   CodeIcon,
-  ImportIcon,
   RowsIcon,
   ListIcon,
   FormulaIcon,
@@ -42,11 +41,12 @@ import {
   HistoryIcon,
 } from './icons';
 
-export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) {
+export function RequestConfigurator() {
   const { state, dispatch } = useApp();
   const ws = useWorkspace();
   const [codegenOpen, setCodegenOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [formulaLayout, setFormulaLayout] = useState<'vertical' | 'horizontal'>('vertical');
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
   const { user } = useAuth();
@@ -241,19 +241,6 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
               {viewerSummary(viewers, user?.id).label}
             </span>
           )}
-          <select
-            className="compact-select"
-            aria-label="API type"
-            data-testid="api-type-select"
-            value={request.apiType}
-            onChange={(e) => update({ apiType: e.target.value as ApiType })}
-          >
-            {API_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
           <button
             type="button"
             className="primary-button"
@@ -283,10 +270,6 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
           <button type="button" className="ghost-button" data-testid="codegen-open-button" onClick={onExportCode} style={actionBtn}>
             <CodeIcon size={14} />
             Code
-          </button>
-          <button type="button" className="ghost-button" data-testid="import-curl-button" onClick={onOpenCurl} style={actionBtn}>
-            <ImportIcon size={14} />
-            Import
           </button>
           <button type="button" className="ghost-button" data-testid="share-open-button" onClick={() => setShareOpen(true)} style={actionBtn}>
             <ShareIcon size={14} />
@@ -368,20 +351,45 @@ export function RequestConfigurator({ onOpenCurl }: { onOpenCurl: () => void }) 
         )}
         {activeTab === 'formula' && (
           <div className="formula-editor">
-            <CodeEditor
-              value={request.formula}
-              onChange={(value) => update({ formula: value })}
-              language="javascript"
-              height="100%"
-              ariaLabel="Formula editor"
-              onModEnter={runActive}
-              completions
-            />
-            <FormulaHelper
-              onInsert={(code) => {
-                const current = request.formula;
-                update({ formula: current ? `${current}\n${code}` : code });
-              }}
+            <div className="formula-toolbar">
+              <span className="formula-toolbar-label">Pre-request formula</span>
+              <button
+                type="button"
+                className="ghost-button small"
+                data-testid="formula-layout-toggle"
+                title={formulaLayout === 'vertical' ? 'Show helpers on the right' : 'Show helpers below'}
+                aria-label="Toggle formula helper layout"
+                onClick={() => setFormulaLayout((v) => (v === 'vertical' ? 'horizontal' : 'vertical'))}
+              >
+                {formulaLayout === 'vertical' ? 'Helpers right' : 'Helpers below'}
+              </button>
+            </div>
+            <SplitPane
+              orientation={formulaLayout}
+              initialRatio={formulaLayout === 'vertical' ? 0.6 : 0.62}
+              minRatio={0.25}
+              maxRatio={0.85}
+              top={
+                <div className="formula-code-pane">
+                  <CodeEditor
+                    value={request.formula}
+                    onChange={(value) => update({ formula: value })}
+                    language="javascript"
+                    height="100%"
+                    ariaLabel="Formula editor"
+                    onModEnter={runActive}
+                    completions
+                  />
+                </div>
+              }
+              bottom={
+                <FormulaHelper
+                  onInsert={(code) => {
+                    const current = request.formula;
+                    update({ formula: current ? `${current}\n${code}` : code });
+                  }}
+                />
+              }
             />
           </div>
         )}

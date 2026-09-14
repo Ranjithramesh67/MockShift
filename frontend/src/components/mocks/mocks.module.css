@@ -155,6 +155,18 @@
   background: transparent;
 }
 
+.btnIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 9px;
+  color: var(--text-muted);
+}
+
+.btnIcon:hover {
+  color: var(--text);
+}
+
 .list {
   display: flex;
   flex-direction: column;
