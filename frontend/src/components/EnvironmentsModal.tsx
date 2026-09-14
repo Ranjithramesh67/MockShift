@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { environmentApi, type Environment, type EnvironmentVariable } from '@/lib/api';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { Modal } from './Modal';
+import { ToggleSwitch } from './ToggleSwitch';
 
 interface DraftVariable {
   id?: string;
@@ -187,7 +188,7 @@ export function EnvironmentsModal({ open, onClose }: { open: boolean; onClose: (
         )}
         <ul className="env-list">
           {environments.map((env) => (
-            <li key={env.id} className={`env-row ${env.id === selectedId ? 'active' : ''}`}>
+            <li key={env.id} className={`env-row ${env.id === selectedId ? 'active' : ''} ${env.is_active ? 'is-active' : ''}`}>
               <button
                 type="button"
                 className="env-select"
@@ -327,16 +328,13 @@ export function EnvironmentsModal({ open, onClose }: { open: boolean; onClose: (
                       />
                     </td>
                     <td>
-                      <label className="checkbox-label">
-                        <input
-                          type="checkbox"
-                          data-testid="var-secret"
-                          checked={d.isSecret}
-                          disabled={!canEdit}
-                          onChange={(e) => patchDraft(i, { isSecret: e.target.checked })}
-                        />
-                        <span>Secret</span>
-                      </label>
+                      <ToggleSwitch
+                        testId="var-secret"
+                        checked={d.isSecret}
+                        disabled={!canEdit}
+                        onChange={(checked) => patchDraft(i, { isSecret: checked })}
+                        label="Secret"
+                      />
                     </td>
                     {canEdit && (
                       <td>
