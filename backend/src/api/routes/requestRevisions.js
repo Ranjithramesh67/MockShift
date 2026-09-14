@@ -151,14 +151,7 @@ router.post('/requests/:requestId/revisions/:revisionId/rollback', async (req, r
     if (!target) return res.status(404).json({ error: 'Revision not found' });
     const targetRow = (await query(`SELECT snapshot FROM request_revisions WHERE id = $1`, [revisionId])).rows[0];
     if (!targetRow) return res.status(404).json({ error: 'Revision not found' });
-    let targetSnap = targetRow.snapshot;
-    if (targetSnap && targetSnap.folderId) {
-      const { rows: folderRows } = await query(
-        `SELECT 1 FROM folders WHERE id = $1 AND collection_id = $2`,
-        [targetSnap.folderId, scope.collection_id]
-      );
-      if (!folderRows[0]) targetSnap = { ...targetSnap, folderId: null };
-    }
+    const targetSnap = targetRow.snapshot;
 
     const client = await pool.connect();
     let before;
@@ -176,7 +169,15 @@ router.post('/requests/:requestId/revisions/:revisionId/rollback', async (req, r
         return res.status(404).json({ error: 'Request not found' });
       }
       before = serializeRequest(pre[0]);
-      await client.query(APPLY_SNAPSHOT_SQL, snapshotParams(requestId, targetSnap));
+      let snapshot = targetSnap;
+      if (snapshot && snapshot.folderId) {
+        const folderCheck = await client.query(
+          'SELECT 1 FROM folders WHERE id = $1 AND collection_id = $2',
+          [snapshot.folderId, scope.collection_id]
+        );
+        if (!folderCheck.rows[0]) snapshot = { ...snapshot, folderId: null };
+      }
+      await client.query(APPLY_SNAPSHOT_SQL, snapshotParams(requestId, snapshot));
       const { rows: post } = await client.query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [requestId]);
       after = serializeRequest(post[0]);
       changed = changedFields(before, after);
