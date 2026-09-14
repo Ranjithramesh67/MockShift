@@ -29,6 +29,7 @@ const copilotRoutes = require('./routes/copilot');
 const commentRoutes = require('./routes/comments');
 const reviewRoutes = require('./routes/reviews');
 const versionRoutes = require('./routes/versions');
+const requestRevisionRoutes = require('./routes/requestRevisions');
 const sdkRoutes = require('./routes/sdk');
 const menuAccessRoutes = require('./routes/menuAccess');
 const searchRoutes = require('./routes/search');
@@ -122,6 +123,7 @@ function createApp() {
   app.use('/api', commentRoutes);
   app.use('/api', reviewRoutes);
   app.use('/api', versionRoutes);
+  app.use('/api', requestRevisionRoutes);
   app.use('/api/sdk', sdkRoutes);
 
   // Public per-project mock server: hit it like any external API.

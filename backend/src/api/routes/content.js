@@ -8,6 +8,8 @@ const { normalizeProvider, resolveAuthHeader } = require('../authToken');
 const { fireWorkflowEvent } = require('../workflowService');
 const { checkCountGate, checkSeatGate, checkPublicSharingGate, chargeRuns, orgOfProject, orgOfCollection } = require('../entitlements');
 const { publish, roomKey } = require('../realtime');
+const { REQUEST_SELECT, serializeRequest } = require('../requestSnapshot');
+const { changedFields } = require('../collabDiff');
 
 const router = Router();
 router.use(requireAuth);
@@ -69,6 +71,32 @@ async function workspaceOfCollection(collectionId) {
     [collectionId]
   );
   return rows[0]?.workspace_id || null;
+}
+
+// Append a revision row. Callers inside a transaction pass `exec = client.query`
+// so the row lock on api_requests serializes revision_number.
+async function insertRevision(exec, { requestId, scope, kind, snapshot, diff, rolledBackFrom, userId }) {
+  const run = exec || query;
+  await run(
+    `INSERT INTO request_revisions
+       (request_id, collection_id, workspace_id, project_id, revision_number,
+        change_kind, snapshot, changed_fields, rolled_back_from, created_by)
+     SELECT $1, $2, $3, $4, COALESCE(MAX(revision_number), 0) + 1,
+            $5, $6::jsonb, $7::jsonb, $8, $9
+       FROM request_revisions
+      WHERE request_id = $1`,
+    [
+      requestId,
+      scope.collection_id,
+      scope.workspace_id,
+      scope.project_id,
+      kind,
+      JSON.stringify(snapshot),
+      JSON.stringify(diff || []),
+      rolledBackFrom || null,
+      userId,
+    ]
+  );
 }
 
 async function projectOfCollection(collectionId) {
@@ -540,7 +568,18 @@ router.post('/requests', async (req, res, next) => {
         folderId || null,
       ]
     );
-    res.status(201).json({ request: rows[0] });
+    const created = rows[0];
+    const workspaceId = await workspaceOfCollection(collectionId);
+    const { rows: fullRows } = await query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [created.id]);
+    await insertRevision(null, {
+      requestId: created.id,
+      scope: { collection_id: collectionId, workspace_id: workspaceId, project_id: projectId },
+      kind: 'create',
+      snapshot: serializeRequest(fullRows[0]),
+      diff: [],
+      userId: req.user.id,
+    });
+    res.status(201).json({ request: created });
   } catch (err) {
     next(err);
   }
@@ -652,14 +691,53 @@ router.put('/requests/:requestId', async (req, res, next) => {
       }
       sets.push(`${col} = $${params.length}`);
     }
+    let fresh;
+    let changed = [];
     if (sets.length) {
-      await query(`UPDATE api_requests SET ${sets.join(', ')} WHERE id = $1`, params);
+      const projectWorkspaceId = await workspaceOfCollection(current.collection_id);
+      const sc = { collection_id: current.collection_id, workspace_id: projectWorkspaceId, project_id: projectId };
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: preRows } = await client.query(
+          `SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1 FOR UPDATE`,
+          [requestId]
+        );
+        const before = serializeRequest(preRows[0]);
+        await client.query(`UPDATE api_requests SET ${sets.join(', ')} WHERE id = $1`, params);
+        const { rows: postRows } = await client.query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [requestId]);
+        const after = serializeRequest(postRows[0]);
+        changed = changedFields(before, after);
+        if (changed.length) {
+          await insertRevision((sql, p) => client.query(sql, p), {
+            requestId,
+            scope: sc,
+            kind: 'update',
+            snapshot: after,
+            diff: changed,
+            userId: req.user.id,
+          });
+        }
+        fresh = postRows[0];
+        await client.query('COMMIT');
+      } catch (err) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          /* ignore */
+        }
+        throw err;
+      } finally {
+        client.release();
+      }
+    } else {
+      const { rows } = await query(
+        `SELECT id, name, method, url, api_type, collection_id, folder_id FROM api_requests WHERE id = $1`,
+        [requestId]
+      );
+      fresh = rows[0];
     }
-    const fresh = await query(
-      `SELECT id, name, method, url, api_type, collection_id, folder_id FROM api_requests WHERE id = $1`,
-      [requestId]
-    );
-    if (sets.length) {
+    if (changed.length) {
       publish(roomKey('request', requestId), {
         type: 'entity:updated',
         entityType: 'request',
@@ -667,7 +745,17 @@ router.put('/requests/:requestId', async (req, res, next) => {
         by: { id: req.user.id, name: req.user.name || null },
       });
     }
-    res.json({ request: fresh.rows[0] });
+    res.json({
+      request: {
+        id: fresh.id,
+        name: fresh.name,
+        method: fresh.method,
+        url: fresh.url,
+        api_type: fresh.api_type,
+        collection_id: fresh.collection_id,
+        folder_id: fresh.folder_id,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -741,6 +829,16 @@ router.post('/requests/:requestId/duplicate', async (req, res, next) => {
         source.folder_id,
       ]
     );
+    const dupWorkspaceId = await workspaceOfCollection(source.collection_id);
+    const { rows: dupFull } = await query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [created[0].id]);
+    await insertRevision(null, {
+      requestId: created[0].id,
+      scope: { collection_id: source.collection_id, workspace_id: dupWorkspaceId, project_id: projectId },
+      kind: 'create',
+      snapshot: serializeRequest(dupFull[0]),
+      diff: [],
+      userId: req.user.id,
+    });
     res.status(201).json({ request: created[0] });
   } catch (err) {
     next(err);
