@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -19,6 +19,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [nextPath, setNextPath] = useState('/');
+
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get('next');
+    if (raw && raw.startsWith('/') && !raw.startsWith('//')) setNextPath(raw);
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +32,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login(email.trim(), password);
-      router.replace('/');
+      router.replace(nextPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

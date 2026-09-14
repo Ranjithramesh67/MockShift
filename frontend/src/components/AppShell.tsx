@@ -12,7 +12,6 @@ import type { MenuKey } from '@/lib/api';
 import { authApi } from '@/lib/api';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
-import { TabBar } from './TabBar';
 import { SplitPane } from './SplitPane';
 import { RequestConfigurator } from './RequestConfigurator';
 import { RequestTabs } from './RequestTabs';
@@ -69,7 +68,7 @@ function WorkspaceArea({
   scratchpadOpen: boolean;
   onCloseScratchpad: () => void;
 }) {
-  const { state, dispatch } = useApp();
+  const { state } = useApp();
   const ws = useWorkspace();
   if (scratchpadOpen) {
     return <ScratchpadWorkspace onClose={onCloseScratchpad} />;
@@ -83,15 +82,6 @@ function WorkspaceArea({
     ws.openRequestIds.length === 0;
   return (
     <>
-      <TabBar
-        tabs={[
-          { id: 'request', label: 'Request' },
-          { id: 'workflow', label: 'Workflow' },
-        ]}
-        active={state.activeTab}
-        onChange={(tab) => dispatch({ type: 'SET_TAB', tab })}
-        testIdPrefix="main"
-      />
       {state.activeTab === 'request' ? (
         projectOverviewActive ? (
           <ProjectOverview />

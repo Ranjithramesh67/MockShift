@@ -187,6 +187,24 @@ export const WorkflowIcon = (p: IconProps) => (
   </svg>
 );
 
+export const MaximizeIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+    <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+    <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+  </svg>
+);
+
+export const MinimizeIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+    <path d="M16 3v3a2 2 0 0 0 2 2h3" />
+    <path d="M8 21v-3a2 2 0 0 0-2-2H3" />
+    <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+  </svg>
+);
+
 export const BoltIcon = (p: IconProps) => (
   <svg {...svgProps(p)}>
     <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />

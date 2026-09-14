@@ -300,5 +300,29 @@ User-reported UI/UX batch addressed page-by-page (fix, verify, commit each befor
   dead-end empty state now points to it; `SendCreateInput.recipientId` is optional with a new
   `recipientEmail`. New `tests/sends.integration.test.cjs` (3 tests, scratch cluster 5441): send to an
   unshared recipient by email, self-send rejected, unknown email 404.
-- Still open in this batch: issue 4 (login-gated sharing readable by recipients without a
-  subscription) and issue 5 (change history on the public `/s/<token>` page).
+- Issues 4&5 (login-gated sharing + share change history) — this commit:
+  - `db/migrations/047_item_shares.sql` generalizes `request_shares` into a login-gated
+    `item_shares` table (item_type ∈ request/folder/collection/project/workspace, uuid token,
+    `UNIQUE(item_type,item_id)`) and backfills legacy `request_shares` rows.
+  - `backend/src/api/routes/shares.js` rewritten: `POST /shares {itemType,itemId}` (EDITOR+) creates a
+    share once per item; `GET /shares/:token` now requires login (`requireAuth`) and is plan-free, so
+    recipients need no subscription to view — requests return a snapshot + lastRun, other item types a
+    redacted read-only tree. The plan `public_sharing` gate now applies only on *creation*. Added
+    `GET /shares/:token/revisions` (request shares) and kept `POST /requests/:requestId/share` for
+    back-compat; legacy tokens still resolve.
+  - FE `frontend/src/lib/api.ts` gains `SharedItemView`/`SharedRequestSummary`/`SharedFolderNode`/
+    `SharedRevision` types and `shareApi.create({itemType,itemId})`/`revisions()`; `ShareLinksModal.tsx`
+    is generalized to `itemType/itemId/itemName`.
+  - `frontend/app/s/[token]/page.tsx` is login-gated with a sign-in CTA carrying `?next=` and renders a
+    "Change history" section (create/rollback/update kinds with field diffs) plus the non-request tree
+    view; `frontend/app/login/page.tsx` now honors the validated `next` param. New
+    `backend/tests/itemShares.integration.test.cjs`; `shares.integration.test.cjs` updated.
+- Relocate Workflow into the sidebar (this commit): `AppShell.tsx` drops the top `TabBar`
+  (`main-tab-request`/`main-tab-workflow`); `Sidebar.tsx` gains a `rail-workflow` rail button and a
+  `WorkflowsPanel` (`workflows-panel`, `new-workflow`, `workflow-<name>`, `back-to-apis`) that drives
+  `SET_TAB('workflow')`, and the rail restores from persisted state. `TabBar.tsx` remains for
+  CreateModal/RequestConfigurator/ProjectOverview/ScratchpadWorkspace.
+- App-only fullscreen toggle (this commit): `icons.tsx` adds `MaximizeIcon`/`MinimizeIcon`;
+  `TopBar.tsx` adds `data-testid="fullscreen-toggle"` using the Fullscreen API
+  (`documentElement.requestFullscreen`/`exitFullscreen`) with a `fullscreenchange` listener.
+- Issue batch complete (issues 1–12 + workflow relocation + fullscreen).

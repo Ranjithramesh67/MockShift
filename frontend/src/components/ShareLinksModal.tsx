@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Modal } from './Modal';
-import { shareApi } from '@/lib/api';
+import { shareApi, type SendItemType } from '@/lib/api';
 import { CheckIcon, CopyIcon, TrashIcon } from './icons';
 
 function copyText(text: string) {
@@ -21,13 +21,15 @@ function copyText(text: string) {
 export function ShareLinksModal({
   open,
   onClose,
-  requestId,
-  requestName,
+  itemType,
+  itemId,
+  itemName,
 }: {
   open: boolean;
   onClose: () => void;
-  requestId: string;
-  requestName: string;
+  itemType: SendItemType;
+  itemId: string;
+  itemName: string;
 }) {
   const [token, setToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -35,13 +37,13 @@ export function ShareLinksModal({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || !requestId) return;
+    if (!open || !itemId) return;
     let cancelled = false;
     setBusy(true);
     setError(null);
     setCopied(false);
     shareApi
-      .create(requestId)
+      .create({ itemType, itemId })
       .then((res) => {
         if (!cancelled) setToken(res.share.token);
       })
@@ -54,7 +56,7 @@ export function ShareLinksModal({
     return () => {
       cancelled = true;
     };
-  }, [open, requestId]);
+  }, [open, itemType, itemId]);
 
   if (!open) return null;
 
@@ -82,7 +84,7 @@ export function ShareLinksModal({
   };
 
   return (
-    <Modal title="Share request" onClose={onClose} testId="share-links-modal">
+    <Modal title="Share link" onClose={onClose} testId="share-links-modal">
       {busy && !token && <p className="hint">Creating link…</p>}
       {error && <p className="auth-error">{error}</p>}
       {!busy && !token && !error && <p className="hint">No active share link.</p>}
@@ -90,8 +92,8 @@ export function ShareLinksModal({
       {token && (
         <>
           <p className="hint">
-            Anyone with this link can view <strong>{requestName}</strong> and its latest response —
-            read-only, no login required.
+            Anyone with this link can view <strong>{itemName}</strong> and its latest state — read-only.
+            Viewers must be signed in to API Hub (no paid plan needed).
           </p>
           <div className="share-url-row">
             <input
