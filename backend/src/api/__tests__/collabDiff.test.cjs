@@ -12,10 +12,18 @@ test('changedFields reports only fields whose value changed', () => {
   ]);
 });
 
-test('changedFields ignores object key order and deep-equal arrays', () => {
+test('changedFields ignores object key order within array items', () => {
+  const before = { headers: [{ key: 'A', value: '1' }, { key: 'B', value: '2' }] };
+  const after = { headers: [{ value: '1', key: 'A' }, { value: '2', key: 'B' }] };
+  assert.deepEqual(changedFields(before, after), []);
+});
+
+test('changedFields treats reordered array items as a change', () => {
   const before = { headers: [{ key: 'A', value: '1' }, { key: 'B', value: '2' }] };
   const after = { headers: [{ value: '2', key: 'B' }, { value: '1', key: 'A' }] };
-  assert.deepEqual(changedFields(before, after), []);
+  const fields = changedFields(before, after);
+  assert.equal(fields.length, 1);
+  assert.equal(fields[0].field, 'headers');
 });
 
 test('changedFields returns [] when nothing changed and normalises undefined to null', () => {
