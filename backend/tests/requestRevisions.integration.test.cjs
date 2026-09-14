@@ -93,3 +93,61 @@ test('unknown request ids return 404', async () => {
   const res = await user.client.api('GET', '/api/requests/00000000-0000-0000-0000-000000000000/revisions');
   assert.equal(res.status, 404);
 });
+
+test('rollback restores an earlier snapshot and records a rollback revision', async () => {
+  const req = await user.client.api('POST', '/api/requests', {
+    collectionId: user.collectionId,
+    name: 'Rollback me',
+    method: 'GET',
+    url: 'https://example.com/v1',
+  });
+  const id = req.json.request.id;
+  await user.client.api('PUT', `/api/requests/${id}`, { url: 'https://example.com/v2' });
+
+  const list = await user.client.api('GET', `/api/requests/${id}/revisions`);
+  const v1 = list.json.revisions.find((r) => r.revisionNumber === 1);
+
+  const rb = await user.client.api('POST', `/api/requests/${id}/revisions/${v1.id}/rollback`);
+  assert.equal(rb.status, 200);
+  assert.equal(rb.json.revision.changeKind, 'rollback');
+  assert.equal(rb.json.revision.rolledBackFrom, v1.id);
+
+  const after = await user.client.api('GET', `/api/requests/${id}`);
+  assert.equal(after.json.request.url, 'https://example.com/v1');
+
+  const list2 = await user.client.api('GET', `/api/requests/${id}/revisions`);
+  assert.equal(list2.json.revisions[0].changeKind, 'rollback');
+  const fields = list2.json.revisions[0].changedFields;
+  assert.deepEqual(fields.find((f) => f.field === 'url'), {
+    field: 'url',
+    from: 'https://example.com/v2',
+    to: 'https://example.com/v1',
+  });
+});
+
+test('rolling back to an unknown revision returns 404', async () => {
+  const req = await user.client.api('POST', '/api/requests', {
+    collectionId: user.collectionId,
+    name: 'Bad rollback',
+    method: 'GET',
+    url: 'https://example.com/x',
+  });
+  const res = await user.client.api(
+    'POST',
+    `/api/requests/${req.json.request.id}/revisions/00000000-0000-0000-0000-000000000000/rollback`
+  );
+  assert.equal(res.status, 404);
+});
+
+test('a revision from a different request cannot be rolled back onto this request', async () => {
+  const a = await user.client.api('POST', '/api/requests', {
+    collectionId: user.collectionId, name: 'A', method: 'GET', url: 'https://example.com/a',
+  });
+  const b = await user.client.api('POST', '/api/requests', {
+    collectionId: user.collectionId, name: 'B', method: 'GET', url: 'https://example.com/b',
+  });
+  const listA = await user.client.api('GET', `/api/requests/${a.json.request.id}/revisions`);
+  const revA = listA.json.revisions[0].id;
+  const res = await user.client.api('POST', `/api/requests/${b.json.request.id}/revisions/${revA}/rollback`);
+  assert.equal(res.status, 404);
+});
