@@ -531,6 +531,17 @@
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+.send-email-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.send-email-row .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ---- Responsive ---------------------------------------------------------- */
 @media (max-width: 640px) {
   .inbox-main {

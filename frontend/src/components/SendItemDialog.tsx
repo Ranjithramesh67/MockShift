@@ -27,6 +27,8 @@ const TYPE_LABEL: Record<SendItemType, string> = {
   workspace: 'Workspace',
 };
 
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
 function Initials({ name }: { name: string }) {
   const parts = (name || '?').trim().split(/\s+/);
   const letters = (parts[0]?.charAt(0) || '?') + (parts.length > 1 ? parts[parts.length - 1].charAt(0) : '');
@@ -56,6 +58,7 @@ export function SendItemDialog({
   const [recipients, setRecipients] = useState<SendRecipient[] | null>(null);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,6 +68,7 @@ export function SendItemDialog({
     setRecipients(null);
     setQuery('');
     setSelectedId(null);
+    setEmail('');
     setMessage('');
     setError(null);
     setBusy(false);
@@ -111,6 +115,28 @@ export function SendItemDialog({
     try {
       const { send } = await sendsApi.create({
         recipientId: selectedId,
+        itemType: item.type,
+        itemId: item.id,
+        message: message.trim() || undefined,
+      });
+      setDone(send);
+      onSent?.(send);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const emailValid = EMAIL_RE.test(email.trim());
+
+  const submitByEmail = async () => {
+    if (!item || !emailValid || busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const { send } = await sendsApi.create({
+        recipientEmail: email.trim(),
         itemType: item.type,
         itemId: item.id,
         message: message.trim() || undefined,
@@ -174,7 +200,8 @@ export function SendItemDialog({
               <p className="hint">Loading people…</p>
             ) : recipients.length === 0 ? (
               <p className="hint">
-                No one to send to yet — you can only send to people you share an organization or workspace with.
+                No one in your organization or shared workspaces yet. You can still send to any
+                API Hub user by email below.
               </p>
             ) : (
               <>
@@ -225,6 +252,36 @@ export function SendItemDialog({
                 </ul>
               </>
             )}
+          </div>
+
+          <div className="modal-section">
+            <h3>Or send to any user by email</h3>
+            <p className="hint">
+              The recipient does not need to share an organization or workspace with you.
+            </p>
+            <div className="send-email-row">
+              <input
+                type="email"
+                className="text-input"
+                data-testid="send-recipient-email"
+                aria-label="Recipient email"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void submitByEmail();
+                }}
+              />
+              <button
+                type="button"
+                className="ghost-button"
+                data-testid="send-by-email-btn"
+                disabled={busy || !emailValid}
+                onClick={() => void submitByEmail()}
+              >
+                Send by email
+              </button>
+            </div>
           </div>
 
           <div className="modal-section">
