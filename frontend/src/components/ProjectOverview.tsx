@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp } from '@/store/AppStore';
+import { useAuth } from '@/lib/auth';
 import {
   projectApi,
   type MemberRole,
@@ -42,6 +43,7 @@ function RoleBadge({ role }: { role: string }) {
 export function ProjectOverview() {
   const ws = useWorkspace();
   const { dispatch } = useApp();
+  const { user } = useAuth();
   const [tab, setTab] = useState<TabId>('overview');
   const [orgUsers, setOrgUsers] = useState<ProjectOrgUser[]>([]);
   const [newUserId, setNewUserId] = useState('');
@@ -149,7 +151,21 @@ export function ProjectOverview() {
       : overview.myAccess.level;
 
   const people: OverviewPerson[] = [...overview.managers, ...overview.members];
+  // The workspace owner/admin of the auto-created "Default Project" is not a
+  // project manager/member, so surface the signed-in user explicitly instead
+  // of showing an empty list.
+  if (user && !people.some((p) => p.id === user.id)) {
+    people.unshift({
+      id: user.id,
+      name: user.name ?? '',
+      email: user.email,
+      role: overview.canManage ? 'MANAGER' : overview.myAccess.level === 'EDITOR' ? 'EDITOR' : 'VIEWER',
+      granted_at: null,
+      grantor_name: null,
+    });
+  }
   const assignedIds = new Set(people.map((p) => p.id));
+  const isSelf = (p: OverviewPerson) => Boolean(user && p.id === user.id);
 
   const statTiles = [
     { label: 'Collections', value: overview.counts.collections, icon: CollectionIcon },
@@ -187,7 +203,10 @@ export function ProjectOverview() {
     <div className="po-person">
       <span className="po-avatar">{(p.name || p.email || '?').charAt(0).toUpperCase()}</span>
       <div className="po-person-text">
-        <span className="po-person-name">{p.name || '—'}</span>
+        <span className="po-person-name">
+          {p.name || '—'}
+          {isSelf(p) && <span className="po-you-badge">you</span>}
+        </span>
         <span className="po-person-email">{p.email}</span>
       </div>
     </div>
@@ -280,7 +299,7 @@ export function ProjectOverview() {
                     Choose a user…
                   </option>
                   {orgUsers
-                    .filter((u) => !assignedIds.has(u.id))
+                    .filter((u) => !assignedIds.has(u.id) && (!user || u.id !== user.id))
                     .map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name} ({u.email})
@@ -332,7 +351,7 @@ export function ProjectOverview() {
                         </td>
                         {overview.canManage && (
                           <td className="po-actions-col">
-                            {isMemberRow && (
+                            {isMemberRow && !isSelf(p) && (
                               <button
                                 type="button"
                                 className="ghost-button small danger"

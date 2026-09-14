@@ -274,12 +274,13 @@ router.get('/projects/:projectId/org-users', requireProjectManager, async (req, 
          JOIN projects p ON p.id = $1
          JOIN workspaces w ON w.id = p.workspace_id
         WHERE om.org_id = w.organization_id
+          AND u.id <> $2
           AND NOT EXISTS (SELECT 1 FROM project_members pm
                            WHERE pm.project_id = p.id AND pm.user_id = u.id)
           AND NOT EXISTS (SELECT 1 FROM project_managers pm
                            WHERE pm.project_id = p.id AND pm.user_id = u.id)
         ORDER BY u.name`,
-      [projectId]
+      [projectId, req.user.id]
     );
     res.json({ users: rows });
   } catch (err) {
@@ -294,6 +295,9 @@ router.post('/projects/:projectId/members', requireProjectManager, async (req, r
     const { projectId } = req.params;
     const { userId, role } = req.body || {};
     if (!userId) return res.status(400).json({ error: 'userId is required' });
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot add yourself as a member' });
+    }
     const roleValue = MEMBER_ROLES.includes(role) ? role : 'VIEWER';
     const [user, project] = await Promise.all([
       query(`SELECT id, name FROM users WHERE id = $1`, [userId]),
@@ -372,6 +376,9 @@ router.patch('/projects/:projectId/members/:userId', requireProjectManager, asyn
 router.delete('/projects/:projectId/members/:userId', requireProjectManager, async (req, res, next) => {
   try {
     const { projectId, userId } = req.params;
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot remove yourself from the project' });
+    }
     const isManager = await query(
       `SELECT 1 FROM project_managers WHERE project_id = $1 AND user_id = $2`,
       [projectId, userId]
