@@ -417,6 +417,40 @@ export const contentApi = {
     ),
 };
 
+// ---- request edit history
+export interface RequestChangedField {
+  field: string;
+  from: unknown;
+  to: unknown;
+}
+
+export interface RequestRevisionMeta {
+  id: string;
+  requestId: string;
+  revisionNumber: number;
+  changeKind: 'create' | 'update' | 'rollback';
+  changedFields: RequestChangedField[];
+  rolledBackFrom: string | null;
+  createdBy: { id: string; name: string | null };
+  createdAt: string;
+}
+
+export interface RequestRevision extends RequestRevisionMeta {
+  snapshot: Record<string, unknown> | null;
+}
+
+export const requestHistoryApi = {
+  list: (requestId: string) =>
+    apiFetch<{ revisions: RequestRevisionMeta[] }>(`/api/requests/${requestId}/revisions`),
+  detail: (requestId: string, revisionId: string) =>
+    apiFetch<{ revision: RequestRevision }>(`/api/requests/${requestId}/revisions/${revisionId}`),
+  rollback: (requestId: string, revisionId: string) =>
+    apiFetch<{ request: { id: string; name: string }; revision: RequestRevisionMeta }>(
+      `/api/requests/${requestId}/revisions/${revisionId}/rollback`,
+      { method: 'POST' }
+    ),
+};
+
 export const folderApi = {
   create: (input: { collectionId: string; name: string; parentId?: string | null }) =>
     apiFetch<{ folder: Folder }>('/api/folders', { method: 'POST', body: input }),
