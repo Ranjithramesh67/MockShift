@@ -149,6 +149,9 @@ Endpoints:
 | Read/update/delete request | `GET/PUT/DELETE /api/requests/:requestId` |
 | Duplicate request | `POST /api/requests/:requestId/duplicate` |
 | Run a request | `POST /api/requests/:requestId/run` or `POST /api/runs` |
+| List request revisions | `GET /api/requests/:requestId/revisions` |
+| Read a request revision | `GET /api/requests/:requestId/revisions/:revisionId` |
+| Roll back a request | `POST /api/requests/:requestId/revisions/:revisionId/rollback` |
 
 ### 3.2 Request execution
 
@@ -650,6 +653,14 @@ POST   /api/collections/:collectionId/run
 GET    /api/history           GET  /api/history/:runId
 ```
 
+### Request revisions
+
+```
+GET    /api/requests/:requestId/revisions
+GET    /api/requests/:requestId/revisions/:revisionId
+POST   /api/requests/:requestId/revisions/:revisionId/rollback
+```
+
 ### Tokens
 
 ```
@@ -1044,3 +1055,28 @@ placeholders.
 - API bearer tokens and sessions minted before the feature survive a password
   reset; only `ah.session` cookies carrying a stale `sv` are revoked.
 - SMTP is best-effort and there is no bounce or retry queue.
+
+---
+
+## 26. Request change history
+
+Every stored request keeps an append-only revision log. Saving a request records
+a revision with the author, timestamp, and the exact field-level diff; the
+initial creation and every rollback are recorded too. Any project member can
+read a request's history; editors (EDITOR+) can roll a request back to any
+earlier revision, which creates a *new* revision (history is never rewritten).
+
+- `GET /api/requests/:requestId/revisions` — newest-first metadata list
+  (`revisionNumber`, `changeKind` = `create|update|rollback`, `changedFields`,
+  `createdBy`, `createdAt`).
+- `GET /api/requests/:requestId/revisions/:revisionId` — metadata plus the full
+  post-change snapshot.
+- `POST /api/requests/:requestId/revisions/:revisionId/rollback` — restores the
+  revision's snapshot into the request and records a `rollback` revision.
+
+Storage is `request_revisions` (migration 046): immutable rows (SELECT/INSERT
+only), scoped by workspace for RLS, snapshots in the same camelCase shape used by
+collection version diffs. Rollback publishes the existing realtime
+`entity:updated` event, so every other open editor reloads the new state. The
+editor surfaces this under the request's **History** tab, which shows a
+git-style before/after diff per revision and a **Restore** action.
