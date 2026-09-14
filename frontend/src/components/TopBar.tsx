@@ -28,6 +28,8 @@ import {
   KeyIcon,
   SendIcon,
   SearchIcon,
+  MaximizeIcon,
+  MinimizeIcon,
 } from './icons';
 
 const VIEW_OPTIONS: Array<{ id: ViewMode; label: string; title: string; icon: typeof LayoutIcon }> = [
@@ -164,11 +166,27 @@ export function TopBar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [viewsOpen, setViewsOpen] = useState(false);
   const [isMac, setIsMac] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const viewsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
   }, []);
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      // Fullscreen can be blocked by the browser or an embedding frame.
+    }
+  };
 
   const avatar = profileData?.user?.avatar ?? null;
   const planChip = subscriptionChip(profileData?.subscription ?? null);
@@ -298,6 +316,16 @@ export function TopBar({
           Test cURL
         </button>
         <NotificationBell />
+        <button
+          type="button"
+          className="ghost-button icon-only"
+          data-testid="fullscreen-toggle"
+          aria-label={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+          title={isFullscreen ? 'Exit full screen' : 'Full screen (focus mode)'}
+          onClick={() => void toggleFullscreen()}
+        >
+          {isFullscreen ? <MinimizeIcon size={15} /> : <MaximizeIcon size={15} />}
+        </button>
         <button
           type="button"
           className={`subscription-chip tone-${planChip.tone} ${planChip.urgent ? 'is-urgent' : ''}`}

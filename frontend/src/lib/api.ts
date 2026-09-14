@@ -1024,9 +1024,13 @@ export const environmentApi = {
 };
 
 // ------------------------------------------------------------- Share links
+// Login-gated: any signed-in user holding the token can view; viewing never
+// requires a paid plan. Request shares expose the request + latest run, other
+// items expose a redacted read-only tree.
 export interface SharedRequestView {
   token: string;
   createdAt: string;
+  itemType: 'request';
   request: {
     id: string;
     name: string;
@@ -1050,12 +1054,75 @@ export interface SharedRequestView {
   } | null;
 }
 
+export interface SharedRequestSummary {
+  id: string;
+  name: string;
+  method: string;
+  url: string;
+  apiType: string;
+  headers: Array<{ key: string; value: string; enabled: boolean }>;
+  queryParams: Array<{ key: string; value: string; enabled: boolean }>;
+  bodyType: string;
+  bodyJson: unknown;
+  bodyText: string | null;
+  bodyParts: unknown[];
+}
+
+export interface SharedFolderNode {
+  type: 'folder';
+  id: string;
+  name: string;
+  folders: SharedFolderNode[];
+  requests: SharedRequestSummary[];
+}
+
+export interface SharedCollectionNode {
+  id: string;
+  name: string;
+  folders: SharedFolderNode[];
+  requests: SharedRequestSummary[];
+}
+
+export interface SharedProjectNode {
+  id: string;
+  name: string;
+  collections: SharedCollectionNode[];
+}
+
+export interface SharedItemView {
+  token: string;
+  createdAt: string;
+  itemType: Exclude<SendItemType, 'request'>;
+  item: {
+    type: SendItemType;
+    id: string;
+    name: string;
+    projects: SharedProjectNode[];
+  };
+}
+
+export type SharedShare = SharedRequestView | SharedItemView;
+
+export interface SharedRevision {
+  id: string;
+  requestId: string;
+  revisionNumber: number;
+  changeKind: 'create' | 'update' | 'rollback';
+  changedFields: Array<{ field: string; from: unknown; to: unknown }>;
+  rolledBackFrom: string | null;
+  createdBy: { id: string; name: string | null };
+  createdAt: string;
+}
+
 export const shareApi = {
-  create: (requestId: string) =>
-    apiFetch<{ share: { token: string; createdAt: string } }>(`/api/requests/${requestId}/share`, {
+  create: (input: { itemType: SendItemType; itemId: string }) =>
+    apiFetch<{ share: { token: string; createdAt: string; itemType: SendItemType } }>('/api/shares', {
       method: 'POST',
+      body: input,
     }),
-  get: (token: string) => apiFetch<{ share: SharedRequestView }>(`/api/shares/${token}`),
+  get: (token: string) => apiFetch<{ share: SharedShare }>(`/api/shares/${token}`),
+  revisions: (token: string) =>
+    apiFetch<{ revisions: SharedRevision[] }>(`/api/shares/${token}/revisions`),
   revoke: (token: string) => apiFetch<{ ok: true }>(`/api/shares/${token}`, { method: 'DELETE' }),
 };
 

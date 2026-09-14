@@ -413,8 +413,9 @@ export function RequestConfigurator() {
         <ShareLinksModal
           open={shareOpen}
           onClose={() => setShareOpen(false)}
-          requestId={request.id}
-          requestName={request.name}
+          itemType="request"
+          itemId={request.id}
+          itemName={request.name}
         />
       )}
     </div>

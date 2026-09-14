@@ -67,6 +67,12 @@ before(async () => {
     });
   }
 
+  execFileSync(
+    'psql',
+    ['-q', '-v', 'ON_ERROR_STOP=1', '-d', process.env.INTEGRATION_PGDATABASE || 'apihub', '-c', 'UPDATE portal_settings SET restrictions_enforced = false;'],
+    { env: PGENV, stdio: 'pipe' }
+  );
+
   mockUpstream = http.createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': 'application/json',
@@ -129,7 +135,7 @@ async function createRequestWithRun(client, mockBase, name, urlPath) {
   return { requestId: req.json.request.id, runId: run.json.runId };
 }
 
-test('create, read publicly (redacted), and revoke a share link', async () => {
+test('create, read (login-gated, redacted), and revoke a share link', async () => {
   const admin = globalThis.__adminClient;
   const mockBase = globalThis.__mockBase;
   const { requestId } = await createRequestWithRun(admin, mockBase, 'Shareable', '/share-check');
@@ -147,13 +153,24 @@ test('create, read publicly (redacted), and revoke a share link', async () => {
   assert.equal(again.status, 201);
   assert.equal(again.json.share.token, token, 'idempotent per request');
 
-  // Read it WITHOUT authentication.
-  const read = await anon.api('GET', `/api/shares/${token}`);
+  // Anonymous viewers are rejected — the link is login-gated.
+  const anonRead = await anon.api('GET', `/api/shares/${token}`);
+  assert.equal(anonRead.status, 401);
+
+  // Any signed-in user can read it (no subscription required).
+  const reader = makeClient();
+  const readerSignup = await reader.api('POST', '/api/auth/signup', {
+    email: 'shareviewer@test.io',
+    password: 'viewerpass123',
+    name: 'Share Viewer',
+  });
+  assert.equal(readerSignup.status, 201);
+  const read = await reader.api('GET', `/api/shares/${token}`);
   assert.equal(read.status, 200);
   assert.equal(read.json.share.request.name, 'Shareable');
   assert.equal(read.json.share.request.method, 'GET');
   assert.ok(read.json.share.request.url.includes('/share-check'));
-  // Sensitive header value redacted on the public view.
+  // Sensitive header value redacted on the shared view.
   const authHeader = read.json.share.request.headers.find((h) => h.key === 'Authorization');
   assert.equal(authHeader.value, '\u00abredacted\u00bb');
   const demoHeader = read.json.share.request.headers.find((h) => h.key === 'X-Demo');
@@ -163,14 +180,20 @@ test('create, read publicly (redacted), and revoke a share link', async () => {
   assert.ok(read.json.share.lastRun.durationMs !== undefined);
   assert.equal(read.json.share.lastRun.bodyEncoding, 'text');
 
-  // Bad token -> 404.
-  const missing = await anon.api('GET', '/api/shares/00000000-0000-0000-0000-000000000000');
+  // The change history is exposed alongside the snapshot.
+  const history = await reader.api('GET', `/api/shares/${token}/revisions`);
+  assert.equal(history.status, 200);
+  assert.ok(Array.isArray(history.json.revisions));
+  assert.ok(history.json.revisions.length >= 1, 'create + update revisions recorded');
+
+  // Bad token -> 404 (for a signed-in user).
+  const missing = await reader.api('GET', '/api/shares/00000000-0000-0000-0000-000000000000');
   assert.equal(missing.status, 404);
 
   // Revoke.
   const revoked = await admin.api('DELETE', `/api/shares/${token}`);
   assert.equal(revoked.status, 200);
-  const afterRevoke = await anon.api('GET', `/api/shares/${token}`);
+  const afterRevoke = await reader.api('GET', `/api/shares/${token}`);
   assert.equal(afterRevoke.status, 404);
 });
 

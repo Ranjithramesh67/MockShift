@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
-import { useApp } from '@/store/AppStore';
+import { useApp, makeId } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
 import { useMenuAccess } from '@/store/MenuAccessStore';
 import { useAuth } from '@/lib/auth';
@@ -13,6 +13,7 @@ import { accessRequestApi } from '@/lib/api';
 import { docsSharedApi } from '@/lib/docsApi';
 import { CreateModal, type CreateKind } from './CreateModal';
 import { SharingModal } from './SharingModal';
+import { ShareLinksModal } from './ShareLinksModal';
 import { SendItemDialog, type SendableItem } from './SendItemDialog';
 import { TeamsModal } from './TeamsModal';
 import { AuthProviderModal } from './AuthProviderModal';
@@ -42,14 +43,16 @@ import {
   RequestIcon,
   CopyIcon,
   SendIcon,
+  ShareIcon,
   FileIcon,
   LayersIcon,
   ClockIcon,
   FormulaIcon,
   UsersIcon,
+  WorkflowIcon,
 } from './icons';
 
-type RailTab = 'apis' | 'teams';
+type RailTab = 'apis' | 'teams' | 'workflow';
 
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 560;
@@ -60,10 +63,12 @@ function WorkspaceChips({
   onOpenCreate,
   onNavigate,
   onRequestWorkspace,
+  onOpenShareLink,
 }: {
   onOpenCreate: (kind: CreateKind) => void;
   onNavigate: () => void;
   onRequestWorkspace: (w: { id: string; name: string }) => void;
+  onOpenShareLink: (w: { id: string; name: string }) => void;
 }) {
   const ws = useWorkspace();
 
@@ -95,6 +100,18 @@ function WorkspaceChips({
           onClick={() => onRequestWorkspace({ id: w.id, name: w.name })}
         >
           <LockIcon size={12} />
+        </button>
+      )}
+      {w.role && (
+        <button
+          type="button"
+          className="icon-button workspace-chip-share"
+          title={`Share link for ${w.name}`}
+          aria-label={`Share link for ${w.name}`}
+          data-testid={`share-workspace-${w.name}`}
+          onClick={() => onOpenShareLink({ id: w.id, name: w.name })}
+        >
+          <ShareIcon size={12} />
         </button>
       )}
       {w.role && (
@@ -249,6 +266,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
   const [renameValue, setRenameValue] = useState('');
   const [menuFor, setMenuFor] = useState<{ kind: 'request' | 'folder' | 'collection'; id: string } | null>(null);
   const [sendTarget, setSendTarget] = useState<SendableItem | null>(null);
+  const [shareTarget, setShareTarget] = useState<SendableItem | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [selectedRow, setSelectedRow] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
 
@@ -552,6 +570,17 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
             </button>
             <button
               type="button"
+              data-testid={`request-share-${r.name}`}
+              onClick={() => {
+                setMenuFor(null);
+                setShareTarget({ id: r.id, type: 'request', name: r.name });
+              }}
+            >
+              <ShareIcon size={13} />
+              Share link
+            </button>
+            <button
+              type="button"
               className="danger"
               data-testid={`request-delete-${r.name}`}
               onClick={() => {
@@ -701,6 +730,17 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
               >
                 <SendIcon size={13} />
                 Send to user
+              </button>
+              <button
+                type="button"
+                data-testid={`folder-share-${folder.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  setShareTarget({ id: folder.id, type: 'folder', name: folder.name });
+                }}
+              >
+                <ShareIcon size={13} />
+                Share link
               </button>
               <button
                 type="button"
@@ -952,6 +992,17 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
                         </button>
                         <button
                           type="button"
+                          data-testid={`collection-share-${c.name}`}
+                          onClick={() => {
+                            setMenuFor(null);
+                            setShareTarget({ id: c.id, type: 'collection', name: c.name });
+                          }}
+                        >
+                          <ShareIcon size={13} />
+                          Share link
+                        </button>
+                        <button
+                          type="button"
                           className="danger"
                           data-testid={`delete-collection-${c.name}`}
                           onClick={() => {
@@ -997,6 +1048,13 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
       {!collapsed && tree.collections.length === 0 && <p className="hint">No collections yet.</p>}
       </div>
       <SendItemDialog open={Boolean(sendTarget)} item={sendTarget} onClose={() => setSendTarget(null)} />
+      <ShareLinksModal
+        open={Boolean(shareTarget)}
+        itemType={shareTarget?.type ?? 'request'}
+        itemId={shareTarget?.id ?? ''}
+        itemName={shareTarget?.name ?? ''}
+        onClose={() => setShareTarget(null)}
+      />
     </>
   );
 }
@@ -1070,6 +1128,56 @@ function TeamsPanel({ onManage, onOpenTeam }: { onManage: () => void; onOpenTeam
   );
 }
 
+function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
+  const { state, dispatch } = useApp();
+  return (
+    <div className="sidebar-section" data-testid="workflows-panel">
+      <div className="sidebar-section-head">
+        <h3>Workflows</h3>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="New workflow"
+          title="New workflow"
+          data-testid="new-workflow"
+          onClick={() => {
+            const workflow = { id: makeId('wf'), name: 'Untitled workflow', steps: [] };
+            dispatch({ type: 'SAVE_WORKFLOW', workflow });
+            dispatch({ type: 'SET_TAB', tab: 'workflow' });
+          }}
+        >
+          <PlusIcon size={14} />
+        </button>
+      </div>
+      <ul className="sidebar-list">
+        {state.workflows.map((w) => (
+          <li key={w.id}>
+            <button
+              type="button"
+              className={`tree-row workflow-row ${
+                state.activeTab === 'workflow' && state.activeWorkflowId === w.id ? 'active' : ''
+              }`}
+              data-testid={`workflow-${w.name}`}
+              onClick={() => {
+                dispatch({ type: 'SELECT_WORKFLOW', id: w.id });
+              }}
+            >
+              <WorkflowIcon size={13} />
+              <span className="tree-row-name">{w.name}</span>
+              <span className="hint">{w.steps.length} steps</span>
+            </button>
+          </li>
+        ))}
+        {state.workflows.length === 0 && <p className="hint">No workflows yet.</p>}
+      </ul>
+      <button type="button" className="ghost-button full" data-testid="back-to-apis" onClick={onBackToApis}>
+        <CollectionIcon size={13} />
+        Back to APIs
+      </button>
+    </div>
+  );
+}
+
 export function Sidebar({
   panelHidden = false,
   onRequestClose,
@@ -1079,11 +1187,11 @@ export function Sidebar({
 }) {
   const ws = useWorkspace();
   const { user } = useAuth();
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
   const { view, setView } = useNav();
   const menu = useMenuAccess();
   const router = useRouter();
-  const [rail, setRail] = useState<RailTab>('apis');
+  const [rail, setRail] = useState<RailTab>(() => (state.activeTab === 'workflow' ? 'workflow' : 'apis'));
   const [collapsed, setCollapsed] = useState(false);
   const [workspacesCollapsed, setWorkspacesCollapsed] = useState(false);
   const [collectionsCollapsed, setCollectionsCollapsed] = useState(false);
@@ -1091,6 +1199,7 @@ export function Sidebar({
   const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
+  const [shareLinkTarget, setShareLinkTarget] = useState<SendableItem | null>(null);
   const [teamsOpen, setTeamsOpen] = useState(false);
   const [managingTeamId, setManagingTeamId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
@@ -1224,9 +1333,25 @@ export function Sidebar({
             setRail('apis');
             setCollapsed(false);
             goWorkspace();
+            dispatch({ type: 'SET_TAB', tab: 'request' });
           }}
         >
           <CollectionIcon size={17} />
+        </button>
+        <button
+          type="button"
+          className={`rail-button ${view === 'workspace' && rail === 'workflow' ? 'active' : ''}`}
+          data-testid="rail-workflow"
+          title="Workflows"
+          aria-label="Workflows"
+          onClick={() => {
+            setRail('workflow');
+            setCollapsed(false);
+            goWorkspace();
+            dispatch({ type: 'SET_TAB', tab: 'workflow' });
+          }}
+        >
+          <WorkflowIcon size={17} />
         </button>
         {menu.isEnabled('teams') && (
           <button
@@ -1439,7 +1564,7 @@ export function Sidebar({
                 <>
                   {ws.loading && <p className="hint">Loading…</p>}
                   {ws.error && <p className="auth-error">{ws.error}</p>}
-                  <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} onRequestWorkspace={(w) => setRequestingWorkspace(w)} />
+                  <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} onRequestWorkspace={(w) => setRequestingWorkspace(w)} onOpenShareLink={(w) => setShareLinkTarget({ id: w.id, type: 'workspace', name: w.name })} />
                 </>
               )}
             </div>
@@ -1494,6 +1619,13 @@ export function Sidebar({
               </div>
             )}
           </>
+        ) : rail === 'workflow' ? (
+          <WorkflowsPanel
+            onBackToApis={() => {
+              setRail('apis');
+              dispatch({ type: 'SET_TAB', tab: 'request' });
+            }}
+          />
         ) : (
           <TeamsPanel
             onManage={() => {
@@ -1616,6 +1748,13 @@ export function Sidebar({
       </div>
     )}
     <SharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} />
+    <ShareLinksModal
+      open={Boolean(shareLinkTarget)}
+      itemType={shareLinkTarget?.type ?? 'workspace'}
+      itemId={shareLinkTarget?.id ?? ''}
+      itemName={shareLinkTarget?.name ?? ''}
+      onClose={() => setShareLinkTarget(null)}
+    />
     <TeamsModal
       open={teamsOpen}
       teamId={managingTeamId}
