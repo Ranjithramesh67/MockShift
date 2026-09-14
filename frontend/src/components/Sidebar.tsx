@@ -802,7 +802,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
                 aria-label={`Open ${p.name} overview`}
                 onClick={() => onOpenProject({ id: p.id, name: p.name })}
               >
-                <CollectionIcon size={12} />
+                <LayersIcon size={12} />
                 {p.name}
                 <span className="vis-badge access-badge">MEMBER</span>
               </button>
@@ -819,7 +819,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
             </div>
           ) : (
             <div className="tree-project-name">
-              <CollectionIcon size={12} />
+              <LayersIcon size={12} />
               {p.name}
               {p.access_status === 'PENDING' ? (
                 <span className="vis-badge pending-badge">PENDING</span>
@@ -868,6 +868,9 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
                     >
                       <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
                         <ChevronIcon size={12} />
+                      </span>
+                      <span className="tree-collection-icon">
+                        <CollectionIcon size={14} />
                       </span>
                       <span className="name">{c.name}</span>
                       {c.has_auth && <span className="vis-badge auth-badge">AUTH</span>}
