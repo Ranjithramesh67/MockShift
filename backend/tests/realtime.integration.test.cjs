@@ -216,3 +216,28 @@ test('saving a request publishes entity:updated to its room', async () => {
   assert.equal(event.by.id, userA.id);
   stream.controller.abort();
 });
+
+test('rolling back a request publishes entity:updated to its room', async () => {
+  const created = await userA.client.api('POST', '/api/requests', {
+    collectionId,
+    name: 'Rollback live',
+    method: 'GET',
+    url: 'https://example.com/r1',
+  });
+  assert.equal(created.status, 201);
+  const requestId = created.json.request.id;
+  await userA.client.api('PUT', `/api/requests/${requestId}`, { url: 'https://example.com/r2' });
+
+  const list = await userA.client.api('GET', `/api/requests/${requestId}/revisions`);
+  const v1 = list.json.revisions.find((r) => r.revisionNumber === 1);
+
+  const stream = await openSse(userA.cookie, `/api/events?room=request:${requestId}`);
+  await nextEvent(stream.queue, (e) => e.type === 'presence');
+  const rb = await userA.client.api('POST', `/api/requests/${requestId}/revisions/${v1.id}/rollback`);
+  assert.equal(rb.status, 200, JSON.stringify(rb.json));
+  const event = await nextEvent(stream.queue, (e) => e.type === 'entity:updated');
+  assert.equal(event.entityId, requestId);
+  assert.equal(event.entityType, 'request');
+  assert.equal(event.by.id, userA.id);
+  stream.controller.abort();
+});

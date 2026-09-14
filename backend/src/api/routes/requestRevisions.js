@@ -17,7 +17,7 @@
 
 const { Router } = require('express');
 const { query, pool } = require('../db');
-const { requireAuth, getProjectAccess, roleAtLeast } = require('../access');
+const { requireAuth, canReadProject, canWriteProject } = require('../access');
 const { REQUEST_SELECT, serializeRequest } = require('../requestSnapshot');
 const { changedFields } = require('../collabDiff');
 const { publish, roomKey } = require('../realtime');
@@ -60,15 +60,6 @@ async function scopeOfRequest(requestId) {
   return rows[0] || null;
 }
 
-async function readAccess(userId, projectId) {
-  return Boolean(await getProjectAccess(userId, projectId));
-}
-
-async function writeAccess(userId, projectId) {
-  const access = await getProjectAccess(userId, projectId);
-  return Boolean(access && roleAtLeast(access.level, 'EDITOR'));
-}
-
 async function revisionRow(requestId, revisionId) {
   const { rows } = await query(
     `${REVISION_META_SQL} WHERE r.id = $1 AND r.request_id = $2`,
@@ -84,7 +75,7 @@ router.get('/requests/:requestId/revisions', async (req, res, next) => {
     if (!isUuid(requestId)) return res.status(404).json({ error: 'Request not found' });
     const scope = await scopeOfRequest(requestId);
     if (!scope) return res.status(404).json({ error: 'Request not found' });
-    if (!(await readAccess(req.user.id, scope.project_id))) {
+    if (!(await canReadProject(req.user.id, scope.project_id))) {
       return res.status(403).json({ error: 'No access to this request' });
     }
     const { rows } = await query(
@@ -106,7 +97,7 @@ router.get('/requests/:requestId/revisions/:revisionId', async (req, res, next) 
     }
     const scope = await scopeOfRequest(requestId);
     if (!scope) return res.status(404).json({ error: 'Request not found' });
-    if (!(await readAccess(req.user.id, scope.project_id))) {
+    if (!(await canReadProject(req.user.id, scope.project_id))) {
       return res.status(403).json({ error: 'No access to this request' });
     }
     const row = await revisionRow(requestId, revisionId);
@@ -153,14 +144,21 @@ router.post('/requests/:requestId/revisions/:revisionId/rollback', async (req, r
     }
     const scope = await scopeOfRequest(requestId);
     if (!scope) return res.status(404).json({ error: 'Request not found' });
-    if (!(await writeAccess(req.user.id, scope.project_id))) {
+    if (!(await canWriteProject(req.user.id, scope.project_id))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
     const target = await revisionRow(requestId, revisionId);
     if (!target) return res.status(404).json({ error: 'Revision not found' });
     const targetRow = (await query(`SELECT snapshot FROM request_revisions WHERE id = $1`, [revisionId])).rows[0];
     if (!targetRow) return res.status(404).json({ error: 'Revision not found' });
-    const targetSnap = targetRow.snapshot;
+    let targetSnap = targetRow.snapshot;
+    if (targetSnap && targetSnap.folderId) {
+      const { rows: folderRows } = await query(
+        `SELECT 1 FROM folders WHERE id = $1 AND collection_id = $2`,
+        [targetSnap.folderId, scope.collection_id]
+      );
+      if (!folderRows[0]) targetSnap = { ...targetSnap, folderId: null };
+    }
 
     const client = await pool.connect();
     let before;

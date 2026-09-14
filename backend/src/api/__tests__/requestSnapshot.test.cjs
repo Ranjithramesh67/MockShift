@@ -52,8 +52,9 @@ test('serializeRequest applies defaults for null jsonb columns and passes throug
 });
 
 test('REQUEST_SELECT lists the columns serializeRequest reads', () => {
+  const tokens = REQUEST_SELECT.split(', ');
   for (const col of ['id', 'name', 'method', 'url', 'headers', 'query_params', 'body_type',
     'body_json', 'body_text', 'body_parts', 'api_type', 'folder_id', 'formula', 'assertions']) {
-    assert.ok(REQUEST_SELECT.includes(col), `missing ${col}`);
+    assert.ok(tokens.includes(col), `REQUEST_SELECT is missing column ${col}`);
   }
 });

@@ -550,35 +550,50 @@ router.post('/requests', async (req, res, next) => {
     if (reqGate) return res.status(403).json(reqGate);
 
     const requestName = await uniqueRequestName(collectionId, folderId || null, name, null);
-    const { rows } = await query(
-      `INSERT INTO api_requests
-         (collection_id, name, method, url, api_type, headers, query_params, body_type, assertions, folder_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING id, name, method, url, api_type, collection_id, folder_id`,
-      [
-        collectionId,
-        requestName,
-        HTTP_METHODS.includes(method) ? method : 'GET',
-        url || '',
-        API_TYPES.includes(apiType) ? apiType : 'REST',
-        JSON.stringify([]),
-        JSON.stringify([]),
-        'NONE',
-        JSON.stringify([]),
-        folderId || null,
-      ]
-    );
-    const created = rows[0];
     const workspaceId = await workspaceOfCollection(collectionId);
-    const { rows: fullRows } = await query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [created.id]);
-    await insertRevision(null, {
-      requestId: created.id,
-      scope: { collection_id: collectionId, workspace_id: workspaceId, project_id: projectId },
-      kind: 'create',
-      snapshot: serializeRequest(fullRows[0]),
-      diff: [],
-      userId: req.user.id,
-    });
+    let created;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `INSERT INTO api_requests
+           (collection_id, name, method, url, api_type, headers, query_params, body_type, assertions, folder_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, name, method, url, api_type, collection_id, folder_id`,
+        [
+          collectionId,
+          requestName,
+          HTTP_METHODS.includes(method) ? method : 'GET',
+          url || '',
+          API_TYPES.includes(apiType) ? apiType : 'REST',
+          JSON.stringify([]),
+          JSON.stringify([]),
+          'NONE',
+          JSON.stringify([]),
+          folderId || null,
+        ]
+      );
+      created = rows[0];
+      const { rows: fullRows } = await client.query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [created.id]);
+      await insertRevision((sql, p) => client.query(sql, p), {
+        requestId: created.id,
+        scope: { collection_id: collectionId, workspace_id: workspaceId, project_id: projectId },
+        kind: 'create',
+        snapshot: serializeRequest(fullRows[0]),
+        diff: [],
+        userId: req.user.id,
+      });
+      await client.query('COMMIT');
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
     res.status(201).json({ request: created });
   } catch (err) {
     next(err);
@@ -810,40 +825,56 @@ router.post('/requests/:requestId/duplicate', async (req, res, next) => {
     });
     if (dupGate) return res.status(403).json(dupGate);
     const copyName = await uniqueRequestName(source.collection_id, source.folder_id, source.name, null);
-    const { rows: created } = await query(
-      `INSERT INTO api_requests
-         (collection_id, name, method, url, api_type, headers, query_params, body_type,
-          body_json, body_text, body_parts, formula, assertions, folder_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-       RETURNING id, name, method, url, api_type, collection_id, folder_id`,
-      [
-        source.collection_id,
-        copyName,
-        source.method,
-        source.url,
-        source.api_type,
-        JSON.stringify(source.headers || []),
-        JSON.stringify(source.query_params || []),
-        source.body_type,
-        source.body_json,
-        source.body_text,
-        source.body_parts ? JSON.stringify(source.body_parts) : null,
-        source.formula,
-        JSON.stringify(source.assertions || []),
-        source.folder_id,
-      ]
-    );
     const dupWorkspaceId = await workspaceOfCollection(source.collection_id);
-    const { rows: dupFull } = await query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [created[0].id]);
-    await insertRevision(null, {
-      requestId: created[0].id,
-      scope: { collection_id: source.collection_id, workspace_id: dupWorkspaceId, project_id: projectId },
-      kind: 'create',
-      snapshot: serializeRequest(dupFull[0]),
-      diff: [],
-      userId: req.user.id,
-    });
-    res.status(201).json({ request: created[0] });
+    let created;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: inserted } = await client.query(
+        `INSERT INTO api_requests
+           (collection_id, name, method, url, api_type, headers, query_params, body_type,
+            body_json, body_text, body_parts, formula, assertions, folder_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         RETURNING id, name, method, url, api_type, collection_id, folder_id`,
+        [
+          source.collection_id,
+          copyName,
+          source.method,
+          source.url,
+          source.api_type,
+          JSON.stringify(source.headers || []),
+          JSON.stringify(source.query_params || []),
+          source.body_type,
+          source.body_json,
+          source.body_text,
+          source.body_parts ? JSON.stringify(source.body_parts) : null,
+          source.formula,
+          JSON.stringify(source.assertions || []),
+          source.folder_id,
+        ]
+      );
+      created = inserted[0];
+      const { rows: dupFull } = await client.query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [created.id]);
+      await insertRevision((sql, p) => client.query(sql, p), {
+        requestId: created.id,
+        scope: { collection_id: source.collection_id, workspace_id: dupWorkspaceId, project_id: projectId },
+        kind: 'create',
+        snapshot: serializeRequest(dupFull[0]),
+        diff: [],
+        userId: req.user.id,
+      });
+      await client.query('COMMIT');
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+    res.status(201).json({ request: created });
   } catch (err) {
     next(err);
   }

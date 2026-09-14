@@ -2,7 +2,7 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp, signupAndLogin, makeClient } = require('./support/harness.cjs');
+const { startApp, signupAndLogin } = require('./support/harness.cjs');
 
 let app;
 let user;
@@ -112,6 +112,7 @@ test('rollback restores an earlier snapshot and records a rollback revision', as
   assert.equal(rb.status, 200);
   assert.equal(rb.json.revision.changeKind, 'rollback');
   assert.equal(rb.json.revision.rolledBackFrom, v1.id);
+  assert.equal(rb.json.revision.revisionNumber, 3);
 
   const after = await user.client.api('GET', `/api/requests/${id}`);
   assert.equal(after.json.request.url, 'https://example.com/v1');
@@ -152,4 +153,8 @@ test('a revision from a different request cannot be rolled back onto this reques
   const revA = listA.json.revisions[0].id;
   const res = await user.client.api('POST', `/api/requests/${b.json.request.id}/revisions/${revA}/rollback`);
   assert.equal(res.status, 404);
+  const listB = await user.client.api('GET', `/api/requests/${b.json.request.id}/revisions`);
+  assert.equal(listB.json.revisions.length, 1);
+  const bNow = await user.client.api('GET', `/api/requests/${b.json.request.id}`);
+  assert.equal(bNow.json.request.url, 'https://example.com/b');
 });
