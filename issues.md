@@ -37,7 +37,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | LOW-4 | Low | Session cookie missing `Secure` flag | FIXED | 3353b2c |
 | LOW-5 | Low | Workflow until-loop self-reference validation tests wrong key | FIXED | 329dbee |
 | LOW-6 | Low | SSE room authorization frozen for connection lifetime | FIXED | aff4d9a |
-| LOW-7 | Low | `syncAllSchedules` never removes stale cron schedulers | OPEN | |
+| LOW-7 | Low | `syncAllSchedules` never removes stale cron schedulers | FIXED | 2609243 |
 | LOW-8 | Low | Public doc-share lookup does not assert `kind='public'` | OPEN | |
 | LOW-9 | Low | Dead code (unused declarations) | OPEN | |
 | TEST-1 | Test | `environments.integration.test.cjs` missing `restrictions_enforced=false` | OPEN | |
@@ -201,7 +201,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### LOW-7 — Stale cron schedulers
 - File: `backend/src/api/workflowService.js:377-393`. Fix: remove schedulers not in the enabled set on sync.
-- Status: OPEN
+- Implemented: `syncAllSchedules` now reconciles -- removes `automation:*` BullMQ schedulers absent from (or disabled in) the DB, then upserts the live set; unrelated schedulers are untouched. Added `listScheduleKeys()` export.
+- Test: `backend/tests/scheduleSync.integration.test.cjs`.
+- Status: FIXED (2609243)
 
 ### LOW-8 — Doc-share `kind` not asserted
 - File: `backend/src/api/routes/docs.js:1512-1529`. Fix: filter `kind='public'`.
