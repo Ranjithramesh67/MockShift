@@ -370,3 +370,17 @@ count). Verified with Playwright: the panel now matches the Teams/Collections si
   the workflow is deleted.
 - Verified with Playwright: new blocks the 2nd untitled + toast, rename releases the guard, and both
   delete entry points work.
+
+### Follow-up: duplicate workflow names
+
+The earlier guard only stopped duplicate *untitled* workflows, so renaming a new workflow to an
+existing name (e.g. a second "Order fulfilment") was still allowed. Now:
+
+- `workflowValidation.js` exports `isUntitledWorkflow`, `workflowNameTaken(workflows, name, exceptId)`
+  (case-insensitive, trims, ignores the edited workflow) and `UNTITLED_WORKFLOW_NAME`;
+  `Sidebar.tsx` imports the untitled helpers instead of defining them locally.
+- `WorkflowBuilder.tsx` blocks a rename to an existing name on blur/Enter — it reverts the field to
+  the stored name and shows an error toast — and also guards the Save button.
+- Unit tests added for `isUntitledWorkflow` / `workflowNameTaken` (132 FE unit tests total).
+- Playwright: renaming the new workflow to "Order fulfilment" is rejected and reverted, a unique name
+  persists, and the duplicate count stays at 1.

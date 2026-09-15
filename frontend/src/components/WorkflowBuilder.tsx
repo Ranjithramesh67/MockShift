@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { LoopConfig, StepPassInput, Workflow, WorkflowStep } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
-import { validateWorkflow, sanitizeLabel } from '@/lib/workflowValidation';
+import { validateWorkflow, sanitizeLabel, workflowNameTaken } from '@/lib/workflowValidation';
 import { makeId } from '@/lib/defaultState';
 import { CodeEditor } from './CodeEditor';
 import { SaveIcon, PlusIcon, ArrowUpIcon, ArrowDownIcon, XIcon, GripIcon, WorkflowIcon, TrashIcon } from './icons';
@@ -280,6 +280,14 @@ export function WorkflowBuilder() {
   };
 
   const onSave = () => {
+    if (workflowNameTaken(state.workflows, draft.name, draft.id)) {
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'error',
+        message: `A workflow named "${draft.name.trim()}" already exists.`,
+      });
+      return;
+    }
     const result = validateWorkflow(draft);
     setErrors(result.errors);
     if (!result.valid) {
@@ -313,9 +321,17 @@ export function WorkflowBuilder() {
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
           onBlur={() => {
             const name = draft.name.trim();
-            if (name && workflow && name !== workflow.name) {
-              dispatch({ type: 'RENAME_WORKFLOW', id: workflow.id, name });
+            if (!workflow || !name || name === workflow.name) return;
+            if (workflowNameTaken(state.workflows, name, workflow.id)) {
+              setDraft({ ...draft, name: workflow.name });
+              dispatch({
+                type: 'SHOW_TOAST',
+                kind: 'error',
+                message: `A workflow named "${name}" already exists.`,
+              });
+              return;
             }
+            dispatch({ type: 'RENAME_WORKFLOW', id: workflow.id, name });
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') (e.target as HTMLInputElement).blur();

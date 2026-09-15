@@ -9,6 +9,7 @@ import { useNav } from '@/store/NavStore';
 import { useMenuAccess } from '@/store/MenuAccessStore';
 import { useAuth } from '@/lib/auth';
 import { useTreeRenameShortcut } from './useTreeRenameShortcut';
+import { isUntitledWorkflow, UNTITLED_WORKFLOW_NAME } from '@/lib/workflowValidation';
 import { accessRequestApi } from '@/lib/api';
 import { docsSharedApi } from '@/lib/docsApi';
 import { CreateModal, type CreateKind } from './CreateModal';
@@ -1126,13 +1127,6 @@ function TeamsPanel({ onManage, onOpenTeam }: { onManage: () => void; onOpenTeam
       </button>
     </div>
   );
-}
-
-const UNTITLED_WORKFLOW_NAME = 'Untitled workflow';
-
-function isUntitledWorkflow(name: string) {
-  const trimmed = (name || '').trim();
-  return trimmed === '' || trimmed.toLowerCase() === UNTITLED_WORKFLOW_NAME.toLowerCase();
 }
 
 function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {

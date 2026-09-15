@@ -2,7 +2,13 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { validateWorkflow, sanitizeLabel } = require('../workflowValidation.js');
+const {
+  validateWorkflow,
+  sanitizeLabel,
+  isUntitledWorkflow,
+  workflowNameTaken,
+  UNTITLED_WORKFLOW_NAME,
+} = require('../workflowValidation.js');
 
 function step(overrides = {}) {
   return {
@@ -185,4 +191,24 @@ test('sanitizeLabel produces a template-safe key', () => {
   assert.equal(sanitizeLabel('  GET /posts  '), 'get_posts');
   assert.equal(sanitizeLabel('Order Details'), 'order_details');
   assert.equal(sanitizeLabel(''), 'step');
+});
+
+test('isUntitledWorkflow matches the default and blank names only', () => {
+  assert.equal(isUntitledWorkflow(UNTITLED_WORKFLOW_NAME), true);
+  assert.equal(isUntitledWorkflow('untitled workflow'), true);
+  assert.equal(isUntitledWorkflow('  '), true);
+  assert.equal(isUntitledWorkflow(''), true);
+  assert.equal(isUntitledWorkflow('Order fulfilment'), false);
+});
+
+test('workflowNameTaken is case-insensitive and ignores the edited workflow', () => {
+  const workflows = [
+    { id: 'wf_1', name: 'Order fulfilment' },
+    { id: 'wf_2', name: 'Send invoice' },
+  ];
+  assert.equal(workflowNameTaken(workflows, 'Order fulfilment'), true);
+  assert.equal(workflowNameTaken(workflows, '  order FULFILMENT '), true);
+  assert.equal(workflowNameTaken(workflows, 'Order fulfilment', 'wf_1'), false);
+  assert.equal(workflowNameTaken(workflows, 'A brand new flow', 'wf_1'), false);
+  assert.equal(workflowNameTaken(workflows, ''), false);
 });
