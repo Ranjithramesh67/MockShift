@@ -21,7 +21,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | HIGH-3 | High | Accepting a send bypasses plan count gates | FIXED | 4f7bc99 |
 | HIGH-4 | High | Portal checkout `confirm` not race-safe (duplicate subscriptions) | FIXED | 96a2b4a |
 | HIGH-5 | High | Share create double-POST → raw DB 500 instead of link | FIXED | 3c1a1f2 |
-| HIGH-6 | High | Sidebar renders a workspace chip once per team membership | OPEN | |
+| HIGH-6 | High | Sidebar renders a workspace chip once per team membership | FIXED | cd50776 |
 | MED-1 | Medium | IDOR: `GET /api/collections/:id/auth-provider` has no access check | OPEN | |
 | MED-2 | Medium | IDOR: `GET /api/workspaces/:id/teams` leaks teams to non-members | OPEN | |
 | MED-3 | Medium | Invalid input returns 500 and leaks raw Postgres errors | OPEN | |
@@ -99,8 +99,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 ### HIGH-6 — Workspace chip duplicated per team
 - File: `frontend/src/components/Sidebar.tsx:176-197`.
 - Impact: duplicate `workspace-<name>` testids; broke 13 e2e specs.
-- Fix: de-duplicate across groups (or team-scope the testid). Confirm grouping intent first.
-- Status: OPEN
+- Fix: skip already-rendered workspaces while walking team groups (the existing `accounted` set is now applied per group too), so each workspace renders once.
+- Test: `frontend/e2e/workspace-chip-dedupe.spec.ts`.
+- Status: FIXED
 
 ### MED-1 — IDOR collection auth-provider
 - File: `backend/src/api/routes/content.js:1031`.
