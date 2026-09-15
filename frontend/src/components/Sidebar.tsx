@@ -174,7 +174,9 @@ function WorkspaceChips({
     const sections: React.ReactNode[] = [];
     let chipCount = 0;
     for (const g of groups) {
-      const chips = g.workspaces.filter((w) => availableIds.has(w.id));
+      // A workspace can belong to several teams; render its chip only once so
+      // the sidebar never emits duplicate `workspace-<name>` testids.
+      const chips = g.workspaces.filter((w) => availableIds.has(w.id) && !accounted.has(w.id));
       if (chips.length === 0) continue;
       chips.forEach((w) => accounted.add(w.id));
       chipCount += chips.length;
