@@ -35,7 +35,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | LOW-2 | Low | `PATCH /api/environments/:id` hardcodes `variable_count: 0` | FIXED | 8fda3b9 |
 | LOW-3 | Low | Case-variant email creates a duplicate account | FIXED | b37db31 |
 | LOW-4 | Low | Session cookie missing `Secure` flag | FIXED | 3353b2c |
-| LOW-5 | Low | Workflow until-loop self-reference validation tests wrong key | OPEN | |
+| LOW-5 | Low | Workflow until-loop self-reference validation tests wrong key | FIXED | 329dbee |
 | LOW-6 | Low | SSE room authorization frozen for connection lifetime | OPEN | |
 | LOW-7 | Low | `syncAllSchedules` never removes stale cron schedulers | OPEN | |
 | LOW-8 | Low | Public doc-share lookup does not assert `kind='public'` | OPEN | |
@@ -189,7 +189,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### LOW-5 — Workflow until-loop self-reference validation
 - File: `frontend/src/lib/workflowValidation.js:127`. Fix: compare against both `step.id` and `sanitizeLabel(step.label || step.id)`.
-- Status: OPEN
+- Implemented: the until-loop guard now matches condition references against `step.id` or the step's sanitized label, so a self-reference via `$steps['poll_status']` is rejected even when the id differs from the label.
+- Test: `frontend/src/lib/__tests__/workflowValidation.test.cjs`.
+- Status: FIXED (329dbee)
 
 ### LOW-6 — SSE auth frozen for connection lifetime
 - File: `backend/src/api/routes/events.js:14-17,34-70`. Fix: periodic re-check.

@@ -124,7 +124,11 @@ function validateWorkflow(workflow) {
           stepId: step.id,
           message: `Step "${label}" loops until a condition but the condition is empty - the loop would run forever.`,
         });
-      } else if (stepReferences(condition).includes(step.id)) {
+      } else if (
+        stepReferences(condition).some(
+          (ref) => ref === step.id || ref === sanitizeLabel(stepLabel(step))
+        )
+      ) {
         errors.push({
           stepId: step.id,
           message:

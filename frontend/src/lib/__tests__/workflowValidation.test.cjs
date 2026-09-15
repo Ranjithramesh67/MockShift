@@ -91,6 +91,21 @@ test('rejects an until-condition that references its own step', () => {
   assert.ok(result.errors.some((e) => e.message.includes('own result')));
 });
 
+test('rejects an until-condition that references its own step by sanitized label', () => {
+  const result = validateWorkflow(
+    workflow([
+      step({
+        id: '2f4c1a9e-0000-4000-8000-000000000000',
+        label: 'Poll status',
+        requestId: 'req_poll',
+        loop: { type: 'until', condition: "$steps['poll_status'].response.body.done === true" },
+      }),
+    ])
+  );
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((e) => e.message.includes('own result')));
+});
+
 test('rejects a workflow with no steps', () => {
   const result = validateWorkflow(workflow([]));
   assert.equal(result.valid, false);
