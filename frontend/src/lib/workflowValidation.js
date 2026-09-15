@@ -14,6 +14,33 @@
 
 const MAX_TOTAL_ITERATIONS = 1000;
 
+/** Default name given to a freshly created workflow. */
+const UNTITLED_WORKFLOW_NAME = 'Untitled workflow';
+
+/**
+ * A workflow is "untitled" when it has no name or still carries the default
+ * name (case-insensitive). Used to stop the sidebar piling up empty workflows.
+ */
+function isUntitledWorkflow(name) {
+  const trimmed = String(name || '').trim();
+  return trimmed === '' || trimmed.toLowerCase() === UNTITLED_WORKFLOW_NAME.toLowerCase();
+}
+
+/**
+ * Case-insensitive duplicate-name check, ignoring the workflow being edited.
+ *
+ * @param {Array<{ id: string, name: string }>} workflows
+ * @param {string} name
+ * @param {string} [exceptId]
+ */
+function workflowNameTaken(workflows, name, exceptId) {
+  const candidate = String(name || '').trim().toLowerCase();
+  if (!candidate) return false;
+  return (workflows || []).some(
+    (w) => w && w.id !== exceptId && String(w.name || '').trim().toLowerCase() === candidate
+  );
+}
+
 function stepLabel(step) {
   return step.label || step.id || '(unnamed step)';
 }
@@ -161,4 +188,12 @@ function validateWorkflow(workflow) {
   return { valid: errors.length === 0, errors };
 }
 
-module.exports = { validateWorkflow, stepReferences, sanitizeLabel, MAX_TOTAL_ITERATIONS };
+module.exports = {
+  validateWorkflow,
+  stepReferences,
+  sanitizeLabel,
+  MAX_TOTAL_ITERATIONS,
+  isUntitledWorkflow,
+  workflowNameTaken,
+  UNTITLED_WORKFLOW_NAME,
+};
