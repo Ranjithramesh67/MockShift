@@ -243,10 +243,16 @@ router.post('/reviews/:reviewId/decision', async (req, res, next) => {
     const updated = await query(
       `UPDATE collection_reviews
           SET status = $1, decision_comment = $2, decided_at = now(), updated_at = now(), reviewer_id = COALESCE(reviewer_id, $3)
-        WHERE id = $4
+        WHERE id = $4 AND status = 'pending'
         RETURNING id`,
       [decision, decisionComment, req.user.id, reviewId]
     );
+    // Concurrency guard: the pre-check above is not atomic on its own. Only the
+    // request that flips the row from 'pending' wins; a losing decision must not
+    // overwrite it or fire a second round of notifications/audit.
+    if (updated.rowCount !== 1) {
+      return res.status(409).json({ error: 'This review has already been decided' });
+    }
     const row = await reviewRow(updated.rows[0].id);
 
     if (row.requested_by !== req.user.id) {
