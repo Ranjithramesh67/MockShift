@@ -27,7 +27,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | MED-3 | Medium | Invalid input returns 500 and leaks raw Postgres errors | FIXED | d7356a2 |
 | MED-4 | Medium | Reject-send has no concurrency guard | FIXED | 7ab38db |
 | MED-5 | Medium | Review decision race (double decide) | FIXED | f7c52ea |
-| MED-6 | Medium | Public-workspace visibility not honored at project level | NEEDS VERIFICATION | |
+| MED-6 | Medium | Public-workspace visibility not honored at project level | WONTFIX (intended) | f40c53c |
 | MED-7 | Medium | First-recharge bonus computed outside the lock | FIXED | 238b12f |
 | MED-8 | Medium | Refund does not cancel the subscription | FIXED | 88d3ab6 |
 | MED-9 | Medium | Portal B non-member login message is wiped | FIXED | f88e2d8 |
@@ -138,7 +138,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### MED-6 — Public workspace vs project visibility
 - File: `backend/src/api/access.js:198-232` vs `:120-139`.
-- Status: NEEDS VERIFICATION (may be intended) — confirm product intent, then reconcile.
+- Decision: PUBLIC workspace visibility is intentionally workspace-scoped (product decision, 2026-09-15). Org members may discover/read the workspace and its workspace-scoped resources (environments, tree), but each project keeps its own access gate; project contents (collections/requests), workflows, mock servers, events and project search hits remain non-member-inaccessible.
+- Test: `backend/tests/publicWorkspaceAccess.integration.test.cjs` pins the contract (PUBLIC workspace visible; projects `can_access:false`; no collection leak; `GET /workflows?projectId` → 403).
+- Status: WONTFIX / intended (f40c53c)
 
 ### MED-7 — First-recharge bonus race
 - Files: `portal/backend/src/routes/publicCheckout.js:434-435`, `portal/backend/src/paymentFinalize.js:92-94`.
