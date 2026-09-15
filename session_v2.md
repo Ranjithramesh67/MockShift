@@ -351,3 +351,22 @@ breakpoint work, so on phones the top bar overflowed and items squeezed/merged. 
 existing `.sidebar-item` + `.sidebar-item-name` pattern and added `.workflow-item` /
 `.workflow-item-count` styles in `globals.css` (icon tone, active accent row, right-aligned steps
 count). Verified with Playwright: the panel now matches the Teams/Collections sidebar design.
+
+### Follow-up: workflow creation guard + delete
+
+- `AppStore.tsx` adds `RENAME_WORKFLOW` (metadata-only rename, no step validation) and
+  `DELETE_WORKFLOW` (drops the workflow; if it was active, selects the first remaining or clears the
+  id) actions.
+- `Sidebar.tsx` `WorkflowsPanel`: "New workflow" now refuses to create a second untitled workflow.
+  If one already exists it selects it, shows an info toast ("An untitled workflow already exists.
+  Rename the existing one to create another.") and focuses/selects the builder name input. A
+  workflow counts as untitled when its name is blank or "Untitled workflow" (case-insensitive).
+- Delete: hover trash button on each sidebar workflow row (`workflow-delete-<name>`, with confirm) and
+  a `workflow-delete-button` in the builder toolbar.
+- `WorkflowBuilder.tsx`: the name input now persists the rename on blur/Enter via `RENAME_WORKFLOW`,
+  so an empty untitled workflow can be renamed without passing step validation (previously it was a
+  dead end because saving requires at least one step). The draft re-clones only when the selected
+  workflow id changes, so name/step edits survive metadata updates; the draft is also cleared when
+  the workflow is deleted.
+- Verified with Playwright: new blocks the 2nd untitled + toast, rename releases the guard, and both
+  delete entry points work.

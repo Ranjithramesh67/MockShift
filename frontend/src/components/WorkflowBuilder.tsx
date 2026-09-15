@@ -7,7 +7,7 @@ import { useWorkspace } from '@/store/WorkspaceStore';
 import { validateWorkflow, sanitizeLabel } from '@/lib/workflowValidation';
 import { makeId } from '@/lib/defaultState';
 import { CodeEditor } from './CodeEditor';
-import { SaveIcon, PlusIcon, ArrowUpIcon, ArrowDownIcon, XIcon, GripIcon, WorkflowIcon } from './icons';
+import { SaveIcon, PlusIcon, ArrowUpIcon, ArrowDownIcon, XIcon, GripIcon, WorkflowIcon, TrashIcon } from './icons';
 
 const LOOP_TYPE_LABELS: Array<{ id: LoopConfig['type']; label: string }> = [
   { id: 'none', label: 'No loop' },
@@ -224,15 +224,22 @@ export function WorkflowBuilder() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!workflow) return;
+    if (!workflow) {
+      setDraft(null);
+      setErrors([]);
+      return;
+    }
     setDraft(JSON.parse(JSON.stringify(workflow)));
     setErrors([]);
-  }, [workflow]);
+    // Re-clone only when a different workflow is selected so local step edits
+    // and name edits survive metadata updates (rename) to the same workflow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflow?.id]);
 
   const steps = useMemo(() => draft?.steps ?? [], [draft]);
   const requestOptions = state.requests;
 
-  if (!draft) {
+  if (!workflow || !draft) {
     return (
       <div className="panel-empty">
         <WorkflowIcon size={28} />
@@ -287,6 +294,13 @@ export function WorkflowBuilder() {
     dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow saved.' });
   };
 
+  const onDelete = () => {
+    if (!workflow) return;
+    if (!window.confirm(`Delete workflow "${workflow.name}"?`)) return;
+    dispatch({ type: 'DELETE_WORKFLOW', id: workflow.id });
+    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow deleted.' });
+  };
+
   return (
     <div className="workflow-builder" data-testid="workflow-builder">
       <div className="workflow-toolbar">
@@ -297,6 +311,15 @@ export function WorkflowBuilder() {
           aria-label="Workflow name"
           data-testid="workflow-name-input"
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+          onBlur={() => {
+            const name = draft.name.trim();
+            if (name && workflow && name !== workflow.name) {
+              dispatch({ type: 'RENAME_WORKFLOW', id: workflow.id, name });
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
         />
         <button type="button" className="primary-button" data-testid="workflow-save-button" onClick={onSave} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <SaveIcon size={14} />
@@ -305,6 +328,16 @@ export function WorkflowBuilder() {
         <button type="button" className="ghost-button" data-testid="add-step-button" onClick={addStep} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <PlusIcon size={14} />
           Add step
+        </button>
+        <button
+          type="button"
+          className="ghost-button danger"
+          data-testid="workflow-delete-button"
+          onClick={onDelete}
+          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <TrashIcon size={14} />
+          Delete workflow
         </button>
       </div>
 

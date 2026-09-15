@@ -23,6 +23,8 @@ type Action =
   | { type: 'DELETE_REQUEST'; id: string }
   | { type: 'SELECT_WORKFLOW'; id: string }
   | { type: 'SAVE_WORKFLOW'; workflow: Workflow }
+  | { type: 'RENAME_WORKFLOW'; id: string; name: string }
+  | { type: 'DELETE_WORKFLOW'; id: string }
   | { type: 'SET_RESPONSE'; response: MockResponse | null }
   | { type: 'SHOW_TOAST'; kind: 'success' | 'error' | 'info'; message: string }
   | { type: 'DISMISS_TOAST' };
@@ -78,6 +80,21 @@ function reducer(state: AppState, action: Action): AppState {
         ? state.workflows.map((w) => (w.id === action.workflow.id ? action.workflow : w))
         : [...state.workflows, action.workflow];
       return { ...state, workflows, activeWorkflowId: action.workflow.id };
+    }
+    case 'RENAME_WORKFLOW':
+      return {
+        ...state,
+        workflows: state.workflows.map((w) =>
+          w.id === action.id ? { ...w, name: action.name } : w
+        ),
+      };
+    case 'DELETE_WORKFLOW': {
+      const workflows = state.workflows.filter((w) => w.id !== action.id);
+      const activeWorkflowId =
+        state.activeWorkflowId === action.id
+          ? workflows[0]?.id ?? ''
+          : state.activeWorkflowId;
+      return { ...state, workflows, activeWorkflowId };
     }
     case 'SET_RESPONSE':
       return { ...state, lastResponse: action.response };
