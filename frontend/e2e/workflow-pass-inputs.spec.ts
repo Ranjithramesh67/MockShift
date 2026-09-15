@@ -10,7 +10,7 @@ import { signupFreshUser } from './helpers';
 async function openWorkflowBuilder(page: Page) {
   await signupFreshUser(page);
   await page.goto('/');
-  await page.getByTestId('main-tab-workflow').click();
+  await page.getByTestId('rail-workflow').click();
   await expect(page.getByTestId('workflow-builder')).toBeVisible();
 }
 
@@ -31,7 +31,7 @@ test('passes the previous step response into the next request via the builder', 
 
   // Persisted pass-through survives a reload.
   await page.reload();
-  await page.getByTestId('main-tab-workflow').click();
+  await page.getByTestId('rail-workflow').click();
   await expect(page.getByTestId('pass-item-1-0')).toContainText('x-order-id');
 });
 

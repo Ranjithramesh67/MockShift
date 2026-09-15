@@ -41,7 +41,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | LOW-8 | Low | Public doc-share lookup does not assert `kind='public'` | FIXED | 6b83c6a |
 | LOW-9 | Low | Dead code (unused declarations) | FIXED | f3751cf |
 | TEST-1 | Test | `environments.integration.test.cjs` missing `restrictions_enforced=false` | FIXED | b632b68 |
-| TEST-2 | Test | 6 workflow e2e specs use removed `main-tab-workflow` | OPEN | |
+| TEST-2 | Test | 6 workflow e2e specs use removed `main-tab-workflow` | FIXED | 1c3d814 |
 | TEST-3 | Test | `send-working-copy.spec` expects mock `/posts/2` (404) | OPEN | |
 | TEST-4 | Test | `history.spec` assumes empty history | OPEN | |
 
@@ -225,7 +225,8 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### TEST-2 — Workflow e2e selectors
 - Files: `frontend/e2e/workflow-infinite-loop.spec.ts`, `frontend/e2e/workflow-pass-inputs.spec.ts` — `main-tab-workflow` → `rail-workflow`.
-- Status: OPEN
+- Implemented: updated all 5 call sites to the current `rail-workflow` testid (confirmed present in `Sidebar.tsx`); no `main-tab-workflow` references remain. Runtime verification needs a backend with `ALLOW_SELF_SIGNUP=1`.
+- Status: FIXED (1c3d814)
 
 ### TEST-3 — `send-working-copy` mock data
 - File: `frontend/e2e/send-working-copy.spec.ts` / `backend/scripts/mock-data.json` — serve `/posts/2` or target `/posts/1`.
