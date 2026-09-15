@@ -63,14 +63,18 @@ export async function apiFetch<T = unknown>(path: string, options: RequestOption
   return data as T;
 }
 
-/** Clear the session cookie and send the user to the portal login page. */
-export async function apiLogout(redirect = '/manage/login'): Promise<void> {
+/**
+ * Clear the session cookie. By default the caller is sent to the portal login
+ * page; pass `null` to stay put (e.g. to keep an inline error message visible
+ * after rejecting a non-portal account).
+ */
+export async function apiLogout(redirect: string | null = '/manage/login'): Promise<void> {
   try {
     await apiFetch('/api/auth/logout', { method: 'POST', body: {} });
   } catch {
     // best effort — the cookie is cleared client-side anyway below
   }
-  if (typeof window !== 'undefined') {
+  if (redirect && typeof window !== 'undefined') {
     window.location.assign(redirect);
   }
 }

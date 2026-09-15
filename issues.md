@@ -30,7 +30,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | MED-6 | Medium | Public-workspace visibility not honored at project level | NEEDS VERIFICATION | |
 | MED-7 | Medium | First-recharge bonus computed outside the lock | FIXED | 238b12f |
 | MED-8 | Medium | Refund does not cancel the subscription | NEEDS VERIFICATION | |
-| MED-9 | Medium | Portal B non-member login message is wiped | OPEN | |
+| MED-9 | Medium | Portal B non-member login message is wiped | FIXED | f88e2d8 |
 | LOW-1 | Low | Blank request name accepted | OPEN | |
 | LOW-2 | Low | `PATCH /api/environments/:id` hardcodes `variable_count: 0` | OPEN | |
 | LOW-3 | Low | Case-variant email creates a duplicate account | OPEN | |
@@ -154,7 +154,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 ### MED-9 — Portal B non-member login message wiped
 - Files: `portal/frontend/app/manage/login/page.tsx`, `portal/frontend/src/lib/portalApi.ts:67`.
 - Fix: surface the message after redirect (query param / not a full reload).
-- Status: OPEN
+- Implemented: `apiLogout(redirect = '/manage/login')` now accepts `null` to clear the session without navigating; the login page calls `apiLogout(null)` before setting the error so the alert stays visible. Default redirect (ManageShell) unchanged.
+- Test: Playwright against the running portal FE — post-fix alert visible at `/manage/login`; pre-fix times out because the navigation wiped it. No portal e2e harness exists to add a permanent spec.
+- Status: FIXED (f88e2d8)
 
 ### LOW-1 — Blank request name
 - File: `backend/src/api/routes/content.js:27`. Fix: reject blank → 400.

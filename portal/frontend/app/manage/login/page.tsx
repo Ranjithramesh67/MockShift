@@ -93,9 +93,10 @@ function LoginForm() {
         return;
       }
 
-      // Logged in, but the account is not a Portal B member — reject and clear.
+      // Logged in, but the account is not a Portal B member — clear the session
+      // without navigating away, so the reason stays visible on the form.
+      await apiLogout(null);
       setFormError('This account does not have Portal B (management) access.');
-      await apiLogout();
     } catch (err) {
       if (err instanceof ApiError) {
         setFormError(err.message);
