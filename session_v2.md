@@ -384,3 +384,21 @@ existing name (e.g. a second "Order fulfilment") was still allowed. Now:
 - Unit tests added for `isUntitledWorkflow` / `workflowNameTaken` (132 FE unit tests total).
 - Playwright: renaming the new workflow to "Order fulfilment" is rejected and reverted, a unique name
   persists, and the duplicate count stays at 1.
+
+### Follow-up: signup "See plans & pricing" showed no plans
+
+The signup gateway links to Portal A pricing (`portalUrl.ts` resolves the sibling preview host
+`3002-<session>.monkeycode-ai.live` online, `http://localhost:3002/#pricing` locally). Portal A's
+`CatalogPreview` calls `GET /api/public/plans`, which the portal frontend rewrites to the portal
+backend on `:3102` — and that backend process was not running this session, so the request 500'd and
+the tab rendered the "Could not load plans. Is the portal backend running on :3102?" error.
+
+- Root cause was operational, not a code defect: started the portal backend
+  (`cd portal/backend && PORT=3102 npm start`, terminal `term_1789463082525_123`). No source change
+  needed.
+- Verified via Playwright: on `/signup` the `goto-plans` href is `http://localhost:3002/#pricing`;
+  clicking it lands on that URL and renders **5 plan cards** (0 skeletons, 0 error). Only remaining
+  console noise is the expected anonymous `401 /api/me`.
+- Exposed the portal in the online preview with `request_preview(3002)` →
+  `https://3002-d996ae6ab8ef93e4.monkeycode-ai.live`; confirmed `/` and `/api/public/plans` both
+  return 200 through the preview host, and the main app `/signup` returns 200.
