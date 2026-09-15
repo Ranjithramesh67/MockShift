@@ -326,3 +326,20 @@ User-reported UI/UX batch addressed page-by-page (fix, verify, commit each befor
   `TopBar.tsx` adds `data-testid="fullscreen-toggle"` using the Fullscreen API
   (`documentElement.requestFullscreen`/`exitFullscreen`) with a `fullscreenchange` listener.
 - Issue batch complete (issues 1–12 + workflow relocation + fullscreen).
+
+### Follow-up: mobile top bar collapse
+
+The `subscription-chip` (issue 11) and `fullscreen-toggle` were added after the mobile chrome
+breakpoint work, so on phones the top bar overflowed and items squeezed/merged. Fixed in
+`frontend/app/mobile.chrome.css` + `frontend/src/components/TopBar.tsx`:
+
+- Search button merged its icon with the kbd hint on phones: the `font-size:0` collapse does not
+  affect the kbd (it keeps its own 10px font). Labels now carry a `btn-label` class and both
+  `.btn-label` and `.global-search-kbd` are hidden in the bar on mobile (the bell badge is untouched).
+- Import cURL / Test cURL bar buttons are hidden below 900px and surfaced as `mobile-only-item`
+  entries in the avatar dropdown (`import-curl-menu-item` / `test-curl-menu-item`), hidden again at
+  >=901px so desktop is unchanged.
+- Wordmark hidden <=420px; top-bar action gap restored to 4px on phones.
+- Verified with Playwright at 360/390/1280: `top-bar` scrollWidth == clientWidth at every width (no
+  overflow), fullscreen + chips + avatar all stay distinct, and the dropdown shows the two cURL
+  actions only on mobile.

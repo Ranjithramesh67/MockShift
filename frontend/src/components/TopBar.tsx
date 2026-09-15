@@ -254,7 +254,7 @@ export function TopBar({
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >
           <SearchIcon size={14} />
-          <span>Search</span>
+          <span className="btn-label">Search</span>
           <kbd className="global-search-kbd">{isMac ? 'Cmd K' : 'Ctrl K'}</kbd>
         </button>
         <div className="views-menu" ref={viewsRef} data-testid="views-menu">
@@ -268,7 +268,7 @@ export function TopBar({
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
             <ActiveIcon size={14} />
-            <span>{activeView.label}</span>
+            <span className="btn-label">{activeView.label}</span>
             <ChevronIcon size={12} />
           </button>
           {viewsOpen && (
@@ -370,6 +370,32 @@ export function TopBar({
                   <span className="user-dropdown-plan-note">{planChip.title}</span>
                 )}
               </div>
+              <button
+                type="button"
+                className="ghost-button mobile-only-item"
+                data-testid="import-curl-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenCurl();
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <ImportIcon size={14} />
+                Import cURL
+              </button>
+              <button
+                type="button"
+                className="ghost-button mobile-only-item"
+                data-testid="test-curl-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenScratchpad();
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <PlayIcon size={14} />
+                Test cURL
+              </button>
               <button
                 type="button"
                 className="ghost-button"
