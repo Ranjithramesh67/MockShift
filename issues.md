@@ -32,7 +32,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | MED-8 | Medium | Refund does not cancel the subscription | FIXED | 88d3ab6 |
 | MED-9 | Medium | Portal B non-member login message is wiped | FIXED | f88e2d8 |
 | LOW-1 | Low | Blank request name accepted | FIXED | e854183 |
-| LOW-2 | Low | `PATCH /api/environments/:id` hardcodes `variable_count: 0` | OPEN | |
+| LOW-2 | Low | `PATCH /api/environments/:id` hardcodes `variable_count: 0` | FIXED | 8fda3b9 |
 | LOW-3 | Low | Case-variant email creates a duplicate account | OPEN | |
 | LOW-4 | Low | Session cookie missing `Secure` flag | OPEN | |
 | LOW-5 | Low | Workflow until-loop self-reference validation tests wrong key | OPEN | |
@@ -171,7 +171,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### LOW-2 — Env PATCH `variable_count: 0`
 - File: environments route PATCH response. Fix: return the real count.
-- Status: OPEN
+- Implemented: PATCH now re-selects the row with the list route's `variable_count` count subquery instead of hardcoding 0.
+- Test: `backend/tests/envVariableCount.integration.test.cjs`.
+- Status: FIXED (8fda3b9)
 
 ### LOW-3 — Case-variant email duplicate account
 - Fix: case-insensitive unique index on `users.email` (migration) + normalize on signup/login.
