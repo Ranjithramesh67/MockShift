@@ -8,6 +8,8 @@ const {
   signSession,
   verifySession,
   createSessionToken,
+  sessionCookie,
+  clearSessionCookie,
   verifySession: verify,
 } = require('../authLib');
 
@@ -45,4 +47,35 @@ test('tampered session tokens are rejected', () => {
 test('expired session tokens are rejected', () => {
   const token = signSession({ userId: 'u1', exp: Date.now() - 1000 });
   assert.equal(verifySession(token), null);
+});
+
+test('session cookie sets Secure only for TLS deployments', () => {
+  const previous = {
+    NODE_ENV: process.env.NODE_ENV,
+    COOKIE_SECURE: process.env.COOKIE_SECURE,
+    FORCE_SECURE_COOKIES: process.env.FORCE_SECURE_COOKIES,
+  };
+  try {
+    delete process.env.NODE_ENV;
+    delete process.env.COOKIE_SECURE;
+    delete process.env.FORCE_SECURE_COOKIES;
+    const insecure = sessionCookie('tok');
+    assert.match(insecure, /HttpOnly/);
+    assert.match(insecure, /SameSite=Lax/);
+    assert.doesNotMatch(insecure, /Secure/);
+    assert.doesNotMatch(clearSessionCookie(), /Secure/);
+
+    process.env.FORCE_SECURE_COOKIES = '1';
+    assert.match(sessionCookie('tok'), /; Secure/);
+    assert.match(clearSessionCookie(), /; Secure/);
+
+    delete process.env.FORCE_SECURE_COOKIES;
+    process.env.NODE_ENV = 'production';
+    assert.match(sessionCookie('tok'), /; Secure/);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
