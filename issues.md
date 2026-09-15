@@ -38,7 +38,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | LOW-5 | Low | Workflow until-loop self-reference validation tests wrong key | FIXED | 329dbee |
 | LOW-6 | Low | SSE room authorization frozen for connection lifetime | FIXED | aff4d9a |
 | LOW-7 | Low | `syncAllSchedules` never removes stale cron schedulers | FIXED | 2609243 |
-| LOW-8 | Low | Public doc-share lookup does not assert `kind='public'` | OPEN | |
+| LOW-8 | Low | Public doc-share lookup does not assert `kind='public'` | FIXED | 6b83c6a |
 | LOW-9 | Low | Dead code (unused declarations) | OPEN | |
 | TEST-1 | Test | `environments.integration.test.cjs` missing `restrictions_enforced=false` | OPEN | |
 | TEST-2 | Test | 6 workflow e2e specs use removed `main-tab-workflow` | OPEN | |
@@ -207,7 +207,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### LOW-8 — Doc-share `kind` not asserted
 - File: `backend/src/api/routes/docs.js:1512-1529`. Fix: filter `kind='public'`.
-- Status: OPEN
+- Implemented: the anonymous token lookup now requires `s.kind = 'public'`. Defense-in-depth: migration 028's `doc_shares_token_kind_check` already makes a token non-null iff the share is public, so no externally reachable behaviour changed.
+- Regression: `backend/tests/docsShares.integration.test.cjs`.
+- Status: FIXED (6b83c6a)
 
 ### LOW-9 — Dead code
 - File: `frontend/app/s/doc/[token]/page.tsx:9` (unused `token`), plus ~18 unused declarations.
