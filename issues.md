@@ -28,7 +28,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | MED-4 | Medium | Reject-send has no concurrency guard | FIXED | 7ab38db |
 | MED-5 | Medium | Review decision race (double decide) | FIXED | f7c52ea |
 | MED-6 | Medium | Public-workspace visibility not honored at project level | NEEDS VERIFICATION | |
-| MED-7 | Medium | First-recharge bonus computed outside the lock | OPEN | |
+| MED-7 | Medium | First-recharge bonus computed outside the lock | FIXED | 238b12f |
 | MED-8 | Medium | Refund does not cancel the subscription | NEEDS VERIFICATION | |
 | MED-9 | Medium | Portal B non-member login message is wiped | OPEN | |
 | LOW-1 | Low | Blank request name accepted | OPEN | |
@@ -143,7 +143,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 ### MED-7 — First-recharge bonus race
 - Files: `portal/backend/src/routes/publicCheckout.js:434-435`, `portal/backend/src/paymentFinalize.js:92-94`.
 - Fix: compute first-paid/bonus inside the transaction under an advisory lock.
-- Status: OPEN
+- Implemented: new `firstRechargeBonusTx(client, userId, trialDays)` takes a per-user `pg_advisory_xact_lock` and re-checks prior PAID orders inside the tx. Used by the A4 confirm route and by `finalizePaidOrder` (gateway pay + webhook). The informational previews at checkout / `GET /orders/:id` remain read-only.
+- Test: `backend/tests/firstRechargeBonus.integration.test.cjs` (two concurrent first recharges award the bonus once; fails pre-fix with both 14 days). `portalCheckoutConfirm.integration.test.cjs` still green.
+- Status: FIXED (238b12f)
 
 ### MED-8 — Refund does not cancel subscription
 - File: `portal/backend/src/routes/subscribers.js:571-607`.
