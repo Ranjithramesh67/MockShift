@@ -343,3 +343,11 @@ breakpoint work, so on phones the top bar overflowed and items squeezed/merged. 
 - Verified with Playwright at 360/390/1280: `top-bar` scrollWidth == clientWidth at every width (no
   overflow), fullscreen + chips + avatar all stay distinct, and the dropdown shows the two cURL
   actions only on mobile.
+
+### Follow-up: workflow sidebar had no styling
+
+`WorkflowsPanel` (added with the sidebar relocation) used invented `tree-row` / `workflow-row` /
+`tree-row-name` classes that had no CSS, so the list rendered unstyled. Switched the rows to the
+existing `.sidebar-item` + `.sidebar-item-name` pattern and added `.workflow-item` /
+`.workflow-item-count` styles in `globals.css` (icon tone, active accent row, right-aligned steps
+count). Verified with Playwright: the panel now matches the Teams/Collections sidebar design.

@@ -490,6 +490,37 @@ body.is-col-dragging .sidebar {
   min-width: 0;
 }
 
+/* ---- Workflows panel (sidebar) ------------------------------------------ */
+.workflow-item {
+  gap: 8px;
+}
+
+.workflow-item .sidebar-item-name {
+  flex: 1;
+}
+
+.workflow-item svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.workflow-item.active svg {
+  color: var(--accent);
+}
+
+.workflow-item-count {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.workflow-item.active .workflow-item-count {
+  color: var(--text-muted);
+}
+
 .sidebar-static-item {
   display: flex;
   align-items: center;
