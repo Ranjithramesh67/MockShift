@@ -5,6 +5,24 @@ import { Modal } from './Modal';
 import { shareApi, type SendItemType } from '@/lib/api';
 import { CheckIcon, CopyIcon, TrashIcon } from './icons';
 
+// De-duplicate share creation by item: React StrictMode mounts effects twice in
+// development, which fired two POST /api/shares requests. Sharing one in-flight
+// promise per item keeps a single request (and the server upsert keeps it safe
+// regardless).
+type ShareCreateResult = Awaited<ReturnType<typeof shareApi.create>>;
+const inflightCreates = new Map<string, Promise<ShareCreateResult>>();
+
+function createShareOnce(itemType: SendItemType, itemId: string) {
+  const key = `${itemType}:${itemId}`;
+  const existing = inflightCreates.get(key);
+  if (existing) return existing;
+  const promise = shareApi.create({ itemType, itemId }).finally(() => {
+    inflightCreates.delete(key);
+  });
+  inflightCreates.set(key, promise);
+  return promise;
+}
+
 function copyText(text: string) {
   if (navigator.clipboard?.writeText) {
     return navigator.clipboard.writeText(text);
@@ -42,8 +60,7 @@ export function ShareLinksModal({
     setBusy(true);
     setError(null);
     setCopied(false);
-    shareApi
-      .create({ itemType, itemId })
+    createShareOnce(itemType, itemId)
       .then((res) => {
         if (!cancelled) setToken(res.share.token);
       })

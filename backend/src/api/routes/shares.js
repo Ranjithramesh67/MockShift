@@ -126,21 +126,34 @@ async function createShare(req, res, next, itemType, itemId) {
       // Plan gate still applies to *creating* links; viewing them is free.
       const gate = await checkPublicSharingGate({ userId: req.user.id, orgId: await orgOfItem(ctx) });
       if (gate) return res.status(403).json(gate);
-      ({ rows } = await query(
+      // Upsert on the natural key: a concurrent create (e.g. React StrictMode's
+      // double effect) races the SELECT above, so settle any conflict instead of
+      // surfacing a duplicate-key 500. DO NOTHING returns no row on conflict, so
+      // re-read the winner's token.
+      const inserted = await query(
         `INSERT INTO item_shares (item_type, item_id, token, created_by)
          VALUES ($1, $2, $3, $4)
+         ON CONFLICT (item_type, item_id) DO NOTHING
          RETURNING token, created_at`,
         [itemType, itemId, crypto.randomUUID(), req.user.id]
-      ));
-      share = rows[0];
-      await logAudit({
-        actorId: req.user.id,
-        entityType: itemType,
-        entityId: itemId,
-        action: 'share_item',
-        detail: { itemType, shareId: share.token },
-        ip: req.ip,
-      });
+      );
+      if (inserted.rows[0]) {
+        share = inserted.rows[0];
+        await logAudit({
+          actorId: req.user.id,
+          entityType: itemType,
+          entityId: itemId,
+          action: 'share_item',
+          detail: { itemType, shareId: share.token },
+          ip: req.ip,
+        });
+      } else {
+        ({ rows } = await query(
+          `SELECT token, created_at FROM item_shares WHERE item_type = $1 AND item_id = $2`,
+          [itemType, itemId]
+        ));
+        share = rows[0];
+      }
     }
 
     res.status(201).json({
