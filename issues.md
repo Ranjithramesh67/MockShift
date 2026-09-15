@@ -23,7 +23,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | HIGH-5 | High | Share create double-POST → raw DB 500 instead of link | FIXED | 3c1a1f2 |
 | HIGH-6 | High | Sidebar renders a workspace chip once per team membership | FIXED | cd50776 |
 | MED-1 | Medium | IDOR: `GET /api/collections/:id/auth-provider` has no access check | FIXED | df5e9a9 |
-| MED-2 | Medium | IDOR: `GET /api/workspaces/:id/teams` leaks teams to non-members | OPEN | |
+| MED-2 | Medium | IDOR: `GET /api/workspaces/:id/teams` leaks teams to non-members | FIXED | 4d56205 |
 | MED-3 | Medium | Invalid input returns 500 and leaks raw Postgres errors | OPEN | |
 | MED-4 | Medium | Reject-send has no concurrency guard | OPEN | |
 | MED-5 | Medium | Review decision race (double decide) | OPEN | |
@@ -112,7 +112,8 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 ### MED-2 — IDOR workspace teams
 - File: backend workspaces route (`GET /:id/teams`).
 - Fix: require workspace membership.
-- Status: OPEN
+- Test: `backend/tests/workspaceTeamsAccess.integration.test.cjs`.
+- Status: FIXED
 
 ### MED-3 — 500 + raw DB errors on invalid input
 - Files: `backend/src/api/routes/history.js`, `notifications`, `automations.js`, `monitors.js`, `sends.js`, `content.js:205`/`access.js:87`, `environments.js:152`; `portal/backend/src/routes/plans.js:121,226`, `promoCodes.js:191,252`, `portal/backend/src/server.js:70-77`.
