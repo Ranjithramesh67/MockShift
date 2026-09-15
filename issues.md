@@ -26,7 +26,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | MED-2 | Medium | IDOR: `GET /api/workspaces/:id/teams` leaks teams to non-members | FIXED | 4d56205 |
 | MED-3 | Medium | Invalid input returns 500 and leaks raw Postgres errors | FIXED | d7356a2 |
 | MED-4 | Medium | Reject-send has no concurrency guard | FIXED | 7ab38db |
-| MED-5 | Medium | Review decision race (double decide) | OPEN | |
+| MED-5 | Medium | Review decision race (double decide) | FIXED | f7c52ea |
 | MED-6 | Medium | Public-workspace visibility not honored at project level | NEEDS VERIFICATION | |
 | MED-7 | Medium | First-recharge bonus computed outside the lock | OPEN | |
 | MED-8 | Medium | Refund does not cancel the subscription | NEEDS VERIFICATION | |
@@ -132,7 +132,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 ### MED-5 — Review decision race
 - File: `backend/src/api/routes/reviews.js:232-249`.
 - Fix: guard UPDATE with `AND status='pending'`; check `rowCount`.
-- Status: OPEN
+- Implemented: decision UPDATE now `WHERE id = $4 AND status = 'pending'`; `rowCount !== 1` returns 409 so the losing decision cannot overwrite the winner or emit duplicate notifications/audit.
+- Test: `backend/tests/reviewDecisionRace.integration.test.cjs` (FOR UPDATE pin; fails pre-fix, passes post-fix). `collab.integration.test.cjs` still green.
+- Status: FIXED (f7c52ea)
 
 ### MED-6 — Public workspace vs project visibility
 - File: `backend/src/api/access.js:198-232` vs `:120-139`.
