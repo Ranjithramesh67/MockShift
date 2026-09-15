@@ -73,10 +73,10 @@ test('another user never sees someone elses run history', async ({ page }) => {
   await page.getByTestId('login-submit').click();
   await expect(page.getByTestId('sidebar')).toBeVisible();
 
-  // Dev has never executed a request, so their history is empty even though
-  // the boss has plenty of runs in the same dev DB.
+  // Dev must never see the boss's run, regardless of their own history (which
+  // may contain runs from background/scheduled automations or earlier manual
+  // use), so assert the privacy boundary directly instead of expecting empty.
   await page.getByTestId('rail-history').click();
   await expect(page.getByTestId('history-page')).toBeVisible();
-  await expect(page.getByTestId('history-empty')).toBeVisible();
   await expect(page.getByTestId('history-list')).not.toContainText('history-e2e-request');
 });
