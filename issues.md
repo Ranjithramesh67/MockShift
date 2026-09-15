@@ -20,7 +20,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | HIGH-2 | High | API token project/workspace binding not enforced | FIXED | b0428fe |
 | HIGH-3 | High | Accepting a send bypasses plan count gates | FIXED | 4f7bc99 |
 | HIGH-4 | High | Portal checkout `confirm` not race-safe (duplicate subscriptions) | FIXED | 96a2b4a |
-| HIGH-5 | High | Share create double-POST → raw DB 500 instead of link | OPEN | |
+| HIGH-5 | High | Share create double-POST → raw DB 500 instead of link | FIXED | 3c1a1f2 |
 | HIGH-6 | High | Sidebar renders a workspace chip once per team membership | OPEN | |
 | MED-1 | Medium | IDOR: `GET /api/collections/:id/auth-provider` has no access check | OPEN | |
 | MED-2 | Medium | IDOR: `GET /api/workspaces/:id/teams` leaks teams to non-members | OPEN | |
@@ -92,8 +92,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 ### HIGH-5 — Share create double-POST → raw DB 500
 - Files: `backend/src/api/routes/shares.js:120-135`, `frontend/src/components/ShareLinksModal.tsx`.
 - Impact: StrictMode double effect → duplicate-key 500 surfaced in the UI; no link.
-- Fix: upsert `ON CONFLICT (item_type,item_id) DO UPDATE ... RETURNING`; guard the modal effect; never show raw DB errors.
-- Status: OPEN
+- Fix: upsert `ON CONFLICT (item_type,item_id) DO NOTHING` + re-read the winner; de-dupe the modal's in-flight create per item; never show raw DB errors.
+- Test: `backend/tests/sharesCreate.integration.test.cjs`.
+- Status: FIXED
 
 ### HIGH-6 — Workspace chip duplicated per team
 - File: `frontend/src/components/Sidebar.tsx:176-197`.
