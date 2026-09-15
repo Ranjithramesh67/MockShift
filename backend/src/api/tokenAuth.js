@@ -108,6 +108,95 @@ function apiTokenScopeError(req) {
   return { status: 403, error: 'API token scope does not permit this operation' };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function firstUuid(...values) {
+  return values.find((v) => typeof v === 'string' && UUID_RE.test(v)) || null;
+}
+
+/**
+ * Best-effort resolution of the project/workspace a request targets, from its
+ * route params and (for create routes) its body. Returns null when the request
+ * does not reference a specific resource.
+ */
+async function resolveBindingTarget(req) {
+  const params = req.params || {};
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const projectId = firstUuid(params.projectId, body.projectId);
+  const collectionId = firstUuid(params.collectionId, body.collectionId);
+  const folderId = firstUuid(params.folderId, body.folderId);
+  const requestId = firstUuid(params.requestId, body.requestId, body.id);
+  const environmentId = firstUuid(params.environmentId, body.environmentId);
+  const workspaceId = firstUuid(params.workspaceId, body.workspaceId);
+
+  if (projectId) {
+    const { rows } = await query(`SELECT workspace_id FROM projects WHERE id = $1`, [projectId]);
+    return { projectId, workspaceId: rows[0] ? rows[0].workspace_id : null };
+  }
+  if (collectionId) {
+    const { rows } = await query(
+      `SELECT p.id AS project_id, p.workspace_id
+         FROM collections c JOIN projects p ON p.id = c.project_id
+        WHERE c.id = $1`,
+      [collectionId]
+    );
+    return rows[0] ? { projectId: rows[0].project_id, workspaceId: rows[0].workspace_id } : null;
+  }
+  if (folderId) {
+    const { rows } = await query(
+      `SELECT p.id AS project_id, p.workspace_id
+         FROM folders f
+         JOIN collections c ON c.id = f.collection_id
+         JOIN projects p ON p.id = c.project_id
+        WHERE f.id = $1`,
+      [folderId]
+    );
+    return rows[0] ? { projectId: rows[0].project_id, workspaceId: rows[0].workspace_id } : null;
+  }
+  if (requestId) {
+    const { rows } = await query(
+      `SELECT p.id AS project_id, p.workspace_id
+         FROM api_requests rq
+         JOIN collections c ON c.id = rq.collection_id
+         JOIN projects p ON p.id = c.project_id
+        WHERE rq.id = $1`,
+      [requestId]
+    );
+    return rows[0] ? { projectId: rows[0].project_id, workspaceId: rows[0].workspace_id } : null;
+  }
+  if (environmentId) {
+    const { rows } = await query(`SELECT workspace_id FROM environments WHERE id = $1`, [environmentId]);
+    return rows[0] ? { projectId: null, workspaceId: rows[0].workspace_id } : null;
+  }
+  if (workspaceId) return { projectId: null, workspaceId };
+  return null;
+}
+
+/**
+ * Enforce a token's project/workspace binding. A project-bound token may only
+ * touch resources in that project; a workspace-bound token only resources in
+ * that workspace. Unbound tokens are unaffected. Safe requests that reference
+ * no specific resource (e.g. GET /api/tokens or /api/me) stay allowed so token
+ * introspection keeps working; every write and every targeted request outside
+ * the binding is rejected.
+ */
+async function apiTokenBindingError(req) {
+  const token = req.apiToken;
+  if (!token) return null;
+  const boundProject = token.project_id || null;
+  const boundWorkspace = token.workspace_id || null;
+  if (!boundProject && !boundWorkspace) return null;
+
+  const target = await resolveBindingTarget(req);
+  if (target) {
+    if (boundProject && target.projectId === boundProject) return null;
+    if (boundWorkspace && target.workspaceId === boundWorkspace) return null;
+  } else if (SAFE_METHODS.has(req.method)) {
+    return null;
+  }
+  return { status: 403, error: 'API token is bound to a different project or workspace' };
+}
+
 /**
  * Express middleware for endpoints that ONLY accept API-token auth: responds
  * 401 when the header is missing or the token is invalid.
@@ -131,5 +220,6 @@ module.exports = {
   authenticateApiToken,
   resolveApiToken,
   apiTokenScopeError,
+  apiTokenBindingError,
   tokenAuth,
 };

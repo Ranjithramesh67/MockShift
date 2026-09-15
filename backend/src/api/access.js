@@ -50,17 +50,22 @@ async function requireAuth(req, res, next) {
       return next();
     }
     if (readBearerTokenHeader(req)) {
-      const { authenticateApiToken, apiTokenScopeError } = require('./tokenAuth');
+      const { authenticateApiToken, apiTokenScopeError, apiTokenBindingError } = require('./tokenAuth');
       try {
         const auth = await authenticateApiToken(req);
         if (auth) {
           req.user = auth.user;
           req.apiToken = auth.token;
           // A Bearer token must be allowed to perform this operation by its
-          // declared scopes (read / write / runs / sdk).
+          // declared scopes (read / write / runs / sdk) and by its optional
+          // project/workspace binding.
           const scopeError = apiTokenScopeError(req);
           if (scopeError) {
             return res.status(scopeError.status).json({ error: scopeError.error });
+          }
+          const bindingError = await apiTokenBindingError(req);
+          if (bindingError) {
+            return res.status(bindingError.status).json({ error: bindingError.error });
           }
           return next();
         }

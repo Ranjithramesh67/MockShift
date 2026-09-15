@@ -17,7 +17,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | BLK-1 | Blocker | `/s/[token]` share page crashes (`params.then is not a function`) | FIXED | eaeb870 |
 | BLK-2 | Blocker | `POST /api/requests/:id/run` missing per-project authz (cross-tenant secret disclosure) | FIXED | 4cb9d9e |
 | HIGH-1 | High | API token scopes not enforced outside sdk/serverRuns | FIXED | 83bbed0 |
-| HIGH-2 | High | API token project/workspace binding not enforced | OPEN | |
+| HIGH-2 | High | API token project/workspace binding not enforced | FIXED | b0428fe |
 | HIGH-3 | High | Accepting a send bypasses plan count gates | OPEN | |
 | HIGH-4 | High | Portal checkout `confirm` not race-safe (duplicate subscriptions) | OPEN | |
 | HIGH-5 | High | Share create double-POST → raw DB 500 instead of link | OPEN | |
@@ -73,7 +73,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 - Files: same as HIGH-1.
 - Impact: project/workspace-bound token works against any resource in the same org.
 - Fix: validate the token binding against the target resource's project/workspace.
-- Status: OPEN
+- Status: FIXED
 
 ### HIGH-3 — Accept-send bypasses plan gates
 - File: `backend/src/api/routes/sends.js:936-1000` (cloners `:550-724`).
