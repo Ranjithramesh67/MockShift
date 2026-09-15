@@ -18,7 +18,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | BLK-2 | Blocker | `POST /api/requests/:id/run` missing per-project authz (cross-tenant secret disclosure) | FIXED | 4cb9d9e |
 | HIGH-1 | High | API token scopes not enforced outside sdk/serverRuns | FIXED | 83bbed0 |
 | HIGH-2 | High | API token project/workspace binding not enforced | FIXED | b0428fe |
-| HIGH-3 | High | Accepting a send bypasses plan count gates | OPEN | |
+| HIGH-3 | High | Accepting a send bypasses plan count gates | FIXED | 4f7bc99 |
 | HIGH-4 | High | Portal checkout `confirm` not race-safe (duplicate subscriptions) | OPEN | |
 | HIGH-5 | High | Share create double-POST → raw DB 500 instead of link | OPEN | |
 | HIGH-6 | High | Sidebar renders a workspace chip once per team membership | OPEN | |
@@ -79,7 +79,8 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 - File: `backend/src/api/routes/sends.js:936-1000` (cloners `:550-724`).
 - Impact: accepting a send creates workspaces/projects/collections over plan limits.
 - Fix: run `checkCountGate` (workspaces/projects/collections) before cloning; return `403 plan_limit`.
-- Status: OPEN
+- Test: `backend/tests/acceptPlanLimits.integration.test.cjs`.
+- Status: FIXED
 
 ### HIGH-4 — Portal checkout confirm race
 - File: `portal/backend/src/routes/publicCheckout.js:397-484` (contrast `paymentFinalize.js:101-178`).

@@ -37,6 +37,7 @@ const { Router } = require('express');
 const { query, pool } = require('../db');
 const { requireAuth, roleAtLeast, getWorkspaceRole, getProjectAccess } = require('../access');
 const { logAudit } = require('../audit');
+const { checkCountGate } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -348,6 +349,113 @@ async function chooseTargetWorkspace(client, recipientId, recipientName, sourceW
 async function recipientName(client, recipientId) {
   const { rows } = await client.query(`SELECT name FROM users WHERE id = $1`, [recipientId]);
   return rows[0]?.name || null;
+}
+
+// -------------------------------------------------- Plan-limit gate on accept
+// Accepting materialises copies into the recipient's org pool, so it must
+// respect the same per-plan workspaces / projects / collections / api_requests
+// limits as direct creation (see entitlements.checkCountGate). Without this the
+// recipient could accept copies past every plan limit.
+
+// Where an accepted copy will land: the covering org pool and whether the clone
+// pipeline has to bootstrap a workspace. Mirrors chooseTargetWorkspace /
+// ensureRecipientDefaultWorkspace above. A null orgId means a brand-new org
+// pool would be created, so there is nothing to exceed yet.
+async function acceptDestination(recipientId, send, item) {
+  if (send.item_type === 'workspace') {
+    const org = await recipientAdminOrg({ query }, recipientId);
+    return { orgId: org?.id ?? null, newWorkspace: true };
+  }
+  const sourceWorkspaceId = item?.workspaceId ?? null;
+  if (sourceWorkspaceId) {
+    const role = await getWorkspaceRole(recipientId, sourceWorkspaceId);
+    if (roleAtLeast(role, 'EDITOR')) {
+      const ws = await workspaceRow(sourceWorkspaceId);
+      return { orgId: ws?.organization_id ?? null, newWorkspace: false };
+    }
+  }
+  const writable = await recipientWritableWorkspaces(recipientId);
+  if (writable.length > 0) {
+    const ws = writable.find((w) => w.name === 'My Workspace') || writable[0];
+    return { orgId: ws.organization_id, newWorkspace: false };
+  }
+  const org = await recipientAdminOrg({ query }, recipientId);
+  return { orgId: org?.id ?? null, newWorkspace: true };
+}
+
+// How many workspaces / projects / collections / requests the accepted copy
+// would create, so the gate can reserve them all before cloning.
+async function acceptCloneFootprint(send) {
+  const id = send.item_id;
+  if (send.item_type === 'workspace') {
+    const { rows } = await query(
+      `SELECT
+         (SELECT count(*)::int FROM projects WHERE workspace_id = $1) AS projects,
+         (SELECT count(*)::int
+            FROM collections c JOIN projects p ON p.id = c.project_id
+           WHERE p.workspace_id = $1) AS collections,
+         (SELECT count(*)::int
+            FROM api_requests ar
+            JOIN collections c ON c.id = ar.collection_id
+            JOIN projects p ON p.id = c.project_id
+           WHERE p.workspace_id = $1) AS requests`,
+      [id]
+    );
+    return { workspaces: 1, ...rows[0] };
+  }
+  if (send.item_type === 'project') {
+    const { rows } = await query(
+      `SELECT
+         (SELECT count(*)::int FROM collections WHERE project_id = $1) AS collections,
+         (SELECT count(*)::int
+            FROM api_requests ar JOIN collections c ON c.id = ar.collection_id
+           WHERE c.project_id = $1) AS requests`,
+      [id]
+    );
+    return { workspaces: 0, projects: 1, ...rows[0] };
+  }
+  if (send.item_type === 'collection') {
+    const { rows } = await query(
+      `SELECT count(*)::int AS requests FROM api_requests WHERE collection_id = $1`,
+      [id]
+    );
+    return { workspaces: 0, projects: 1, collections: 1, requests: rows[0].requests };
+  }
+  if (send.item_type === 'folder') {
+    const { rows } = await query(
+      `WITH RECURSIVE sub AS (
+         SELECT id FROM folders WHERE id = $1
+         UNION ALL
+         SELECT f.id FROM folders f JOIN sub s ON f.parent_id = s.id
+       )
+       SELECT count(*)::int AS requests
+         FROM api_requests WHERE folder_id IN (SELECT id FROM sub)`,
+      [id]
+    );
+    return { workspaces: 0, projects: 1, collections: 1, requests: rows[0].requests };
+  }
+  // request
+  return { workspaces: 0, projects: 1, collections: 1, requests: 1 };
+}
+
+// Returns a 403 plan_limit body when accepting would exceed the recipient org's
+// plan, or null when the copy fits. Checked before the clone transaction opens.
+async function acceptPlanLimit(send, item, recipientId) {
+  const dest = await acceptDestination(recipientId, send, item);
+  if (!dest.orgId) return null;
+  const footprint = await acceptCloneFootprint(send);
+  const checks = [
+    ['workspaces', dest.newWorkspace ? 1 : 0],
+    ['projects', footprint.projects],
+    ['collections', footprint.collections],
+    ['api_requests', footprint.requests],
+  ];
+  for (const [key, extra] of checks) {
+    if (!extra) continue;
+    const body = await checkCountGate({ userId: recipientId, orgId: dest.orgId, key, extra });
+    if (body) return body;
+  }
+  return null;
 }
 
 // ----------------------------------------------------------- Clone primitives
@@ -951,6 +1059,12 @@ async function respondToSend(req, res, next, outcome) {
           error: `Cannot accept: ${itemRes.error}. Ask the sender to send it again.`,
         });
       }
+
+      // Plan-limit gate: the copy lands in the recipient's org pool, so it must
+      // fit the same workspaces/projects/collections/requests limits as a direct
+      // create, otherwise accepting silently bypasses every plan gate.
+      const limitBody = await acceptPlanLimit(send, itemRes.item, req.user.id);
+      if (limitBody) return res.status(403).json(limitBody);
 
       const client = await pool.connect();
       let acceptedPath;
