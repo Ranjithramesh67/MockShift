@@ -13,7 +13,7 @@ router.use(requireAuth);
 // no admin/team bypass here — team-wide run history lives in the Manage view.
 router.get('/', async (req, res, next) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const limit = Math.min(Math.max(Math.trunc(Number(req.query.limit)) || 100, 1), 500);
     const { rows } = await query(
       `SELECT rh.id, rh.trigger, rh.status, rh.started_at, rh.finished_at,
               rh.request_id, rh.workflow_id,

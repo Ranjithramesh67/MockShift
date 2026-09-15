@@ -9,7 +9,7 @@ router.use(requireAuth);
 
 router.get('/notifications', async (req, res, next) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const limit = Math.min(Math.max(Math.trunc(Number(req.query.limit)) || 50, 1), 200);
     const { rows } = await query(
       `SELECT id, title, body, kind, read, payload, link, created_at
          FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,

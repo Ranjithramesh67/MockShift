@@ -11,6 +11,7 @@ const {
 } = require('../workflowService');
 const { logAudit } = require('../audit');
 const { redactSnapshot } = require('../redact');
+const { isValidCron } = require('../monitorRunner');
 
 const router = Router();
 router.use(requireAuth);
@@ -136,6 +137,9 @@ router.post('/automations', async (req, res, next) => {
     if (triggerType === 'SCHEDULE' && !scheduleCron) {
       return res.status(400).json({ error: 'scheduleCron is required for SCHEDULE automations' });
     }
+    if (scheduleCron && !isValidCron(String(scheduleCron))) {
+      return res.status(400).json({ error: 'scheduleCron must be a valid 5-field cron expression' });
+    }
     const webhookToken = triggerType === 'WEBHOOK' ? newWebhookToken() : null;
 
     const { rows } = await query(
@@ -207,6 +211,9 @@ router.patch('/automations/:automationId', async (req, res, next) => {
       sets.push(`name = $${params.length}`);
     }
     if (b.scheduleCron !== undefined) {
+      if (b.scheduleCron && !isValidCron(String(b.scheduleCron))) {
+        return res.status(400).json({ error: 'scheduleCron must be a valid 5-field cron expression' });
+      }
       params.push(b.scheduleCron || null);
       sets.push(`schedule_cron = $${params.length}`);
     }
@@ -300,7 +307,7 @@ router.get('/automations/:automationId/runs', async (req, res, next) => {
     if (!(await canReadProject(req.user.id, automation.project_id))) {
       return res.status(403).json({ error: 'No access to this project' });
     }
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const limit = Math.min(Math.max(Math.trunc(Number(req.query.limit)) || 50, 1), 200);
     const { rows } = await query(
       `SELECT id, trigger, status, started_at, finished_at, request_snapshot, response_snapshot
          FROM run_history WHERE workflow_id = $1 ORDER BY started_at DESC LIMIT $2`,
