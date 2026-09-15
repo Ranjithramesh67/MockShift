@@ -374,21 +374,36 @@ async function unregisterAutomation(automationId) {
   await getScheduler().removeCron({ jobId: `automation:${automationId}` });
 }
 
+async function listScheduleKeys() {
+  const crons = await getScheduler().getCrons();
+  return crons.map((c) => c.key);
+}
+
 async function syncAllSchedules() {
   try {
     const { rows } = await query(
       `SELECT id, workflow_id, trigger_type, schedule_cron, enabled, input_vars
          FROM automations WHERE trigger_type = 'SCHEDULE'`
     );
+    const wanted = new Map();
     for (const a of rows) {
-      if (a.enabled && a.schedule_cron) {
-        await getScheduler().registerCron({
-          workflowId: a.workflow_id,
-          cron: a.schedule_cron,
-          jobId: `automation:${a.id}`,
-          inputVars: a.input_vars || {},
-        });
+      if (a.enabled && a.schedule_cron) wanted.set(`automation:${a.id}`, a);
+    }
+
+    // Drop schedulers whose automation was disabled or deleted while this
+    // process was not running, then (re)register the live ones.
+    for (const key of await listScheduleKeys()) {
+      if (typeof key === 'string' && key.startsWith('automation:') && !wanted.has(key)) {
+        await getScheduler().removeCron({ jobId: key });
       }
+    }
+    for (const [jobId, a] of wanted) {
+      await getScheduler().registerCron({
+        workflowId: a.workflow_id,
+        cron: a.schedule_cron,
+        jobId,
+        inputVars: a.input_vars || {},
+      });
     }
     return rows.length;
   } catch (err) {
@@ -407,6 +422,7 @@ module.exports = {
   registerAutomation,
   unregisterAutomation,
   syncAllSchedules,
+  listScheduleKeys,
   newWebhookToken,
   fireWorkflowEvent,
   shutdownWorkflows,
