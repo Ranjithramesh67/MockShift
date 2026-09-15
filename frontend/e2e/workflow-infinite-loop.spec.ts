@@ -9,7 +9,7 @@ import { signupFreshUser } from './helpers';
 async function openWorkflowBuilder(page: Page) {
   await signupFreshUser(page);
   await page.goto('/');
-  await page.getByTestId('main-tab-workflow').click();
+  await page.getByTestId('rail-workflow').click();
   await expect(page.getByTestId('workflow-builder')).toBeVisible();
 }
 
@@ -33,7 +33,7 @@ test('blocks saving a workflow with an until-loop that has no exit condition', a
 
   // The invalid config must NOT have been persisted.
   await page.reload();
-  await page.getByTestId('main-tab-workflow').click();
+  await page.getByTestId('rail-workflow').click();
   await expect(page.getByTestId('step-loop-type-0')).toHaveValue('none');
 });
 
@@ -54,7 +54,7 @@ test('blocks saving a workflow with a non-positive loop count', async ({ page })
 
   // Persisted value survives a reload.
   await page.reload();
-  await page.getByTestId('main-tab-workflow').click();
+  await page.getByTestId('rail-workflow').click();
   await expect(page.getByTestId('step-loop-type-0')).toHaveValue('count');
   await expect(page.getByTestId('step-loop-count-0')).toHaveValue('3');
 });
