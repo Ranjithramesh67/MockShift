@@ -1146,10 +1146,17 @@ async function respondToSend(req, res, next, outcome) {
       return res.json({ send: json });
     }
 
-    await query(
-      `UPDATE sends SET status = 'rejected', responded_at = now() WHERE id = $1`,
+    // Concurrency guard (mirror of the accept path): only flip a still-pending
+    // send. Without this a concurrent accept could win the atomic status flip
+    // and then be overwritten with 'rejected', leaving an orphaned clone behind.
+    const rejected = await query(
+      `UPDATE sends SET status = 'rejected', responded_at = now()
+        WHERE id = $1 AND status = 'pending'`,
       [send.id]
     );
+    if (rejected.rowCount !== 1) {
+      return res.status(409).json({ error: 'This send has already been responded to' });
+    }
     const itemName = await itemNameOf(send.item_type, send.item_id);
     const { rows: recipientRows } = await query(`SELECT name FROM users WHERE id = $1`, [req.user.id]);
     await notifyUser({
