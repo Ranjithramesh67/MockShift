@@ -97,6 +97,21 @@
     padding: 0;
   }
 
+  /* Text labels collapse via the font-size:0 trick above, but the search kbd
+     hint keeps its own 10px font and used to spill into the neighbouring
+     button. Hide the labels outright (the bell badge stays). */
+  .top-bar-actions .btn-label,
+  .top-bar-actions .global-search-kbd {
+    display: none;
+  }
+
+  /* Import cURL / Test cURL move into the avatar menu on tablet & phone so the
+     bar never has to squeeze (their menu entries are mobile-only). */
+  .top-bar-actions > [data-testid="topbar-import-curl"],
+  .top-bar-actions > [data-testid="topbar-test-curl"] {
+    display: none !important;
+  }
+
   /* User chip shrinks to an avatar-only pill with a 40px target. */
   .top-bar .user-chip {
     min-height: 40px;
@@ -232,7 +247,7 @@
     padding: 0 6px;
   }
   .top-bar-actions {
-    gap: 2px;
+    gap: 4px;
   }
 
   .sidebar,
@@ -278,6 +293,15 @@
 }
 
 /* ==========================================================================
+   <= 420px — small phones: the logo mark alone carries the brand
+   ========================================================================== */
+@media (max-width: 420px) {
+  .brand-name {
+    display: none;
+  }
+}
+
+/* ==========================================================================
    >= 901px — desktop reset
    Everything mobile-only added above lives in @media (max-width: ...) so the
    desktop layout is untouched by cascade; this block just neutralises the few
@@ -289,6 +313,9 @@
     display: none !important;
   }
   .sidebar-backdrop {
+    display: none !important;
+  }
+  .mobile-only-item {
     display: none !important;
   }
 }
