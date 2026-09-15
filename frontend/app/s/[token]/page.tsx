@@ -155,23 +155,15 @@ function itemTree(share: SharedItemView) {
   );
 }
 
-export default function SharedRequestPage({ params }: { params: Promise<{ token: string }> }) {
+export default function SharedRequestPage({ params }: { params: { token: string } }) {
   const { loading: authLoading, user } = useAuth();
-  const [token, setToken] = useState<string | null>(null);
+  // Next 14 passes route params as a plain object (not a Promise), so read the
+  // token synchronously instead of awaiting it.
+  const token = params?.token ?? null;
   const [share, setShare] = useState<SharedShare | null>(null);
   const [revisions, setRevisions] = useState<SharedRevision[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    params.then(({ token: t }) => {
-      if (!cancelled) setToken(t);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [params]);
 
   useEffect(() => {
     if (!token || !user) return;
