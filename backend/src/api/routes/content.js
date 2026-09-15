@@ -198,6 +198,25 @@ async function requireCollectionWrite(req, res, next) {
   }
 }
 
+// Read-level twin of requireCollectionWrite: any access to the owning project
+// (or none at all) does not leak the collection's auth configuration.
+async function requireCollectionRead(req, res, next) {
+  try {
+    const collectionId = req.params.collectionId || req.body.collectionId;
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canReadProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'No access to this collection' });
+    }
+    const ws = await workspaceOfCollection(collectionId);
+    if (ws) req.workspaceId = ws;
+    req.projectId = projectId;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ---------------------------------------------------------------- Tree
 router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
   try {
@@ -1035,7 +1054,7 @@ router.post('/collections/:collectionId/run', async (req, res, next) => {
 });
 
 // ------------------------------------------------------------ Auth provider
-router.get('/collections/:collectionId/auth-provider', async (req, res, next) => {
+router.get('/collections/:collectionId/auth-provider', requireCollectionRead, async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT auth_type, token_request_id, token_path, header_key, header_prefix

@@ -22,7 +22,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | HIGH-4 | High | Portal checkout `confirm` not race-safe (duplicate subscriptions) | FIXED | 96a2b4a |
 | HIGH-5 | High | Share create double-POST → raw DB 500 instead of link | FIXED | 3c1a1f2 |
 | HIGH-6 | High | Sidebar renders a workspace chip once per team membership | FIXED | cd50776 |
-| MED-1 | Medium | IDOR: `GET /api/collections/:id/auth-provider` has no access check | OPEN | |
+| MED-1 | Medium | IDOR: `GET /api/collections/:id/auth-provider` has no access check | FIXED | df5e9a9 |
 | MED-2 | Medium | IDOR: `GET /api/workspaces/:id/teams` leaks teams to non-members | OPEN | |
 | MED-3 | Medium | Invalid input returns 500 and leaks raw Postgres errors | OPEN | |
 | MED-4 | Medium | Reject-send has no concurrency guard | OPEN | |
@@ -106,7 +106,8 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 ### MED-1 — IDOR collection auth-provider
 - File: `backend/src/api/routes/content.js:1031`.
 - Fix: add the same collection read check used by PUT `:1044`.
-- Status: OPEN
+- Test: `backend/tests/collectionAuthProviderAccess.integration.test.cjs`.
+- Status: FIXED
 
 ### MED-2 — IDOR workspace teams
 - File: backend workspaces route (`GET /:id/teams`).
