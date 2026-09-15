@@ -1128,8 +1128,43 @@ function TeamsPanel({ onManage, onOpenTeam }: { onManage: () => void; onOpenTeam
   );
 }
 
+const UNTITLED_WORKFLOW_NAME = 'Untitled workflow';
+
+function isUntitledWorkflow(name: string) {
+  const trimmed = (name || '').trim();
+  return trimmed === '' || trimmed.toLowerCase() === UNTITLED_WORKFLOW_NAME.toLowerCase();
+}
+
 function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
   const { state, dispatch } = useApp();
+
+  const startNewWorkflow = () => {
+    const existing = state.workflows.find((w) => isUntitledWorkflow(w.name));
+    if (existing) {
+      dispatch({ type: 'SELECT_WORKFLOW', id: existing.id });
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'info',
+        message: 'An untitled workflow already exists. Rename the existing one to create another.',
+      });
+      window.setTimeout(() => {
+        const input = document.querySelector<HTMLInputElement>('[data-testid="workflow-name-input"]');
+        input?.focus();
+        input?.select();
+      }, 0);
+      return;
+    }
+    const workflow = { id: makeId('wf'), name: UNTITLED_WORKFLOW_NAME, steps: [] };
+    dispatch({ type: 'SAVE_WORKFLOW', workflow });
+    dispatch({ type: 'SET_TAB', tab: 'workflow' });
+  };
+
+  const deleteWorkflow = (id: string, name: string) => {
+    if (!window.confirm(`Delete workflow "${name}"?`)) return;
+    dispatch({ type: 'DELETE_WORKFLOW', id });
+    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow deleted.' });
+  };
+
   return (
     <div className="sidebar-section" data-testid="workflows-panel">
       <div className="sidebar-section-head">
@@ -1140,18 +1175,14 @@ function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
           aria-label="New workflow"
           title="New workflow"
           data-testid="new-workflow"
-          onClick={() => {
-            const workflow = { id: makeId('wf'), name: 'Untitled workflow', steps: [] };
-            dispatch({ type: 'SAVE_WORKFLOW', workflow });
-            dispatch({ type: 'SET_TAB', tab: 'workflow' });
-          }}
+          onClick={startNewWorkflow}
         >
           <PlusIcon size={14} />
         </button>
       </div>
       <ul className="sidebar-list">
         {state.workflows.map((w) => (
-          <li key={w.id}>
+          <li key={w.id} className="sidebar-row">
             <button
               type="button"
               className={`sidebar-item workflow-item ${
@@ -1166,6 +1197,18 @@ function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
               <span className="sidebar-item-name">{w.name}</span>
               <span className="workflow-item-count">{w.steps.length} steps</span>
             </button>
+            <div className="sidebar-row-actions">
+              <button
+                type="button"
+                className="icon-button danger"
+                title="Delete workflow"
+                aria-label={`Delete workflow ${w.name}`}
+                data-testid={`workflow-delete-${w.name}`}
+                onClick={() => deleteWorkflow(w.id, w.name)}
+              >
+                <TrashIcon size={13} />
+              </button>
+            </div>
           </li>
         ))}
         {state.workflows.length === 0 && <p className="hint">No workflows yet.</p>}
