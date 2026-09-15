@@ -66,6 +66,10 @@ before(async () => {
       stdio: 'pipe',
     });
   }
+  execFileSync('psql', ['-q', '-v', 'ON_ERROR_STOP=1', '-d', process.env.INTEGRATION_PGDATABASE || 'apihub', '-c', 'UPDATE portal_settings SET restrictions_enforced = false;'], {
+    env: PGENV,
+    stdio: 'pipe',
+  });
 
   mockUpstream = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
