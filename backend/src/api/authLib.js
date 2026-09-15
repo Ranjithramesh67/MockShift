@@ -76,14 +76,26 @@ function createSessionToken(userId, sessionEpoch = 0) {
   return signSession({ userId, sv: sessionEpoch, iat: Date.now(), exp: Date.now() + SESSION_TTL_MS });
 }
 
+// The Secure attribute is added whenever the deployment terminates TLS in
+// front of the app (production, or an explicit opt-in for a reverse proxy). It
+// stays off for plain-HTTP local/test runs, otherwise the browser would drop
+// the cookie.
+function secureCookieAttribute() {
+  const on =
+    process.env.NODE_ENV === 'production' ||
+    process.env.COOKIE_SECURE === '1' ||
+    process.env.FORCE_SECURE_COOKIES === '1';
+  return on ? '; Secure' : '';
+}
+
 function sessionCookie(token) {
   return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(
     SESSION_TTL_MS / 1000
-  )}`;
+  )}${secureCookieAttribute()}`;
 }
 
 function clearSessionCookie() {
-  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureCookieAttribute()}`;
 }
 
 function readSessionToken(req) {

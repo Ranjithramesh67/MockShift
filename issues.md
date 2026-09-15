@@ -34,7 +34,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | LOW-1 | Low | Blank request name accepted | FIXED | e854183 |
 | LOW-2 | Low | `PATCH /api/environments/:id` hardcodes `variable_count: 0` | FIXED | 8fda3b9 |
 | LOW-3 | Low | Case-variant email creates a duplicate account | FIXED | b37db31 |
-| LOW-4 | Low | Session cookie missing `Secure` flag | OPEN | |
+| LOW-4 | Low | Session cookie missing `Secure` flag | FIXED | 3353b2c |
 | LOW-5 | Low | Workflow until-loop self-reference validation tests wrong key | OPEN | |
 | LOW-6 | Low | SSE room authorization frozen for connection lifetime | OPEN | |
 | LOW-7 | Low | `syncAllSchedules` never removes stale cron schedulers | OPEN | |
@@ -183,7 +183,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### LOW-4 — Cookie missing `Secure`
 - Fix: set `Secure` when serving over HTTPS/production.
-- Status: OPEN
+- Implemented: `sessionCookie`/`clearSessionCookie` append `Secure` when `NODE_ENV=production` or `COOKIE_SECURE=1` / `FORCE_SECURE_COOKIES=1`; plain-HTTP local/test runs keep it off so the cookie is still sent.
+- Test: `backend/src/api/__tests__/authLib.test.cjs`.
+- Status: FIXED (3353b2c)
 
 ### LOW-5 — Workflow until-loop self-reference validation
 - File: `frontend/src/lib/workflowValidation.js:127`. Fix: compare against both `step.id` and `sanitizeLabel(step.label || step.id)`.
