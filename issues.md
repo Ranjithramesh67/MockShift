@@ -15,7 +15,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | ID | Severity | Title | Status | Commit |
 |----|----------|-------|--------|--------|
 | BLK-1 | Blocker | `/s/[token]` share page crashes (`params.then is not a function`) | FIXED | eaeb870 |
-| BLK-2 | Blocker | `POST /api/requests/:id/run` missing per-project authz (cross-tenant secret disclosure) | OPEN | |
+| BLK-2 | Blocker | `POST /api/requests/:id/run` missing per-project authz (cross-tenant secret disclosure) | FIXED | 4cb9d9e |
 | HIGH-1 | High | API token scopes not enforced outside sdk/serverRuns | OPEN | |
 | HIGH-2 | High | API token project/workspace binding not enforced | OPEN | |
 | HIGH-3 | High | Accepting a send bypasses plan count gates | OPEN | |
@@ -61,7 +61,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 - Cause: run route resolves the project only for billing; never calls `canReadProjectContent`.
 - Impact: cross-tenant run + disclosure of resolved secrets/auth token/request snapshot.
 - Fix: require `canReadProjectContent(req.user.id, projectId)` before `chargeRuns`/`runRequest`.
-- Status: OPEN
+- Status: FIXED
 
 ### HIGH-1 — API token scopes unenforced
 - Files: `backend/src/api/tokenAuth.js`, `backend/src/api/access.js`; checks only in `routes/serverRuns.js:131`, `routes/sdk.js:213`.

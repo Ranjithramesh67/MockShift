@@ -895,7 +895,8 @@ router.delete('/collections/:collectionId', async (req, res, next) => {
   }
 });
 
-router.post('/requests/:requestId/run', async (req, res, next) => {  try {
+router.post('/requests/:requestId/run', async (req, res, next) => {
+  try {
     const { requestId } = req.params;
     const existing = await query(
       `SELECT id FROM api_requests WHERE id = $1`,
@@ -903,9 +904,15 @@ router.post('/requests/:requestId/run', async (req, res, next) => {  try {
     );
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
     const projectId = await projectOfRequest(requestId);
+    // Running a stored request resolves and returns its environment variables,
+    // auth token and substituted snapshot, so it requires the same project read
+    // access as GET /requests/:requestId (prevents cross-tenant execution).
+    if (!projectId || !(await canReadProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'No access to this request' });
+    }
     const runCharge = await chargeRuns({
       userId: req.user.id,
-      orgId: projectId ? await orgOfProject(projectId) : null,
+      orgId: await orgOfProject(projectId),
     });
     if (!runCharge.ok) return res.status(403).json(runCharge.body);
     const result = await runRequest(requestId, req.user.id);
