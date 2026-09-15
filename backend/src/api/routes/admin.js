@@ -244,7 +244,7 @@ router.post('/users', async (req, res, next) => {
     }
     const roleValue = ['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'].includes(role) ? role : 'EDITOR';
 
-    const existing = await query(`SELECT id FROM users WHERE email = $1`, [normalizedEmail]);
+    const existing = await query(`SELECT id FROM users WHERE lower(email) = $1`, [normalizedEmail]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'A user with that email already exists' });
     }

@@ -63,8 +63,9 @@ async function issueEmailVerification(userId, to) {
 
 router.post('/signup', async (req, res, next) => {
   try {
-    const { email, password, name, username } = req.body || {};
-    if (!email || !EMAIL_RE.test(String(email))) {
+    const { email: rawEmail, password, name, username } = req.body || {};
+    const email = String(rawEmail || '').trim().toLowerCase();
+    if (!email || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'A valid email is required' });
     }
     if (!password || String(password).length < 8) {
@@ -78,7 +79,7 @@ router.post('/signup', async (req, res, next) => {
     }
     const displayName = (name || '').trim() || email.split('@')[0];
 
-    const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
+    const existing = await query('SELECT id FROM users WHERE lower(email) = $1', [email]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'An account with that email already exists' });
     }
@@ -132,8 +133,9 @@ router.get('/signup-status', async (req, res, next) => {
 
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body || {};
-    const { rows } = await query('SELECT * FROM users WHERE email = $1', [email]);
+    const { email: rawEmail, password } = req.body || {};
+    const email = String(rawEmail || '').trim().toLowerCase();
+    const { rows } = await query('SELECT * FROM users WHERE lower(email) = $1', [email]);
     const user = rows[0];
     if (!user || !(await verifyPassword(password, user.password_hash))) {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -187,7 +189,7 @@ router.post('/resend-verification', requireAuth, async (req, res, next) => {
 
 router.post('/forgot-password', async (req, res, next) => {
   try {
-    const address = String((req.body || {}).email || '').trim();
+    const address = String((req.body || {}).email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(address)) {
       return res.status(400).json({ error: 'A valid email is required' });
     }
@@ -201,7 +203,7 @@ router.post('/forgot-password', async (req, res, next) => {
     void (async () => {
       try {
         const { rows } = await query(
-          'SELECT id, email FROM users WHERE email = $1 AND is_active = true',
+          'SELECT id, email FROM users WHERE lower(email) = $1 AND is_active = true',
           [address]
         );
         if (!rows[0]) return;

@@ -221,7 +221,7 @@ router.post('/:teamId/members', async (req, res, next) => {
       }
       targetId = target.rows[0].id;
     } else {
-      const target = await query('SELECT id FROM users WHERE email = $1', [email]);
+      const target = await query('SELECT id FROM users WHERE lower(email) = lower($1)', [String(email).trim()]);
       if (target.rows.length === 0) {
         return res.status(404).json({ error: `No user with email ${email}` });
       }

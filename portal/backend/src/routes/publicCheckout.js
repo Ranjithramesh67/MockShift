@@ -269,7 +269,7 @@ router.post('/checkout', async (req, res, next) => {
       userId = me.id;
       accountInfo = { id: me.id, name: me.name, email: me.email, created: false };
     } else {
-      const email = String((account || {}).email || '').trim();
+      const email = String((account || {}).email || '').trim().toLowerCase();
       const password = String((account || {}).password || '');
       const name = String((account || {}).name || '').trim();
       if (!EMAIL_RE.test(email)) {
@@ -283,7 +283,7 @@ router.post('/checkout', async (req, res, next) => {
       accountInfo = { email, name: displayName, created: true };
 
       userId = await withTransaction(async (client) => {
-        const { rows: existing } = await client.query('SELECT id FROM users WHERE email = $1', [email]);
+        const { rows: existing } = await client.query('SELECT id FROM users WHERE lower(email) = $1', [email]);
         if (existing.length > 0) {
           const err = new Error('An account with that email already exists — sign in to continue');
           err.status = 409;
