@@ -1522,7 +1522,7 @@ async function servePublicDocShare(req, res, next) {
          JOIN doc_pages p ON p.id = s.doc_id
          JOIN workspaces w ON w.id = p.workspace_id
          LEFT JOIN users ub ON ub.id = p.updated_by
-        WHERE s.token = $1`,
+        WHERE s.token = $1 AND s.kind = 'public'`,
       [token]
     );
     const share = rows[0];
