@@ -286,7 +286,8 @@ router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
 router.post('/collections', async (req, res, next) => {
   try {
     const { projectId, name } = req.body || {};
-    if (!projectId || !name) return res.status(400).json({ error: 'projectId and name are required' });
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!projectId || !trimmedName) return res.status(400).json({ error: 'projectId and name are required' });
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
@@ -296,7 +297,7 @@ router.post('/collections', async (req, res, next) => {
     if (gate) return res.status(403).json(gate);
     const { rows } = await query(
       `INSERT INTO collections (project_id, name) VALUES ($1, $2) RETURNING id, name, project_id`,
-      [projectId, String(name).trim()]
+      [projectId, trimmedName]
     );
     res.status(201).json({ collection: rows[0] });
   } catch (err) {
@@ -308,7 +309,8 @@ router.post('/collections', async (req, res, next) => {
 router.post('/folders', async (req, res, next) => {
   try {
     const { collectionId, name, parentId } = req.body || {};
-    if (!collectionId || !name) return res.status(400).json({ error: 'collectionId and name are required' });
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!collectionId || !trimmedName) return res.status(400).json({ error: 'collectionId and name are required' });
     const projectId = await projectOfCollection(collectionId);
     if (!projectId) return res.status(404).json({ error: 'Collection not found' });
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
@@ -320,7 +322,7 @@ router.post('/folders', async (req, res, next) => {
         return res.status(400).json({ error: 'Parent folder must belong to the same collection' });
       }
     }
-    const folderName = await uniqueFolderName(collectionId, parentId || null, name, null);
+    const folderName = await uniqueFolderName(collectionId, parentId || null, trimmedName, null);
     const { rows } = await query(
       `INSERT INTO folders (collection_id, name, parent_id)
        VALUES ($1, $2, $3)
@@ -374,7 +376,12 @@ router.put('/folders/:folderId', async (req, res, next) => {
     }
 
     let nextName = current.name;
-    if (b.name !== undefined) nextName = String(b.name).trim();
+    if (b.name !== undefined) {
+      if (typeof b.name !== 'string' || b.name.trim() === '') {
+        return res.status(400).json({ error: 'name cannot be blank' });
+      }
+      nextName = b.name.trim();
+    }
 
     const sets = [];
     const params = [folderId];
@@ -550,7 +557,8 @@ router.post('/folders/:folderId/duplicate', async (req, res, next) => {
 router.post('/requests', async (req, res, next) => {
   try {
     const { collectionId, name, method, url, apiType, folderId } = req.body || {};
-    if (!collectionId || !name) return res.status(400).json({ error: 'collectionId and name are required' });
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!collectionId || !trimmedName) return res.status(400).json({ error: 'collectionId and name are required' });
     const projectId = await projectOfCollection(collectionId);
     if (!projectId) return res.status(404).json({ error: 'Collection not found' });
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
@@ -568,7 +576,7 @@ router.post('/requests', async (req, res, next) => {
     });
     if (reqGate) return res.status(403).json(reqGate);
 
-    const requestName = await uniqueRequestName(collectionId, folderId || null, name, null);
+    const requestName = await uniqueRequestName(collectionId, folderId || null, trimmedName, null);
     const workspaceId = await workspaceOfCollection(collectionId);
     let created;
     const client = await pool.connect();
@@ -683,6 +691,9 @@ router.put('/requests/:requestId', async (req, res, next) => {
     }
 
     const b = req.body || {};
+    if (b.name !== undefined && (typeof b.name !== 'string' || b.name.trim() === '')) {
+      return res.status(400).json({ error: 'name cannot be blank' });
+    }
     if (b.folderId !== undefined) {
       const folderId = b.folderId || null;
       if (folderId && (await collectionOfFolder(folderId)) !== current.collection_id) {

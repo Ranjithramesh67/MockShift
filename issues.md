@@ -31,7 +31,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | MED-7 | Medium | First-recharge bonus computed outside the lock | FIXED | 238b12f |
 | MED-8 | Medium | Refund does not cancel the subscription | FIXED | 88d3ab6 |
 | MED-9 | Medium | Portal B non-member login message is wiped | FIXED | f88e2d8 |
-| LOW-1 | Low | Blank request name accepted | OPEN | |
+| LOW-1 | Low | Blank request name accepted | FIXED | e854183 |
 | LOW-2 | Low | `PATCH /api/environments/:id` hardcodes `variable_count: 0` | OPEN | |
 | LOW-3 | Low | Case-variant email creates a duplicate account | OPEN | |
 | LOW-4 | Low | Session cookie missing `Secure` flag | OPEN | |
@@ -165,7 +165,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### LOW-1 — Blank request name
 - File: `backend/src/api/routes/content.js:27`. Fix: reject blank → 400.
-- Status: OPEN
+- Implemented: trimmed-name validation on POST /requests, PUT /requests/:id (rename), POST /collections and POST /folders; blank/whitespace-only now returns 400 instead of persisting `''`.
+- Test: `backend/tests/blankName.integration.test.cjs`.
+- Status: FIXED (e854183)
 
 ### LOW-2 — Env PATCH `variable_count: 0`
 - File: environments route PATCH response. Fix: return the real count.
