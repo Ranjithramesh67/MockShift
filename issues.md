@@ -33,7 +33,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | MED-9 | Medium | Portal B non-member login message is wiped | FIXED | f88e2d8 |
 | LOW-1 | Low | Blank request name accepted | FIXED | e854183 |
 | LOW-2 | Low | `PATCH /api/environments/:id` hardcodes `variable_count: 0` | FIXED | 8fda3b9 |
-| LOW-3 | Low | Case-variant email creates a duplicate account | OPEN | |
+| LOW-3 | Low | Case-variant email creates a duplicate account | FIXED | b37db31 |
 | LOW-4 | Low | Session cookie missing `Secure` flag | OPEN | |
 | LOW-5 | Low | Workflow until-loop self-reference validation tests wrong key | OPEN | |
 | LOW-6 | Low | SSE room authorization frozen for connection lifetime | OPEN | |
@@ -177,7 +177,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### LOW-3 — Case-variant email duplicate account
 - Fix: case-insensitive unique index on `users.email` (migration) + normalize on signup/login.
-- Status: OPEN
+- Implemented: normalize to lower-case in signup/login/forgot-password, admin create-user and portal checkout; lookups use `lower(email)`. Migration `048_ci_email.sql` lowercases stored rows and adds a unique index on `lower(email)` (guarded if duplicates already exist).
+- Test: `backend/tests/caseInsensitiveEmail.integration.test.cjs`.
+- Status: FIXED (b37db31)
 
 ### LOW-4 — Cookie missing `Secure`
 - Fix: set `Secure` when serving over HTTPS/production.
