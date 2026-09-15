@@ -1154,7 +1154,7 @@ function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
           <li key={w.id}>
             <button
               type="button"
-              className={`tree-row workflow-row ${
+              className={`sidebar-item workflow-item ${
                 state.activeTab === 'workflow' && state.activeWorkflowId === w.id ? 'active' : ''
               }`}
               data-testid={`workflow-${w.name}`}
@@ -1163,8 +1163,8 @@ function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
               }}
             >
               <WorkflowIcon size={13} />
-              <span className="tree-row-name">{w.name}</span>
-              <span className="hint">{w.steps.length} steps</span>
+              <span className="sidebar-item-name">{w.name}</span>
+              <span className="workflow-item-count">{w.steps.length} steps</span>
             </button>
           </li>
         ))}
