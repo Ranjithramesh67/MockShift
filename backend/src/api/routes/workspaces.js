@@ -214,12 +214,18 @@ router.patch('/:workspaceId/settings', async (req, res, next) => {
 });
 
 // ------------------------------------------------------------------ Teams in workspace
-router.get('/:workspaceId/teams', async (req, res, next) => {  try {
+router.get('/:workspaceId/teams', async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    // Team sharing is internal: only workspace members may see which teams the
+    // workspace is shared to.
+    const role = await getWorkspaceRole(req.user.id, workspaceId);
+    if (!role) return res.status(403).json({ error: 'No access to this workspace' });
     const { rows } = await query(
       `SELECT wt.id AS share_id, t.id AS team_id, t.name, wt.role
          FROM workspace_teams wt JOIN teams t ON t.id = wt.team_id
         WHERE wt.workspace_id = $1 ORDER BY t.name`,
-      [req.params.workspaceId]
+      [workspaceId]
     );
     res.json({ teams: rows });
   } catch (err) {
