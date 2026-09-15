@@ -96,9 +96,14 @@ router.patch('/environments/:environmentId', async (req, res, next) => {
       if (sets.length > 0) {
         await client.query(`UPDATE environments SET ${sets.join(', ')} WHERE id = $1`, params);
       }
-      const updated = await client.query(`SELECT id, name, is_active FROM environments WHERE id = $1`, [environmentId]);
+      const updated = await client.query(
+        `SELECT e.id, e.name, e.is_active,
+                (SELECT count(*) FROM variables v WHERE v.scope = 'ENVIRONMENT' AND v.environment_id = e.id) AS variable_count
+           FROM environments e WHERE e.id = $1`,
+        [environmentId]
+      );
       await client.query('COMMIT');
-      res.json({ environment: { ...updated.rows[0], variable_count: 0 } });
+      res.json({ environment: updated.rows[0] });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
