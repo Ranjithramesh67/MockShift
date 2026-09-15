@@ -19,7 +19,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | HIGH-1 | High | API token scopes not enforced outside sdk/serverRuns | FIXED | 83bbed0 |
 | HIGH-2 | High | API token project/workspace binding not enforced | FIXED | b0428fe |
 | HIGH-3 | High | Accepting a send bypasses plan count gates | FIXED | 4f7bc99 |
-| HIGH-4 | High | Portal checkout `confirm` not race-safe (duplicate subscriptions) | OPEN | |
+| HIGH-4 | High | Portal checkout `confirm` not race-safe (duplicate subscriptions) | FIXED | 96a2b4a |
 | HIGH-5 | High | Share create double-POST → raw DB 500 instead of link | OPEN | |
 | HIGH-6 | High | Sidebar renders a workspace chip once per team membership | OPEN | |
 | MED-1 | Medium | IDOR: `GET /api/collections/:id/auth-provider` has no access check | OPEN | |
@@ -86,7 +86,8 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 - File: `portal/backend/src/routes/publicCheckout.js:397-484` (contrast `paymentFinalize.js:101-178`).
 - Impact: concurrent confirms create duplicate ACTIVE subscriptions.
 - Fix: lock the order row `FOR UPDATE` and re-check status in-transaction.
-- Status: OPEN
+- Test: `backend/tests/portalCheckoutConfirm.integration.test.cjs`.
+- Status: FIXED
 
 ### HIGH-5 — Share create double-POST → raw DB 500
 - Files: `backend/src/api/routes/shares.js:120-135`, `frontend/src/components/ShareLinksModal.tsx`.
