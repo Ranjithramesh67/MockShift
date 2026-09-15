@@ -25,7 +25,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | MED-1 | Medium | IDOR: `GET /api/collections/:id/auth-provider` has no access check | FIXED | df5e9a9 |
 | MED-2 | Medium | IDOR: `GET /api/workspaces/:id/teams` leaks teams to non-members | FIXED | 4d56205 |
 | MED-3 | Medium | Invalid input returns 500 and leaks raw Postgres errors | FIXED | d7356a2 |
-| MED-4 | Medium | Reject-send has no concurrency guard | OPEN | |
+| MED-4 | Medium | Reject-send has no concurrency guard | FIXED | 7ab38db |
 | MED-5 | Medium | Review decision race (double decide) | OPEN | |
 | MED-6 | Medium | Public-workspace visibility not honored at project level | NEEDS VERIFICATION | |
 | MED-7 | Medium | First-recharge bonus computed outside the lock | OPEN | |
@@ -125,7 +125,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 ### MED-4 — Reject-send race
 - File: `backend/src/api/routes/sends.js:1035-1038`.
 - Fix: `AND status='pending'` + `rowCount` check → 409.
-- Status: OPEN
+- Implemented: reject UPDATE now `WHERE id = $1 AND status = 'pending'`; `rowCount !== 1` returns 409, mirroring the accept path.
+- Test: `backend/tests/rejectSendRace.integration.test.cjs` (pins the send row `FOR UPDATE` to force the interleave; fails pre-fix, passes post-fix).
+- Status: FIXED (7ab38db)
 
 ### MED-5 — Review decision race
 - File: `backend/src/api/routes/reviews.js:232-249`.
