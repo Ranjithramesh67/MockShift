@@ -5,6 +5,7 @@ const { query } = require('./db');
 const { loadUserById } = require('./access');
 
 const BEARER_RE = /^Bearer\s+([A-Za-z0-9_\-~+/]+=*)$/;
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(String(token), 'utf8').digest('hex');
@@ -75,6 +76,38 @@ async function resolveApiToken(req) {
   }
 }
 
+function isRunRequest(req) {
+  if (req.method !== 'POST') return false;
+  const path = `${req.baseUrl || ''}${req.path || ''}`;
+  return /\/run$/.test(path) || /\/runs$/.test(path);
+}
+
+/**
+ * Check a token's scopes against the request it is trying to make. Returns
+ * null when the request is allowed, or a `{ status, error }` object otherwise.
+ *
+ * The scope model:
+ *   * `write` — full access (the default token used by S4 machine clients).
+ *   * `read`  — safe (GET/HEAD/OPTIONS) requests only.
+ *   * `runs`  — may also POST to the request-run endpoints.
+ *   * `sdk`   — may also call the SDK sync endpoints.
+ *
+ * Without this central check a `read`-scope token could create, modify and
+ * delete content, because requireAuth only verified the token resolved to a
+ * valid user.
+ */
+function apiTokenScopeError(req) {
+  const token = req.apiToken;
+  if (!token) return null;
+  const scopes = Array.isArray(token.scopes) ? token.scopes : [];
+  if (scopes.includes('write')) return null;
+  const path = `${req.baseUrl || ''}${req.path || ''}`;
+  if (scopes.includes('read') && SAFE_METHODS.has(req.method)) return null;
+  if (scopes.includes('runs') && isRunRequest(req)) return null;
+  if (scopes.includes('sdk') && /\/sdk(\/|$)/.test(path)) return null;
+  return { status: 403, error: 'API token scope does not permit this operation' };
+}
+
 /**
  * Express middleware for endpoints that ONLY accept API-token auth: responds
  * 401 when the header is missing or the token is invalid.
@@ -97,5 +130,6 @@ module.exports = {
   findTokenByHash,
   authenticateApiToken,
   resolveApiToken,
+  apiTokenScopeError,
   tokenAuth,
 };

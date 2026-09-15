@@ -16,7 +16,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 |----|----------|-------|--------|--------|
 | BLK-1 | Blocker | `/s/[token]` share page crashes (`params.then is not a function`) | FIXED | eaeb870 |
 | BLK-2 | Blocker | `POST /api/requests/:id/run` missing per-project authz (cross-tenant secret disclosure) | FIXED | 4cb9d9e |
-| HIGH-1 | High | API token scopes not enforced outside sdk/serverRuns | OPEN | |
+| HIGH-1 | High | API token scopes not enforced outside sdk/serverRuns | FIXED | 83bbed0 |
 | HIGH-2 | High | API token project/workspace binding not enforced | OPEN | |
 | HIGH-3 | High | Accepting a send bypasses plan count gates | OPEN | |
 | HIGH-4 | High | Portal checkout `confirm` not race-safe (duplicate subscriptions) | OPEN | |
@@ -67,7 +67,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 - Files: `backend/src/api/tokenAuth.js`, `backend/src/api/access.js`; checks only in `routes/serverRuns.js:131`, `routes/sdk.js:213`.
 - Impact: `read`-scope token can create/modify/delete/run.
 - Fix: enforce token scopes centrally for mutating/run routes.
-- Status: OPEN
+- Status: FIXED
 
 ### HIGH-2 — API token binding unenforced
 - Files: same as HIGH-1.
