@@ -36,7 +36,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | LOW-3 | Low | Case-variant email creates a duplicate account | FIXED | b37db31 |
 | LOW-4 | Low | Session cookie missing `Secure` flag | FIXED | 3353b2c |
 | LOW-5 | Low | Workflow until-loop self-reference validation tests wrong key | FIXED | 329dbee |
-| LOW-6 | Low | SSE room authorization frozen for connection lifetime | OPEN | |
+| LOW-6 | Low | SSE room authorization frozen for connection lifetime | FIXED | aff4d9a |
 | LOW-7 | Low | `syncAllSchedules` never removes stale cron schedulers | OPEN | |
 | LOW-8 | Low | Public doc-share lookup does not assert `kind='public'` | OPEN | |
 | LOW-9 | Low | Dead code (unused declarations) | OPEN | |
@@ -195,7 +195,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### LOW-6 — SSE auth frozen for connection lifetime
 - File: `backend/src/api/routes/events.js:14-17,34-70`. Fix: periodic re-check.
-- Status: OPEN
+- Implemented: the stream re-runs `authorizeRoom` on an interval (`REALTIME_AUTH_RECHECK_MS`, default 30s); a failed re-check sends an `error` frame with `{type:'unauthorized'}` and closes the stream. Transient DB errors are logged and retried.
+- Test: `backend/tests/eventsAuthRecheck.integration.test.cjs` (revokes access mid-stream and asserts the frame + close).
+- Status: FIXED (aff4d9a)
 
 ### LOW-7 — Stale cron schedulers
 - File: `backend/src/api/workflowService.js:377-393`. Fix: remove schedulers not in the enabled set on sync.

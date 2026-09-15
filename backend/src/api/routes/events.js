@@ -11,10 +11,10 @@
 // `data.at` an ISO timestamp. A `: ping` comment is sent on an interval to keep
 // intermediaries from closing idle connections.
 //
-// v1 limitation: room access is authorized once at connect time. A stream that
-// outlives a permission change (member removed, role downgraded, share revoked)
-// keeps receiving frames until the client disconnects. Re-checking on an
-// interval is a planned follow-up; see docs/FEATURES.md §24.
+// Room access is authorized at connect time and re-checked on an interval, so a
+// stream cannot outlive a permission change (member removed, role downgraded,
+// share revoked): the connection is closed with an `error` frame once the
+// caller no longer has access. Tune with REALTIME_AUTH_RECHECK_MS.
 // ============================================================================
 
 const { Router } = require('express');
@@ -29,6 +29,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 function heartbeatMs() {
   const n = Number(process.env.REALTIME_HEARTBEAT_MS);
   return Number.isFinite(n) && n > 0 ? n : 25000;
+}
+
+function authRecheckMs() {
+  const n = Number(process.env.REALTIME_AUTH_RECHECK_MS);
+  return Number.isFinite(n) && n > 0 ? n : 30000;
 }
 
 async function authorizeRoom(user, room) {
@@ -77,6 +82,7 @@ router.get('/', requireAuth, async (req, res, next) => {
     // during room authorization cannot leak a subscriber or heartbeat timer.
     let unsubscribe = null;
     let timer = null;
+    let authTimer = null;
     let done = false;
     const cleanup = () => {
       if (done) return;
@@ -84,6 +90,10 @@ router.get('/', requireAuth, async (req, res, next) => {
       if (timer) {
         clearInterval(timer);
         timer = null;
+      }
+      if (authTimer) {
+        clearInterval(authTimer);
+        authTimer = null;
       }
       if (unsubscribe) {
         unsubscribe();
@@ -122,6 +132,35 @@ router.get('/', requireAuth, async (req, res, next) => {
     timer = setInterval(() => {
       if (!res.writableEnded && !req.destroyed) res.write(': ping\n\n');
     }, heartbeatMs());
+
+    // Periodically re-authorize the room so a revoked permission tears the
+    // stream down instead of leaking events for the connection's lifetime.
+    let rechecking = false;
+    authTimer = setInterval(async () => {
+      if (done || rechecking) return;
+      rechecking = true;
+      try {
+        const recheck = await authorizeRoom(req.user, room);
+        if (!recheck.ok) {
+          if (!res.writableEnded && !req.destroyed) {
+            res.write(
+              `event: error\ndata: ${JSON.stringify({
+                type: 'unauthorized',
+                status: recheck.status,
+                error: recheck.error,
+              })}\n\n`
+            );
+            res.end();
+          }
+          cleanup();
+        }
+      } catch (err) {
+        // A transient failure must not kill a still-authorized stream.
+        console.error('[events] room re-check failed:', err.message);
+      } finally {
+        rechecking = false;
+      }
+    }, authRecheckMs());
   } catch (err) {
     next(err);
   }
