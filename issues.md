@@ -43,7 +43,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | TEST-1 | Test | `environments.integration.test.cjs` missing `restrictions_enforced=false` | FIXED | b632b68 |
 | TEST-2 | Test | 6 workflow e2e specs use removed `main-tab-workflow` | FIXED | 1c3d814 |
 | TEST-3 | Test | `send-working-copy.spec` expects mock `/posts/2` (404) | FIXED | 5abeae1 |
-| TEST-4 | Test | `history.spec` assumes empty history | OPEN | |
+| TEST-4 | Test | `history.spec` assumes empty history | FIXED | 9f88891 |
 
 ---
 
@@ -236,4 +236,6 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### TEST-4 — `history` isolation assumption
 - File: `frontend/e2e/history.spec.ts` — account for background recurring runs.
-- Status: OPEN
+- Implemented: the cross-user test no longer expects `history-empty`; it asserts the privacy rule directly -- the dev user's history list never contains the boss's `history-e2e-request` run (works whether or not the dev has their own background runs).
+- Verified: `npx tsc --noEmit` clean.
+- Status: FIXED (9f88891)
