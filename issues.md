@@ -29,7 +29,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | MED-5 | Medium | Review decision race (double decide) | FIXED | f7c52ea |
 | MED-6 | Medium | Public-workspace visibility not honored at project level | NEEDS VERIFICATION | |
 | MED-7 | Medium | First-recharge bonus computed outside the lock | FIXED | 238b12f |
-| MED-8 | Medium | Refund does not cancel the subscription | NEEDS VERIFICATION | |
+| MED-8 | Medium | Refund does not cancel the subscription | FIXED | 88d3ab6 |
 | MED-9 | Medium | Portal B non-member login message is wiped | FIXED | f88e2d8 |
 | LOW-1 | Low | Blank request name accepted | OPEN | |
 | LOW-2 | Low | `PATCH /api/environments/:id` hardcodes `variable_count: 0` | OPEN | |
@@ -149,7 +149,10 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### MED-8 — Refund does not cancel subscription
 - File: `portal/backend/src/routes/subscribers.js:571-607`.
-- Status: NEEDS VERIFICATION (may be manual settlement) — confirm, then cancel + lock.
+- Decision: refunding an order must revoke the entitlements it granted (product decision, 2026-09-15).
+- Implemented: `POST /subscribers/orders/:id/refund` now locks the order row `FOR UPDATE`, marks it REFUNDED, voids the invoice, and sets the linked subscription to CANCELLED inside the same transaction; concurrent refunds settle once (one 200, one 409, one audit row). The audit `after` carries `cancelled_subscription_id`.
+- Test: `backend/tests/portalRefund.integration.test.cjs` (cancellation + concurrent race; both fail pre-fix).
+- Status: FIXED (88d3ab6)
 
 ### MED-9 — Portal B non-member login message wiped
 - Files: `portal/frontend/app/manage/login/page.tsx`, `portal/frontend/src/lib/portalApi.ts:67`.

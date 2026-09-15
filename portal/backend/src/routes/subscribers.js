@@ -580,7 +580,31 @@ router.post('/orders/:id/refund', requirePortalRole('ADMIN'), async (req, res, n
       return res.status(409).json({ error: conflict });
     }
 
+    // Refund is terminal for the order: void the invoice AND cancel the
+    // subscription this order created, so a refunded customer does not keep
+    // paid entitlements. The order row is locked FOR UPDATE so concurrent
+    // refunds cannot both pass the status check (and both write audits).
+    let cancelledSubscriptionId = null;
     await withTransaction(req.user.id, async (client) => {
+      const { rows: lockRows } = await client.query(
+        'SELECT status, subscription_id FROM orders WHERE id = $1 FOR UPDATE',
+        [req.params.id]
+      );
+      if (lockRows.length === 0) {
+        const err = new Error('Order not found');
+        err.status = 404;
+        throw err;
+      }
+      if (!['PAID', 'ISSUED'].includes(lockRows[0].status)) {
+        const err = new Error(
+          lockRows[0].status === 'REFUNDED'
+            ? 'Order is already refunded'
+            : `Cannot refund a ${String(lockRows[0].status).toLowerCase()} order`
+        );
+        err.status = 409;
+        throw err;
+      }
+
       await client.query(
         `UPDATE orders SET status = 'REFUNDED' WHERE id = $1`,
         [req.params.id]
@@ -590,6 +614,18 @@ router.post('/orders/:id/refund', requirePortalRole('ADMIN'), async (req, res, n
           WHERE order_id = $1 AND status IN ('ISSUED', 'PAID')`,
         [req.params.id]
       );
+
+      const subscriptionId = lockRows[0].subscription_id;
+      if (subscriptionId) {
+        const { rowCount } = await client.query(
+          `UPDATE subscriptions
+              SET status = 'CANCELLED', cancel_at_period_end = false,
+                  cancelled_at = now(), updated_at = now()
+            WHERE id = $1 AND status <> 'CANCELLED'`,
+          [subscriptionId]
+        );
+        if (rowCount === 1) cancelledSubscriptionId = subscriptionId;
+      }
     });
     await logAudit(req, {
       action: 'orders.refund',
@@ -597,10 +633,10 @@ router.post('/orders/:id/refund', requirePortalRole('ADMIN'), async (req, res, n
       targetId: req.params.id,
       targetRef: before.plan_key,
       before: { status: before.status, amount: before.amount },
-      after: { status: 'REFUNDED' },
+      after: { status: 'REFUNDED', cancelled_subscription_id: cancelledSubscriptionId },
     });
     const order = await fetchOrder(req.params.id);
-    res.json({ ok: true, order });
+    res.json({ ok: true, order, cancelledSubscriptionId });
   } catch (err) {
     next(err);
   }
