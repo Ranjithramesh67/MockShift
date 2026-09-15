@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { LoopConfig, StepPassInput, Workflow, WorkflowStep } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
-import { useWorkspace } from '@/store/WorkspaceStore';
 import { validateWorkflow, sanitizeLabel, workflowNameTaken } from '@/lib/workflowValidation';
 import { makeId } from '@/lib/defaultState';
 import { CodeEditor } from './CodeEditor';

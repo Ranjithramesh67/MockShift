@@ -15,10 +15,6 @@ function fmtDuration(ms: number | null | undefined): string {
   return `${ms}ms`;
 }
 
-function snapshotHeaders(headers: Record<string, string> | undefined): Array<[string, string]> {
-  return Object.entries(headers || {});
-}
-
 export function HistoryView() {
   const [runs, setRuns] = useState<RunHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);

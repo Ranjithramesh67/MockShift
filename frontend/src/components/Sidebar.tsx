@@ -466,7 +466,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
     }
   };
 
-  const renderRequest = (r: (typeof tree.requests)[number], collectionId: string) => {
+  const renderRequest = (r: (typeof tree.requests)[number]) => {
     const isActive = ws.activeRequest?.id === r.id;
     const isRenaming = renaming?.kind === 'request' && renaming.id === r.id;
     const isSelected = selectedRow?.kind === 'request' && selectedRow.id === r.id;
@@ -770,7 +770,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
             {subFolders.map((f) => renderFolder(f, collectionId))}
             {requests.length > 0 && (
               <ul className="sidebar-list">
-                {requests.map((r) => renderRequest(r, collectionId))}
+                {requests.map((r) => renderRequest(r))}
               </ul>
             )}
             {!hasChildren && (
@@ -1033,7 +1033,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
                       {rootFolders.map((f) => renderFolder(f, c.id))}
                       {rootRequests.length > 0 && (
                         <ul className="sidebar-list">
-                          {rootRequests.map((r) => renderRequest(r, c.id))}
+                          {rootRequests.map((r) => renderRequest(r))}
                         </ul>
                       )}
                     </div>
@@ -1242,7 +1242,6 @@ export function Sidebar({
   const [teamsOpen, setTeamsOpen] = useState(false);
   const [managingTeamId, setManagingTeamId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
-  const [authCollectionId, setAuthCollectionId] = useState<string | null>(null);
   const [environmentsOpen, setEnvironmentsOpen] = useState(false);
   const [runnerOpen, setRunnerOpen] = useState(false);
   const [runnerCollectionName, setRunnerCollectionName] = useState('');
@@ -1335,7 +1334,6 @@ export function Sidebar({
 
   const onOpenAuth = async (collectionId: string) => {
     await ws.selectCollection(collectionId, ws.tree?.collections.find((c) => c.id === collectionId)?.name ?? '');
-    setAuthCollectionId(collectionId);
     setAuthOpen(true);
     goWorkspace();
   };

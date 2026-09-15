@@ -154,7 +154,7 @@ export function AdminView() {
       )}
 
       {tab === 'access' && (
-        <AccessTab allUsers={users} busy={busy} onRun={run} />
+        <AccessTab busy={busy} onRun={run} />
       )}
 
       {tab === 'menus' && <MenusTab busy={busy} onRun={run} />}
@@ -326,8 +326,7 @@ function UsersTab({ users, currentUserId, busy, onPatch }: {
   );
 }
 
-function AccessTab({ allUsers, busy, onRun }: {
-  allUsers: AdminUser[];
+function AccessTab({ busy, onRun }: {
   busy: boolean;
   onRun: (label: string, fn: () => Promise<unknown>) => Promise<void>;
 }) {

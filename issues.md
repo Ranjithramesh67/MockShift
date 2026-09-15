@@ -39,7 +39,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | LOW-6 | Low | SSE room authorization frozen for connection lifetime | FIXED | aff4d9a |
 | LOW-7 | Low | `syncAllSchedules` never removes stale cron schedulers | FIXED | 2609243 |
 | LOW-8 | Low | Public doc-share lookup does not assert `kind='public'` | FIXED | 6b83c6a |
-| LOW-9 | Low | Dead code (unused declarations) | OPEN | |
+| LOW-9 | Low | Dead code (unused declarations) | FIXED | f3751cf |
 | TEST-1 | Test | `environments.integration.test.cjs` missing `restrictions_enforced=false` | OPEN | |
 | TEST-2 | Test | 6 workflow e2e specs use removed `main-tab-workflow` | OPEN | |
 | TEST-3 | Test | `send-working-copy.spec` expects mock `/posts/2` (404) | OPEN | |
@@ -213,7 +213,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### LOW-9 — Dead code
 - File: `frontend/app/s/doc/[token]/page.tsx:9` (unused `token`), plus ~18 unused declarations.
-- Status: OPEN
+- Implemented: removed all 18 declarations flagged by `tsc --noUnusedLocals --noUnusedParameters` (unused icons/React imports, doc-share `token` state, Sidebar `authCollectionId` state, unused params/helpers/type imports).
+- Verified: `npx tsc --noEmit` clean; 133 frontend unit tests pass.
+- Status: FIXED (f3751cf)
 
 ### TEST-1 — environments integration setup
 - File: `backend/tests/environments.integration.test.cjs` `before()` — add `UPDATE portal_settings SET restrictions_enforced = false;`.

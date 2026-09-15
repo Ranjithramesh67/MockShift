@@ -372,7 +372,7 @@ export function DocShareButton({ pageId }: { pageId: string }) {
         await docsApi.unshare(pageId);
         toast('success', 'Public link removed.');
       } else {
-        const res = await docsApi.share(pageId);
+        await docsApi.share(pageId);
         toast('success', 'Anyone with the link can now view this doc.');
         setCopied(false);
       }

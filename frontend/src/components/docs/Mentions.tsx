@@ -348,7 +348,6 @@ export function MentionChips({
     <div className={styles.chipRow} data-testid="docs-mentions">
       {mentions.map((m) => {
         if (m.type === 'api') {
-          const ref = m.ref as { access: { read: boolean } };
           if (mode === 'edit') {
             return (
               <span key={m.id} className={`${styles.chip} ${styles.chipApi}`} data-testid={`docs-mention-chip-${m.id}`}>

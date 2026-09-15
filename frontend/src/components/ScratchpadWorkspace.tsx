@@ -336,7 +336,7 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
           open={saveOpen}
           draft={draft}
           onClose={() => setSaveOpen(false)}
-          onSaved={(requestId) => {
+          onSaved={() => {
             setSaveOpen(false);
             onClose();
           }}
