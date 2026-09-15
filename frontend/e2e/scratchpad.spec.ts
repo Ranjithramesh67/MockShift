@@ -14,7 +14,7 @@ import { signupFreshUser } from './helpers';
  *   the request at the picked location and opens its editor
  */
 test('scratchpad runs a pasted cURL without creating a request', async ({ page }) => {
-  const email = await signupFreshUser(page);
+  await signupFreshUser(page);
 
   const wsRes = await page.request.get('/api/workspaces');
   const ws = (await wsRes.json()).workspaces.find(
@@ -68,7 +68,7 @@ test('scratchpad runs a pasted cURL without creating a request', async ({ page }
  * open. Picking a folder saves the request into it and opens its editor.
  */
 test('scratchpad save picker saves into a nested folder', async ({ page }) => {
-  const email = await signupFreshUser(page);
+  await signupFreshUser(page);
 
   const wsRes = await page.request.get('/api/workspaces');
   const ws = (await wsRes.json()).workspaces.find(

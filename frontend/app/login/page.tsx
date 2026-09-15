@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { BoltIcon, CheckIcon, LockIcon, TeamIcon } from '@/components/icons';
+import { BoltIcon, CheckIcon, TeamIcon } from '@/components/icons';
 
 const FEATURES = [
   { icon: BoltIcon, text: 'Build and test requests with REST, SOAP, GraphQL and Auth' },

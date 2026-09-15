@@ -37,21 +37,6 @@ function fmtDate(iso: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
 }
 
-function triggerLabel(type: string): string {
-  switch (type) {
-    case 'SCHEDULE':
-      return 'Schedule (cron)';
-    case 'WEBHOOK':
-      return 'Webhook';
-    case 'ON_REQUEST':
-      return 'On request run';
-    case 'ON_RUN_FAILURE':
-      return 'On run failure';
-    default:
-      return type;
-  }
-}
-
 export function AutomationsView() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);

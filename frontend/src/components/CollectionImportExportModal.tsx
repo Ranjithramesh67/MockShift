@@ -10,7 +10,7 @@ import {
   formatForDownload,
   parseCollectionFile,
 } from '@/lib/collectionExport';
-import { ExportIcon, ImportIcon, CollectionIcon, FileIcon } from './icons';
+import { ExportIcon, ImportIcon, FileIcon } from './icons';
 
 type Tab = 'export' | 'import';
 type ExportFormat = 'json' | 'curl' | 'openapi';

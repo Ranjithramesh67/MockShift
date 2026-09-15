@@ -6,7 +6,6 @@ import { BlockView } from '@/components/docs/Mentions';
 import styles from '@/components/docs/docs.module.css';
 
 export default function SharedDocPage({ params }: { params: Promise<{ token: string }> }) {
-  const [token, setToken] = useState<string | null>(null);
   const [share, setShare] = useState<SharedDocView['share'] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,7 +14,6 @@ export default function SharedDocPage({ params }: { params: Promise<{ token: str
     const load = async () => {
       const { token: t } = await params;
       if (cancelled) return;
-      setToken(t);
       try {
         const res = await docsApi.publicShare(t);
         if (!cancelled) setShare(res.share);
