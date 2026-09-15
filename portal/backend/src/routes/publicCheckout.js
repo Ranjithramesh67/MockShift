@@ -389,6 +389,26 @@ router.post('/checkout', async (req, res, next) => {
   }
 });
 
+// Idempotent response for an order that is already settled (PAID/terminal):
+// re-reads the invoice + subscription so concurrent confirms converge.
+async function settledOrderResponse(order, userId) {
+  const { rows: invoiceRows } = await query(
+    `SELECT ${INVOICE_COLUMNS} FROM invoices i WHERE order_id = $1`,
+    [order.id],
+    { userId }
+  );
+  const subscription = order.subscription_id
+    ? await fetchSubscriptionShape(order.subscription_id, { userId })
+    : null;
+  return {
+    ok: true,
+    alreadyProcessed: true,
+    order: toOrderShape(order),
+    invoice: invoiceRows[0] ? toInvoiceShape(invoiceRows[0]) : null,
+    subscription,
+  };
+}
+
 // ------------------------------------------------------------------- Confirm
 // POST /api/public/checkout/:orderId/confirm — mock gateway success. Owner
 // only. Idempotent: confirming an already-PAID order just returns the current
@@ -414,27 +434,26 @@ router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, n
 
     // Idempotent return for an already-settled order.
     if (order.status !== 'PENDING') {
-      const { rows: invoiceRows } = await query(
-        `SELECT ${INVOICE_COLUMNS} FROM invoices i WHERE order_id = $1`,
-        [orderId],
-        { userId: req.user.id }
-      );
-      const subscription = order.subscription_id
-        ? await fetchSubscriptionShape(order.subscription_id, { userId: req.user.id })
-        : null;
-      return res.json({
-        ok: true,
-        alreadyProcessed: true,
-        order: toOrderShape(order),
-        invoice: invoiceRows[0] ? toInvoiceShape(invoiceRows[0]) : null,
-        subscription,
-      });
+      return res.json(await settledOrderResponse(order, req.user.id));
     }
 
     const firstPaid = !(await hasPriorPaidOrder(req.user.id, { userId: req.user.id }));
     const bonusDays = firstPaid && Number(order.plan_trial_days) > 0 ? Number(order.plan_trial_days) : 0;
 
     const out = await withUserTransaction(req.user.id, async (client) => {
+      // Lock the order row first so two concurrent confirms cannot both pass
+      // the PENDING check and create duplicate ACTIVE subscriptions.
+      const { rows: lockRows } = await client.query(
+        'SELECT status FROM orders WHERE id = $1 FOR UPDATE',
+        [orderId]
+      );
+      if (lockRows.length === 0) {
+        const err = new Error('Order not found');
+        err.status = 404;
+        throw err;
+      }
+      if (lockRows[0].status !== 'PENDING') return { alreadyProcessed: true };
+
       const { rows: active } = await client.query(
         `SELECT 1 FROM subscriptions
           WHERE user_id = $1 AND plan_id = $2 AND status IN ('ACTIVE', 'TRIALING')
@@ -482,6 +501,19 @@ router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, n
         subscription: await fetchSubscriptionShapeTx(client, subscriptionId),
       };
     });
+
+    // Another concurrent confirm settled this order while we waited on the row
+    // lock — return the settled state instead of creating a second subscription.
+    if (out.alreadyProcessed) {
+      const { rows: settledRows } = await query(
+        `SELECT ${ORDER_COLUMNS}
+           FROM orders o JOIN plans p ON p.id = o.plan_id
+          WHERE o.id = $1`,
+        [orderId],
+        { userId: req.user.id }
+      );
+      return res.json(await settledOrderResponse(settledRows[0], req.user.id));
+    }
 
     const { rows: orderOut } = await query(
       `SELECT ${ORDER_COLUMNS}
