@@ -212,6 +212,22 @@ async function hasPriorPaidOrder(userId, options) {
   return rows.length > 0;
 }
 
+// Compute the first-recharge bonus for a finalization. MUST be called inside the
+// payment transaction, after the order row is locked and BEFORE the order is
+// marked PAID: it takes a per-user advisory lock so two different PENDING orders
+// settled concurrently cannot both observe "no prior paid order" and both grant
+// the bonus (a per-order row lock alone does not serialise different orders).
+async function firstRechargeBonusTx(client, userId, planTrialDays) {
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`order-finalize:${userId}`]);
+  const { rows } = await client.query(
+    `SELECT 1 FROM orders WHERE user_id = $1 AND status = 'PAID' AND amount > 0 LIMIT 1`,
+    [userId]
+  );
+  const firstPaid = rows.length === 0;
+  const days = firstPaid && Number(planTrialDays) > 0 ? Number(planTrialDays) : 0;
+  return { firstPaid, days };
+}
+
 // --------------------------------------------------------------------- POST
 // POST /api/public/checkout
 // Body: { planKey, billingCycle, account?: { name, email, password } }
@@ -437,9 +453,6 @@ router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, n
       return res.json(await settledOrderResponse(order, req.user.id));
     }
 
-    const firstPaid = !(await hasPriorPaidOrder(req.user.id, { userId: req.user.id }));
-    const bonusDays = firstPaid && Number(order.plan_trial_days) > 0 ? Number(order.plan_trial_days) : 0;
-
     const out = await withUserTransaction(req.user.id, async (client) => {
       // Lock the order row first so two concurrent confirms cannot both pass
       // the PENDING check and create duplicate ACTIVE subscriptions.
@@ -466,6 +479,8 @@ router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, n
         throw err;
       }
 
+      const bonus = await firstRechargeBonusTx(client, req.user.id, order.plan_trial_days);
+
       await client.query(
         `UPDATE orders SET status = 'PAID' WHERE id = $1`,
         [orderId]
@@ -485,7 +500,7 @@ router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, n
                       ELSE now() + interval '1 month' + make_interval(days => $4)
                  END)
          RETURNING id`,
-        [req.user.id, order.plan_id, order.billing_cycle, bonusDays]
+        [req.user.id, order.plan_id, order.billing_cycle, bonus.days]
       );
       const subscriptionId = subRows[0].id;
       await client.query(`UPDATE orders SET subscription_id = $1 WHERE id = $2`, [
@@ -499,6 +514,7 @@ router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, n
 
       return {
         subscription: await fetchSubscriptionShapeTx(client, subscriptionId),
+        bonus,
       };
     });
 
@@ -533,7 +549,7 @@ router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, n
       order: toOrderShape(orderOut[0]),
       invoice: invoiceOut[0] ? toInvoiceShape(invoiceOut[0]) : null,
       subscription: out.subscription,
-      bonus: { firstRecharge: firstPaid, days: bonusDays },
+      bonus: { firstRecharge: out.bonus.firstPaid, days: out.bonus.days },
     });
   } catch (err) {
     next(err);
@@ -612,6 +628,7 @@ module.exports._helpers = {
   fetchSubscriptionShapeTx,
   hasActiveSubscription,
   hasPriorPaidOrder,
+  firstRechargeBonusTx,
   toOrderShape,
   toInvoiceShape,
   toSubscriptionShape,

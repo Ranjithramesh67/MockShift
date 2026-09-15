@@ -22,7 +22,7 @@ const {
   withUserTransaction,
   fetchSubscriptionShape,
   fetchSubscriptionShapeTx,
-  hasPriorPaidOrder,
+  firstRechargeBonusTx,
   toOrderShape,
   toInvoiceShape,
   ORDER_COLUMNS,
@@ -89,10 +89,6 @@ function isSuccessfulStatus(status) {
 async function finalizePaidOrder(orderRow, { provider, eventType, reference, eventPayload = {} }) {
   const userId = orderRow.user_id;
 
-  const firstPaid = !(await hasPriorPaidOrder(userId, { userId }));
-  const bonusDays =
-    firstPaid && Number(orderRow.plan_trial_days) > 0 ? Number(orderRow.plan_trial_days) : 0;
-
   const providerName = String(provider || 'SIMULATED_GATEWAY');
   const providerRef = String(reference || randomRef('sim'));
   const eventTypeName = String(eventType || 'charge.succeeded');
@@ -122,6 +118,8 @@ async function finalizePaidOrder(orderRow, { provider, eventType, reference, eve
       throw err;
     }
 
+    const bonus = await firstRechargeBonusTx(client, userId, orderRow.plan_trial_days);
+
     await client.query(
       `UPDATE orders
           SET status = 'PAID', gateway_status = 'SUCCEEDED',
@@ -145,7 +143,7 @@ async function finalizePaidOrder(orderRow, { provider, eventType, reference, eve
                     ELSE now() + interval '1 month' + make_interval(days => $4)
                END)
        RETURNING id`,
-      [userId, orderRow.plan_id, orderRow.billing_cycle, bonusDays]
+      [userId, orderRow.plan_id, orderRow.billing_cycle, bonus.days]
     );
     const subscriptionId = subRows[0].id;
     await client.query(`UPDATE orders SET subscription_id = $1 WHERE id = $2`, [
@@ -172,8 +170,8 @@ async function finalizePaidOrder(orderRow, { provider, eventType, reference, eve
     return {
       subscription: await fetchSubscriptionShapeTx(client, subscriptionId),
       eventId: eventRows[0].id,
-      bonusDays,
-      firstPaid,
+      bonusDays: bonus.days,
+      firstPaid: bonus.firstPaid,
     };
   });
 
