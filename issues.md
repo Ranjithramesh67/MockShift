@@ -40,7 +40,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | LOW-7 | Low | `syncAllSchedules` never removes stale cron schedulers | FIXED | 2609243 |
 | LOW-8 | Low | Public doc-share lookup does not assert `kind='public'` | FIXED | 6b83c6a |
 | LOW-9 | Low | Dead code (unused declarations) | FIXED | f3751cf |
-| TEST-1 | Test | `environments.integration.test.cjs` missing `restrictions_enforced=false` | OPEN | |
+| TEST-1 | Test | `environments.integration.test.cjs` missing `restrictions_enforced=false` | FIXED | b632b68 |
 | TEST-2 | Test | 6 workflow e2e specs use removed `main-tab-workflow` | OPEN | |
 | TEST-3 | Test | `send-working-copy.spec` expects mock `/posts/2` (404) | OPEN | |
 | TEST-4 | Test | `history.spec` assumes empty history | OPEN | |
@@ -219,7 +219,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### TEST-1 — environments integration setup
 - File: `backend/tests/environments.integration.test.cjs` `before()` — add `UPDATE portal_settings SET restrictions_enforced = false;`.
-- Status: OPEN
+- Implemented: setup now disables plan restrictions after running migrations, matching `tests/support/harness.cjs`.
+- Verified: 4 tests pass.
+- Status: FIXED (b632b68)
 
 ### TEST-2 — Workflow e2e selectors
 - Files: `frontend/e2e/workflow-infinite-loop.spec.ts`, `frontend/e2e/workflow-pass-inputs.spec.ts` — `main-tab-workflow` → `rail-workflow`.
