@@ -39,6 +39,20 @@ const { mockDispatch } = require('./mockDispatch');
 const { query } = require('./db');
 const { runWorkflow, syncAllSchedules } = require('./workflowService');
 
+// Postgres "class 22" data-exception / constraint codes that mean the caller
+// sent something malformed (bad uuid, bad number, wrong type, over-length).
+// Mapped to a 400 by the central error handler instead of a raw 500.
+const PG_INVALID_INPUT_CODES = new Set([
+  '22P02',
+  '22007',
+  '22008',
+  '22003',
+  '22001',
+  '2201W',
+  '23502',
+  '23514',
+]);
+
 function createApp() {
   const app = express();
   // 25 MB cap: multipart file sends carry base64 file bytes inside the JSON
@@ -139,14 +153,25 @@ function createApp() {
     res.status(404).json({ error: `Not found: ${req.method} ${req.path}` });
   });
 
-  // Central error handler.
+  // Central error handler. Client errors (4xx) surface their message; anything
+  // unexpected becomes a generic 500 so DB internals never leak. Postgres
+  // invalid-input codes are mapped to 400 (e.g. a malformed uuid in a path).
   app.use((err, req, res, next) => {
-    const status = err.status || 500;
+    const badInput = PG_INVALID_INPUT_CODES.has(err.code);
+    const status = err.status || (badInput ? 400 : 500);
     if (status >= 500) {
       // eslint-disable-next-line no-console
       console.error('[api] error', err);
     }
-    res.status(status).json({ error: err.message || 'Internal server error' });
+    // Route-level 4xx errors carry a purposeful message; malformed-input errors
+    // straight from Postgres are replaced with a generic one so schema details
+    // never reach the client.
+    const message = err.status
+      ? err.message || 'Request failed'
+      : badInput
+        ? 'Invalid request'
+        : 'Internal server error';
+    res.status(status).json({ error: message });
   });
 
   return app;

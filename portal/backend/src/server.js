@@ -16,6 +16,18 @@ const settingsRouter = require('./routes/settings');
 const paymentGatewayRouter = require('./routes/paymentGateway');
 const webhooksRouter = require('./routes/webhooks');
 
+// Postgres data-exception / invalid-input codes -> 400 instead of a raw 500.
+const PG_INVALID_INPUT_CODES = new Set([
+  '22P02',
+  '22007',
+  '22008',
+  '22003',
+  '22001',
+  '2201W',
+  '23502',
+  '23514',
+]);
+
 function createApp() {
   const app = express();
   app.use(express.json({ limit: '5mb' }));
@@ -68,12 +80,18 @@ function createApp() {
   });
 
   app.use((err, req, res, next) => {
-    const status = err.status || 500;
+    const badInput = PG_INVALID_INPUT_CODES.has(err.code);
+    const status = err.status || (badInput ? 400 : 500);
     if (status >= 500) {
       // eslint-disable-next-line no-console
       console.error('[portal-api] error', err);
     }
-    res.status(status).json({ error: err.message || 'Internal server error' });
+    const message = err.status
+      ? err.message || 'Request failed'
+      : badInput
+        ? 'Invalid request'
+        : 'Internal server error';
+    res.status(status).json({ error: message });
   });
 
   return app;
