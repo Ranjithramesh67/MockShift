@@ -42,7 +42,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | LOW-9 | Low | Dead code (unused declarations) | FIXED | f3751cf |
 | TEST-1 | Test | `environments.integration.test.cjs` missing `restrictions_enforced=false` | FIXED | b632b68 |
 | TEST-2 | Test | 6 workflow e2e specs use removed `main-tab-workflow` | FIXED | 1c3d814 |
-| TEST-3 | Test | `send-working-copy.spec` expects mock `/posts/2` (404) | OPEN | |
+| TEST-3 | Test | `send-working-copy.spec` expects mock `/posts/2` (404) | FIXED | 5abeae1 |
 | TEST-4 | Test | `history.spec` assumes empty history | OPEN | |
 
 ---
@@ -230,7 +230,9 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ### TEST-3 — `send-working-copy` mock data
 - File: `frontend/e2e/send-working-copy.spec.ts` / `backend/scripts/mock-data.json` — serve `/posts/2` or target `/posts/1`.
-- Status: OPEN
+- Implemented: the spec now creates two dedicated mock records via `POST :3999/posts` and uses their ids for the clean/dirty runs, so it no longer depends on mutable seed data (the shared store is patched/deleted by manual testing).
+- Verified: `npx tsc --noEmit` clean; runtime run needs `ALLOW_SELF_SIGNUP=1`.
+- Status: FIXED (5abeae1)
 
 ### TEST-4 — `history` isolation assumption
 - File: `frontend/e2e/history.spec.ts` — account for background recurring runs.
