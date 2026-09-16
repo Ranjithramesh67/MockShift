@@ -45,10 +45,10 @@ export function SharingModal({ open, onClose }: { open: boolean; onClose: () => 
     }
   };
 
-  const onUnshare = async (shareId: string) => {
+  const onUnshare = async (teamId: string) => {
     setBusy(true);
     try {
-      await ws.unshareWorkspace(ws.activeWorkspaceId!, shareId);
+      await ws.unshareWorkspace(ws.activeWorkspaceId!, teamId);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unshare failed');
@@ -72,7 +72,7 @@ export function SharingModal({ open, onClose }: { open: boolean; onClose: () => 
             <li key={s.share_id} className="share-row">
               <span className="sidebar-item-name">{s.name}</span>
               <span className={`role-badge role-${s.role}`}>{s.role}</span>
-              <button type="button" className="ghost-button" disabled={busy} data-testid={`unshare-${s.team_id}`} onClick={() => onUnshare(s.share_id)}>
+              <button type="button" className="ghost-button" disabled={busy} data-testid={`unshare-${s.team_id}`} onClick={() => onUnshare(s.team_id)}>
                 Unshare
               </button>
             </li>
