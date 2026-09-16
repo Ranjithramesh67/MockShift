@@ -22,6 +22,8 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | HIGH-4 | High | Portal checkout `confirm` not race-safe (duplicate subscriptions) | FIXED | 96a2b4a |
 | HIGH-5 | High | Share create double-POST → raw DB 500 instead of link | FIXED | 3c1a1f2 |
 | HIGH-6 | High | Sidebar renders a workspace chip once per team membership | FIXED | cd50776 |
+| HIGH-7 | High | `ALLOW_SELF_SIGNUP=1` opens direct signup in production, skipping plan selection | FIXED | ea0d6c6 |
+| HIGH-8 | High | API, portal API, frontends and mock upstream listen on all interfaces, reachable over plaintext HTTP | FIXED | 4d46fc3 |
 | MED-1 | Medium | IDOR: `GET /api/collections/:id/auth-provider` has no access check | FIXED | df5e9a9 |
 | MED-2 | Medium | IDOR: `GET /api/workspaces/:id/teams` leaks teams to non-members | FIXED | 4d56205 |
 | MED-3 | Medium | Invalid input returns 500 and leaks raw Postgres errors | FIXED | d7356a2 |
@@ -102,6 +104,21 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 - Fix: skip already-rendered workspaces while walking team groups (the existing `accounted` set is now applied per group too), so each workspace renders once.
 - Test: `frontend/e2e/workspace-chip-dedupe.spec.ts`.
 - Status: FIXED
+
+### HIGH-7 — Signup bypasses plan selection in production
+- File: `backend/src/api/routes/auth.js:25-38` (`selfServiceOpen`).
+- Impact: the deploy's `ALLOW_SELF_SIGNUP=1` opt-in (meant for automated test/dev runs) was honored even with `NODE_ENV=production`, so `/signup` offered a direct Create-account form. That created a user with no plan chosen and none attached, bypassing the Portal A plans/checkout gateway that provisions the org and workspace.
+- Fix: honor `ALLOW_SELF_SIGNUP` only when `NODE_ENV !== 'production'`, so the direct path can never open on a real deployment.
+- Test: `backend/tests/signupGate.integration.test.cjs`.
+- Verified: live `GET /api/auth/signup-status` → `{open:false}`, `POST /api/auth/signup` → 403, `/signup` renders the plans gateway and link to Portal A; Portal A checkout returns 404 without a plan and 201 with one.
+- Status: FIXED (ea0d6c6)
+
+### HIGH-8 — Services bound to all interfaces (plaintext bypass of TLS)
+- Files: `backend/src/api/server.js:180`, `portal/backend/src/server.js:100`, `backend/scripts/mock-upstream.js:160`.
+- Impact: `app.listen(port)` with no host bound the API, portal API, both Next frontends and the mock upstream to every interface. With ports 3000-3004 open, `POST http://<ip>:3001/api/auth/login` (or via the frontend rewrites) transmitted credentials as cleartext and bypassed Apache/TLS. The startup log also falsely reported `127.0.0.1`.
+- Fix: read an optional `HOST` env var and pass it to `app.listen`/`server.listen`; the mock upstream defaults to `127.0.0.1`. Deploy sets `HOST=127.0.0.1` and starts both Next servers with `-H 127.0.0.1`.
+- Verified on the box: all five sockets listen on `127.0.0.1` only; ports 3000/3001/3002/3102/3999 are unreachable from the internet; the three HTTPS domains still return 200 and login + `POST /api/requests/:id/run` (SUCCESS/200) work through the proxy.
+- Status: FIXED (4d46fc3)
 
 ### MED-1 — IDOR collection auth-provider
 - File: `backend/src/api/routes/content.js:1031`.
