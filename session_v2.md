@@ -402,3 +402,22 @@ the tab rendered the "Could not load plans. Is the portal backend running on :31
 - Exposed the portal in the online preview with `request_preview(3002)` →
   `https://3002-d996ae6ab8ef93e4.monkeycode-ai.live`; confirmed `/` and `/api/public/plans` both
   return 200 through the preview host, and the main app `/signup` returns 200.
+
+### Full E2E test pass (6 parallel agents) — bug inventory
+
+Ran full E2E: 6 parallel agents covering the backend integration suite (247 tests), frontend
+static/unit gates, main-app Playwright specs + exploratory UI, live API functional/logic probing,
+portal (A/B) E2E, and a static logic review. Report-only; no code changed. Consolidated findings in
+`E2E_BUG_REPORT.md` at the repo root (2 blockers, 6 high, 9 medium, ~10 low). Raw per-agent reports
+under `/tmp/opencode/e2e-reports/`.
+
+Confirmed blocker myself: `frontend/app/s/[token]/page.tsx:168` uses `params.then(...)` but the app
+runs Next 14.2.35 (plain `params`), so every share link crashes with `TypeError: params.then is not
+a function`. Other headline bugs: `POST /api/requests/:id/run` missing project authz (cross-tenant
+secret disclosure), API token scopes/bindings unenforced, send-accept bypasses plan gates, portal
+checkout confirm race → duplicate subscriptions, share-create double-POST → raw DB 500.
+
+Env: temporarily enabled `ALLOW_SELF_SIGNUP=1` for the e2e run, then restored it (signup 403 again).
+Agent 2's in-place `next build` corrupted the shared dev `.next`; moved it to
+`/tmp/opencode/next-bak-*` and restarted `next dev` on `:3000` (back to 200). Backend restarted on
+`:3001` with the original env. Working tree clean.
