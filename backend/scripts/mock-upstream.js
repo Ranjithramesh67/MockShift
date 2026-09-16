@@ -157,7 +157,11 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(3999, () => {
+// The mock upstream is an internal test double: it defaults to loopback so it
+// is never reachable from outside the box and is only used through the
+// MOCK_UPSTREAM_BASE the API calls. Override HOST to widen that if ever needed.
+const HOST = process.env.HOST || '127.0.0.1';
+server.listen(3999, HOST, () => {
   // eslint-disable-next-line no-console
-  console.log('[mock-upstream] listening on 3999');
+  console.log(`[mock-upstream] listening on ${HOST}:3999`);
 });
