@@ -46,6 +46,9 @@ router.get('/', async (req, res, next) => {
       // eslint-disable-next-line no-await-in-loop
       if (!(await allowed(type, row))) continue;
       const item = map(row);
+      // Rows are grouped by type, but clients (e.g. the command palette) also
+      // need the type on the row itself to know where to open it.
+      item.type = type;
       item.rank = rankResult(item, q);
       kept.push(item);
     }
