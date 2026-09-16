@@ -231,7 +231,10 @@ interface WorkspaceState {
   clearScratchpadRun: () => void;
 
   createWorkspace: (name: string, visibility?: Workspace['visibility']) => Promise<void>;
-  createCollection: (name: string) => Promise<void>;
+  createProject: (name: string) => Promise<void>;
+  renameProject: (projectId: string, name: string) => Promise<void>;
+  deleteProject: (projectId: string) => Promise<void>;
+  createCollection: (name: string, projectId?: string) => Promise<void>;
   createRequest: (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => Promise<void>;
   createFolder: (input: { name: string; collectionId: string; parentId?: string | null }) => Promise<void>;
   renameFolder: (folderId: string, name: string) => Promise<void>;
@@ -954,15 +957,21 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     await selectWorkspace(workspace.id);
   }, [selectWorkspace, loadGroups]);
 
-  const createCollection = useCallback(async (name: string) => {
+  const createCollection = useCallback(async (name: string, projectIdArg?: string) => {
     if (!tree) return;
-    const projectId = tree.projects[0]?.id;
+    // Prefer the caller's project, else the project of the active collection,
+    // else the first accessible project. A workspace can now hold several
+    // projects, so an explicit target avoids silently using the wrong one.
+    const activeProjectId = activeCollectionId
+      ? tree.collections.find((c) => c.id === activeCollectionId)?.project_id
+      : undefined;
+    const projectId = projectIdArg ?? activeProjectId ?? tree.projects[0]?.id;
     if (!projectId) return;
     const { collection } = await contentApi.createCollection(projectId, name);
     const t = await workspaceApi.content(tree.workspaceId);
     setTree(t);
     await selectCollection(collection.id, collection.name);
-  }, [tree, selectCollection]);
+  }, [tree, activeCollectionId, selectCollection]);
 
   const createRequest = useCallback(async (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => {
     if (!activeCollectionId) return;
@@ -1179,6 +1188,68 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeWorkspaceId, selectWorkspace, loadGroups]);
 
+  const reloadTree = useCallback(async () => {
+    if (!activeWorkspaceId) return;
+    setOverview(null);
+    setOverviewError(null);
+    const t = await workspaceApi.content(activeWorkspaceId);
+    setTree(t);
+  }, [activeWorkspaceId]);
+
+  const createProject = useCallback(async (name: string) => {
+    if (!activeWorkspaceId) return;
+    await projectApi.create({ workspaceId: activeWorkspaceId, name });
+    await reloadTree();
+  }, [activeWorkspaceId, reloadTree]);
+
+  const renameProject = useCallback(async (projectId: string, name: string) => {
+    const { project } = await projectApi.rename(projectId, name);
+    setTree((t) =>
+      t
+        ? { ...t, projects: t.projects.map((p) => (p.id === projectId ? { ...p, name: project.name } : p)) }
+        : t
+    );
+    // Keep an open project overview in sync without closing it.
+    setOverview((o) =>
+      o && o.project.id === projectId ? { ...o, project: { ...o.project, name: project.name } } : o
+    );
+  }, []);
+
+  const deleteProject = useCallback(async (projectId: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
+    await projectApi.remove(projectId);
+    const affectedCollections = new Set(
+      (tree?.collections ?? []).filter((c) => c.project_id === projectId).map((c) => c.id)
+    );
+    // Close tabs for requests that belonged to the deleted project.
+    const affectedRequestIds = openRequestIds.filter((id) => {
+      const r = tree?.requests.find((x) => x.id === id);
+      return r ? affectedCollections.has(r.collection_id) : false;
+    });
+    for (const id of affectedRequestIds) {
+      await closeRequestTab(id, false);
+    }
+    setRequestRuns((runs) => {
+      const next = { ...runs };
+      for (const r of tree?.requests ?? []) {
+        if (affectedCollections.has(r.collection_id)) delete next[r.id];
+      }
+      return next;
+    });
+    if (activeCollectionId && affectedCollections.has(activeCollectionId)) {
+      setActiveCollectionId(null);
+      setActiveCollectionName('');
+      setAuthProvider(null);
+      setActiveRequest(null);
+      setActiveRequestId(null);
+      setLastRun(null);
+      setNavStack([]);
+      clearAllEditHistory();
+    }
+    setOverview((o) => (o && o.project.id === projectId ? null : o));
+    await reloadTree();
+  }, [tree, openRequestIds, activeCollectionId, closeRequestTab, reloadTree]);
+
   const deleteTeam = useCallback(async (teamId: string) => {
     await teamApi.delete(teamId);
     const updated = await teamApi.list();
@@ -1209,14 +1280,6 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const res = await contentApi.testAuthProvider(activeCollectionId);
     return res;
   }, [activeCollectionId]);
-
-  const reloadTree = useCallback(async () => {
-    if (!activeWorkspaceId) return;
-    setOverview(null);
-    setOverviewError(null);
-    const t = await workspaceApi.content(activeWorkspaceId);
-    setTree(t);
-  }, [activeWorkspaceId]);
 
   // Project overview (command center). Clears any open request/collection
   // selection so the main area can show the overview, but never reloads
@@ -1328,6 +1391,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       clearCollectionRun,
       clearScratchpadRun,
       createWorkspace,
+      createProject,
+      renameProject,
+      deleteProject,
       createCollection,
       createRequest,
       createFolder,
@@ -1364,7 +1430,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       undoActiveRequest, redoActiveRequest, goBackRequest,
       refresh, selectWorkspace, selectRequest, reloadActiveRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun, clearScratchpadRun,
-      createWorkspace, createCollection, createRequest,
+      createWorkspace, createProject, renameProject, deleteProject, createCollection, createRequest,
       createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, moveFolder, duplicateRequest, duplicateFolder,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
       loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree,

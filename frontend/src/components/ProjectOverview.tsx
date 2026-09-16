@@ -11,6 +11,7 @@ import {
   type ProjectOrgUser,
 } from '@/lib/api';
 import { TabBar } from './TabBar';
+import { Modal } from './Modal';
 import {
   CollectionIcon,
   FolderIcon,
@@ -48,6 +49,10 @@ export function ProjectOverview() {
   const [orgUsers, setOrgUsers] = useState<ProjectOrgUser[]>([]);
   const [newUserId, setNewUserId] = useState('');
   const [newUserRole, setNewUserRole] = useState<MemberRole>('EDITOR');
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameName, setRenameName] = useState('');
+  const [renameError, setRenameError] = useState('');
+  const [renaming, setRenaming] = useState(false);
 
   const overview = ws.overview;
 
@@ -143,6 +148,45 @@ export function ProjectOverview() {
     }
   };
 
+  const openRename = () => {
+    setRenameName(overview.project.name);
+    setRenameError('');
+    setRenameOpen(true);
+  };
+
+  const submitRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const next = renameName.trim();
+    if (!next) {
+      setRenameError('Name is required');
+      return;
+    }
+    setRenaming(true);
+    setRenameError('');
+    try {
+      await ws.renameProject(overview.project.id, next);
+      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Project renamed.' });
+      setRenameOpen(false);
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : 'Failed to rename project');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const deleteProject = async () => {
+    const ok = window.confirm(
+      `Delete project "${overview.project.name}"? Its collections, requests and runs will be removed.`
+    );
+    if (!ok) return;
+    try {
+      await ws.deleteProject(overview.project.id);
+      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Project deleted.' });
+    } catch (err) {
+      fail(err, 'Failed to delete project');
+    }
+  };
+
   const roleLabel =
     overview.myAccess.isManager ||
     overview.myAccess.level === 'MANAGER' ||
@@ -226,6 +270,26 @@ export function ProjectOverview() {
           <span className={`role-badge role-${roleLabel}`}>
             {roleLabel}
           </span>
+          {overview.canManage && (
+            <div className="po-project-actions">
+              <button
+                type="button"
+                className="ghost-button small"
+                data-testid="rename-project"
+                onClick={openRename}
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                className="ghost-button small danger"
+                data-testid="delete-project"
+                onClick={deleteProject}
+              >
+                Delete
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="icon-button po-close"
@@ -419,6 +483,40 @@ export function ProjectOverview() {
           </div>
         )}
       </div>
+
+      {renameOpen && (
+        <Modal title="Rename project" onClose={() => setRenameOpen(false)} testId="rename-project-modal">
+          <form onSubmit={submitRename} className="modal-form">
+            {renameError && (
+              <p className="auth-error" role="alert" data-testid="rename-project-error">
+                {renameError}
+              </p>
+            )}
+            <label className="auth-field">
+              <span>Name</span>
+              <input
+                type="text"
+                autoFocus
+                data-testid="rename-project-name"
+                value={renameName}
+                onChange={(e) => {
+                  setRenameName(e.target.value);
+                  setRenameError('');
+                }}
+                required
+              />
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="ghost-button" onClick={() => setRenameOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="primary-button" disabled={renaming} data-testid="rename-project-submit">
+                {renaming ? 'Saving…' : 'Rename'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }

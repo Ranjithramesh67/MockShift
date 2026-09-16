@@ -815,6 +815,16 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
             <button
               type="button"
               className="icon-button"
+              aria-label="New project"
+              title="New project"
+              data-testid="new-project"
+              onClick={() => onOpenCreate('project')}
+            >
+              <LayersIcon size={14} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
               aria-label="New collection"
               title="New collection"
               data-testid="new-collection"

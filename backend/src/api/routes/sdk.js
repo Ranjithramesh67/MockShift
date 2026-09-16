@@ -49,8 +49,11 @@ async function resolveProject(req, manifest, exec) {
       return { error: { status: 403, body: { error: 'Workspace write access required' } } };
     }
     const name = manifest.project || 'SDK Sync';
+    // Names are unique per workspace case-insensitively (migration 049), so
+    // reuse an existing case-variant instead of colliding on INSERT.
     const existing = (await exec(
-      `SELECT id, name, workspace_id FROM projects WHERE workspace_id = $1 AND name = $2 ORDER BY id LIMIT 1`,
+      `SELECT id, name, workspace_id FROM projects
+        WHERE workspace_id = $1 AND lower(name) = lower($2) ORDER BY id LIMIT 1`,
       [workspace.id, name]
     )).rows[0];
     if (existing) return { project: existing };

@@ -30,7 +30,7 @@ type FormTab = 'params' | 'headers' | 'body';
 type CreateMode = 'form' | 'curl';
 type BodySel = 'JSON' | 'XML' | 'RAW_TEXT';
 
-export type CreateKind = 'workspace' | 'collection' | 'request' | 'folder';
+export type CreateKind = 'workspace' | 'project' | 'collection' | 'request' | 'folder';
 
 function deriveRequestName(method: string, url: string): string {
   const clean = url.replace(/^https?:\/\//i, '').split(/[/?#]/)[0];
@@ -66,6 +66,12 @@ export function CreateModal({
   const [apiType, setApiType] = useState<ApiType>(defaultApiType);
   const [visibility, setVisibility] = useState<'PRIVATE' | 'PUBLIC'>('PRIVATE');
   const [organizationId, setOrganizationId] = useState(organizations[0]?.id ?? '');
+  const accessibleProjects = ws.tree?.projects.filter((p) => p.can_access) ?? [];
+  const [targetProjectId, setTargetProjectId] = useState(
+    ws.tree?.collections.find((c) => c.id === ws.activeCollectionId)?.project_id ??
+      accessibleProjects[0]?.id ??
+      ''
+  );
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -81,11 +87,13 @@ export function CreateModal({
   const title =
     kind === 'workspace'
       ? 'New workspace'
-      : kind === 'collection'
-        ? 'New collection'
-        : kind === 'folder'
-          ? 'New folder'
-          : 'New API request';
+      : kind === 'project'
+        ? 'New project'
+        : kind === 'collection'
+          ? 'New collection'
+          : kind === 'folder'
+            ? 'New folder'
+            : 'New API request';
 
   const canCreateWorkspace = organizations.some((o) => o.role === 'ADMIN');
 
@@ -181,8 +189,10 @@ export function CreateModal({
     try {
       if (kind === 'workspace') {
         await ws.createWorkspace(name.trim(), visibility);
+      } else if (kind === 'project') {
+        await ws.createProject(name.trim());
       } else if (kind === 'collection') {
-        await ws.createCollection(name.trim());
+        await ws.createCollection(name.trim(), targetProjectId || undefined);
       } else if (kind === 'folder') {
         const targetCollectionId = collectionId ?? ws.activeCollectionId;
         if (!targetCollectionId) {
@@ -247,11 +257,13 @@ export function CreateModal({
   const testId =
     kind === 'workspace'
       ? 'new-workspace-modal'
-      : kind === 'collection'
-        ? 'new-collection-modal'
-        : kind === 'folder'
-          ? 'new-folder-modal'
-          : 'new-api-modal';
+      : kind === 'project'
+        ? 'new-project-modal'
+        : kind === 'collection'
+          ? 'new-collection-modal'
+          : kind === 'folder'
+            ? 'new-folder-modal'
+            : 'new-api-modal';
 
   const bodyOptions: Array<{ id: BodySel; label: string }> =
     apiType === 'GRAPHQL'
@@ -481,6 +493,23 @@ export function CreateModal({
               </>
             )}
           </>
+        )}
+
+        {kind === 'collection' && accessibleProjects.length > 1 && (
+          <label className="auth-field">
+            <span>Project</span>
+            <select
+              data-testid="create-collection-project"
+              value={targetProjectId}
+              onChange={(e) => setTargetProjectId(e.target.value)}
+            >
+              {accessibleProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
 
         {kind === 'workspace' && (

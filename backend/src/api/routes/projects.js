@@ -6,10 +6,11 @@ const {
   requireAuth,
   requireProjectRead,
   getProjectAccess,
+  getWorkspaceRole,
   roleAtLeast,
 } = require('../access');
 const { logAudit } = require('../audit');
-const { checkSeatGate } = require('../entitlements');
+const { checkSeatGate, checkCountGate } = require('../entitlements');
 const { notifyUsers, projectReviewerIds } = require('../notify');
 
 const router = Router();
@@ -178,6 +179,152 @@ async function requireProjectManager(req, res, next) {
 }
 
 const MEMBER_ROLES = ['EDITOR', 'VIEWER'];
+
+// ------------------------------------------------ Project lifecycle
+// Create/rename/delete projects. Project names are unique per workspace
+// (case-insensitive), so a conflict is surfaced as 409 and the client can ask
+// for another name. The last project in a workspace cannot be deleted: every
+// workspace must keep at least one place to hold collections.
+
+function normalizeProjectName(name) {
+  return typeof name === 'string' ? name.trim() : '';
+}
+
+async function projectNameTaken(workspaceId, name, excludeProjectId) {
+  const { rows } = await query(
+    `SELECT 1 FROM projects
+      WHERE workspace_id = $1 AND lower(name) = lower($2)
+        AND ($3::uuid IS NULL OR id <> $3::uuid)
+      LIMIT 1`,
+    [workspaceId, name, excludeProjectId || null]
+  );
+  return rows.length > 0;
+}
+
+// Creating a project changes the workspace structure, so it requires the
+// workspace ADMIN role (workspace owners/org admins).
+async function requireWorkspaceAdmin(req, res, next) {
+  try {
+    const { workspaceId } = req.body || {};
+    if (!workspaceId || !UUID_RE.test(workspaceId)) {
+      return res.status(400).json({ error: 'workspaceId is required' });
+    }
+    const role = await getWorkspaceRole(req.user.id, workspaceId);
+    if (!roleAtLeast(role, 'ADMIN')) {
+      return res.status(403).json({ error: 'Workspace admin required' });
+    }
+    req.workspaceRole = role;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+router.post('/projects', requireWorkspaceAdmin, async (req, res, next) => {
+  try {
+    const { workspaceId } = req.body || {};
+    const name = normalizeProjectName(req.body?.name);
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const { rows: wsRows } = await query(
+      `SELECT organization_id FROM workspaces WHERE id = $1`,
+      [workspaceId]
+    );
+    if (wsRows.length === 0) return res.status(404).json({ error: 'Workspace not found' });
+    if (await projectNameTaken(workspaceId, name)) {
+      return res.status(409).json({ error: `A project named "${name}" already exists in this workspace` });
+    }
+    // L2 gate — projects are counted against the org pool plan.
+    const gate = await checkCountGate({ userId: req.user.id, orgId: wsRows[0].organization_id, key: 'projects' });
+    if (gate) return res.status(403).json(gate);
+
+    const { rows } = await query(
+      `INSERT INTO projects (workspace_id, name) VALUES ($1, $2) RETURNING id, name, workspace_id`,
+      [workspaceId, name]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: rows[0].id,
+      action: 'project_created',
+      detail: { name },
+    });
+    res.status(201).json({ project: rows[0] });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'A project with that name already exists in this workspace' });
+    }
+    next(err);
+  }
+});
+
+router.patch('/projects/:projectId', requireProjectManager, async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const name = normalizeProjectName(req.body?.name);
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const { rows: current } = await query(
+      `SELECT name, workspace_id FROM projects WHERE id = $1`,
+      [projectId]
+    );
+    if (current.length === 0) return res.status(404).json({ error: 'Project not found' });
+    if (await projectNameTaken(current[0].workspace_id, name, projectId)) {
+      return res.status(409).json({ error: `A project named "${name}" already exists in this workspace` });
+    }
+
+    const { rows } = await query(
+      `UPDATE projects SET name = $2 WHERE id = $1 RETURNING id, name, workspace_id`,
+      [projectId, name]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'project_renamed',
+      detail: { from: current[0].name, to: name },
+    });
+    res.json({ project: rows[0] });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'A project with that name already exists in this workspace' });
+    }
+    next(err);
+  }
+});
+
+router.delete('/projects/:projectId', requireProjectManager, async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { rows } = await query(
+      `SELECT name, workspace_id FROM projects WHERE id = $1`,
+      [projectId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+
+    const count = await query(
+      `SELECT count(*)::int AS n FROM projects WHERE workspace_id = $1`,
+      [rows[0].workspace_id]
+    );
+    if (Number(count.rows[0].n) <= 1) {
+      return res.status(409).json({
+        error: 'A workspace must keep at least one project. Create another project before deleting this one.',
+      });
+    }
+
+    await query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'project_deleted',
+      detail: { name: rows[0].name },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Rich, member-readable project home. Any user with read access on the
 // project may load it; fields describing what the caller may do (canManage)

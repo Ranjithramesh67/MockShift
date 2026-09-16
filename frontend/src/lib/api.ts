@@ -461,7 +461,22 @@ export const folderApi = {
 
 // ----------------------------------------------------- Project command center
 // Project-level overview + membership management (self-service, not admin).
+export interface ProjectRef {
+  id: string;
+  name: string;
+  workspace_id: string;
+}
+
 export const projectApi = {
+  create: (input: { workspaceId: string; name: string }) =>
+    apiFetch<{ project: ProjectRef }>('/api/projects', { method: 'POST', body: input }),
+  rename: (projectId: string, name: string) =>
+    apiFetch<{ project: ProjectRef }>(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      body: { name },
+    }),
+  remove: (projectId: string) =>
+    apiFetch<{ ok: true }>(`/api/projects/${projectId}`, { method: 'DELETE' }),
   overview: (projectId: string) =>
     apiFetch<ProjectOverview>(`/api/projects/${projectId}/overview`),
   orgUsers: (projectId: string) =>
