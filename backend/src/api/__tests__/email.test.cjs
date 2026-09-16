@@ -19,7 +19,50 @@ test('sendMail is a no-op that resolves when SMTP is unconfigured', async () => 
   email.resetTransportForTest();
   const result = await email.sendMail({ to: 'a@b.c', subject: 'x', text: 'y' });
   assert.equal(result.skipped, true);
+  // Callers distinguish "nothing to send with" from a real delivery failure.
+  assert.equal(result.reason, 'not_configured');
   Object.assign(process.env, saved);
+});
+
+test('isConfigured tracks SMTP_URL / SMTP_HOST', () => {
+  const saved = { SMTP_URL: process.env.SMTP_URL, SMTP_HOST: process.env.SMTP_HOST };
+  try {
+    delete process.env.SMTP_URL;
+    delete process.env.SMTP_HOST;
+    assert.equal(email.isConfigured(), false);
+
+    process.env.SMTP_HOST = 'mail.example.com';
+    assert.equal(email.isConfigured(), true);
+
+    delete process.env.SMTP_HOST;
+    process.env.SMTP_URL = 'smtp://user:pass@mail.example.com:587';
+    assert.equal(email.isConfigured(), true);
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('verifyTransport reports connection failures without sending', async () => {
+  email.setTransportForTest({
+    verify: async () => {
+      throw new Error('Invalid login: 535 auth failed');
+    },
+  });
+  const bad = await email.verifyTransport();
+  assert.equal(bad.ok, false);
+  assert.equal(bad.error, 'Invalid login: 535 auth failed');
+
+  email.setTransportForTest({ verify: async () => true });
+  assert.deepEqual(await email.verifyTransport(), { ok: true, verified: true });
+
+  // A test double without verify() should not be treated as a failure.
+  email.setTransportForTest({ sendMail: async () => ({}) });
+  assert.deepEqual(await email.verifyTransport(), { ok: true, verified: false });
+
+  email.resetTransportForTest();
 });
 
 test('sendMail uses the injected transport and never throws on failure', async () => {

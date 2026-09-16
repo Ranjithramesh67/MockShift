@@ -60,18 +60,40 @@ function getTransport() {
   }
 }
 
+// True when SMTP_URL or SMTP_HOST is present. Callers that show the user a
+// result (e.g. "resend verification") must check this instead of trusting
+// sendMail's no-op success, otherwise the UI reports a send that never happened.
+function isConfigured() {
+  return smtpConfig() !== null;
+}
+
+// Open a connection and authenticate without sending a message, so a
+// misconfigured host/port/credential fails loudly before a user waits on an
+// email that will never arrive. Used by scripts/send-test-email.js.
+async function verifyTransport() {
+  const transport = getTransport();
+  if (!transport) return { ok: false, reason: 'not_configured' };
+  if (typeof transport.verify !== 'function') return { ok: true, verified: false };
+  try {
+    await transport.verify();
+    return { ok: true, verified: true };
+  } catch (err) {
+    return { ok: false, error: redact(err && err.message) };
+  }
+}
+
 async function sendMail({ to, subject, text, html }) {
   const transport = getTransport();
   if (!transport) {
     console.log(`[email] SMTP not configured; skipped "${subject}"`);
-    return { skipped: true };
+    return { skipped: true, reason: 'not_configured' };
   }
   try {
     const info = await transport.sendMail({ from: fromAddress(), to, subject, text, html });
     return { skipped: false, messageId: info && info.messageId };
   } catch (err) {
     console.error(`[email] send failed for "${subject}":`, redact(err && err.message));
-    return { skipped: false, error: err.message };
+    return { skipped: false, error: redact(err && err.message) };
   }
 }
 
@@ -118,9 +140,11 @@ function resetTransportForTest() {
 
 module.exports = {
   smtpConfig,
+  isConfigured,
   appUrl,
   fromAddress,
   sendMail,
+  verifyTransport,
   passwordResetMessage,
   verifyEmailMessage,
   setTransportForTest,
