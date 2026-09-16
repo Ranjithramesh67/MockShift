@@ -24,6 +24,7 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 | HIGH-6 | High | Sidebar renders a workspace chip once per team membership | FIXED | cd50776 |
 | HIGH-7 | High | `ALLOW_SELF_SIGNUP=1` opens direct signup in production, skipping plan selection | FIXED | ea0d6c6 |
 | HIGH-8 | High | API, portal API, frontends and mock upstream listen on all interfaces, reachable over plaintext HTTP | FIXED | 4d46fc3 |
+| HIGH-9 | High | Verification email never arrives: resend reports success while the mailer silently skips, and Portal A checkout never sends one | FIXED | 9797a56, 7522d9d |
 | MED-1 | Medium | IDOR: `GET /api/collections/:id/auth-provider` has no access check | FIXED | df5e9a9 |
 | MED-2 | Medium | IDOR: `GET /api/workspaces/:id/teams` leaks teams to non-members | FIXED | 4d56205 |
 | MED-3 | Medium | Invalid input returns 500 and leaks raw Postgres errors | FIXED | d7356a2 |
@@ -119,6 +120,16 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 - Fix: read an optional `HOST` env var and pass it to `app.listen`/`server.listen`; the mock upstream defaults to `127.0.0.1`. Deploy sets `HOST=127.0.0.1` and starts both Next servers with `-H 127.0.0.1`.
 - Verified on the box: all five sockets listen on `127.0.0.1` only; ports 3000/3001/3002/3102/3999 are unreachable from the internet; the three HTTPS domains still return 200 and login + `POST /api/requests/:id/run` (SUCCESS/200) work through the proxy.
 - Status: FIXED (4d46fc3)
+
+### HIGH-9 — Verification email never arrives (silent skip)
+- Files: `backend/src/api/email.js`, `backend/src/api/routes/auth.js:181`, `portal/backend/src/routes/publicCheckout.js:383`, `frontend/src/components/AppShell.tsx:188`.
+- Impact: two independent causes.
+  1. The deploy had no `SMTP_*` set, so `sendMail` logged `SMTP not configured; skipped` and returned `{skipped:true}`. `/api/auth/resend-verification` still answered `{ok:true}` and the banner swallowed errors, so "Resend email" looked like a success while nothing was sent.
+  2. Portal A checkout — the only account-creation path in production — provisioned the buyer's org/workspace but never issued a verification token, so a real customer could never receive the link at all.
+- Fix: `email.isConfigured()`; `/resend-verification` returns `503 smtp_not_configured` (or `502 smtp_send_failed`) and refuses *before* invalidating the outstanding token; signup/checkout report `emailVerification: sent|not_configured|failed`; the banner shows a success/error toast; a shared `emailVerification.js` mints the token so the main app and portal cannot drift; checkout now mails the buyer; `scripts/send-test-email.js` verifies SMTP without starting the app.
+- Test: `backend/src/api/__tests__/email.test.cjs`, `backend/tests/authEmail.integration.test.cjs`, `backend/tests/portalCheckoutEmail.integration.test.cjs`.
+- Verified: against a local SMTP sink, signup delivered a real message whose link redeemed with `verify-email` 200 and `users.email_verified=true`.
+- Status: FIXED (9797a56, 7522d9d)
 
 ### MED-1 — IDOR collection auth-provider
 - File: `backend/src/api/routes/content.js:1031`.
