@@ -37,11 +37,14 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const inputRef = useRef<HTMLInputElement | null>(null);
   const seqRef = useRef(0);
 
+  // The API groups rows by type but does not repeat the type on every row, so
+  // stamp it back on here. `openResult` dispatches on `r.type`; without this
+  // every result was ignored and clicking a row only closed the palette.
   const orderedGroups = useMemo<ResultGroup[]>(
     () =>
       Object.entries(groups).map(([type, rows]) => ({
         type,
-        rows: takeTop(rows, PER_GROUP_LIMIT) as SearchResult[],
+        rows: takeTop(rows, PER_GROUP_LIMIT).map((r: SearchResult) => ({ ...r, type })) as SearchResult[],
       })),
     [groups]
   );
