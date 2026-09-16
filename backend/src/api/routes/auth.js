@@ -15,6 +15,7 @@ const { requireAuth, loadUserById } = require('../access');
 const { allocateUsername } = require('../username');
 const { provisionNewAccount } = require('../accountProvision');
 const { generateToken, hashToken, expiryFor, createThrottle } = require('../authTokens');
+const { issueEmailVerification } = require('../emailVerification');
 const email = require('../email');
 
 const router = Router();
@@ -54,17 +55,6 @@ async function userSummary(userId) {
     [userId]
   );
   return { user, organizations: orgs };
-}
-
-async function issueEmailVerification(userId, to) {
-  const raw = generateToken();
-  await query(
-    `INSERT INTO auth_tokens (user_id, kind, token_hash, expires_at)
-     VALUES ($1, 'email_verification', $2, $3)`,
-    [userId, hashToken(raw), expiryFor('email_verification')]
-  );
-  const link = `${email.appUrl()}/verify-email?token=${encodeURIComponent(raw)}`;
-  await email.sendMail({ to, ...email.verifyEmailMessage(link) });
 }
 
 router.post('/signup', async (req, res, next) => {
@@ -108,14 +98,18 @@ router.post('/signup', async (req, res, next) => {
       await provisionNewAccount(client, { userId, email, displayName });
       await client.query('COMMIT');
 
+      let emailVerification = 'sent';
       try {
-        await issueEmailVerification(userId, email);
+        const sent = await issueEmailVerification(userId, email);
+        if (sent && sent.skipped) emailVerification = 'not_configured';
+        else if (sent && sent.error) emailVerification = 'failed';
       } catch (err) {
+        emailVerification = 'failed';
         console.error('[auth] verification email failed:', err.message);
       }
 
       res.setHeader('Set-Cookie', sessionCookie(createSessionToken(userId, rows[0].session_epoch)));
-      res.status(201).json({ user: await userSummary(userId) });
+      res.status(201).json({ user: await userSummary(userId), emailVerification });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -181,12 +175,27 @@ router.post('/verify-email', async (req, res, next) => {
 router.post('/resend-verification', requireAuth, async (req, res, next) => {
   try {
     if (req.user.email_verified) return res.json({ ok: true, alreadyVerified: true });
+    // Refuse before invalidating the outstanding token: a server without SMTP
+    // must not burn the user's existing link and then report a send that never
+    // happened (the "Resend email" button gave silent no-op success before).
+    if (!email.isConfigured()) {
+      return res.status(503).json({
+        error: 'Email delivery is not configured on this server — ask an administrator to set SMTP.',
+        code: 'smtp_not_configured',
+      });
+    }
     await query(
       `UPDATE auth_tokens SET used_at = now()
         WHERE user_id = $1 AND kind = 'email_verification' AND used_at IS NULL`,
       [req.user.id]
     );
-    await issueEmailVerification(req.user.id, req.user.email);
+    const sent = await issueEmailVerification(req.user.id, req.user.email);
+    if (sent && sent.error) {
+      return res.status(502).json({
+        error: 'Could not send the verification email — please try again later.',
+        code: 'smtp_send_failed',
+      });
+    }
     res.json({ ok: true });
   } catch (err) {
     next(err);

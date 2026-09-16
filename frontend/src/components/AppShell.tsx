@@ -118,6 +118,7 @@ function WorkspaceArea({
 
 export function AppShell() {
   const { loading, user } = useAuth();
+  const { dispatch } = useApp();
   const { view } = useNav();
   const menu = useMenuAccess();
   const ws = useWorkspace();
@@ -186,10 +187,27 @@ export function AppShell() {
             className="ghost-button small"
             data-testid="verify-resend"
             onClick={async () => {
+              // Surface the outcome: a server with no SMTP used to answer 200
+              // and silently skip, so a failed resend looked like a success and
+              // the user just kept waiting for mail that was never sent.
               try {
-                await authApi.resendVerification();
-              } catch {
-                /* best-effort; the banner persists until verified */
+                const res = await authApi.resendVerification();
+                dispatch({
+                  type: 'SHOW_TOAST',
+                  kind: 'success',
+                  message: res.alreadyVerified
+                    ? 'Your email is already verified.'
+                    : 'Verification email sent — check your inbox.',
+                });
+              } catch (err) {
+                dispatch({
+                  type: 'SHOW_TOAST',
+                  kind: 'error',
+                  message:
+                    err instanceof Error && err.message
+                      ? err.message
+                      : 'Could not send the verification email.',
+                });
               }
             }}
           >
