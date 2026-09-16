@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
@@ -51,6 +51,8 @@ import {
   FormulaIcon,
   UsersIcon,
   WorkflowIcon,
+  SearchIcon,
+  XIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams' | 'workflow';
@@ -1227,6 +1229,136 @@ function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
   );
 }
 
+type TreeSearchKind = 'workspace' | 'collection' | 'folder' | 'subfolder' | 'request';
+
+interface TreeSearchHit {
+  kind: TreeSearchKind;
+  id: string;
+  name: string;
+  meta: string;
+  method?: string;
+}
+
+/**
+ * Client-side filter over the already-loaded sidebar data. It searches the
+ * workspaces the user belongs to plus the active workspace's collections,
+ * folders/subfolders and requests (name, url, or an exact HTTP method). No API
+ * call is made, so results update as the user types.
+ */
+function TreeSearchResults({
+  query,
+  onSelect,
+}: {
+  query: string;
+  onSelect: (kind: TreeSearchKind, id: string, name: string) => void;
+}) {
+  const ws = useWorkspace();
+
+  const hits = useMemo<TreeSearchHit[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const tree = ws.tree;
+    const out: TreeSearchHit[] = [];
+    const has = (...values: Array<string | null | undefined>) =>
+      values.some((v) => (v ?? '').toLowerCase().includes(q));
+
+    for (const w of ws.workspaces) {
+      if (has(w.name)) out.push({ kind: 'workspace', id: w.id, name: w.name, meta: 'Workspace' });
+    }
+    if (!tree) return out;
+
+    const projectName = new Map(tree.projects.map((p) => [p.id, p.name]));
+    const collectionName = new Map(tree.collections.map((c) => [c.id, c.name]));
+    const folderName = new Map(tree.folders.map((f) => [f.id, f.name]));
+
+    for (const c of tree.collections) {
+      if (has(c.name)) {
+        out.push({ kind: 'collection', id: c.id, name: c.name, meta: projectName.get(c.project_id) ?? 'Collection' });
+      }
+    }
+    for (const f of tree.folders) {
+      if (!has(f.name)) continue;
+      const collection = collectionName.get(f.collection_id) ?? '';
+      if (f.parent_id) {
+        const parent = folderName.get(f.parent_id) ?? '';
+        out.push({ kind: 'subfolder', id: f.id, name: f.name, meta: [collection, parent].filter(Boolean).join(' / ') });
+      } else {
+        out.push({ kind: 'folder', id: f.id, name: f.name, meta: collection });
+      }
+    }
+    for (const r of tree.requests) {
+      const methodMatch = r.method.toLowerCase() === q;
+      if (!methodMatch && !has(r.name, r.url)) continue;
+      out.push({ kind: 'request', id: r.id, name: r.name, method: r.method, meta: collectionName.get(r.collection_id) ?? '' });
+    }
+    return out;
+  }, [query, ws.workspaces, ws.tree]);
+
+  const groups: Array<{ kind: TreeSearchKind; label: string }> = [
+    { kind: 'workspace', label: 'Workspaces' },
+    { kind: 'collection', label: 'Collections' },
+    { kind: 'folder', label: 'Folders' },
+    { kind: 'subfolder', label: 'Subfolders' },
+    { kind: 'request', label: 'Requests' },
+  ];
+
+  if (hits.length === 0) {
+    return (
+      <div className="sidebar-search-empty" data-testid="tree-search-empty">
+        <SearchIcon size={18} />
+        <p>No matches for &ldquo;{query.trim()}&rdquo;.</p>
+        {!ws.tree && ws.loading ? <p className="hint">Still loading this workspace&hellip;</p> : null}
+      </div>
+    );
+  }
+
+  const iconFor = (kind: TreeSearchKind) => {
+    if (kind === 'workspace') return <WorkspaceIcon size={13} />;
+    if (kind === 'collection') return <CollectionIcon size={13} />;
+    if (kind === 'request') return <RequestIcon size={13} />;
+    return <FolderIcon size={13} />;
+  };
+
+  return (
+    <div className="sidebar-search-results" data-testid="tree-search-results">
+      {groups.map((g) => {
+        const items = hits.filter((h) => h.kind === g.kind);
+        if (items.length === 0) return null;
+        return (
+          <div key={g.kind} className="sidebar-search-group">
+            <div className="sidebar-search-group-head">
+              <span>{g.label}</span>
+              <span className="sidebar-search-count">{items.length}</span>
+            </div>
+            <ul className="sidebar-search-list">
+              {items.map((h) => (
+                <li key={`${h.kind}-${h.id}`}>
+                  <button
+                    type="button"
+                    className="sidebar-search-hit"
+                    data-testid={`tree-search-${h.kind}-${h.id}`}
+                    title={h.name}
+                    onClick={() => onSelect(h.kind, h.id, h.name)}
+                  >
+                    <span className="sidebar-search-icon">{iconFor(h.kind)}</span>
+                    <span className="sidebar-search-text">
+                      <span className="sidebar-search-name">
+                        {h.method ? <span className="sidebar-search-method">{h.method}</span> : null}
+                        {h.name}
+                      </span>
+                      {h.meta ? <span className="sidebar-search-meta">{h.meta}</span> : null}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Sidebar({
   panelHidden = false,
   onRequestClose,
@@ -1244,6 +1376,7 @@ export function Sidebar({
   const [collapsed, setCollapsed] = useState(false);
   const [workspacesCollapsed, setWorkspacesCollapsed] = useState(false);
   const [collectionsCollapsed, setCollectionsCollapsed] = useState(false);
+  const [treeSearch, setTreeSearch] = useState('');
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
   const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
@@ -1312,6 +1445,32 @@ export function Sidebar({
   };
 
   const railHidden = panelHidden || collapsed;
+
+  // Open a sidebar search hit: clear the query so the tree returns, switch back
+  // to the workspace view, then select the target (folders resolve to their
+  // owning collection, since folders have no standalone view).
+  const onSearchSelect = async (kind: TreeSearchKind, id: string, name: string) => {
+    setTreeSearch('');
+    goWorkspace();
+    onRequestClose?.();
+    try {
+      if (kind === 'workspace') {
+        await ws.selectWorkspace(id);
+      } else if (kind === 'collection') {
+        await ws.selectCollection(id, name);
+      } else if (kind === 'folder' || kind === 'subfolder') {
+        const folder = ws.tree?.folders.find((f) => f.id === id);
+        if (folder) {
+          const collection = ws.tree?.collections.find((c) => c.id === folder.collection_id);
+          await ws.selectCollection(folder.collection_id, collection?.name ?? '');
+        }
+      } else {
+        await ws.selectRequest(id);
+      }
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Failed to open result' });
+    }
+  };
 
   const submitAccessRequest = async () => {
     if (!requestingProject) return;
@@ -1583,6 +1742,41 @@ export function Sidebar({
       <div className={`sidebar-panel ${railHidden ? 'sidebar-panel-hidden' : ''}`}>
         {rail === 'apis' ? (
           <>
+            <div className="sidebar-search">
+              <SearchIcon size={14} />
+              <input
+                type="text"
+                className="sidebar-search-input"
+                data-testid="tree-search"
+                placeholder="Search workspaces, collections, folders, requests"
+                aria-label="Search workspaces, collections, folders and requests"
+                value={treeSearch}
+                onChange={(e) => setTreeSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setTreeSearch('');
+                  }
+                }}
+              />
+              {treeSearch && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  data-testid="tree-search-clear"
+                  title="Clear search"
+                  aria-label="Clear search"
+                  onClick={() => setTreeSearch('')}
+                >
+                  <XIcon size={13} />
+                </button>
+              )}
+            </div>
+
+            {treeSearch.trim() ? (
+              <TreeSearchResults query={treeSearch} onSelect={onSearchSelect} />
+            ) : (
+              <>
             <div className="sidebar-section">
               <div className="sidebar-section-head">
                 <button
@@ -1664,6 +1858,8 @@ export function Sidebar({
                   <p>Open a workspace above to see its collections.</p>
                 )}
               </div>
+            )}
+              </>
             )}
           </>
         ) : rail === 'workflow' ? (
