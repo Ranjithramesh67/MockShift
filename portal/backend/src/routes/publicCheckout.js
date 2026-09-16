@@ -18,6 +18,7 @@ const { Router } = require('express');
 const { pool, query, authLib, access } = require('../shared');
 const { allocateUsername } = require('../../../../backend/src/api/username');
 const { provisionNewAccount } = require('../../../../backend/src/api/accountProvision');
+const { issueEmailVerification } = require('../../../../backend/src/api/emailVerification');
 
 const router = Router();
 
@@ -382,6 +383,21 @@ router.post('/checkout', async (req, res, next) => {
 
     if (accountSummary.created) {
       res.setHeader('Set-Cookie', authLib.sessionCookie(authLib.createSessionToken(userId)));
+      // This is the production account-creation path (self-service signup is
+      // closed), so the buyer is the one who sees the "verify your email"
+      // banner. Issue the link here or nobody ever gets one. Best-effort: a
+      // mail hiccup must not fail a checkout that already charged.
+      try {
+        const sent = await issueEmailVerification(userId, accountSummary.email);
+        accountSummary.emailVerification = sent && sent.skipped
+          ? 'not_configured'
+          : sent && sent.error
+            ? 'failed'
+            : 'sent';
+      } catch (err) {
+        accountSummary.emailVerification = 'failed';
+        console.error('[checkout] verification email failed:', err && err.message);
+      }
     }
 
     if (result.kind === 'free') {
