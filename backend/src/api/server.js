@@ -177,14 +177,18 @@ function createApp() {
   return app;
 }
 
-function startServer({ port = Number(process.env.PORT || 3001) } = {}) {
+function startServer({ port = Number(process.env.PORT || 3001), host = process.env.HOST } = {}) {
   const app = createApp();
   return new Promise((resolve) => {
-    const server = app.listen(port, () => {
+    // When HOST is unset Node keeps its default (all interfaces). Deployments
+    // that sit behind a reverse proxy should set HOST=127.0.0.1 so the API is
+    // only reachable through the proxy, never directly over plaintext.
+    const onListen = () => {
       // eslint-disable-next-line no-console
-      console.log(`[api] listening on http://127.0.0.1:${port}`);
+      console.log(`[api] listening on http://${host || '0.0.0.0'}:${port}`);
       resolve(server);
-    });
+    };
+    const server = host ? app.listen(port, host, onListen) : app.listen(port, onListen);
   });
 }
 
