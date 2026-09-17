@@ -15,6 +15,10 @@ function smtpConfig() {
   const url = process.env.SMTP_URL;
   const host = process.env.SMTP_HOST;
   if (!url && !host) return null;
+  // SMTP_TLS_REJECT_UNAUTHORIZED=0 is the opt-out for a self-signed mailcow
+  // cert (the default mailcow image ships one). Leave unset so a public CA is
+  // still verified.
+  const rejectUnauthorized = process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== '0';
   return {
     url,
     host,
@@ -23,6 +27,7 @@ function smtpConfig() {
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' }
       : undefined,
+    tls: { rejectUnauthorized },
   };
 }
 
@@ -39,12 +44,15 @@ let transportOverride;
 function buildTransport(cfg) {
   // Lazy require keeps the server bootable if the optional dependency is absent.
   const nodemailer = require('nodemailer');
-  if (cfg.url) return nodemailer.createTransport(cfg.url);
+  if (cfg.url) {
+    return nodemailer.createTransport({ url: cfg.url, tls: cfg.tls });
+  }
   return nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
     secure: cfg.secure,
     auth: cfg.auth,
+    tls: cfg.tls,
   });
 }
 

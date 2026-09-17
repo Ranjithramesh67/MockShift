@@ -24,6 +24,28 @@ test('sendMail is a no-op that resolves when SMTP is unconfigured', async () => 
   Object.assign(process.env, saved);
 });
 
+test('smtpConfig defaults to verifying the mail server cert', () => {
+  const saved = {
+    SMTP_URL: process.env.SMTP_URL,
+    SMTP_HOST: process.env.SMTP_HOST,
+    SMTP_TLS_REJECT_UNAUTHORIZED: process.env.SMTP_TLS_REJECT_UNAUTHORIZED,
+  };
+  try {
+    delete process.env.SMTP_URL;
+    delete process.env.SMTP_TLS_REJECT_UNAUTHORIZED;
+    process.env.SMTP_HOST = 'mail.example.com';
+    assert.equal(email.smtpConfig().tls.rejectUnauthorized, true);
+
+    process.env.SMTP_TLS_REJECT_UNAUTHORIZED = '0';
+    assert.equal(email.smtpConfig().tls.rejectUnauthorized, false);
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test('isConfigured tracks SMTP_URL / SMTP_HOST', () => {
   const saved = { SMTP_URL: process.env.SMTP_URL, SMTP_HOST: process.env.SMTP_HOST };
   try {

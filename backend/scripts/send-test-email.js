@@ -42,6 +42,7 @@ function describeConfig() {
   if (cfg.host) lines.push(`SMTP_HOST ${cfg.host}:${cfg.port}  secure=${cfg.secure}`);
   lines.push(`SMTP_USER ${process.env.SMTP_USER || '(none / anonymous)'}`);
   lines.push(`SMTP_FROM ${email.fromAddress()}`);
+  lines.push(`SMTP_TLS  rejectUnauthorized=${cfg.tls.rejectUnauthorized}`);
   lines.push(`APP_URL   ${email.appUrl()}`);
   return lines.join('\n  ');
 }
