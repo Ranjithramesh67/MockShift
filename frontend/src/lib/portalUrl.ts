@@ -28,6 +28,28 @@ export function previewSiblingUrl(currentHost: string, targetPort: number): stri
 // Runtime-safe (browser) portal *origin* (no path). Used to build the cross-app
 // links on the profile page ("Manage subscription" -> /account, "Change plan"
 // -> /checkout?plan=&cycle=). Resolution order mirrors the module comment.
+function isLoopbackHost(host: string): boolean {
+  const hostname = host.split(':')[0];
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+// When the portal env var was missed at build time, never send a visitor on a
+// real HTTPS host to localhost:3002. On this product the portal lives at the
+// `mockshift-portal` sibling of `mockshift` / `mockshift-admin`.
+export function derivePortalOriginFromHost(host: string): string | null {
+  const preview = previewSiblingUrl(host, PORTAL_DEV_PORT);
+  if (preview) return preview;
+  const hostname = host.split(':')[0];
+  if (isLoopbackHost(hostname)) return null;
+  const parts = hostname.split('.');
+  if (parts.length < 2) return `https://${hostname}`;
+  const sub = parts[0];
+  if (sub !== 'mockshift-portal' && (sub === 'mockshift' || sub === 'mockshift-admin')) {
+    parts[0] = 'mockshift-portal';
+  }
+  return `https://${parts.join('.')}`;
+}
+
 export function portalOrigin(): string {
   if (process.env.NEXT_PUBLIC_PORTAL_URL) {
     try {
@@ -41,7 +63,7 @@ export function portalOrigin(): string {
     }
   }
   if (typeof window !== 'undefined') {
-    const origin = previewSiblingUrl(window.location.host, PORTAL_DEV_PORT);
+    const origin = derivePortalOriginFromHost(window.location.host);
     if (origin) return origin;
   }
   return `http://localhost:${PORTAL_DEV_PORT}`;
@@ -60,7 +82,7 @@ export function portalUrlFor(path: string): string {
 export function portalPlansUrl(): string {
   if (process.env.NEXT_PUBLIC_PORTAL_URL) return PORTAL_PLANS_URL;
   if (typeof window !== 'undefined') {
-    const origin = previewSiblingUrl(window.location.host, PORTAL_DEV_PORT);
+    const origin = derivePortalOriginFromHost(window.location.host);
     if (origin) return `${origin}/#pricing`;
   }
   return PORTAL_PLANS_URL;
