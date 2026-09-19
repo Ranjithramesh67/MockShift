@@ -53,6 +53,7 @@ import {
   WorkflowIcon,
   SearchIcon,
   XIcon,
+  CompareIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams' | 'workflow';
@@ -1694,6 +1695,21 @@ export function Sidebar({
             }}
           >
             <UsersIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('json-compare') && (
+          <Link
+            href="/json-compare"
+            className={`rail-button ${view === 'json-compare' ? 'active' : ''}`}
+            data-testid="rail-json-compare"
+            title="JSON compare"
+            aria-label="JSON compare"
+            onClick={() => {
+              setView('json-compare');
+              onRequestClose?.();
+            }}
+          >
+            <CompareIcon size={17} />
           </Link>
         )}
         {canManage && menu.isEnabled('manage') && (

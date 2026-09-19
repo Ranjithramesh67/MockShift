@@ -37,6 +37,7 @@ const MonitorsPanel = dynamic(() => import('./monitors/MonitorsPanel').then((m) 
 const MockScenariosPanel = dynamic(() => import('./mocks/MockScenariosPanel').then((m) => m.MockScenariosPanel));
 const CopilotPanel = dynamic(() => import('./copilot/CopilotPanel').then((m) => m.CopilotPanel));
 const CollabView = dynamic(() => import('./collab/CollabPanel').then((m) => m.CollabView));
+const JsonCompareView = dynamic(() => import('./views/JsonCompareView').then((m) => m.JsonCompareView));
 
 const VIEW_MENU_KEY: Partial<Record<string, MenuKey>> = {
   automations: 'automations',
@@ -48,6 +49,7 @@ const VIEW_MENU_KEY: Partial<Record<string, MenuKey>> = {
   'mock-scenarios': 'mock-scenarios',
   copilot: 'copilot',
   collab: 'collab',
+  'json-compare': 'json-compare',
 };
 
 function FeatureDisabled({ menuKey }: { menuKey: string }) {
@@ -250,6 +252,8 @@ export function AppShell() {
                   <CopilotPanel />
                 ) : view === 'collab' ? (
                   <CollabView />
+                ) : view === 'json-compare' ? (
+                  <JsonCompareView />
                 ) : (
                   <AdminView />
                 )}

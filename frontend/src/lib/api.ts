@@ -315,7 +315,8 @@ export type MenuKey =
   | 'mock-scenarios'
   | 'copilot'
   | 'collab'
-  | 'manage';
+  | 'manage'
+  | 'json-compare';
 
 export interface MenuAccessResponse {
   menus: Record<MenuKey, boolean>;
@@ -1241,4 +1242,40 @@ export const searchApi = {
     apiFetch<{ query: string; groups: Record<string, SearchResult[]>; results: SearchResult[] }>(
       `/api/search?q=${encodeURIComponent(q)}&limit=${limit}`
     ),
+};
+
+export type JsonCompareKeyMode = 'alpha' | 'alphanum' | 'original';
+export type JsonCompareArrayMode = 'none' | 'alpha' | 'alphanum' | 'numeric' | 'length' | 'type' | 'json';
+export type JsonCompareDirection = 'asc' | 'desc';
+
+export interface JsonComparison {
+  id: string;
+  name: string;
+  leftText: string;
+  rightText: string;
+  keyMode: JsonCompareKeyMode;
+  keyDirection: JsonCompareDirection;
+  arrayMode: JsonCompareArrayMode;
+  arrayDirection: JsonCompareDirection;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JsonComparisonInput {
+  name: string;
+  leftText: string;
+  rightText: string;
+  keyMode: JsonCompareKeyMode;
+  keyDirection: JsonCompareDirection;
+  arrayMode: JsonCompareArrayMode;
+  arrayDirection: JsonCompareDirection;
+}
+
+export const jsonCompareApi = {
+  list: () => apiFetch<{ comparisons: JsonComparison[] }>('/api/json-comparisons'),
+  create: (input: JsonComparisonInput) =>
+    apiFetch<{ comparison: JsonComparison }>('/api/json-comparisons', { method: 'POST', body: input }),
+  update: (id: string, input: JsonComparisonInput) =>
+    apiFetch<{ comparison: JsonComparison }>(`/api/json-comparisons/${id}`, { method: 'PUT', body: input }),
+  remove: (id: string) => apiFetch<void>(`/api/json-comparisons/${id}`, { method: 'DELETE' }),
 };

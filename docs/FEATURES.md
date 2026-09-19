@@ -76,7 +76,7 @@ Configurable menu keys (admin panel > Menus tab):
 
 ```
 teams, automations, history, docs, contracts, monitors,
-mock-scenarios, copilot, collab, manage
+mock-scenarios, copilot, collab, manage, json-compare
 ```
 
 - `apis` and `admin` are **never** toggleable.
@@ -105,6 +105,7 @@ Frontend routes:
 | `/monitors` | Monitors |
 | `/mock-scenarios` | Mock scenarios |
 | `/docs`, `/collab`, `/s/...` | Docs, collaboration, public shares |
+| `/json-compare` | JSON compare and named payload snapshots |
 
 ---
 
@@ -1098,6 +1099,21 @@ earlier revision, which creates a *new* revision (history is never rewritten).
 Storage is `request_revisions` (migration 046): immutable rows (SELECT/INSERT
 only), scoped by workspace for RLS, snapshots in the same camelCase shape used by
 collection version diffs. Rollback publishes the existing realtime
-`entity:updated` event, so every other open editor reloads the new state. The
+  `entity:updated` event, so every other open editor reloads the new state. The
 editor surfaces this under the request's **History** tab, which shows a
 git-style before/after diff per revision and a **Restore** action.
+
+## 27. JSON compare
+
+Sidebar rail item **JSON compare** (`/json-compare`, menu key `json-compare`).
+Paste two JSON payloads, sort them, then diff the result. Sort options:
+
+- Object keys: alphabetical, alphanumeric (`item2` before `item10`), or original order; ascending or descending.
+- Arrays: keep order, alphabetical, alphanumeric, numeric, by length, by type, or canonical JSON; ascending or descending.
+
+Compare pretty-prints both sides with the selected sort, then lists added / removed / changed / type-mismatch paths. Name the pair and **Save** to keep it; the list on the right reloads a snapshot. Saves are per-user (`json_comparisons`, migration 051).
+
+- `GET /api/json-comparisons`
+- `POST /api/json-comparisons`
+- `PUT /api/json-comparisons/:id`
+- `DELETE /api/json-comparisons/:id`

@@ -32,6 +32,7 @@ const MENU_KEYS = Object.freeze([
   'copilot',
   'collab',
   'manage',
+  'json-compare',
 ]);
 
 function isMenuKey(key) {

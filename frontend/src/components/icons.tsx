@@ -475,3 +475,13 @@ export const SearchIcon = (p: IconProps) => (
     <path d="m21 21-4.3-4.3" />
   </svg>
 );
+
+export const CompareIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3" />
+    <path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3" />
+    <path d="M12 8v8" />
+    <path d="m9 11 3-3 3 3" />
+    <path d="m9 13 3 3 3-3" />
+  </svg>
+);

@@ -15,6 +15,7 @@ const TOGGLEABLE_MENU_KEYS = [
   'copilot',
   'collab',
   'manage',
+  'json-compare',
 ];
 
 /** @returns {Record<string, boolean>} */
