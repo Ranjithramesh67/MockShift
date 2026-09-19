@@ -4,6 +4,7 @@ const { query } = require('./db');
 const { resolveAuthHeader, applyAuthHeader, normalizeProvider } = require('./authToken');
 const { FormulaRunner } = require('../sandbox/formulaRunner');
 const { evaluateAssertions } = require('../engine/assertions');
+const { serializeBody, methodsWithoutBody, defaultContentType } = require('./bodyCodec');
 
 const TEMPLATE_RE = /\{\{\s*([A-Za-z0-9_\-\.]+)\s*\}\}/g;
 
@@ -180,7 +181,7 @@ function normalizeInMemoryRequest(input = {}) {
   const bodyType = input.bodyType || 'NONE';
   let bodyJson = null;
   let bodyText = input.bodyText ?? null;
-  if (bodyType === 'JSON' && input.bodyJson !== undefined && input.bodyJson !== null) {
+  if ((bodyType === 'JSON' || bodyType === 'GRAPHQL') && input.bodyJson !== undefined && input.bodyJson !== null) {
     if (typeof input.bodyJson === 'string') {
       try {
         bodyJson = JSON.parse(input.bodyJson);
@@ -191,7 +192,7 @@ function normalizeInMemoryRequest(input = {}) {
     } else {
       bodyJson = input.bodyJson;
     }
-  } else if (bodyType !== 'JSON' && typeof input.bodyJson === 'string') {
+  } else if (bodyType !== 'JSON' && bodyType !== 'GRAPHQL' && typeof input.bodyJson === 'string') {
     bodyText = input.bodyJson;
   }
   return {
@@ -245,7 +246,7 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
     headers: headersObject(request.headers),
     query: Object.fromEntries((request.query_params || []).map((q) => [q.key, q.value])),
     body:
-      request.body_type === 'JSON' && request.body_json
+      (request.body_type === 'JSON' || request.body_type === 'GRAPHQL') && request.body_json
         ? JSON.parse(JSON.stringify(request.body_json))
         : request.body_text ?? null,
   };
@@ -286,16 +287,31 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
       Object.entries(fetchHeaders).filter(([k]) => k.toLowerCase() !== 'content-type')
     );
   } else {
-    body =
-      req.body !== null && req.body !== undefined
-        ? typeof req.body === 'string'
-          ? substitute(req.body, vars)
-          : JSON.stringify(req.body)
-        : null;
-    snapshotBody = body;
+    const working = {
+      ...request,
+      body_json:
+        req.body !== null && typeof req.body === 'object'
+          ? req.body
+          : request.body_json,
+      body_text: typeof req.body === 'string' ? req.body : request.body_text,
+    };
+    const encoded = serializeBody(working, { substitute, vars });
+    if (encoded.body !== null && encoded.body !== undefined) {
+      body = encoded.body;
+      snapshotBody = encoded.snapshot ?? encoded.body;
+    } else {
+      body =
+        req.body !== null && req.body !== undefined
+          ? typeof req.body === 'string'
+            ? substitute(req.body, vars)
+            : JSON.stringify(req.body)
+          : null;
+      snapshotBody = body;
+    }
     if (body && !Object.keys(fetchHeaders).some((k) => k.toLowerCase() === 'content-type')) {
       fetchHeaders['Content-Type'] =
-        request.body_type === 'JSON' ? 'application/json' : request.body_type === 'FORM_URLENCODED' ? 'application/x-www-form-urlencoded' : 'text/plain';
+        encoded.contentType ||
+        defaultContentType({ bodyType: request.body_type, apiType: request.api_type });
     }
   }
 
@@ -309,7 +325,7 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
     const res = await fetch(url, {
       method: req.method,
       headers: fetchHeaders,
-      body: ['GET', 'HEAD'].includes(req.method) ? undefined : body,
+      body: methodsWithoutBody(req.method) ? undefined : body,
       redirect: 'follow',
       signal: AbortSignal.timeout(15000),
     });

@@ -34,7 +34,7 @@ export function bodyKindOf(request: { bodyType: string; contentType: string }): 
   if (request.bodyType === 'MULTIPART') return 'MULTIPART';
   if (request.bodyType === 'FORM_URLENCODED') return 'FORM_URLENCODED';
   if (request.bodyType === 'GRAPHQL') return 'GRAPHQL';
-  if (request.contentType.includes('xml')) return 'XML';
+  if (request.bodyType === 'XML' || request.contentType.includes('xml')) return 'XML';
   return 'RAW_TEXT';
 }
 
@@ -43,7 +43,7 @@ export function bodyTypeForKind(kind: BodyKind): { bodyType: BodyType; contentTy
     case 'JSON':
       return { bodyType: 'JSON', contentType: 'application/json' };
     case 'XML':
-      return { bodyType: 'RAW_TEXT', contentType: 'application/xml' };
+      return { bodyType: 'XML', contentType: 'application/xml' };
     case 'FORM_URLENCODED':
       return { bodyType: 'FORM_URLENCODED', contentType: 'application/x-www-form-urlencoded' };
     case 'MULTIPART':
@@ -55,6 +55,38 @@ export function bodyTypeForKind(kind: BodyKind): { bodyType: BodyType; contentTy
     default:
       return { bodyType: 'NONE', contentType: 'text/plain' };
   }
+}
+
+const SOAP_SEED = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser><id>1</id></GetUser>
+  </soap:Body>
+</soap:Envelope>`;
+
+export function defaultsForApiType(apiType: ApiType): {
+  method: HttpMethod;
+  bodyType: BodyType;
+  contentType: RequestContentType;
+  bodyJson: string | null;
+} | null {
+  if (apiType === 'GRAPHQL') {
+    return {
+      method: 'POST',
+      bodyType: 'GRAPHQL',
+      contentType: 'application/json',
+      bodyJson: JSON.stringify({ query: 'query { ping }', variables: {} }, null, 2),
+    };
+  }
+  if (apiType === 'SOAP') {
+    return {
+      method: 'POST',
+      bodyType: 'XML',
+      contentType: 'text/xml',
+      bodyJson: SOAP_SEED,
+    };
+  }
+  return null;
 }
 
 export type { ApiRequest };

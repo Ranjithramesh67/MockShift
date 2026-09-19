@@ -103,6 +103,27 @@ const server = http.createServer((req, res) => {
       }
       return sendJson(res, 200, { headers: req.headers, body });
     }
+    if (path === '/graphql' && (method === 'POST' || method === 'QUERY')) {
+      let payload = {};
+      try { payload = rawBody ? JSON.parse(rawBody) : {}; } catch { payload = { query: rawBody }; }
+      const query = String(payload.query || '');
+      if (/ping/i.test(query)) {
+        return sendJson(res, 200, { data: { ping: 'pong' } });
+      }
+      return sendJson(res, 200, { errors: [{ message: `Unknown field in query` }] });
+    }
+    if (path === '/soap' && method === 'POST') {
+      const ok = /GetUser/i.test(rawBody);
+      const xml = ok
+        ? '<?xml version="1.0" encoding="UTF-8"?>\n<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetUserResponse><User><id>1</id><name>Ada</name></User></GetUserResponse></soap:Body></soap:Envelope>'
+        : '<?xml version="1.0" encoding="UTF-8"?>\n<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault><faultcode>soap:Client</faultcode><faultstring>Unknown operation</faultstring></soap:Fault></soap:Body></soap:Envelope>';
+      res.writeHead(ok ? 200 : 500, { 'Content-Type': 'text/xml; charset=utf-8' });
+      return res.end(xml);
+    }
+    if (path === '/xml' && (method === 'GET' || method === 'POST')) {
+      res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8' });
+      return res.end('<note><ok>true</ok></note>');
+    }
 
     const [resource, id] = path.split('/').filter(Boolean);
     if (!RESOURCES.includes(resource)) {

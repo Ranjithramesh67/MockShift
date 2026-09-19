@@ -10,7 +10,7 @@ export type HttpMethod =
 
 export type ApiType = 'REST' | 'SOAP' | 'GRAPHQL' | 'AUTH';
 
-export type BodyType = 'NONE' | 'JSON' | 'FORM_URLENCODED' | 'MULTIPART' | 'RAW_TEXT' | 'GRAPHQL';
+export type BodyType = 'NONE' | 'JSON' | 'FORM_URLENCODED' | 'MULTIPART' | 'RAW_TEXT' | 'GRAPHQL' | 'XML';
 
 export type RequestContentType =
   | 'application/json'

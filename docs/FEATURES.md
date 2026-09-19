@@ -193,6 +193,26 @@ Variables are namespaced per environment (for example `dev`, `staging`,
   `POST /api/versions` - snapshot and diff request/collection versions, gated by
   the `collab` menu.
 
+### 3.6 Multi API types (REST, SOAP, GraphQL, XML)
+
+Requests carry an `apiType` of `REST`, `SOAP`, `GRAPHQL`, or `AUTH`. AUTH is
+the token endpoint used by a folder auth provider. SOAP and GraphQL are no
+longer labels on a REST call:
+
+- **GraphQL** — `bodyType: GRAPHQL` stores `{ query, variables, operationName }`
+  as JSON and the runner POSTs `application/json`. The editor splits query and
+  variables. HTTP 200 responses that include `errors[]` surface a banner in
+  the response pane. The local mock upstream answers `POST /graphql`.
+- **SOAP** — `apiType: SOAP` + `bodyType: XML`. The runner wraps a bare payload
+  in a SOAP 1.1 Envelope (idempotent if already wrapped) and sends
+  `Content-Type: text/xml`. Mock: `POST /soap` (`GetUser` → Ada).
+- **XML** — first-class `bodyType: XML` (not smuggled as `RAW_TEXT`). Default
+  content type `application/xml`. Mock: `GET|POST /xml`.
+- **QUERY** — HTTP method that may carry a body (unlike GET/HEAD). Stored in
+  the `http_method` enum.
+
+gRPC and WebSocket are out of scope (they need a non-HTTP transport).
+
 ---
 
 ## 4. Documentation and public sharing

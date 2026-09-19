@@ -47,6 +47,8 @@ function contentTypeForBodyType(bt: string): RequestContentType {
       return 'multipart/form-data';
     case 'GRAPHQL':
       return 'application/json';
+    case 'XML':
+      return 'application/xml';
     default:
       return 'text/plain';
   }
@@ -109,7 +111,7 @@ export function toServerPatch(r: ApiRequest): Record<string, unknown> {
     formula: r.formula || '',
     assertions: r.assertions ?? [],
   };
-  if (r.bodyType === 'JSON') {
+  if (r.bodyType === 'JSON' || r.bodyType === 'GRAPHQL') {
     if (r.bodyJson) {
       try {
         patch.bodyJson = JSON.parse(r.bodyJson);
@@ -121,6 +123,9 @@ export function toServerPatch(r: ApiRequest): Record<string, unknown> {
       patch.bodyJson = null;
       patch.bodyText = null;
     }
+  } else if (r.bodyType === 'XML') {
+    patch.bodyText = r.bodyJson ?? null;
+    patch.bodyJson = null;
   } else if (r.bodyType === 'MULTIPART') {
     patch.bodyParts = stripTransportData(r.bodyParts ?? []);
     patch.bodyJson = null;
@@ -142,6 +147,7 @@ const DIRTY_FIELDS = [
   'bodyParts',
   'formula',
   'assertions',
+  'apiType',
 ] as const;
 
 function dirtySnapshot(r: ApiRequest): unknown[] {

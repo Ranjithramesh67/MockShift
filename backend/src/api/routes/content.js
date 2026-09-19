@@ -15,7 +15,7 @@ const router = Router();
 router.use(requireAuth);
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
-const BODY_TYPES = ['NONE', 'JSON', 'FORM_URLENCODED', 'MULTIPART', 'RAW_TEXT', 'GRAPHQL'];
+const BODY_TYPES = ['NONE', 'JSON', 'FORM_URLENCODED', 'MULTIPART', 'RAW_TEXT', 'GRAPHQL', 'XML'];
 const API_TYPES = ['REST', 'SOAP', 'GRAPHQL', 'AUTH'];
 
 // ---- Sibling-unique names -------------------------------------------------

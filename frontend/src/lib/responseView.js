@@ -86,8 +86,8 @@ function isBinaryResponse(response) {
  */
 function responseLanguage(response) {
   const ct = contentTypeOf(response).toLowerCase();
-  if (ct.includes('xml') || ct.includes('graphql')) return 'xml';
-  if (ct.includes('json')) return 'json';
+  if (ct.includes('xml') || ct.includes('soap')) return 'xml';
+  if (ct.includes('graphql') || ct.includes('json')) return 'json';
   if (ct.includes('html')) return 'html';
   if (ct.startsWith('text/')) return 'text';
   return 'json';

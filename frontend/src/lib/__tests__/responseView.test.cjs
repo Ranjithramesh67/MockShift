@@ -59,6 +59,8 @@ test('responseLanguage maps content types to editor languages', () => {
   assert.equal(responseLanguage(response({ headers: { 'content-type': 'text/html' } })), 'html');
   assert.equal(responseLanguage(response({ headers: { 'content-type': 'text/plain' } })), 'text');
   assert.equal(responseLanguage(response({ headers: { 'content-type': 'application/x-protobuf' } })), 'json');
+  assert.equal(responseLanguage(response({ headers: { 'content-type': 'application/graphql-response+json' } })), 'json');
+  assert.equal(responseLanguage(response({ headers: { 'content-type': 'text/xml' } })), 'xml');
 });
 
 test('prettify formats valid JSON and leaves invalid JSON untouched', () => {

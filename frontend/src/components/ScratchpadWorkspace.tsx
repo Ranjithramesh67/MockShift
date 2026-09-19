@@ -15,6 +15,7 @@ import {
   type BodyKind,
 } from '@/lib/requestForm';
 import { defaultScratchDraft, scratchDraftToRunInput } from '@/lib/scratchpadDraft';
+import { GraphqlBodyEditor } from './GraphqlBodyEditor';
 import { TabBar } from './TabBar';
 import { KeyValueRows } from './KeyValueRows';
 import { MultipartRows } from './MultipartRows';
@@ -290,11 +291,17 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
                       })
                     }
                   />
+                ) : bodyKind === 'GRAPHQL' ? (
+                  <GraphqlBodyEditor
+                    value={draft.bodyJson}
+                    onChange={(bodyJson) => update({ bodyJson, bodyType: 'GRAPHQL', contentType: 'application/json' })}
+                    onModEnter={onSend}
+                  />
                 ) : (
                   <CodeEditor
                     value={draft.bodyJson ?? ''}
                     onChange={(value) => update({ bodyJson: value })}
-                    language={bodyKind === 'JSON' || bodyKind === 'GRAPHQL' ? 'json' : bodyKind === 'XML' ? 'xml' : 'text'}
+                    language={bodyKind === 'JSON' ? 'json' : bodyKind === 'XML' ? 'xml' : 'text'}
                     height="100%"
                     ariaLabel="Request body editor"
                     onModEnter={onSend}

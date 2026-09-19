@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import type { ApiRequest, HttpMethod } from '@/lib/types';
+import type { ApiRequest, ApiType, HttpMethod } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
@@ -12,11 +12,14 @@ import { seedPartsFromLegacy } from '@/lib/multipartParts';
 import {
   METHODS,
   METHOD_COLORS,
+  API_TYPES,
   BODY_KIND_OPTIONS,
   bodyKindOf,
   bodyTypeForKind,
+  defaultsForApiType,
   type BodyKind,
 } from '@/lib/requestForm';
+import { GraphqlBodyEditor } from './GraphqlBodyEditor';
 import { KeyValueRows } from './KeyValueRows';
 import { MultipartRows } from './MultipartRows';
 import { CodeEditor } from './CodeEditor';
@@ -218,6 +221,34 @@ export function RequestConfigurator() {
             </option>
           ))}
         </select>
+        <select
+          className="method-select"
+          value={request.apiType}
+          aria-label="API type"
+          data-testid="api-type-select"
+          onChange={(e) => {
+            const next = e.target.value as ApiType;
+            const seeded = defaultsForApiType(next);
+            const emptyBody = !request.bodyJson || !String(request.bodyJson).trim();
+            if (seeded && emptyBody) {
+              update({
+                apiType: next,
+                method: seeded.method,
+                bodyType: seeded.bodyType,
+                contentType: seeded.contentType,
+                bodyJson: seeded.bodyJson,
+              });
+            } else {
+              update({ apiType: next });
+            }
+          }}
+        >
+          {API_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
         <input
           className="url-input"
           type="text"
@@ -337,11 +368,19 @@ export function RequestConfigurator() {
                 files={ws.selectedFiles?.[request.id] ?? {}}
                 onFileChange={(partId, file) => ws.setFileForPart(request.id, partId, file)}
               />
+            ) : bodyKind === 'GRAPHQL' ? (
+              <GraphqlBodyEditor
+                value={request.bodyJson}
+                onChange={(bodyJson) =>
+                  update({ bodyJson, bodyType: 'GRAPHQL', contentType: 'application/json' })
+                }
+                onModEnter={runActive}
+              />
             ) : (
               <CodeEditor
                 value={request.bodyJson ?? ''}
                 onChange={(value) => update({ bodyJson: value })}
-                language={bodyKind === 'JSON' || bodyKind === 'GRAPHQL' ? 'json' : bodyKind === 'XML' ? 'xml' : 'text'}
+                language={bodyKind === 'JSON' ? 'json' : bodyKind === 'XML' ? 'xml' : 'text'}
                 height="100%"
                 ariaLabel="Request body editor"
                 onModEnter={runActive}

@@ -116,6 +116,22 @@ export function CreateModal({
     if (t !== 'REST' && !BODY_METHODS.has(method)) {
       setMethod('POST');
     }
+    if (t === 'SOAP') {
+      setBodySel('XML');
+      setFormTab('body');
+      if (!bodyText.trim()) {
+        setBodyText(
+          '<?xml version="1.0" encoding="UTF-8"?>\n<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">\n  <soap:Body>\n    <GetUser><id>1</id></GetUser>\n  </soap:Body>\n</soap:Envelope>'
+        );
+      }
+    }
+    if (t === 'GRAPHQL') {
+      setBodySel('JSON');
+      setFormTab('body');
+      if (!bodyText.trim()) {
+        setBodyText(JSON.stringify({ query: 'query { ping }', variables: {} }, null, 2));
+      }
+    }
   };
 
   const pickFormTab = (tab: FormTab) => {
@@ -228,12 +244,36 @@ export function CreateModal({
         };
         if (supportsBody && bodyText.trim()) {
           const graphql = apiType === 'GRAPHQL';
-          const contentType =
-            bodySel === 'XML' ? 'application/xml' : graphql ? 'application/json' : bodySel === 'JSON' ? 'application/json' : 'text/plain';
-          const bodyType = graphql ? 'GRAPHQL' : bodySel === 'JSON' ? 'JSON' : 'RAW_TEXT';
+          const soap = apiType === 'SOAP' || bodySel === 'XML';
+          const contentType = soap
+            ? apiType === 'SOAP'
+              ? 'text/xml'
+              : 'application/xml'
+            : graphql || bodySel === 'JSON'
+              ? 'application/json'
+              : 'text/plain';
+          const bodyType = graphql ? 'GRAPHQL' : soap ? 'XML' : bodySel === 'JSON' ? 'JSON' : 'RAW_TEXT';
           patch.bodyType = bodyType;
-          patch.bodyJson = bodyText.trim();
+          if (graphql) {
+            try {
+              patch.bodyJson = JSON.parse(bodyText.trim());
+            } catch {
+              patch.bodyJson = { query: bodyText.trim() };
+            }
+          } else if (soap) {
+            patch.bodyText = bodyText.trim();
+            patch.bodyJson = null;
+          } else {
+            patch.bodyJson = bodyText.trim();
+          }
           patch.contentType = contentType;
+        } else if (apiType === 'GRAPHQL') {
+          patch.bodyType = 'GRAPHQL';
+          patch.bodyJson = { query: 'query { ping }', variables: {} };
+        } else if (apiType === 'SOAP') {
+          patch.bodyType = 'XML';
+          patch.bodyText =
+            '<?xml version="1.0" encoding="UTF-8"?>\n<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">\n  <soap:Body>\n    <GetUser><id>1</id></GetUser>\n  </soap:Body>\n</soap:Envelope>';
         }
         await contentApi.updateRequest(request.id, patch);
         await ws.reloadTree();

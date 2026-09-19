@@ -247,3 +247,33 @@ test('server patch leaves JSON bodies unchanged (no bodyParts key)', () => {
   assert.equal(patch.bodyText, undefined);
   assert.equal(patch.bodyParts, undefined);
 });
+
+test('server patch parses a GraphQL body into an object', () => {
+  const patch = scratchDraftToServerPatch({
+    bodyType: 'GRAPHQL',
+    bodyJson: '{"query":"{ ping }","variables":{}}',
+    headers: [],
+    queryParams: [],
+    formula: '',
+    assertions: [],
+  });
+  assert.equal(patch.bodyType, 'GRAPHQL');
+  assert.deepEqual(patch.bodyJson, { query: '{ ping }', variables: {} });
+});
+
+test('run input parses a GraphQL body', () => {
+  const input = scratchDraftToRunInput({
+    method: 'POST',
+    url: 'http://127.0.0.1:3999/graphql',
+    headers: [],
+    queryParams: [],
+    bodyType: 'GRAPHQL',
+    bodyJson: '{"query":"{ ping }"}',
+    bodyText: null,
+    apiType: 'GRAPHQL',
+    formula: '',
+    assertions: [],
+  });
+  assert.equal(input.bodyType, 'GRAPHQL');
+  assert.deepEqual(input.bodyJson, { query: '{ ping }' });
+});

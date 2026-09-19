@@ -82,7 +82,7 @@ function scratchDraftToRunInput(draft) {
   const bodyJsonRaw = draft.bodyJson ?? null;
   let bodyJson = bodyJsonRaw;
   if (
-    draft.bodyType === 'JSON' &&
+    (draft.bodyType === 'JSON' || draft.bodyType === 'GRAPHQL') &&
     typeof bodyJsonRaw === 'string' &&
     bodyJsonRaw.length > 0
   ) {
@@ -128,7 +128,7 @@ function scratchDraftToServerPatch(draft) {
     formula: draft.formula || '',
     assertions: draft.assertions ?? [],
   };
-  if (draft.bodyType === 'JSON') {
+  if (draft.bodyType === 'JSON' || draft.bodyType === 'GRAPHQL') {
     const bodyJson = draft.bodyJson ?? null;
     if (typeof bodyJson === 'string' && bodyJson.length > 0) {
       try {

@@ -15,6 +15,7 @@ import {
   downloadBlob,
 } from '@/lib/responseView';
 import { assertionCounts, allAssertionsPassed } from '@/lib/assertions';
+import { graphqlErrors } from '@/lib/graphqlBody';
 
 type ViewMode = 'pretty' | 'raw' | 'preview';
 
@@ -42,6 +43,7 @@ export function ResponsePane() {
     if (!response || isBinary) return '';
     return prettify(response.body, language);
   }, [response, isBinary, language]);
+  const gqlErrors = useMemo(() => (response && !isBinary ? graphqlErrors(response) : []), [response, isBinary]);
 
   const size = useMemo(() => (response ? responseBlob(response).size : 0), [response]);
   const sizeLabel = size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
@@ -144,6 +146,17 @@ export function ResponsePane() {
         <div className="run-error" data-testid="run-error">
           <AlertIcon size={14} />
           {run.error}
+        </div>
+      )}
+
+      {gqlErrors.length > 0 && (
+        <div className="run-error" data-testid="graphql-errors">
+          <AlertIcon size={14} />
+          <ul>
+            {gqlErrors.map((e: { message: string }, i: number) => (
+              <li key={i}>{e.message}</li>
+            ))}
+          </ul>
         </div>
       )}
 
