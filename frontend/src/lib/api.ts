@@ -316,7 +316,8 @@ export type MenuKey =
   | 'copilot'
   | 'collab'
   | 'manage'
-  | 'json-compare';
+  | 'json-compare'
+  | 'network';
 
 export interface MenuAccessResponse {
   menus: Record<MenuKey, boolean>;
@@ -563,6 +564,14 @@ export const adminApi = {
   individualLlm: () => apiFetch<{ allowed: boolean }>('/api/admin/settings/individual-llm'),
   setIndividualLlm: (input: { allowed: boolean }) =>
     apiFetch<{ allowed: boolean }>('/api/admin/settings/individual-llm', { method: 'PUT', body: input }),
+  companyDomains: () => apiFetch<{ domains: AdminCompanyDomain[] }>('/api/admin/company-domains'),
+  addCompanyDomain: (input: { companyName: string; domain: string }) =>
+    apiFetch<{ domain: AdminCompanyDomain }>('/api/admin/company-domains', {
+      method: 'POST',
+      body: input,
+    }),
+  removeCompanyDomain: (id: string) =>
+    apiFetch<void>(`/api/admin/company-domains/${id}`, { method: 'DELETE' }),
 };
 
 export interface AdminAccessUser {
@@ -612,6 +621,16 @@ export interface AdminMenusResponse {
   settings: AdminMenuSettingRow[];
   organizations: Array<{ id: string; name: string; kind: string }>;
   projects: Array<{ id: string; name: string; workspace_name: string }>;
+}
+
+export interface AdminCompanyDomain {
+  id: string;
+  company_name: string;
+  domain: string;
+  organization_id: string | null;
+  organization_name: string | null;
+  member_count: number;
+  created_at: string;
 }
 
 // ---------------------------------------------------------------- Manage API
@@ -1278,4 +1297,57 @@ export const jsonCompareApi = {
   update: (id: string, input: JsonComparisonInput) =>
     apiFetch<{ comparison: JsonComparison }>(`/api/json-comparisons/${id}`, { method: 'PUT', body: input }),
   remove: (id: string) => apiFetch<void>(`/api/json-comparisons/${id}`, { method: 'DELETE' }),
+};
+
+// ---------------------------------------------------------------- People API
+export interface NetworkPerson {
+  id: string;
+  name: string;
+  username?: string | null;
+  email: string;
+  role?: string | null;
+  is_active?: boolean;
+  is_contact?: boolean;
+  invite_pending?: boolean;
+  connected_at?: string;
+  joined_at?: string;
+}
+
+export interface NetworkInvitation {
+  id: string;
+  email: string;
+  message: string | null;
+  kind: 'FRIEND' | 'ORG';
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED';
+  organizationId: string | null;
+  createdAt: string;
+  respondedAt: string | null;
+  inviter: { id: string; name: string; username?: string | null; email: string };
+  invitee: { id: string; name: string; username?: string | null; email: string } | null;
+}
+
+export interface NetworkDirectory {
+  scope: 'company' | 'personal';
+  organization: { id: string; name: string; domain: string | null } | null;
+  people: NetworkPerson[];
+}
+
+export const networkApi = {
+  directory: () => apiFetch<NetworkDirectory>('/api/network/directory'),
+  search: (q: string) =>
+    apiFetch<NetworkDirectory>(`/api/network/directory/search?q=${encodeURIComponent(q)}`),
+  invitations: (box: 'incoming' | 'outgoing') =>
+    apiFetch<{ box: string; invitations: NetworkInvitation[] }>(`/api/network/invitations?box=${box}`),
+  invite: (email: string, message?: string) =>
+    apiFetch<{ invitation: NetworkInvitation }>('/api/network/invitations', {
+      method: 'POST',
+      body: { email, message },
+    }),
+  accept: (id: string) =>
+    apiFetch<{ ok: boolean; status: string }>(`/api/network/invitations/${id}/accept`, { method: 'POST' }),
+  decline: (id: string) =>
+    apiFetch<{ ok: boolean; status: string }>(`/api/network/invitations/${id}/decline`, { method: 'POST' }),
+  cancel: (id: string) => apiFetch<void>(`/api/network/invitations/${id}`, { method: 'DELETE' }),
+  contacts: () => apiFetch<{ contacts: NetworkPerson[] }>('/api/network/contacts'),
+  removeContact: (userId: string) => apiFetch<void>(`/api/network/contacts/${userId}`, { method: 'DELETE' }),
 };

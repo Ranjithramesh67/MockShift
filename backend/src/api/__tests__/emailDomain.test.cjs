@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   normalizeEmailDomain,
+  normalizeDomain,
   isPersonalDomain,
   classifyEmail,
   companyNameFromDomain,
@@ -19,8 +20,17 @@ test('normalizes the domain, ignoring case and trailing dots', () => {
   assert.equal(normalizeEmailDomain(null), null);
 });
 
-test('classifies well-known consumer providers as PERSONAL', () => {
-  for (const email of [
+test('normalizeDomain accepts a bare domain, a leading @, or a full email', () => {
+  assert.equal(normalizeDomain('Acme.COM'), 'acme.com');
+  assert.equal(normalizeDomain('@acme.com'), 'acme.com');
+  assert.equal(normalizeDomain('dev@acme.com'), 'acme.com');
+  assert.equal(normalizeDomain('acme.com.'), 'acme.com');
+  assert.equal(normalizeDomain('nodot'), null);
+  assert.equal(normalizeDomain(''), null);
+  assert.equal(normalizeDomain(null), null);
+});
+
+test('classifies well-known consumer providers as PERSONAL', () => {  for (const email of [
     'a@gmail.com',
     'b@yahoo.co.uk',
     'c@outlook.com',

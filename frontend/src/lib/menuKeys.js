@@ -16,6 +16,7 @@ const TOGGLEABLE_MENU_KEYS = [
   'collab',
   'manage',
   'json-compare',
+  'network',
 ];
 
 /** @returns {Record<string, boolean>} */

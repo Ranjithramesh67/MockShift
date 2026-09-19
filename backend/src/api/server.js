@@ -35,6 +35,7 @@ const menuAccessRoutes = require('./routes/menuAccess');
 const searchRoutes = require('./routes/search');
 const userLlmRoutes = require('./routes/userLlm');
 const jsonComparisonRoutes = require('./routes/jsonComparisons');
+const networkRoutes = require('./routes/network');
 const { requireMenuEnabled } = require('./menuAccess');
 const { mockDispatch } = require('./mockDispatch');
 const { query } = require('./db');
@@ -125,6 +126,7 @@ function createApp() {
   app.use('/api/events', eventsRoutes);
   app.use('/api/history', requireMenuEnabled('history'), historyRoutes);
   app.use('/api/json-comparisons', requireMenuEnabled('json-compare'), jsonComparisonRoutes);
+  app.use('/api/network', requireMenuEnabled('network'), networkRoutes);
   app.use('/api', mockServerRoutes);
   app.use('/api', exportRoutes);
   app.use('/api/docs', requireMenuEnabled('docs'), docsRoutes);

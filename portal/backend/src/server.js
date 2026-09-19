@@ -13,6 +13,7 @@ const subscribersRouter = require('./routes/subscribers');
 const promoCodesRouter = require('./routes/promoCodes');
 const auditRouter = require('./routes/audit');
 const settingsRouter = require('./routes/settings');
+const companyDomainsRouter = require('./routes/companyDomains');
 const paymentGatewayRouter = require('./routes/paymentGateway');
 const webhooksRouter = require('./routes/webhooks');
 
@@ -70,6 +71,7 @@ function createApp() {
   app.use('/api/plans', plansRouter);
   app.use('/api/portal', summaryRouter);
   app.use('/api/portal', settingsRouter);
+  app.use('/api/portal', companyDomainsRouter);
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/subscribers', subscribersRouter);
   app.use('/api/promo-codes', promoCodesRouter);

@@ -27,6 +27,7 @@ export function RouteViewSync() {
     else if (pathname.startsWith('/copilot')) view = 'copilot';
     else if (pathname.startsWith('/collab')) view = 'collab';
     else if (pathname.startsWith('/json-compare') || pathname.startsWith('/json-comparisons')) view = 'json-compare';
+    else if (pathname.startsWith('/network')) view = 'network';
     else if (pathname.startsWith('/inbox')) view = 'inbox';
     else if (pathname.startsWith('/settings')) view = 'settings';
     setView(view);

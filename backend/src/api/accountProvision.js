@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------
 
 const { classifyEmail, companyNameFromDomain } = require('./emailDomain');
+const { lookupRegisteredCompany, linkRegisteredCompany } = require('./companyNetwork');
 
 /**
  * @param {import('pg').PoolClient} client an open transaction client
@@ -30,26 +31,41 @@ async function provisionNewAccount(client, { userId, email, displayName }) {
   let orgRole = 'ADMIN';
   let joinedExisting = false;
 
+  // Admin-registered company for this domain, if any. It supplies the human
+  // company name and may already point at the organization serving the domain.
+  const run = (sql, params) => client.query(sql, params);
+  const registered = isPersonal ? null : await lookupRegisteredCompany(run, domain);
+
   if (!isPersonal) {
-    const { rows } = await client.query(
-      `SELECT id FROM organizations
-        WHERE kind = 'COMPANY' AND domain = $1
-        FOR UPDATE`,
-      [domain]
-    );
-    if (rows.length > 0) {
-      orgId = rows[0].id;
+    if (registered && registered.organization_id) {
+      orgId = registered.organization_id;
       orgRole = 'EDITOR';
       joinedExisting = true;
+    } else {
+      const { rows } = await client.query(
+        `SELECT id FROM organizations
+          WHERE kind = 'COMPANY' AND domain = $1
+          FOR UPDATE`,
+        [domain]
+      );
+      if (rows.length > 0) {
+        orgId = rows[0].id;
+        orgRole = 'EDITOR';
+        joinedExisting = true;
+      }
     }
   }
 
   let orgName;
   if (orgId) {
     const { rows } = await client.query(`SELECT name FROM organizations WHERE id = $1`, [orgId]);
-    orgName = rows[0] ? rows[0].name : companyNameFromDomain(domain);
+    orgName = rows[0]
+      ? rows[0].name
+      : (registered && registered.company_name) || companyNameFromDomain(domain);
   } else {
-    orgName = isPersonal ? `${name}'s Org` : companyNameFromDomain(domain);
+    orgName = isPersonal
+      ? `${name}'s Org`
+      : (registered && registered.company_name) || companyNameFromDomain(domain);
     const { rows } = await client.query(
       `INSERT INTO organizations (name, owner_id, kind, domain)
        VALUES ($1, $2, $3, $4)
@@ -57,6 +73,9 @@ async function provisionNewAccount(client, { userId, email, displayName }) {
       [orgName, userId, accountType, isPersonal ? null : domain]
     );
     orgId = rows[0].id;
+    if (registered && !registered.organization_id) {
+      await linkRegisteredCompany(run, domain, orgId);
+    }
   }
 
   await client.query(

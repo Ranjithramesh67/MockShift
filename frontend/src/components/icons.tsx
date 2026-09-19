@@ -485,3 +485,12 @@ export const CompareIcon = (p: IconProps) => (
     <path d="m9 13 3 3 3-3" />
   </svg>
 );
+
+export const NetworkIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <circle cx="7" cy="7" r="2.6" />
+    <circle cx="17.5" cy="7.5" r="2.2" />
+    <circle cx="9.5" cy="17.5" r="2.2" />
+    <path d="M8.8 9.2 8.4 15.3M9.4 7.6l5.9-.1M16.4 9.3l-5.2 6.2" />
+  </svg>
+);

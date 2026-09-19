@@ -16,7 +16,8 @@ export type AppView =
   | 'mock-scenarios'
   | 'copilot'
   | 'collab'
-  | 'json-compare';
+  | 'json-compare'
+  | 'network';
 
 interface NavState {
   view: AppView;

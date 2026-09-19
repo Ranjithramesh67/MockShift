@@ -33,6 +33,7 @@ const MENU_KEYS = Object.freeze([
   'collab',
   'manage',
   'json-compare',
+  'network',
 ]);
 
 function isMenuKey(key) {

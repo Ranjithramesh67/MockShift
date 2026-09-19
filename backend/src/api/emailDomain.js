@@ -94,8 +94,20 @@ function normalizeEmailDomain(email) {
   return domain;
 }
 
-function isPersonalDomain(domain) {
-  if (!domain) return true; // unknown/garbage -> safest is the restricted tier
+/**
+ * Normalize a bare domain (or an email address) to a lower-cased domain.
+ * `acme.com`, `@acme.com` and `user@acme.com` all yield `acme.com`. Returns
+ * null when no usable dotted domain can be extracted.
+ */
+function normalizeDomain(value) {
+  const raw = String(value || '').trim().toLowerCase().replace(/\.+$/, '');
+  const at = raw.lastIndexOf('@');
+  const domain = (at >= 0 ? raw.slice(at + 1) : raw).replace(/\.+$/, '');
+  if (!domain || !domain.includes('.')) return null;
+  return domain;
+}
+
+function isPersonalDomain(domain) {  if (!domain) return true; // unknown/garbage -> safest is the restricted tier
   if (companyOverride().includes(domain)) return false;
   if (isSpecialUseDomain(domain)) return true;
   if (PERSONAL_EMAIL_DOMAINS.has(domain)) return true;
@@ -135,6 +147,7 @@ function companyNameFromDomain(domain) {
 module.exports = {
   PERSONAL_EMAIL_DOMAINS,
   normalizeEmailDomain,
+  normalizeDomain,
   isSpecialUseDomain,
   isPersonalDomain,
   classifyEmail,

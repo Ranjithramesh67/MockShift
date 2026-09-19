@@ -77,6 +77,12 @@ const NAV_ITEMS: NavItem[] = [
     min: 'SUPPORT',
     icon: <Ic d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2h-6zM9 12h6M9 16h6M9 8h6" />,
   },
+  {
+    href: '/manage/companies',
+    label: 'Companies',
+    min: 'MANAGER',
+    icon: <Ic d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2c2.5 3 2.5 17 0 20M12 2c-2.5 3-2.5 17 0 20" />,
+  },
 ];
 
 function initials(name: string): string {

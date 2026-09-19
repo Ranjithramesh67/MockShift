@@ -8,6 +8,7 @@ const { logAudit } = require('../audit');
 const { allocateUsername } = require('../username');
 const { checkSeatGate, orgOfProject, orgOfWorkspace } = require('../entitlements');
 const { MENU_KEYS, isMenuKey } = require('../menuAccess');
+const { normalizeDomain, isSpecialUseDomain } = require('../emailDomain');
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -486,6 +487,97 @@ router.put('/settings/individual-llm', async (req, res, next) => {
       ip: req.ip,
     });
     res.json({ allowed });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------- Company domain registry
+// Admin-maintained mapping of "Company Name" -> email domain. Any account that
+// signs up or logs in with a registered domain joins the company organization
+// (see companyNetwork.js).
+router.get('/company-domains', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT cd.id, cd.company_name, cd.domain, cd.organization_id, cd.created_at,
+              o.name AS organization_name,
+              (SELECT count(*)::int FROM organization_members om
+                WHERE om.org_id = cd.organization_id) AS member_count
+         FROM company_domains cd
+         LEFT JOIN organizations o ON o.id = cd.organization_id
+        ORDER BY cd.company_name, cd.domain`
+    );
+    res.json({ domains: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/company-domains', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const companyName = String(body.companyName || body.company_name || '').trim();
+    const domain = normalizeDomain(body.domain || '');
+    if (!companyName) return res.status(400).json({ error: 'companyName is required' });
+    if (companyName.length > 160) return res.status(400).json({ error: 'companyName is too long' });
+    if (!domain) return res.status(400).json({ error: 'A valid email domain is required' });
+    if (isSpecialUseDomain(domain)) {
+      return res.status(400).json({ error: 'Reserved and test domains cannot be registered' });
+    }
+
+    // Link to an existing company organization for the domain when one exists.
+    const org = await query(
+      `SELECT id FROM organizations WHERE kind = 'COMPANY' AND domain = $1`,
+      [domain]
+    );
+    const orgId = org.rows[0] ? org.rows[0].id : null;
+    const { rows } = await query(
+      `INSERT INTO company_domains (company_name, domain, organization_id, created_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (domain) DO UPDATE
+         SET company_name = EXCLUDED.company_name,
+             organization_id = COALESCE(company_domains.organization_id, EXCLUDED.organization_id)
+       RETURNING *`,
+      [companyName, domain, orgId, req.user.id]
+    );
+    // The registry is authoritative: keep the linked organization's display
+    // name in step with the admin-provided company name.
+    if (rows[0].organization_id) {
+      await query(`UPDATE organizations SET name = $1 WHERE id = $2`, [
+        companyName,
+        rows[0].organization_id,
+      ]);
+    }
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'company_domain',
+      entityId: rows[0].id,
+      action: 'register_company_domain',
+      detail: { companyName, domain, organizationId: rows[0].organization_id },
+      ip: req.ip,
+    });
+    res.status(201).json({ domain: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/company-domains/:id', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `DELETE FROM company_domains WHERE id = $1 RETURNING id, company_name, domain`,
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Company domain not found' });
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'company_domain',
+      entityId: rows[0].id,
+      action: 'remove_company_domain',
+      detail: { companyName: rows[0].company_name, domain: rows[0].domain },
+      ip: req.ip,
+    });
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

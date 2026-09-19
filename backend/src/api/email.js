@@ -138,6 +138,18 @@ function verifyEmailMessage(link) {
   };
 }
 
+function invitationMessage({ inviterName, message, link }) {
+  const who = String(inviterName || 'A teammate');
+  const href = escapeHtml(link);
+  const note = message ? `<p style="color:#555">"${escapeHtml(message)}"</p>` : '';
+  const noteText = message ? `\n\nMessage from ${who}:\n"${message}"` : '';
+  return {
+    subject: `${who} invited you to connect on API Hub`,
+    text: `${who} invited you to connect on API Hub.${noteText}\n\nOpen API Hub to accept:\n${link}\n\nIf you were not expecting this, you can ignore this email.`,
+    html: `<p><strong>${escapeHtml(who)}</strong> invited you to connect on API Hub.</p>${note}<p><a href="${href}">View invitation</a></p><p>If you were not expecting this, you can ignore this email.</p>`,
+  };
+}
+
 function setTransportForTest(transport) {
   transportOverride = transport;
 }
@@ -155,6 +167,7 @@ module.exports = {
   verifyTransport,
   passwordResetMessage,
   verifyEmailMessage,
+  invitationMessage,
   setTransportForTest,
   resetTransportForTest,
 };

@@ -14,6 +14,7 @@ const {
 const { requireAuth, loadUserById } = require('../access');
 const { allocateUsername } = require('../username');
 const { provisionNewAccount } = require('../accountProvision');
+const { syncCompanyOrg } = require('../companyNetwork');
 const { generateToken, hashToken, expiryFor, createThrottle } = require('../authTokens');
 const { issueEmailVerification } = require('../emailVerification');
 const email = require('../email');
@@ -142,6 +143,14 @@ router.post('/login', async (req, res, next) => {
     }
     if (!user.is_active) {
       return res.status(403).json({ error: 'This account has been deactivated' });
+    }
+    // A domain registered by an admin after this account was created should
+    // still pull the user into their company organization. Best-effort: a
+    // failure here must never block an otherwise valid login.
+    try {
+      await syncCompanyOrg({ userId: user.id, email: user.email });
+    } catch (err) {
+      console.error('[auth] company sync failed:', err.message);
     }
     res.setHeader('Set-Cookie', sessionCookie(createSessionToken(user.id, user.session_epoch)));
     res.json({ user: await userSummary(user.id) });

@@ -12,15 +12,17 @@ import {
   type AdminAccessWorkspace,
   type AdminMenuSettingRow,
   type AdminMenusResponse,
+  type AdminCompanyDomain,
   type MenuKey,
 } from '@/lib/api';
 
-type Tab = 'users' | 'access' | 'menus' | 'ai';
+type Tab = 'users' | 'access' | 'menus' | 'companies' | 'ai';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'users', label: 'Users' },
   { id: 'access', label: 'Access' },
   { id: 'menus', label: 'Menus' },
+  { id: 'companies', label: 'Companies' },
   { id: 'ai', label: 'AI' },
 ];
 
@@ -158,6 +160,8 @@ export function AdminView() {
       )}
 
       {tab === 'menus' && <MenusTab busy={busy} onRun={run} />}
+
+      {tab === 'companies' && <CompaniesTab busy={busy} onRun={run} />}
 
       {tab === 'ai' && <AiSettingsTab busy={busy} onRun={run} />}
 
@@ -760,6 +764,123 @@ function AiSettingsTab({ busy, onRun }: {
         />
         <span>Allow individuals to bring their own LLM</span>
       </label>
+    </div>
+  );
+}
+
+function CompaniesTab({ busy, onRun }: {
+  busy: boolean;
+  onRun: (label: string, fn: () => Promise<unknown>) => Promise<void>;
+}) {
+  const [rows, setRows] = useState<AdminCompanyDomain[] | null>(null);
+  const [companyName, setCompanyName] = useState('');
+  const [domain, setDomain] = useState('');
+
+  const load = async () => {
+    try {
+      const res = await adminApi.companyDomains();
+      setRows(res.domains);
+    } catch {
+      setRows([]);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (rows === null) return <p className="hint">Loading company domains…</p>;
+
+  const add = () =>
+    onRun(`Registered ${companyName} (${domain}).`, async () => {
+      await adminApi.addCompanyDomain({ companyName: companyName.trim(), domain: domain.trim() });
+      setCompanyName('');
+      setDomain('');
+      await load();
+    });
+
+  return (
+    <div data-testid="admin-companies-section">
+      <p className="hint">
+        Register a company name and its email domain. Anyone who signs up or logs in with a
+        registered domain automatically joins that company&apos;s organization and can find their
+        colleagues in the People directory without an invitation.
+      </p>
+
+      <div className="admin-access-add" style={{ marginTop: 12 }}>
+        <input
+          className="text-input"
+          placeholder="Company name"
+          value={companyName}
+          disabled={busy}
+          data-testid="company-name"
+          onChange={(e) => setCompanyName(e.target.value)}
+        />
+        <input
+          className="text-input"
+          placeholder="example.com"
+          value={domain}
+          disabled={busy}
+          data-testid="company-domain"
+          onChange={(e) => setDomain(e.target.value)}
+        />
+        <button
+          type="button"
+          className="primary-button small"
+          disabled={busy || !companyName.trim() || !domain.trim()}
+          data-testid="company-add"
+          onClick={add}
+        >
+          Register domain
+        </button>
+      </div>
+
+      <div className="table-wrap table-stack" style={{ marginTop: 16 }}>
+        <table className="admin-table" data-testid="admin-companies-table">
+          <thead>
+            <tr>
+              <th>Company</th>
+              <th>Domain</th>
+              <th>Organization</th>
+              <th>Members</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={5} className="hint">
+                  No company domains registered yet.
+                </td>
+              </tr>
+            )}
+            {rows.map((d) => (
+              <tr key={d.id} data-testid={`company-row-${d.id}`}>
+                <td data-label="Company">{d.company_name}</td>
+                <td data-label="Domain">@{d.domain}</td>
+                <td data-label="Organization">{d.organization_name || 'Created on first login'}</td>
+                <td data-label="Members">{d.member_count}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="ghost-button small danger"
+                    disabled={busy}
+                    data-testid={`company-remove-${d.id}`}
+                    onClick={() =>
+                      onRun(`Removed ${d.domain}.`, async () => {
+                        await adminApi.removeCompanyDomain(d.id);
+                        await load();
+                      })}
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

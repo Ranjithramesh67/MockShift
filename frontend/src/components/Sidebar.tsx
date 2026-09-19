@@ -54,6 +54,7 @@ import {
   SearchIcon,
   XIcon,
   CompareIcon,
+  NetworkIcon,
 } from './icons';
 
 type RailTab = 'apis' | 'teams' | 'workflow';
@@ -1710,6 +1711,21 @@ export function Sidebar({
             }}
           >
             <CompareIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('network') && (
+          <Link
+            href="/network"
+            className={`rail-button ${view === 'network' ? 'active' : ''}`}
+            data-testid="rail-network"
+            title="People"
+            aria-label="People"
+            onClick={() => {
+              setView('network');
+              onRequestClose?.();
+            }}
+          >
+            <NetworkIcon size={17} />
           </Link>
         )}
         {canManage && menu.isEnabled('manage') && (
