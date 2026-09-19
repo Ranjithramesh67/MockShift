@@ -299,15 +299,11 @@ export function JsonCompareView() {
           </div>
 
           <div
-            className={`json-compare-editors is-${viewMode === 'side' ? 'side' : viewMode === 'split' ? 'split' : 'single'}`}
+            className={`json-compare-editors is-${viewMode === 'side' ? 'side' : 'split'}`}
             data-testid="json-compare-editors"
-            data-layout={viewMode}
+            data-layout={viewMode === 'side' ? 'side' : 'split'}
           >
-            {viewMode === 'request' ? (
-              <ComparePane label="Left" value={leftText} onChange={setLeftText} ariaLabel="Left JSON payload" />
-            ) : viewMode === 'response' ? (
-              <ComparePane label="Right" value={rightText} onChange={setRightText} ariaLabel="Right JSON payload" />
-            ) : viewMode === 'side' ? (
+            {viewMode === 'side' ? (
               <SplitPane
                 orientation="horizontal"
                 top={<ComparePane label="Left" value={leftText} onChange={setLeftText} ariaLabel="Left JSON payload" />}
