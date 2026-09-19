@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CodeEditor } from '../CodeEditor';
+import { SplitPane } from '../SplitPane';
 import { CompareIcon, SaveIcon, TrashIcon } from '../icons';
 import {
   jsonCompareApi,
@@ -12,6 +13,7 @@ import {
 } from '@/lib/api';
 import { parseJsonInput, compareParsed, preview } from '@/lib/jsonDiff';
 import { formatSorted, normalizeSortOptions } from '@/lib/jsonSort';
+import { useApp } from '@/store/AppStore';
 
 const KEY_MODE_OPTIONS: Array<{ value: JsonCompareKeyMode; label: string }> = [
   { value: 'alpha', label: 'Alphabetical' },
@@ -41,7 +43,28 @@ function kindLabel(kind: string): string {
   return 'Changed';
 }
 
+function ComparePane({
+  label,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="json-compare-pane">
+      <div className="json-compare-pane-head">{label}</div>
+      <CodeEditor value={value} onChange={onChange} language="json" height="100%" ariaLabel={ariaLabel} />
+    </div>
+  );
+}
+
 export function JsonCompareView() {
+  const { state } = useApp();
+  const viewMode = state.viewMode;
   const [leftText, setLeftText] = useState('{\n  "b": 2,\n  "a": 1\n}');
   const [rightText, setRightText] = useState('{\n  "a": 1,\n  "b": 2\n}');
   const [keyMode, setKeyMode] = useState<JsonCompareKeyMode>('alpha');
@@ -275,27 +298,28 @@ export function JsonCompareView() {
             </label>
           </div>
 
-          <div className="json-compare-editors">
-            <div className="json-compare-pane">
-              <div className="json-compare-pane-head">Left</div>
-              <CodeEditor
-                value={leftText}
-                onChange={setLeftText}
-                language="json"
-                height="360px"
-                ariaLabel="Left JSON payload"
+          <div
+            className={`json-compare-editors is-${viewMode === 'side' ? 'side' : viewMode === 'split' ? 'split' : 'single'}`}
+            data-testid="json-compare-editors"
+            data-layout={viewMode}
+          >
+            {viewMode === 'request' ? (
+              <ComparePane label="Left" value={leftText} onChange={setLeftText} ariaLabel="Left JSON payload" />
+            ) : viewMode === 'response' ? (
+              <ComparePane label="Right" value={rightText} onChange={setRightText} ariaLabel="Right JSON payload" />
+            ) : viewMode === 'side' ? (
+              <SplitPane
+                orientation="horizontal"
+                top={<ComparePane label="Left" value={leftText} onChange={setLeftText} ariaLabel="Left JSON payload" />}
+                bottom={<ComparePane label="Right" value={rightText} onChange={setRightText} ariaLabel="Right JSON payload" />}
               />
-            </div>
-            <div className="json-compare-pane">
-              <div className="json-compare-pane-head">Right</div>
-              <CodeEditor
-                value={rightText}
-                onChange={setRightText}
-                language="json"
-                height="360px"
-                ariaLabel="Right JSON payload"
+            ) : (
+              <SplitPane
+                orientation="vertical"
+                top={<ComparePane label="Left" value={leftText} onChange={setLeftText} ariaLabel="Left JSON payload" />}
+                bottom={<ComparePane label="Right" value={rightText} onChange={setRightText} ariaLabel="Right JSON payload" />}
               />
-            </div>
+            )}
           </div>
 
           <div className="json-compare-save">
