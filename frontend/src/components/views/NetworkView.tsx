@@ -3,9 +3,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   networkApi,
+  teamApi,
   type NetworkDirectory,
   type NetworkInvitation,
   type NetworkPerson,
+  type Team,
 } from '@/lib/api';
 import { NetworkIcon } from '../icons';
 
@@ -56,6 +58,113 @@ function statusLabel(status: NetworkInvitation['status']): string {
   if (status === 'DECLINED') return 'Declined';
   if (status === 'CANCELLED') return 'Cancelled';
   return 'Pending';
+}
+
+function AddToTeam({
+  person,
+  disabled,
+  onAdded,
+  onError,
+}: {
+  person: NetworkPerson;
+  disabled: boolean;
+  onAdded: (teamName: string) => void;
+  onError: (message: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [teams, setTeams] = useState<Team[] | null>(null);
+  const [teamId, setTeamId] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const start = async () => {
+    setOpen(true);
+    setTeams(null);
+    try {
+      const res = await teamApi.list();
+      setTeams(res.teams.filter((t) => t.myRole === 'ADMIN'));
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Could not load your teams');
+      setOpen(false);
+    }
+  };
+
+  const add = async () => {
+    const team = teams?.find((t) => t.id === teamId);
+    if (!team) {
+      onError('Choose a team');
+      return;
+    }
+    setAdding(true);
+    try {
+      await teamApi.addMember(team.id, person.id, 'EDITOR');
+      onAdded(team.name);
+      setOpen(false);
+      setTeamId('');
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Could not add to team');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="ghost-button small"
+        disabled={disabled}
+        data-testid={`network-add-to-team-${person.id}`}
+        onClick={start}
+      >
+        Add to team
+      </button>
+    );
+  }
+
+  return (
+    <div className="network-add-team" data-testid={`network-add-team-form-${person.id}`}>
+      {teams === null ? (
+        <span className="hint">Loading teams…</span>
+      ) : teams.length === 0 ? (
+        <span className="hint">You are not an admin of any team.</span>
+      ) : (
+        <>
+          <select
+            className="text-input"
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value)}
+            data-testid={`network-team-select-${person.id}`}
+            aria-label={`Choose a team for ${person.name}`}
+          >
+            <option value="">Choose a team</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="primary-button small"
+            disabled={adding || !teamId}
+            data-testid={`network-team-confirm-${person.id}`}
+            onClick={add}
+          >
+            Add
+          </button>
+        </>
+      )}
+      <button
+        type="button"
+        className="ghost-button small"
+        disabled={adding}
+        data-testid={`network-team-cancel-${person.id}`}
+        onClick={() => setOpen(false)}
+      >
+        Cancel
+      </button>
+    </div>
+  );
 }
 
 export function NetworkView() {
@@ -329,19 +438,30 @@ export function NetworkView() {
                 key={person.id}
                 person={person}
                 action={
-                  <button
-                    type="button"
-                    className="ghost-button small danger"
-                    disabled={busy}
-                    data-testid={`network-remove-${person.id}`}
-                    onClick={() =>
-                      run(async () => {
-                        await networkApi.removeContact(person.id);
-                      }, `Removed ${person.name}.`)
-                    }
-                  >
-                    Remove
-                  </button>
+                  <>
+                    <AddToTeam
+                      person={person}
+                      disabled={busy}
+                      onAdded={(teamName) => {
+                        setError('');
+                        setStatus(`Added ${person.name} to ${teamName}.`);
+                      }}
+                      onError={setError}
+                    />
+                    <button
+                      type="button"
+                      className="ghost-button small danger"
+                      disabled={busy}
+                      data-testid={`network-remove-${person.id}`}
+                      onClick={() =>
+                        run(async () => {
+                          await networkApi.removeContact(person.id);
+                        }, `Removed ${person.name}.`)
+                      }
+                    >
+                      Remove
+                    </button>
+                  </>
                 }
               />
             ))

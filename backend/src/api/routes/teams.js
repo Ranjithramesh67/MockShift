@@ -167,9 +167,11 @@ router.get('/:teamId/members', async (req, res, next) => {  try {
   }
 });
 
-// People who can be added to the team: members of the team's organization
-// who are not already on it. Platform admins also see every other active user
-// (seeded accounts live in per-user orgs, so a directory is needed to pick).
+// People who can be added to the team: members of the team's organization plus
+// the caller's accepted contacts (so an invited collaborator from another
+// organization can be seated), who are not already on the team. Platform admins
+// also see every other active user (seeded accounts live in per-user orgs, so a
+// directory is needed to pick).
 router.get('/:teamId/org-users', async (req, res, next) => {
   try {
     const { teamId } = req.params;
@@ -186,15 +188,22 @@ router.get('/:teamId/org-users', async (req, res, next) => {
               AND NOT EXISTS (SELECT 1 FROM team_members tm
                                WHERE tm.team_id = $1 AND tm.user_id = u.id)
             ORDER BY u.name`
-        : `SELECT u.id, u.name, u.username
+        : `SELECT DISTINCT u.id, u.name, u.username
              FROM users u
-             JOIN organization_members om ON om.user_id = u.id
-            WHERE om.org_id = $2
-              AND u.is_active = true
+            WHERE u.is_active = true
               AND NOT EXISTS (SELECT 1 FROM team_members tm
                                WHERE tm.team_id = $1 AND tm.user_id = u.id)
+              AND (
+                EXISTS (SELECT 1 FROM organization_members om
+                         WHERE om.org_id = $2 AND om.user_id = u.id)
+                OR EXISTS (SELECT 1 FROM user_contacts c
+                            WHERE c.owner_id = $3 AND c.contact_id = u.id)
+              )
             ORDER BY u.name`;
-    const { rows } = await query(sql, req.user.role === 'ADMIN' ? [teamId] : [teamId, orgId]);
+    const { rows } = await query(
+      sql,
+      req.user.role === 'ADMIN' ? [teamId] : [teamId, orgId, req.user.id]
+    );
     res.json({ users: rows });
   } catch (err) {
     next(err);

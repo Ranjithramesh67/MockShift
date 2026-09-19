@@ -6192,6 +6192,14 @@ body.is-col-dragging .sidebar {
   gap: 6px;
   flex: none;
 }
+.network-add-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.network-add-team select {
+  max-width: 180px;
+}
 .network-empty {
   padding: 22px 16px;
   text-align: center;
