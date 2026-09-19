@@ -17,7 +17,15 @@ type Load =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; data: OrderStatusResult & { order: OrderWithGateway } };
 
-export default function ReceiptView({ orderId, bonusDays }: { orderId: string; bonusDays: number }) {
+export default function ReceiptView({
+  orderId,
+  bonusDays,
+  appUrl,
+}: {
+  orderId: string;
+  bonusDays: number;
+  appUrl: string;
+}) {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
 
   useEffect(() => {
@@ -55,7 +63,10 @@ export default function ReceiptView({ orderId, bonusDays }: { orderId: string; b
         <h1 className="ck-title">Receipt unavailable</h1>
         <p className="ck-lede">{load.message}</p>
         <div className="rc-actions">
-          <a className="btn btn-primary" href="/#pricing">
+          <a className="btn btn-primary" href={appUrl} target="_blank" rel="noreferrer" data-testid="receipt-cta-open-app">
+            Open app
+          </a>
+          <a className="btn btn-ghost" href="/#pricing">
             Back to pricing
           </a>
           <a className="btn btn-ghost" href="/account">
@@ -82,6 +93,9 @@ export default function ReceiptView({ orderId, bonusDays }: { orderId: string; b
         <div className="rc-actions">
           <a className="btn btn-primary" href={`/gateway?orderId=${encodeURIComponent(order.id)}`} data-testid="receipt-cta-gateway">
             Continue to payment
+          </a>
+          <a className="btn btn-ghost" href={appUrl} target="_blank" rel="noreferrer" data-testid="receipt-cta-open-app">
+            Open app
           </a>
           <a className="btn btn-ghost" href="/#pricing">
             Back to pricing
@@ -165,7 +179,10 @@ export default function ReceiptView({ orderId, bonusDays }: { orderId: string; b
       </dl>
 
       <div className="rc-actions">
-        <a className="btn btn-primary" href="/account" data-testid="receipt-cta-account">
+        <a className="btn btn-primary" href={appUrl} target="_blank" rel="noreferrer" data-testid="receipt-cta-open-app">
+          Open app
+        </a>
+        <a className="btn btn-ghost" href="/account" data-testid="receipt-cta-account">
           Go to My subscription
         </a>
         <a className="btn btn-ghost" href="/#product">

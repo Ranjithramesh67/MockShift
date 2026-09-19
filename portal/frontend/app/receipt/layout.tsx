@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
 import AccountLink from '@/components/AccountLink';
+import { apiHubAppUrl } from '@/lib/appUrl';
 import '../checkout/checkout.css';
 import './receipt.css';
 
 export default function ReceiptLayout({ children }: { children: ReactNode }) {
+  const appUrl = apiHubAppUrl();
   return (
     <div className="site ck">
       <header className="ck-nav">
@@ -18,6 +20,9 @@ export default function ReceiptLayout({ children }: { children: ReactNode }) {
           <nav className="ck-nav-links" aria-label="Receipt">
             <a href="/#pricing">Pricing</a>
             <a href="/account">My subscription</a>
+            <a href={appUrl} target="_blank" rel="noreferrer" data-testid="receipt-nav-open-app">
+              Open app
+            </a>
             <AccountLink className="ck-nav-signin" />
           </nav>
         </div>
