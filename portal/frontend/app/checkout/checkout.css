@@ -182,6 +182,49 @@
   color: var(--text);
 }
 
+.ck-summary-discount span:last-child {
+  color: var(--accent);
+}
+
+.ck-summary-total {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+}
+
+.ck-promo {
+  margin-top: 14px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+}
+
+.ck-promo-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.ck-promo-row input {
+  flex: 1;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+.ck-promo-row .btn {
+  white-space: nowrap;
+}
+
+.ck-promo-ok {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.ck-promo-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--danger, #f87171);
+}
+
 .ck-summary-bonus {
   margin-top: 12px;
   font-size: 13.5px;

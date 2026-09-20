@@ -6,11 +6,13 @@ import {
   fetchMe,
   fetchPlans,
   checkout,
+  quoteCheckout,
   signIn,
   signOut,
   formatMoney,
   type CatalogPlan,
   type Cycle,
+  type PromoQuote,
   type Subscription,
 } from '@/lib/checkoutApi';
 import { ApiError } from '@/lib/portalApi';
@@ -48,6 +50,10 @@ export default function CheckoutView() {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<PromoQuote | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
 
   // Load catalog + session identity.
   useEffect(() => {
@@ -56,6 +62,8 @@ export default function CheckoutView() {
     setLoadError(null);
     setError(null);
     setErrorCode(null);
+    setPromoError(null);
+    setAppliedPromo(null);
     setMeState('loading');
     Promise.all([fetchPlans(), fetchMe()])
       .then(([planRows, me]) => {
@@ -92,6 +100,38 @@ export default function CheckoutView() {
   const amount = price === null ? null : Number(price);
   const bonusDays = plan && amount !== null && amount > 0 ? plan.trial_days : 0;
 
+  // The applied promo overrides the displayed total; `amount` stays the catalog
+  // figure used for gating copy.
+  const displayTotal = appliedPromo ? appliedPromo.total : amount;
+  const isDiscounted = Boolean(appliedPromo && appliedPromo.discount > 0);
+
+  // A promo is tied to a specific plan/cycle — drop it when those change.
+  useEffect(() => {
+    setAppliedPromo(null);
+    setPromoError(null);
+  }, [planKey, cycle]);
+
+  const applyPromo = useCallback(async () => {
+    const code = promoInput.trim();
+    if (!plan || !code) {
+      setAppliedPromo(null);
+      setPromoError(null);
+      return;
+    }
+    setPromoBusy(true);
+    setPromoError(null);
+    try {
+      const quoted = await quoteCheckout(plan.key, cycle, code);
+      setAppliedPromo(quoted);
+      if (!quoted.promo) setPromoError('That promo code is not valid.');
+    } catch (err) {
+      setAppliedPromo(null);
+      setPromoError(err instanceof Error ? err.message : 'Could not apply that code.');
+    } finally {
+      setPromoBusy(false);
+    }
+  }, [plan, cycle, promoInput]);
+
   const doCheckout = useCallback(
     async (account?: { name: string; email: string; password: string }) => {
       if (!plan) return;
@@ -99,7 +139,7 @@ export default function CheckoutView() {
       setErrorCode(null);
       setView({ kind: 'busy' });
       try {
-        const result = await checkout(plan.key, cycle, account);
+        const result = await checkout(plan.key, cycle, account, promoInput.trim() || undefined);
         if (!result.requiresPayment) {
           setView({ kind: 'free-done', subscription: result.subscription });
         } else {
@@ -112,7 +152,7 @@ export default function CheckoutView() {
         setView({ kind: 'ready' });
       }
     },
-    [plan, cycle, router]
+    [plan, cycle, router, promoInput]
   );
 
   const submitAccount = async (event: React.FormEvent) => {
@@ -243,12 +283,72 @@ export default function CheckoutView() {
           {cycle === 'YEARLY' ? 'Yearly billing' : 'Monthly billing'}
         </span>
       </div>
-      <div className="ck-summary-price-row">
-        <span>Due now</span>
-        <strong data-testid="checkout-summary-price">
-          {custom ? 'Contact sales' : amount === null ? '—' : formatMoney(amount)}
-        </strong>
-      </div>
+      {isDiscounted ? (
+        <>
+          <div className="ck-summary-price-row">
+            <span>Subtotal</span>
+            <span data-testid="checkout-summary-subtotal">{formatMoney(appliedPromo!.base)}</span>
+          </div>
+          <div className="ck-summary-price-row ck-summary-discount">
+            <span>Promo{appliedPromo!.promo ? ` (${appliedPromo!.promo.code})` : ''}</span>
+            <span data-testid="checkout-summary-discount">
+              −{formatMoney(appliedPromo!.discount)}
+            </span>
+          </div>
+          <div className="ck-summary-price-row ck-summary-total">
+            <span>Due now</span>
+            <strong data-testid="checkout-summary-price">{formatMoney(appliedPromo!.total)}</strong>
+          </div>
+        </>
+      ) : (
+        <div className="ck-summary-price-row">
+          <span>Due now</span>
+          <strong data-testid="checkout-summary-price">
+            {custom ? 'Contact sales' : displayTotal === null ? '—' : formatMoney(displayTotal)}
+          </strong>
+        </div>
+      )}
+      {!custom && !isFree && (
+        <div className="ck-promo">
+          <label className="ck-field ck-promo-field">
+            <span>Promo code</span>
+            <div className="ck-promo-row">
+              <input
+                type="text"
+                value={promoInput}
+                onChange={(e) => {
+                  setPromoInput(e.target.value.toUpperCase());
+                  setAppliedPromo(null);
+                  setPromoError(null);
+                }}
+                placeholder="e.g. LAUNCH20"
+                autoComplete="off"
+                data-testid="checkout-promo-input"
+              />
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={applyPromo}
+                disabled={promoBusy || !promoInput.trim()}
+                data-testid="checkout-promo-apply"
+              >
+                {promoBusy ? 'Checking…' : 'Apply'}
+              </button>
+            </div>
+          </label>
+          {promoError && (
+            <p className="ck-promo-error" role="alert" data-testid="checkout-promo-error">
+              {promoError}
+            </p>
+          )}
+          {appliedPromo?.promo && (
+            <p className="ck-promo-ok" data-testid="checkout-promo-applied">
+              Code {appliedPromo.promo.code} applied
+              {appliedPromo.discount > 0 ? ` — you save ${formatMoney(appliedPromo.discount)}` : ''}
+            </p>
+          )}
+        </div>
+      )}
       {!custom && !isFree && bonusDays > 0 && (
         <p className="ck-summary-bonus" data-testid="checkout-summary-bonus">
           +{bonusDays} extra days of validity included with your first recharge
@@ -329,11 +429,11 @@ export default function CheckoutView() {
                 <button type="submit" className="btn btn-primary btn-lg" data-testid="checkout-submit" disabled={view.kind === 'busy'}>
                   {view.kind === 'busy'
                     ? 'Placing order…'
-                    : amount === null || amount === 0
+                    : displayTotal === null || displayTotal === 0
                       ? `Start ${plan?.name}`
-                      : `Place order — ${amount === null ? '' : formatMoney(amount)}`}
+                      : `Place order — ${displayTotal === null ? '' : formatMoney(displayTotal)}`}
                 </button>
-                {amount !== null && amount > 0 && (
+                {displayTotal !== null && displayTotal > 0 && (
                   <p className="ck-fine">You&rsquo;ll confirm payment on the next screen.</p>
                 )}
               </form>
@@ -430,14 +530,14 @@ export default function CheckoutView() {
                   data-testid="checkout-submit"
                 >
                   {view.kind === 'busy'
-                    ? amount === 0
+                    ? displayTotal === 0
                       ? 'Setting you up…'
                       : 'Placing order…'
-                    : amount === null || amount === 0
+                    : displayTotal === null || displayTotal === 0
                       ? `Start ${plan?.name} — free`
-                      : `Place order — ${formatMoney(amount)}`}
+                      : `Place order — ${formatMoney(displayTotal)}`}
                 </button>
-                {amount !== null && amount > 0 && (
+                {displayTotal !== null && displayTotal > 0 && (
                   <p className="ck-fine">You&rsquo;ll pay on the secure Cashfree checkout on the next screen.</p>
                 )}
               </form>

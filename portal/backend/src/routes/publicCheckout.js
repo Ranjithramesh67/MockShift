@@ -20,6 +20,7 @@ const { allocateUsername } = require('../../../../backend/src/api/username');
 const { provisionNewAccount } = require('../../../../backend/src/api/accountProvision');
 const { issueEmailVerification } = require('../../../../backend/src/api/emailVerification');
 const planChange = require('../planChange');
+const promoLib = require('../promo');
 
 const router = Router();
 
@@ -80,7 +81,9 @@ async function fetchSubscriptionShapeTx(client, id) {
 }
 
 const ORDER_COLUMNS = `o.id, o.user_id, o.plan_id, o.status, o.billing_cycle,
-  o.amount::text AS amount, o.currency, o.payment_method, o.created_at,
+  o.amount::text AS amount, o.subtotal::text AS subtotal,
+  o.discount_amount::text AS discount_amount, o.promo_code,
+  o.currency, o.payment_method, o.created_at,
   o.subscription_id, o.gateway_status, o.gateway_provider, o.gateway_reference,
   o.gateway_order_id, o.gateway_session_id, o.paid_at, p.key AS plan_key,
   p.name AS plan_name, p.trial_days AS plan_trial_days,
@@ -92,6 +95,9 @@ function toOrderShape(r) {
     status: r.status,
     billing_cycle: r.billing_cycle,
     amount: r.amount,
+    subtotal: r.subtotal === null || r.subtotal === undefined ? r.amount : r.subtotal,
+    discount_amount: r.discount_amount === null || r.discount_amount === undefined ? '0.00' : r.discount_amount,
+    promo_code: r.promo_code || null,
     currency: r.currency,
     payment_method: r.payment_method,
     plan_key: r.plan_key,
@@ -240,7 +246,7 @@ async function firstRechargeBonusTx(client, userId, planTrialDays) {
 //   and `requiresPayment:true` (confirm via POST .../checkout/:orderId/confirm).
 router.post('/checkout', async (req, res, next) => {
   try {
-    const { planKey, billingCycle, account } = req.body || {};
+    const { planKey, billingCycle, account, promoCode } = req.body || {};
     const cycle = String(billingCycle || '').toUpperCase();
     const key = String(planKey || '').trim();
 
@@ -354,11 +360,32 @@ router.post('/checkout', async (req, res, next) => {
       // the catalog price.
       const amountDue = decision.kind === 'UPGRADE' ? decision.amountDue : amount;
 
-      if (amount === 0 || amountDue < 1) {
-        // Free plan, or an upgrade fully covered by the unused current period —
-        // no order/invoice; activate (or queue) immediately. A free activation
-        // never creates an order, so a later paid purchase is still the
-        // customer's first recharge.
+      // Apply an optional promo code to the amount about to be charged. The
+      // promo row is locked FOR UPDATE and its use reserved here, before the
+      // order is written, so a limited code cannot be oversold by concurrent
+      // checkouts.
+      let promo = null;
+      let discount = 0;
+      let subtotal = amountDue;
+      let charge = amountDue;
+      if (promoCode && amount > 0 && amountDue >= 1) {
+        const resolved = await promoLib.resolvePromo(client, {
+          code: promoCode,
+          plan,
+          amount: amountDue,
+        });
+        promo = resolved.promo;
+        discount = resolved.discount;
+        subtotal = resolved.base;
+        charge = resolved.total;
+      }
+
+      if (amount === 0 || charge < 1) {
+        // Free plan, a promo covering the whole charge, or an upgrade fully
+        // covered by the unused current period — no order/invoice; activate (or
+        // queue) immediately. A free activation never creates a paid order, so a
+        // later paid purchase is still the customer's first recharge.
+        if (promo) await promoLib.consumePromo(client, promo.id);
         const subscriptionId = await planChange.createSubscriptionForChange(client, {
           userId,
           planId: plan.id,
@@ -370,23 +397,40 @@ router.post('/checkout', async (req, res, next) => {
           kind: 'free',
           scheduled: decision.kind === 'DOWNGRADE',
           subscription: await fetchSubscriptionShapeTx(client, subscriptionId),
+          promo: promoLib.toPromoShape(promo),
+          subtotal,
+          discount,
+          charge,
         };
       }
 
       const { rows: orderRows } = await client.query(
-        `INSERT INTO orders (user_id, plan_id, amount, currency, billing_cycle, status)
-         VALUES ($1, $2, $3, $4, $5, 'PENDING')
+        `INSERT INTO orders (user_id, plan_id, amount, subtotal, discount_amount,
+                             promo_code_id, promo_code, currency, billing_cycle, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING')
          RETURNING id`,
-        [userId, plan.id, amountDue, plan.currency, cycle]
+        [
+          userId,
+          plan.id,
+          charge,
+          subtotal,
+          discount,
+          promo ? promo.id : null,
+          promo ? promo.code : null,
+          plan.currency,
+          cycle,
+        ]
       );
       const orderId = orderRows[0].id;
+
+      if (promo) await promoLib.consumePromo(client, promo.id);
 
       const number = await nextInvoiceNumber(client);
       const { rows: invoiceRows } = await client.query(
         `INSERT INTO invoices (order_id, user_id, number, amount, currency, status)
          VALUES ($1, $2, $3, $4, $5, 'DRAFT')
          RETURNING id`,
-        [orderId, userId, number, amountDue, plan.currency]
+        [orderId, userId, number, charge, plan.currency]
       );
 
       const { rows: orderOut } = await client.query(
@@ -405,11 +449,14 @@ router.post('/checkout', async (req, res, next) => {
         order: toOrderShape(orderOut[0]),
         invoice: toInvoiceShape(invoiceOut[0]),
         bonus: { firstRechargeEligible, days: bonusDays },
+        promo: promoLib.toPromoShape(promo),
         planChange: {
           kind: decision.kind,
           prorated: decision.kind === 'UPGRADE',
           fullPrice: amount,
           amountDue,
+          discount,
+          total: charge,
         },
       };
     });
@@ -443,6 +490,10 @@ router.post('/checkout', async (req, res, next) => {
         requiresPayment: false,
         scheduled: Boolean(result.scheduled),
         subscription: result.subscription,
+        promo: result.promo || null,
+        subtotal: result.subtotal,
+        discount: result.discount,
+        total: result.charge,
         account: accountSummary,
       });
     }
@@ -452,10 +503,92 @@ router.post('/checkout', async (req, res, next) => {
       order: result.order,
       invoice: result.invoice,
       bonus: result.bonus,
+      promo: result.promo || null,
       planChange: result.planChange || null,
       account: accountSummary,
     });
   } catch (err) {
+    if (err && err.promoCode) {
+      return res.status(err.status || 400).json({ error: err.message, code: err.promoCode });
+    }
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------------- Quote
+// POST /api/public/checkout/quote — preview the amount due for a plan/cycle
+// with an optional promo code, without creating an order or reserving the code.
+// It runs the same plan-change classification as /checkout so the quoted total
+// matches what will actually be charged (prorated upgrades included).
+router.post('/checkout/quote', async (req, res, next) => {
+  try {
+    const { planKey, billingCycle, promoCode } = req.body || {};
+    const cycle = String(billingCycle || '').toUpperCase();
+    const key = String(planKey || '').trim();
+
+    const plan = key ? await planByKey(key) : null;
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    if (!CYCLES.includes(cycle) || !plan.billing_cycles.includes(cycle)) {
+      return res.status(400).json({ error: `billingCycle must be one of ${plan.billing_cycles.join('/')}` });
+    }
+    const price = cycle === 'YEARLY' ? plan.price_yearly : plan.price_monthly;
+    if (price === null || price === undefined) {
+      return res.status(400).json({ error: `${plan.name} uses custom pricing — contact sales for a quote` });
+    }
+    const amount = Number(price);
+
+    const me = await sessionUser(req);
+    const run = async (client) => {
+      let decision = { kind: 'NONE' };
+      if (me && amount > 0) {
+        decision = await planChange.classifyPlanChange(client, {
+          userId: me.id,
+          plan,
+          cycle,
+          newPrice: amount,
+        });
+      }
+      if (decision.kind === 'BLOCKED') {
+        return { blocked: { code: decision.code, message: decision.message } };
+      }
+      const amountDue = decision.kind === 'UPGRADE' ? decision.amountDue : amount;
+      let resolved = { promo: null, base: amountDue, discount: 0, total: amountDue };
+      if (promoCode && amount > 0 && amountDue >= 1) {
+        resolved = await promoLib.resolvePromo(client, { code: promoCode, plan, amount: amountDue });
+      }
+      return {
+        promo: promoLib.toPromoShape(resolved.promo),
+        base: resolved.base,
+        discount: resolved.discount,
+        total: resolved.total,
+        planChange: {
+          kind: decision.kind,
+          prorated: decision.kind === 'UPGRADE',
+          fullPrice: amount,
+          amountDue,
+        },
+      };
+    };
+    const quote = me ? await withUserTransaction(me.id, run) : await withTransaction(run);
+
+    if (quote.blocked) {
+      return res.status(409).json({ error: quote.blocked.message, code: quote.blocked.code });
+    }
+    return res.json({
+      ok: true,
+      plan: { key: plan.key, name: plan.name, currency: plan.currency },
+      billingCycle: cycle,
+      base: quote.base,
+      discount: quote.discount,
+      total: quote.total,
+      requiresPayment: quote.total >= 1,
+      promo: quote.promo,
+      planChange: quote.planChange,
+    });
+  } catch (err) {
+    if (err && err.promoCode) {
+      return res.status(err.status || 400).json({ error: err.message, code: err.promoCode });
+    }
     next(err);
   }
 });

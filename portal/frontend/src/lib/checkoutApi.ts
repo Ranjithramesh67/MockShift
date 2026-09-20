@@ -21,6 +21,9 @@ export type Order = {
   status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'VOID';
   billing_cycle: Cycle;
   amount: string;
+  subtotal?: string;
+  discount_amount?: string;
+  promo_code?: string | null;
   currency: string;
   payment_method: string;
   plan_key: string;
@@ -83,12 +86,39 @@ export type PlanUsage = {
 
 export type CheckoutAccountInput = { name: string; email: string; password: string };
 
+// Promo-code preview (POST /api/public/checkout/quote). `total` is what would be
+// charged after `discount` is applied to `base`.
+export type PromoInfo = {
+  code: string;
+  description: string | null;
+  discountType: 'PERCENT' | 'FIXED';
+  discountValue: number;
+};
+
+export type PromoQuote = {
+  ok: true;
+  plan: { key: string; name: string; currency: string };
+  billingCycle: Cycle;
+  base: number;
+  discount: number;
+  total: number;
+  requiresPayment: boolean;
+  promo: PromoInfo | null;
+  planChange: {
+    kind: string;
+    prorated: boolean;
+    fullPrice: number;
+    amountDue: number;
+  } | null;
+};
+
 type CheckoutPaid = {
   ok: true;
   requiresPayment: true;
   order: Order;
   invoice: Invoice;
   bonus: { firstRechargeEligible: boolean; days: number };
+  promo?: PromoInfo | null;
   account: Account;
 };
 
@@ -96,6 +126,10 @@ type CheckoutFree = {
   ok: true;
   requiresPayment: false;
   subscription: Subscription;
+  promo?: PromoInfo | null;
+  subtotal?: number;
+  discount?: number;
+  total?: number;
   account: Account;
 };
 
@@ -125,11 +159,28 @@ export async function fetchPlans(): Promise<CatalogPlan[]> {
 export async function checkout(
   planKey: string,
   billingCycle: Cycle,
-  account?: CheckoutAccountInput
+  account?: CheckoutAccountInput,
+  promoCode?: string
 ): Promise<CheckoutResult> {
   return apiFetch<CheckoutResult>('/api/public/checkout', {
     method: 'POST',
-    body: { planKey, billingCycle, account },
+    body: { planKey, billingCycle, account, promoCode: promoCode || undefined },
+  });
+}
+
+/**
+ * Preview the amount due with an optional promo code (no order is created and
+ * the code is not consumed). Throws `ApiError` with a `code` such as
+ * `promo_expired` / `promo_exhausted` / `cancel_required`.
+ */
+export async function quoteCheckout(
+  planKey: string,
+  billingCycle: Cycle,
+  promoCode: string
+): Promise<PromoQuote> {
+  return apiFetch<PromoQuote>('/api/public/checkout/quote', {
+    method: 'POST',
+    body: { planKey, billingCycle, promoCode },
   });
 }
 
