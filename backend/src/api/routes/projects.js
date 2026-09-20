@@ -201,17 +201,21 @@ async function projectNameTaken(workspaceId, name, excludeProjectId) {
   return rows.length > 0;
 }
 
-// Creating a project changes the workspace structure, so it requires the
-// workspace ADMIN role (workspace owners/org admins).
-async function requireWorkspaceAdmin(req, res, next) {
+// Creating a project changes the workspace structure. Workspace MANAGER+
+// (and platform MANAGER/ADMIN) may do it; EDITOR/VIEWER may not.
+async function requireWorkspaceManager(req, res, next) {
   try {
     const { workspaceId } = req.body || {};
     if (!workspaceId || !UUID_RE.test(workspaceId)) {
       return res.status(400).json({ error: 'workspaceId is required' });
     }
+    if (roleAtLeast(req.user.role, 'MANAGER')) {
+      req.workspaceRole = req.user.role;
+      return next();
+    }
     const role = await getWorkspaceRole(req.user.id, workspaceId);
-    if (!roleAtLeast(role, 'ADMIN')) {
-      return res.status(403).json({ error: 'Workspace admin required' });
+    if (!roleAtLeast(role, 'MANAGER')) {
+      return res.status(403).json({ error: 'Workspace manager or admin required' });
     }
     req.workspaceRole = role;
     next();
@@ -220,7 +224,7 @@ async function requireWorkspaceAdmin(req, res, next) {
   }
 }
 
-router.post('/projects', requireWorkspaceAdmin, async (req, res, next) => {
+router.post('/projects', requireWorkspaceManager, async (req, res, next) => {
   try {
     const { workspaceId } = req.body || {};
     const name = normalizeProjectName(req.body?.name);

@@ -67,6 +67,26 @@ test('non-admin cannot create a project in someone else workspace', async () => 
   assert.equal(res.status, 403);
 });
 
+test('workspace manager can create a project', async () => {
+  const mgr = await signupAndLogin(app.base, 'plmgr@test.io', 'mgrpass123', 'Project Mgr');
+  const wsId = await myWorkspaceId(mgr.client);
+  // Personal-org owners are org ADMIN, which getWorkspaceRole treats as
+  // workspace ADMIN. Drop that so only the workspace_members row counts.
+  psql(`UPDATE organization_members SET role = 'EDITOR' WHERE user_id = '${mgr.id}'`);
+  psql(`UPDATE workspace_members SET role = 'MANAGER' WHERE user_id = '${mgr.id}'`);
+  const res = await mgr.client.api('POST', '/api/projects', { workspaceId: wsId, name: 'Mgr Project' });
+  assert.equal(res.status, 201);
+});
+
+test('workspace editor cannot create a project', async () => {
+  const editor = await signupAndLogin(app.base, 'pleditor@test.io', 'editpass123', 'Project Editor');
+  const wsId = await myWorkspaceId(editor.client);
+  psql(`UPDATE organization_members SET role = 'EDITOR' WHERE user_id = '${editor.id}'`);
+  psql(`UPDATE workspace_members SET role = 'EDITOR' WHERE user_id = '${editor.id}'`);
+  const res = await editor.client.api('POST', '/api/projects', { workspaceId: wsId, name: 'Nope' });
+  assert.equal(res.status, 403);
+});
+
 test('rename enforces uniqueness and manager access', async () => {
   const content = await admin.client.api('GET', `/api/workspaces/${workspaceId}/content`);
   const project = content.json.projects.find((p) => p.name === 'Payments');
