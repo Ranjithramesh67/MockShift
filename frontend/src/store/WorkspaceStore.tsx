@@ -19,6 +19,7 @@ import {
   type AuthProvider,
   type CollectionRunResult,
   type ContentTree,
+  type GlobalProject,
   type ProjectOverview,
   type RunResult,
   type Team,
@@ -186,6 +187,7 @@ interface WorkspaceState {
   activeWorkspaceId: string | null;
   activeWorkspaceRole: UserRole | null;
   activeProjectId: string | null;
+  allProjects: GlobalProject[];
   tree: ContentTree | null;
   activeCollectionId: string | null;
   activeCollectionName: string;
@@ -220,6 +222,7 @@ interface WorkspaceState {
   refresh: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
   selectProject: (projectId: string) => Promise<void>;
+  selectProjectById: (projectId: string) => Promise<void>;
   selectRequest: (requestId: string) => Promise<void>;
   reloadActiveRequest: () => Promise<void>;
   selectCollection: (collectionId: string, collectionName: string) => Promise<void>;
@@ -290,6 +293,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [activeWorkspaceRole, setActiveWorkspaceRole] = useState<UserRole | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [allProjects, setAllProjects] = useState<GlobalProject[]>([]);
   const [tree, setTree] = useState<ContentTree | null>(null);
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
   const [activeCollectionName, setActiveCollectionName] = useState('');
@@ -369,11 +373,23 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Global project list backing the top-nav picker. Failure degrades to an
+  // empty list rather than failing workspace loading.
+  const loadAllProjects = useCallback(async () => {
+    try {
+      const { projects } = await projectApi.listAll();
+      setAllProjects(projects);
+    } catch {
+      setAllProjects([]);
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     if (!user) {
       setWorkspaces([]);
       setTeams([]);
       setGroups(null);
+      setAllProjects([]);
       setLoading(false);
       return;
     }
@@ -388,8 +404,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-    await loadGroups();
-  }, [user, loadGroups]);
+    await Promise.all([loadGroups(), loadAllProjects()]);
+  }, [user, loadGroups, loadAllProjects]);
 
   useEffect(() => {
     refresh();
@@ -512,6 +528,23 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setRequestRuns({});
     await applyProjectContext(tree, projectId);
   }, [tree, applyProjectContext]);
+
+  // Top-nav entry point: jump to a project that may live in another workspace.
+  // Persisting the target first lets selectWorkspace restore it, so the two
+  // steps compose without waiting for tree state to flush.
+  const selectProjectById = useCallback(
+    async (projectId: string) => {
+      const target = allProjects.find((p) => p.id === projectId);
+      if (!target) return;
+      if (target.workspace_id !== activeWorkspaceId) {
+        persistProject(target.workspace_id, projectId);
+        await selectWorkspace(target.workspace_id);
+        return;
+      }
+      await selectProject(projectId);
+    },
+    [allProjects, activeWorkspaceId, selectWorkspace, selectProject]
+  );
 
   useEffect(() => {
     if (!user || loading || activeWorkspaceId || workspaces.length === 0) return;
@@ -1020,9 +1053,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const { workspace } = await workspaceApi.create({ name, visibility });
     const updated = await workspaceApi.list();
     setWorkspaces(updated.workspaces);
-    await loadGroups();
+    await Promise.all([loadGroups(), loadAllProjects()]);
     await selectWorkspace(workspace.id);
-  }, [selectWorkspace, loadGroups]);
+  }, [selectWorkspace, loadGroups, loadAllProjects]);
 
   const createCollection = useCallback(async (name: string, projectIdArg?: string) => {
     if (!tree) return;
@@ -1246,11 +1279,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
     const updated = await workspaceApi.list();
     setWorkspaces(updated.workspaces);
-    await loadGroups();
+    await Promise.all([loadGroups(), loadAllProjects()]);
     if (activeWorkspaceId === workspaceId && updated.workspaces.length > 0) {
       await selectWorkspace(updated.workspaces[0].id);
     }
-  }, [activeWorkspaceId, selectWorkspace, loadGroups]);
+  }, [activeWorkspaceId, selectWorkspace, loadGroups, loadAllProjects]);
 
   const reloadTree = useCallback(async () => {
     if (!activeWorkspaceId) return;
@@ -1264,14 +1297,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [activeWorkspaceId, activeProjectId, applyProjectContext]);
 
   const createProject = useCallback(async (name: string) => {
-    if (!activeWorkspaceId) return;
+    const wsId = activeWorkspaceId ?? workspaces[0]?.id;
+    if (!wsId) return;
     setOverview(null);
     setOverviewError(null);
-    const { project } = await projectApi.create({ workspaceId: activeWorkspaceId, name });
-    const t = await workspaceApi.content(activeWorkspaceId);
+    const { project } = await projectApi.create({ workspaceId: wsId, name });
+    const t = await workspaceApi.content(wsId);
     setTree(t);
     await applyProjectContext(t, project.id);
-  }, [activeWorkspaceId, applyProjectContext]);
+    await loadAllProjects();
+  }, [activeWorkspaceId, workspaces, applyProjectContext, loadAllProjects]);
 
   const renameProject = useCallback(async (projectId: string, name: string) => {
     const { project } = await projectApi.rename(projectId, name);
@@ -1284,7 +1319,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setOverview((o) =>
       o && o.project.id === projectId ? { ...o, project: { ...o.project, name: project.name } } : o
     );
-  }, []);
+    await loadAllProjects();
+  }, [loadAllProjects]);
 
   const deleteProject = useCallback(async (projectId: string) => {
     selectSeqRef.current += 1; // invalidate any in-flight request selection
@@ -1320,7 +1356,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setOverview((o) => (o && o.project.id === projectId ? null : o));
     if (activeProjectId === projectId) setActiveProjectId(null);
     await reloadTree();
-  }, [tree, openRequestIds, activeCollectionId, activeProjectId, closeRequestTab, reloadTree]);
+    await loadAllProjects();
+  }, [tree, openRequestIds, activeCollectionId, activeProjectId, closeRequestTab, reloadTree, loadAllProjects]);
 
   const deleteTeam = useCallback(async (teamId: string) => {
     await teamApi.delete(teamId);
@@ -1429,6 +1466,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       activeWorkspaceId,
       activeWorkspaceRole,
       activeProjectId,
+      allProjects,
       tree,
       activeCollectionId,
       activeCollectionName,
@@ -1458,6 +1496,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refresh,
       selectWorkspace,
       selectProject,
+      selectProjectById,
       selectRequest,
       reloadActiveRequest,
       selectCollection,
@@ -1498,7 +1537,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       loading, error, workspaces, teams, groups, overview, overviewLoading, overviewError,
-      activeWorkspaceId, activeWorkspaceRole, activeProjectId, tree,
+      activeWorkspaceId, activeWorkspaceRole, activeProjectId, allProjects, tree,
       activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
       requestRuns,
       collectionRun, collectionRunRunning, requestRunning, selectedFiles, setFileForPart,
@@ -1506,7 +1545,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       activateRequestTab, closeRequestTab, reopenLastClosedTab, isTabDirty,
       canUndoRequest, canRedoRequest, canGoBackRequest,
       undoActiveRequest, redoActiveRequest, goBackRequest,
-      refresh, selectWorkspace, selectProject, selectRequest, reloadActiveRequest, selectCollection, updateActiveRequest,
+      refresh, selectWorkspace, selectProject, selectProjectById, selectRequest, reloadActiveRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun, clearScratchpadRun,
       createWorkspace, createProject, renameProject, deleteProject, createCollection, createRequest,
       createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, moveFolder, duplicateRequest, duplicateFolder,

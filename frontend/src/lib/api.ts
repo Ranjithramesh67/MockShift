@@ -491,7 +491,16 @@ export interface ProjectRef {
   workspace_id: string;
 }
 
+// A project as seen by the global top-nav picker: every workspace the caller
+// can read contributes its projects.
+export interface GlobalProject extends ProjectRef {
+  workspace_name: string;
+  can_access: boolean;
+  access_status: 'PENDING' | 'APPROVED' | 'DENIED' | null;
+}
+
 export const projectApi = {
+  listAll: () => apiFetch<{ projects: GlobalProject[] }>('/api/projects'),
   create: (input: { workspaceId: string; name: string }) =>
     apiFetch<{ project: ProjectRef }>('/api/projects', { method: 'POST', body: input }),
   rename: (projectId: string, name: string) =>
