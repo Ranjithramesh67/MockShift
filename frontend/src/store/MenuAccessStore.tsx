@@ -15,22 +15,15 @@ interface MenuAccessState {
 const MenuAccessContext = createContext<MenuAccessState | null>(null);
 
 export function MenuAccessProvider({ children }: { children: React.ReactNode }) {
-  const { activeWorkspaceId, activeCollectionId, tree } = useWorkspace();
+  const { activeWorkspaceId, activeProjectId } = useWorkspace();
   const [menus, setMenus] = useState<Record<string, boolean>>(() => defaultMenus());
   const [loading, setLoading] = useState(false);
-
-  // The app has no global "active project"; derive it from the selected
-  // collection when one is open so project-scoped overrides apply.
-  const projectId = useMemo(() => {
-    if (!activeCollectionId || !tree) return null;
-    return tree.collections.find((c) => c.id === activeCollectionId)?.project_id ?? null;
-  }, [activeCollectionId, tree]);
 
   const refresh = useCallback(async () => {
     if (!activeWorkspaceId) return;
     setLoading(true);
     try {
-      const res = await menuApi.get({ workspaceId: activeWorkspaceId, projectId });
+      const res = await menuApi.get({ workspaceId: activeWorkspaceId, projectId: activeProjectId });
       setMenus({ ...defaultMenus(), ...res.menus });
     } catch {
       // Fail open; the backend still enforces.
@@ -38,7 +31,7 @@ export function MenuAccessProvider({ children }: { children: React.ReactNode }) 
     } finally {
       setLoading(false);
     }
-  }, [activeWorkspaceId, projectId]);
+  }, [activeWorkspaceId, activeProjectId]);
 
   useEffect(() => {
     refresh();

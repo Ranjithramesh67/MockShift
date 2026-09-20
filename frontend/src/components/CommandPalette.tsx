@@ -126,6 +126,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         router.push('/');
         nav.setView('workspace');
         await ws.selectWorkspace(r.workspaceId!);
+        await ws.selectProject(r.id);
         await ws.selectProjectOverview({ id: r.id, name: r.name });
         return;
       }

@@ -53,6 +53,7 @@ export function CreateModal({
   const ws = useWorkspace();
   const { organizations } = useAuth();
   const mockProjectId =
+    ws.activeProjectId ??
     ws.tree?.collections.find((c) => c.id === (collectionId ?? ws.activeCollectionId))?.project_id ??
     ws.tree?.projects?.[0]?.id ??
     '';
@@ -64,7 +65,8 @@ export function CreateModal({
   const [organizationId, setOrganizationId] = useState(organizations[0]?.id ?? '');
   const accessibleProjects = ws.tree?.projects.filter((p) => p.can_access) ?? [];
   const [targetProjectId, setTargetProjectId] = useState(
-    ws.tree?.collections.find((c) => c.id === ws.activeCollectionId)?.project_id ??
+    ws.activeProjectId ??
+      ws.tree?.collections.find((c) => c.id === ws.activeCollectionId)?.project_id ??
       accessibleProjects[0]?.id ??
       ''
   );
@@ -524,7 +526,7 @@ export function CreateModal({
           </>
         )}
 
-        {kind === 'collection' && accessibleProjects.length > 1 && (
+        {kind === 'collection' && !ws.activeProjectId && accessibleProjects.length > 1 && (
           <label className="auth-field">
             <span>Project</span>
             <select
