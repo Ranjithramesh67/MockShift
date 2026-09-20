@@ -12,6 +12,7 @@ import { AuthProvider } from '@/lib/auth';
 import { AppProvider } from '@/store/AppStore';
 import { WorkspaceProvider } from '@/store/WorkspaceStore';
 import { MenuAccessProvider } from '@/store/MenuAccessStore';
+import { NavOrderProvider } from '@/store/NavOrderStore';
 import { NavProvider } from '@/store/NavStore';
 import { RouteViewSync } from '@/components/RouteViewSync';
 
@@ -38,16 +39,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body>
         <AuthProvider>
-          <AppProvider>
-            <WorkspaceProvider>
-              <MenuAccessProvider>
-                <NavProvider initialView="workspace">
-                  <RouteViewSync />
-                  {children}
-                </NavProvider>
-              </MenuAccessProvider>
-            </WorkspaceProvider>
-          </AppProvider>
+          <NavOrderProvider>
+            <AppProvider>
+              <WorkspaceProvider>
+                <MenuAccessProvider>
+                  <NavProvider initialView="workspace">
+                    <RouteViewSync />
+                    {children}
+                  </NavProvider>
+                </MenuAccessProvider>
+              </WorkspaceProvider>
+            </AppProvider>
+          </NavOrderProvider>
         </AuthProvider>
       </body>
     </html>

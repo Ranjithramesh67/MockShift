@@ -25,6 +25,7 @@ const { requireAuth } = require('../access');
 const { hashPassword, verifyPassword, createSessionToken, sessionCookie } = require('../authLib');
 const { usernameError } = require('../username');
 const { resolveLimits, countPoolUsage, currentRunUsage } = require('../entitlements');
+const { RAIL_ORDER_KEYS, isRailOrderKey } = require('../menuAccess');
 
 const router = Router();
 router.use(requireAuth);
@@ -158,6 +159,50 @@ router.get('/usage', async (req, res, next) => {
       limits: en.limits,
       usage: { ...usage, runs },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET/PUT /api/profile/nav-order — the user's sidebar rail order, shared across
+// every device they sign in on. GET returns `null` when the user has never
+// customized it (the client then uses its built-in default).
+router.get('/nav-order', async (req, res, next) => {
+  try {
+    const { rows } = await query('SELECT nav_rail_order FROM users WHERE id = $1', [req.user.id]);
+    const stored = rows[0] ? rows[0].nav_rail_order : null;
+    const order = Array.isArray(stored) ? stored.filter(isRailOrderKey) : null;
+    res.json({ ok: true, order, keys: RAIL_ORDER_KEYS });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/nav-order', async (req, res, next) => {
+  try {
+    const input = (req.body || {}).order;
+    if (!Array.isArray(input)) {
+      return res.status(400).json({ error: 'order must be an array of menu keys' });
+    }
+    const seen = new Set();
+    const order = [];
+    for (const raw of input) {
+      const key = typeof raw === 'string' ? raw.trim() : '';
+      if (!isRailOrderKey(key)) {
+        return res.status(400).json({ error: `Unknown menu key: ${key || String(raw)}` });
+      }
+      if (seen.has(key)) {
+        return res.status(400).json({ error: `Duplicate menu key: ${key}` });
+      }
+      seen.add(key);
+      order.push(key);
+    }
+    // An empty array clears the preference back to the default order.
+    await query('UPDATE users SET nav_rail_order = $2 WHERE id = $1', [
+      req.user.id,
+      order.length ? JSON.stringify(order) : null,
+    ]);
+    res.json({ ok: true, order: order.length ? order : null });
   } catch (err) {
     next(err);
   }

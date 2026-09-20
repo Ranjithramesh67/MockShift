@@ -341,6 +341,23 @@ export const menuApi = {
   },
 };
 
+export interface NavOrderResponse {
+  ok: true;
+  order: string[] | null;
+  keys?: string[];
+}
+
+// Per-user sidebar rail order, persisted server-side so it applies on every
+// device the user signs in on.
+export const navOrderApi = {
+  get: () => apiFetch<NavOrderResponse>('/api/profile/nav-order'),
+  save: (order: string[]) =>
+    apiFetch<{ ok: true; order: string[] | null }>('/api/profile/nav-order', {
+      method: 'PUT',
+      body: { order },
+    }),
+};
+
 export const workspaceApi = {
   list: () => apiFetch<{ workspaces: Workspace[] }>('/api/workspaces'),
   create: (input: { name: string; visibility?: WorkspaceVisibility; organizationId?: string }) =>

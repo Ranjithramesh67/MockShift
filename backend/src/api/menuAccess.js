@@ -40,6 +40,31 @@ function isMenuKey(key) {
   return MENU_KEYS.includes(key);
 }
 
+// Every sidebar rail item a user may reposition. `apis`/`workflow`/`admin` are
+// not visibility-toggleable (see MENU_KEYS) but are still reorderable, so this
+// is a superset kept alongside — never instead of — MENU_KEYS.
+const RAIL_ORDER_KEYS = Object.freeze([
+  'apis',
+  'workflow',
+  'teams',
+  'automations',
+  'history',
+  'docs',
+  'contracts',
+  'monitors',
+  'mock-scenarios',
+  'copilot',
+  'collab',
+  'json-compare',
+  'network',
+  'manage',
+  'admin',
+]);
+
+function isRailOrderKey(key) {
+  return RAIL_ORDER_KEYS.includes(key);
+}
+
 // Pure: collapse raw menu_settings rows into { [key]: boolean }, starting from
 // "all enabled" and applying org rows first then project rows on top.
 function mergeMenuRows(rows) {
@@ -152,7 +177,9 @@ function requireMenuEnabled(menuKey) {
 
 module.exports = {
   MENU_KEYS,
+  RAIL_ORDER_KEYS,
   isMenuKey,
+  isRailOrderKey,
   mergeMenuRows,
   menuDisabledBody,
   resolveMenuContext,

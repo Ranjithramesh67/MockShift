@@ -7,6 +7,7 @@ import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp, makeId } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
 import { useMenuAccess } from '@/store/MenuAccessStore';
+import { useNavOrder } from '@/store/NavOrderStore';
 import { useAuth } from '@/lib/auth';
 import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { isUntitledWorkflow, UNTITLED_WORKFLOW_NAME } from '@/lib/workflowValidation';
@@ -55,7 +56,9 @@ import {
   XIcon,
   CompareIcon,
   NetworkIcon,
+  GripIcon,
 } from './icons';
+import { NavOrderDialog } from './NavOrderDialog';
 
 type RailTab = 'apis' | 'teams' | 'workflow';
 
@@ -1373,6 +1376,7 @@ export function Sidebar({
   const { state, dispatch } = useApp();
   const { view, setView } = useNav();
   const menu = useMenuAccess();
+  const navOrder = useNavOrder();
   const router = useRouter();
   const [rail, setRail] = useState<RailTab>(() => (state.activeTab === 'workflow' ? 'workflow' : 'apis'));
   const [collapsed, setCollapsed] = useState(false);
@@ -1383,6 +1387,7 @@ export function Sidebar({
   const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
+  const [navOrderOpen, setNavOrderOpen] = useState(false);
   const [shareLinkTarget, setShareLinkTarget] = useState<SendableItem | null>(null);
   const [teamsOpen, setTeamsOpen] = useState(false);
   const [managingTeamId, setManagingTeamId] = useState<string | null>(null);
@@ -1522,6 +1527,29 @@ export function Sidebar({
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
+  // Rail order is applied through CSS flex `order`, so the built-in DOM order is
+  // untouched until the user saves a custom arrangement.
+  const customRail = navOrder.custom;
+  const railOrderStyle = (key: string) =>
+    customRail ? { order: navOrder.orderFor(key) } : undefined;
+  const railAvailableKeys = [
+    'apis',
+    'workflow',
+    ...(menu.isEnabled('teams') ? ['teams'] : []),
+    ...(menu.isEnabled('automations') ? ['automations'] : []),
+    ...(menu.isEnabled('history') ? ['history'] : []),
+    ...(menu.isEnabled('docs') ? ['docs'] : []),
+    ...(menu.isEnabled('contracts') ? ['contracts'] : []),
+    ...(menu.isEnabled('monitors') ? ['monitors'] : []),
+    ...(menu.isEnabled('mock-scenarios') ? ['mock-scenarios'] : []),
+    ...(menu.isEnabled('copilot') ? ['copilot'] : []),
+    ...(menu.isEnabled('collab') ? ['collab'] : []),
+    ...(menu.isEnabled('json-compare') ? ['json-compare'] : []),
+    ...(menu.isEnabled('network') ? ['network'] : []),
+    ...(canManage && menu.isEnabled('manage') ? ['manage'] : []),
+    ...(user?.role === 'ADMIN' ? ['admin'] : []),
+  ];
+
   return (
     <>
       <aside
@@ -1537,6 +1565,7 @@ export function Sidebar({
           data-testid="rail-apis"
           title="APIs & collections"
           aria-label="APIs & collections"
+          style={railOrderStyle('apis')}
           onClick={() => {
             setRail('apis');
             setCollapsed(false);
@@ -1552,6 +1581,7 @@ export function Sidebar({
           data-testid="rail-workflow"
           title="Workflows"
           aria-label="Workflows"
+          style={railOrderStyle('workflow')}
           onClick={() => {
             setRail('workflow');
             setCollapsed(false);
@@ -1568,6 +1598,7 @@ export function Sidebar({
             data-testid="rail-teams"
             title="Teams"
             aria-label="Teams"
+            style={railOrderStyle('teams')}
             onClick={() => {
               setRail('teams');
               setCollapsed(false);
@@ -1577,7 +1608,7 @@ export function Sidebar({
             <TeamIcon size={17} />
           </button>
         )}
-        <div className="rail-sep" />
+        <div className="rail-sep" style={customRail ? { display: 'none' } : undefined} />
         {menu.isEnabled('automations') && (
           <Link
             href="/automations"
@@ -1585,6 +1616,7 @@ export function Sidebar({
             data-testid="rail-automations"
             title="Automations"
             aria-label="Automations"
+            style={railOrderStyle('automations')}
             onClick={() => {
               setView('automations');
               onRequestClose?.();
@@ -1600,6 +1632,7 @@ export function Sidebar({
             data-testid="rail-history"
             title="Run history"
             aria-label="Run history"
+            style={railOrderStyle('history')}
             onClick={() => {
               setView('history');
               onRequestClose?.();
@@ -1615,6 +1648,7 @@ export function Sidebar({
             data-testid="rail-docs"
             title="Docs"
             aria-label="Docs"
+            style={railOrderStyle('docs')}
             onClick={() => {
               setView('docs');
               onRequestClose?.();
@@ -1630,6 +1664,7 @@ export function Sidebar({
             data-testid="rail-contracts"
             title="API contracts"
             aria-label="API contracts"
+            style={railOrderStyle('contracts')}
             onClick={() => {
               setView('contracts');
               onRequestClose?.();
@@ -1645,6 +1680,7 @@ export function Sidebar({
             data-testid="rail-monitors"
             title="Monitors"
             aria-label="Monitors"
+            style={railOrderStyle('monitors')}
             onClick={() => {
               setView('monitors');
               onRequestClose?.();
@@ -1660,6 +1696,7 @@ export function Sidebar({
             data-testid="rail-mock-scenarios"
             title="Mock scenarios"
             aria-label="Mock scenarios"
+            style={railOrderStyle('mock-scenarios')}
             onClick={() => {
               setView('mock-scenarios');
               onRequestClose?.();
@@ -1675,6 +1712,7 @@ export function Sidebar({
             data-testid="rail-copilot"
             title="AI copilot"
             aria-label="AI copilot"
+            style={railOrderStyle('copilot')}
             onClick={() => {
               setView('copilot');
               onRequestClose?.();
@@ -1690,6 +1728,7 @@ export function Sidebar({
             data-testid="rail-collab"
             title="Collaboration"
             aria-label="Collaboration"
+            style={railOrderStyle('collab')}
             onClick={() => {
               setView('collab');
               onRequestClose?.();
@@ -1705,6 +1744,7 @@ export function Sidebar({
             data-testid="rail-json-compare"
             title="JSON compare"
             aria-label="JSON compare"
+            style={railOrderStyle('json-compare')}
             onClick={() => {
               setView('json-compare');
               onRequestClose?.();
@@ -1720,6 +1760,7 @@ export function Sidebar({
             data-testid="rail-network"
             title="People"
             aria-label="People"
+            style={railOrderStyle('network')}
             onClick={() => {
               setView('network');
               onRequestClose?.();
@@ -1735,6 +1776,7 @@ export function Sidebar({
             data-testid="rail-manage"
             title="Manage"
             aria-label="Manage"
+            style={railOrderStyle('manage')}
             onClick={() => {
               setView('manage');
               onRequestClose?.();
@@ -1750,6 +1792,7 @@ export function Sidebar({
             data-testid="rail-admin"
             title="Admin"
             aria-label="Admin"
+            style={railOrderStyle('admin')}
             onClick={() => {
               setView('admin');
               onRequestClose?.();
@@ -1758,18 +1801,34 @@ export function Sidebar({
             <UserIcon size={17} />
           </Link>
         )}
-        <div className="rail-spacer" />
+        <button
+          type="button"
+          className="rail-button rail-customize"
+          data-testid="rail-customize"
+          title="Customize menu"
+          aria-label="Customize menu"
+          style={customRail ? { order: 997 } : undefined}
+          onClick={() => setNavOrderOpen(true)}
+        >
+          <GripIcon size={17} />
+        </button>
+        <div className="rail-spacer" style={customRail ? { order: 998 } : undefined} />
         <button
           type="button"
           className={`rail-button rail-toggle ${collapsed ? 'is-collapsed' : ''}`}
           data-testid="sidebar-toggle"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={customRail ? { order: 999 } : undefined}
           onClick={() => setCollapsed((v) => !v)}
         >
           <ChevronIcon size={15} />
         </button>
       </nav>
+
+      {navOrderOpen && (
+        <NavOrderDialog availableKeys={railAvailableKeys} onClose={() => setNavOrderOpen(false)} />
+      )}
 
       <div className={`sidebar-panel ${railHidden ? 'sidebar-panel-hidden' : ''}`}>
         {rail === 'apis' ? (
