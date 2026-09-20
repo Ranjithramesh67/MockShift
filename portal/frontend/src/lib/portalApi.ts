@@ -3,11 +3,14 @@
 
 export class ApiError extends Error {
   status: number;
+  /** Machine-readable reason when the API supplies one (e.g. `cancel_required`). */
+  code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -57,7 +60,11 @@ export async function apiFetch<T = unknown>(path: string, options: RequestOption
       data && typeof data === 'object' && 'error' in data && typeof (data as { error?: unknown }).error === 'string'
         ? (data as { error: string }).error
         : `Request failed (${res.status})`;
-    throw new ApiError(message, res.status);
+    const code =
+      data && typeof data === 'object' && 'code' in data && typeof (data as { code?: unknown }).code === 'string'
+        ? (data as { code: string }).code
+        : undefined;
+    throw new ApiError(message, res.status, code);
   }
 
   return data as T;

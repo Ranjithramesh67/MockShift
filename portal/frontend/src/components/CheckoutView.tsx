@@ -13,6 +13,7 @@ import {
   type Cycle,
   type Subscription,
 } from '@/lib/checkoutApi';
+import { ApiError } from '@/lib/portalApi';
 
 const VALID_CYCLES: Cycle[] = ['MONTHLY', 'YEARLY'];
 
@@ -44,6 +45,7 @@ export default function CheckoutView() {
   const [sEmail, setSEmail] = useState('');
   const [sPassword, setSPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -53,6 +55,7 @@ export default function CheckoutView() {
     setView({ kind: 'loading' });
     setLoadError(null);
     setError(null);
+    setErrorCode(null);
     setMeState('loading');
     Promise.all([fetchPlans(), fetchMe()])
       .then(([planRows, me]) => {
@@ -93,6 +96,7 @@ export default function CheckoutView() {
     async (account?: { name: string; email: string; password: string }) => {
       if (!plan) return;
       setError(null);
+      setErrorCode(null);
       setView({ kind: 'busy' });
       try {
         const result = await checkout(plan.key, cycle, account);
@@ -104,6 +108,7 @@ export default function CheckoutView() {
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Checkout failed. Please try again.';
         setError(message);
+        setErrorCode(err instanceof ApiError ? err.code ?? null : null);
         setView({ kind: 'ready' });
       }
     },
@@ -123,6 +128,7 @@ export default function CheckoutView() {
   const submitSignIn = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    setErrorCode(null);
     setView({ kind: 'busy' });
     try {
       await signIn(sEmail, sPassword);
@@ -132,12 +138,14 @@ export default function CheckoutView() {
       setReloadKey((k) => k + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign in failed');
+      setErrorCode(err instanceof ApiError ? err.code ?? null : null);
       setView({ kind: 'ready' });
     }
   };
 
   const handleSignOut = async () => {
     setError(null);
+    setErrorCode(null);
     try {
       await signOut();
     } finally {
@@ -254,6 +262,34 @@ export default function CheckoutView() {
     </aside>
   ) : null;
 
+  // A plan change that needs action (cancel the current plan first) links to the
+  // account page rather than leaving the customer on a dead-end form.
+  const needsAccountAction =
+    errorCode === 'cancel_required' ||
+    errorCode === 'change_already_scheduled' ||
+    errorCode === 'already_active';
+
+  const errorNotice = error ? (
+    <div className="ck-error" role="alert" data-testid="checkout-error">
+      <span>{error}</span>
+      {needsAccountAction && (
+        <a className="ck-link" href="/account" data-testid="checkout-manage-subscription">
+          Go to My subscription
+        </a>
+      )}
+      {/already exists/.test(error) && (
+        <button
+          type="button"
+          className="ck-link"
+          onClick={() => setMode('signin')}
+          data-testid="checkout-signin-toggle"
+        >
+          Sign in instead
+        </button>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className="ck-shell" data-testid="checkout-view">
       <div className="ck-head">
@@ -288,6 +324,7 @@ export default function CheckoutView() {
               <button type="button" className="ck-link" onClick={handleSignOut} data-testid="checkout-signout">
                 Not you? Sign out
               </button>
+              {errorNotice}
               <form onSubmit={submitSignedInOrder} className="ck-stack">
                 <button type="submit" className="btn btn-primary btn-lg" data-testid="checkout-submit" disabled={view.kind === 'busy'}>
                   {view.kind === 'busy'
@@ -385,16 +422,7 @@ export default function CheckoutView() {
                     data-testid="checkout-password"
                   />
                 </label>
-                {error && (
-                  <div className="ck-error" role="alert" data-testid="checkout-error">
-                    {error}
-                    {/already exists/.test(error) && (
-                      <button type="button" className="ck-link" onClick={() => setMode('signin')} data-testid="checkout-signin-toggle">
-                        Sign in instead
-                      </button>
-                    )}
-                  </div>
-                )}
+                {errorNotice}
                 <button
                   type="submit"
                   className="btn btn-primary btn-lg"

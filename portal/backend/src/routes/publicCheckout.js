@@ -322,6 +322,7 @@ router.post('/checkout', async (req, res, next) => {
     if (existing) {
       return res.status(409).json({
         error: `You already have an active ${existing.plan_name} subscription`,
+        code: 'already_active',
       });
     }
 
