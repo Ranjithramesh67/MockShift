@@ -173,7 +173,14 @@ export async function startCashfreeSession(orderId: string): Promise<CashfreeSes
 
 export type CashfreeStatus = OrderStatusResult & {
   alreadyProcessed?: boolean;
-  gateway?: { provider: string; reference: string | null; status?: string | null };
+  gateway?: {
+    provider: string;
+    reference: string | null;
+    status?: string | null;
+    payment_status?: string | null;
+    attempts?: number | null;
+    terminal?: boolean;
+  };
 };
 
 export async function fetchCashfreeStatus(orderId: string): Promise<CashfreeStatus> {
@@ -248,6 +255,7 @@ export type AccountOverview = {
   ok: true;
   account: { id: string; name: string; email: string; role: string };
   current: Subscription | null;
+  scheduled?: Subscription | null;
   invoices: AccountInvoice[];
   hasPaidOrders: boolean;
   plan?: PlanUsage | null;

@@ -208,12 +208,35 @@ gatewayRouter.get('/cashfree/:orderId/status', access.requireAuth, async (req, r
     if (order.user_id !== req.user.id) return res.status(403).json({ error: 'Not your order' });
     if (order.status !== 'PENDING') return res.json(await settledResponse(orderId));
 
+    let remoteStatus = order.gateway_status || null;
+    let gatewayPayments = null;
     if (order.gateway_order_id && cashfree.isConfigured()) {
       const remote = await cashfree.fetchOrder(order.gateway_order_id).catch(() => null);
       if (remote && cashfree.isPaidStatus(remote.order_status)) {
         return res.json(await settleFromProvider(order, { source: 'status_poll' }));
       }
+      if (remote && remote.order_status) remoteStatus = remote.order_status;
+
+      // Surface the provider's payment attempts so the return page can tell a
+      // declined/dropped payment from one that is still in flight instead of
+      // polling forever.
+      const payments = await cashfree.fetchOrderPayments(order.gateway_order_id).catch(() => null);
+      if (payments !== null && payments !== undefined) {
+        gatewayPayments = cashfree.summarizePayments(payments);
+      }
     }
+
+    const remoteTerminal = ['EXPIRED', 'TERMINATED'].includes(
+      String(remoteStatus || '').toUpperCase()
+    );
+    const terminal =
+      remoteTerminal ||
+      Boolean(
+        gatewayPayments &&
+          !gatewayPayments.succeeded &&
+          !gatewayPayments.pending &&
+          gatewayPayments.failed
+      );
 
     const { rows: invoiceOut } = await query(`SELECT ${INVOICE_COLUMNS} FROM invoices i WHERE i.order_id = $1`, [order.id]);
     res.json({
@@ -224,7 +247,10 @@ gatewayRouter.get('/cashfree/:orderId/status', access.requireAuth, async (req, r
       gateway: {
         provider: order.gateway_provider || 'CASHFREE',
         reference: order.gateway_reference || null,
-        status: order.gateway_status || null,
+        status: remoteStatus,
+        payment_status: gatewayPayments ? gatewayPayments.latest : null,
+        attempts: gatewayPayments ? gatewayPayments.attempts : null,
+        terminal,
       },
     });
   } catch (err) {

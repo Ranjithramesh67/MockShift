@@ -50,7 +50,16 @@ const CANONICAL_KEYS = [
   'doc_pages',
 ];
 
-const NON_TERMINAL = `s.status IN ('ACTIVE', 'TRIALING', 'PAST_DUE', 'SUSPENDED')`;
+const NON_TERMINAL = `(
+     (s.status IN ('ACTIVE', 'TRIALING', 'PAST_DUE', 'SUSPENDED')
+        AND NOT (s.cancel_at_period_end
+                 AND s.current_period_end IS NOT NULL
+                 AND s.current_period_end <= now()))
+     OR
+     (s.status = 'SCHEDULED'
+        AND s.current_period_start IS NOT NULL
+        AND s.current_period_start <= now())
+   )`;
 
 // Free-plan fallback used only when the catalog has no PUBLISHED 'free' plan
 // (mirrors migration 013 free row; collections/teams/runs default unlimited).

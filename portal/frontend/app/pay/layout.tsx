@@ -24,7 +24,7 @@ export default function PayLayout({ children }: { children: ReactNode }) {
       </header>
       <main className="ck-main">{children}</main>
       <footer className="ck-foot">
-        <strong>API Hub</strong> — public showcase (Portal A) · subscription management (Portal B) is internal
+        <strong>API Hub</strong> — secure payments powered by Cashfree
       </footer>
     </div>
   );

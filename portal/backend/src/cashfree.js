@@ -168,6 +168,52 @@ function isPaidStatus(status) {
   );
 }
 
+// Payment-attempt statuses that will never succeed without a new attempt.
+function isFailedStatus(status) {
+  return ['FAILED', 'USER_DROPPED', 'CANCELLED', 'VOID', 'DECLINED', 'EXPIRED', 'TERMINATED'].includes(
+    String(status || '').toUpperCase()
+  );
+}
+
+// A payment attempt still in flight (not yet terminal).
+function isPendingStatus(status) {
+  return ['PENDING', 'INITIATED', 'NOT_ATTEMPTED', 'ACTIVE'].includes(
+    String(status || '').toUpperCase()
+  );
+}
+
+// Summarise an order's payment attempts into a terminal signal. Returns:
+//   { attempts, latest, failed: boolean, succeeded: boolean, pending: boolean }
+function summarizePayments(payments) {
+  const list = Array.isArray(payments) ? payments : (payments && payments.payments) || [];
+  const statuses = list
+    .map((p) => ({
+      status: p && (p.payment_status || p.status),
+      at: p && (p.payment_time || p.created_at || p.updated_at),
+    }))
+    .filter((p) => p.status)
+    .sort((a, b) => {
+      const ta = a.at ? Date.parse(a.at) : 0;
+      const tb = b.at ? Date.parse(b.at) : 0;
+      return tb - ta;
+    });
+  let failed = false;
+  let succeeded = false;
+  let pending = false;
+  for (const p of statuses) {
+    if (isPaidStatus(p.status)) succeeded = true;
+    else if (isFailedStatus(p.status)) failed = true;
+    else if (isPendingStatus(p.status)) pending = true;
+  }
+  return {
+    attempts: statuses.length,
+    latest: statuses[0] ? statuses[0].status : null,
+    failed,
+    succeeded,
+    pending,
+  };
+}
+
 // Cashfree signs webhooks with HMAC-SHA256(base64) over `timestamp + rawBody`
 // using the client secret. Returns false (never throws) on any malformed input.
 function verifyWebhookSignature({ rawBody, timestamp, signature }) {
@@ -192,6 +238,9 @@ module.exports = {
   fetchOrder,
   fetchOrderPayments,
   isPaidStatus,
+  isFailedStatus,
+  isPendingStatus,
+  summarizePayments,
   verifyWebhookSignature,
   setTransportForTest,
   resetTransportForTest,

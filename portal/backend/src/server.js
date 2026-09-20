@@ -74,9 +74,13 @@ function createApp() {
   // Portal A — public showcase/catalog endpoints (no auth).
   app.use('/api/public', publicCatalogRouter);
   app.use('/api/public', publicCheckoutRouter);
-  // Portal A — simulated payment gateway + provider webhooks (A6).
-  app.use('/api/public/gateway', paymentGatewayRouter);
-  app.use('/api/public/webhooks', webhooksRouter);
+  // Portal A — simulated payment gateway + provider webhooks (A6). Disabled by
+  // default: with the real Cashfree gateway live, the demo routes would let a
+  // customer settle an order without paying. Opt in only for local testing.
+  if (process.env.ALLOW_MOCK_GATEWAY === '1') {
+    app.use('/api/public/gateway', paymentGatewayRouter);
+    app.use('/api/public/webhooks', webhooksRouter);
+  }
   // Portal A — real Cashfree gateway (session + status) and signed webhook.
   app.use('/api/public/gateway', cashfreeGatewayRouter);
   app.use('/api/public/webhooks', cashfreeWebhookRouter);

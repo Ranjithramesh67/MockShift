@@ -191,7 +191,7 @@ export default function ReceiptView({
       </div>
 
       <p className="rc-note">
-        This is a receipt for a simulated payment in the API Hub demo. No real charge was made.
+        Payment processed securely by Cashfree. This receipt is available under My subscription.
       </p>
     </div>
   );

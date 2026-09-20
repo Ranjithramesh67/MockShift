@@ -276,7 +276,7 @@ const FAQS = [
   },
   {
     q: 'Can I switch, cancel or get enterprise terms?',
-    a: 'Yes. Upgrade, downgrade or cancel anytime — changes apply at the end of the current billing period, and yearly billing saves roughly 17%. The Enterprise plan adds unlimited seats, SAML SSO, an SLA and a dedicated customer success manager; contact sales for custom pricing.',
+    a: 'Yes — upgrade anytime and the new plan starts immediately, charged only the prorated difference for the days left in your current period. To move to a cheaper or same-priced plan, cancel first: the change takes effect at the end of the current billing period, and payments already made are non-refundable. Yearly billing saves roughly 17%. The Enterprise plan adds unlimited seats, SAML SSO, an SLA and a dedicated customer success manager; contact sales for custom pricing.',
   },
   {
     q: 'How is my data secured?',
@@ -576,8 +576,7 @@ export default function Home() {
             </a>
           </nav>
           <p className="footer-note">
-            <strong>API Hub</strong> — public showcase (Portal A) · subscription management
-            (Portal B) is internal
+            <strong>API Hub</strong> — secure payments powered by Cashfree
           </p>
         </div>
       </footer>

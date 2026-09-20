@@ -18,6 +18,7 @@
 
 const { query } = require('./shared');
 const { logAudit } = require('./auditLog');
+const planChange = require('./planChange');
 const {
   withUserTransaction,
   fetchSubscriptionShape,
@@ -133,24 +134,31 @@ async function finalizePaidOrder(orderRow, { provider, eventType, reference, eve
       [orderRow.id]
     );
 
-    const { rows: subRows } = await client.query(
-      `INSERT INTO subscriptions
-         (user_id, plan_id, status, billing_cycle, current_period_start,
-          current_period_end)
-       VALUES ($1, $2, 'ACTIVE', $3, now(),
-               CASE WHEN $3 = 'YEARLY'
-                    THEN now() + interval '1 year' + make_interval(days => $4)
-                    ELSE now() + interval '1 month' + make_interval(days => $4)
-               END)
-       RETURNING id`,
-      [userId, orderRow.plan_id, orderRow.billing_cycle, bonus.days]
+    // Plan-change rules: a strictly higher-priced plan activates immediately
+    // (the customer was charged only the prorated difference); a same/lower
+    // priced plan is queued to start when the current paid period ends.
+    const decision = planChange.decisionForPaidOrder(
+      await planChange.classifyPlanChange(client, {
+        userId,
+        cycle: orderRow.billing_cycle,
+        newPrice: planChange.priceForCycle(
+          { price_monthly: orderRow.plan_price_monthly, price_yearly: orderRow.plan_price_yearly },
+          orderRow.billing_cycle
+        ),
+      })
     );
-    const subscriptionId = subRows[0].id;
+
+    const subscriptionId = await planChange.createSubscriptionForChange(client, {
+      userId,
+      planId: orderRow.plan_id,
+      cycle: orderRow.billing_cycle,
+      decision,
+      bonusDays: bonus.days,
+    });
     await client.query(`UPDATE orders SET subscription_id = $1 WHERE id = $2`, [
       subscriptionId,
       orderRow.id,
     ]);
-    await client.query('SELECT app.supersede_subscriptions($1)', [subscriptionId]);
 
     const payload = {
       amount: orderRow.amount,

@@ -26,7 +26,7 @@ export default function LoginLayout({ children }: { children: ReactNode }) {
       </header>
       <main className="ac-main">{children}</main>
       <footer className="ac-foot">
-        <strong>API Hub</strong> — subscriber sign-in (Portal A)
+        <strong>API Hub</strong> — subscriber sign-in
       </footer>
     </div>
   );

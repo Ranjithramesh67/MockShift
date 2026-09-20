@@ -1,7 +1,7 @@
 /* ==========================================================================
-   Portal A (A6) — simulated payment gateway page.
-   Rides the shared .ck- checkout design system (imported from ../checkout);
-   only the gateway-specific surfaces are defined here.
+   Portal A (A6) — legacy payment gateway stylesheet.
+   The simulated gateway page now redirects to the real Cashfree payment page
+   (/pay); these rules are kept only for the shared checkout surfaces.
    ========================================================================== */
 
 .ck-main {

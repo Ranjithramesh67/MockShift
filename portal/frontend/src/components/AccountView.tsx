@@ -191,6 +191,7 @@ export default function AccountView() {
   }
 
   const current = data?.current ?? null;
+  const scheduled = data?.scheduled ?? null;
   const canScheduleCancel =
     !!current &&
     (current.status === 'ACTIVE' || current.status === 'TRIALING') &&
@@ -229,12 +230,22 @@ export default function AccountView() {
         </button>
       </section>
 
+      {scheduled ? (
+        <div className="ac-card ac-cancel-note" data-testid="account-scheduled-note">
+          <p>
+            Your plan change to <strong>{scheduled.plan.name}</strong> starts on{' '}
+            {scheduled.current_period_start ? formatDate(scheduled.current_period_start) : 'the end of your current period'}.
+            Your current plan stays active until then, and no refund is issued for the remaining days.
+          </p>
+        </div>
+      ) : null}
+
       {!current ? (
         <div className="ac-card ac-empty" data-testid="account-empty">
           <h2>No active subscription</h2>
           <p className="ac-muted">
-            You don’t have a current plan yet. Pick a plan to get started — paid plans add +5/+10/+15
-            extra validity days on your first recharge.
+            You don’t have a current plan yet. Pick a plan to get started — paid plans add extra
+            validity days on your first recharge.
           </p>
           <div className="ac-actions">
             <a className="ac-btn ac-btn-primary" href="/#pricing">
@@ -312,7 +323,7 @@ export default function AccountView() {
                 <p className="ac-switcher-title">
                   {current.plan.key === 'free'
                     ? 'Choose a paid plan — payment runs through the normal checkout.'
-                    : 'Switching pays for the new plan through checkout and moves you immediately; your current plan is cancelled.'}
+                    : 'Upgrades start immediately and are charged only the prorated difference for the days left. Cheaper plans require cancelling first and start when your current period ends.'}
                 </p>
                 {plans === null ? (
                   <p className="ac-muted">Loading plans…</p>

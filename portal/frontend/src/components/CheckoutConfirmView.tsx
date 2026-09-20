@@ -118,7 +118,7 @@ export default function CheckoutConfirmView() {
           {paid
             ? `Order ${short(order.id)} is paid and your ${order.plan_name} subscription is active.`
             : payable
-              ? 'Finish the (simulated) payment to activate your subscription.'
+              ? 'Finish your secure payment to activate your subscription.'
               : 'Review your order below.'}
         </p>
       </div>
@@ -153,9 +153,7 @@ export default function CheckoutConfirmView() {
               </div>
             </dl>
           )}
-          <p className="ck-fine">
-            Demo checkout — the gateway is simulated. No real payment is taken.
-          </p>
+          <p className="ck-fine">Payments are processed securely by Cashfree.</p>
         </aside>
 
         <section className="ck-panel" aria-label="Payment confirmation">

@@ -1,16 +1,12 @@
-import { Suspense } from 'react';
-import GatewayView from '@/components/GatewayView';
+import { redirect } from 'next/navigation';
 
-export default function GatewayPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="ck-loading" role="status">
-          Loading your payment…
-        </div>
-      }
-    >
-      <GatewayView />
-    </Suspense>
-  );
+// The simulated gateway page is retired now that payments go through Cashfree;
+// keep the route working by forwarding to the real payment page.
+export default function GatewayPage({
+  searchParams,
+}: {
+  searchParams: { orderId?: string };
+}) {
+  const orderId = typeof searchParams.orderId === 'string' ? searchParams.orderId : '';
+  redirect(orderId ? `/pay?orderId=${encodeURIComponent(orderId)}` : '/#pricing');
 }

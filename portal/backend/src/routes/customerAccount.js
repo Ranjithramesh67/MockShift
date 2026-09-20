@@ -23,6 +23,7 @@ const {
   countPoolUsage,
   currentRunUsage,
 } = require('../../../../backend/src/api/entitlements');
+const planChange = require('../planChange');
 
 const router = Router();
 
@@ -76,6 +77,9 @@ router.get('/overview', access.requireAuth, async (req, res, next) => {
   try {
     const userId = req.user.id;
 
+    // Activate any queued plan whose start date has arrived before reading it.
+    await planChange.promoteScheduledSubscriptions(userId);
+
     const { rows: userRows } = await query(
       `SELECT id, name, email, role, created_at FROM users WHERE id = $1`,
       [userId],
@@ -95,6 +99,19 @@ router.get('/overview', access.requireAuth, async (req, res, next) => {
       { userId }
     );
     const current = subRows[0] ? toSubscriptionShape(subRows[0]) : null;
+
+    // A queued (lower-priced) plan the customer scheduled for the end of the
+    // current period — surfaced so the account page can explain the change.
+    const { rows: scheduledRows } = await query(
+      `SELECT ${SUB_COLUMNS}
+         FROM subscriptions s JOIN plans p ON p.id = s.plan_id
+        WHERE s.user_id = $1 AND s.status = 'SCHEDULED'
+        ORDER BY s.current_period_start ASC NULLS LAST, s.created_at DESC
+        LIMIT 1`,
+      [userId],
+      { userId }
+    );
+    const scheduled = scheduledRows[0] ? toSubscriptionShape(scheduledRows[0]) : null;
 
     const { rows: invoiceRows } = await query(
       `SELECT i.id, i.number, i.amount::text AS amount, i.currency, i.status,
@@ -142,6 +159,7 @@ router.get('/overview', access.requireAuth, async (req, res, next) => {
         role: user.role,
       },
       current,
+      scheduled,
       plan,
       invoices: invoiceRows.map(toInvoiceShape),
       hasPaidOrders: paid.length > 0,
@@ -194,7 +212,7 @@ async function ownSubscription(req, res, allowStates, alreadyFlagged, notFlagged
 // POST { subscriptionId } — schedule cancellation at period end.
 router.post('/cancel', access.requireAuth, async (req, res, next) => {
   try {
-    const sub = await ownSubscription(req, res, ['ACTIVE', 'TRIALING'], true, false);
+    const sub = await ownSubscription(req, res, ['ACTIVE', 'TRIALING', 'SCHEDULED'], true, false);
     if (!sub) return;
 
     await query('SELECT app.self_service_cancel_subscription($1)', [sub.id], {

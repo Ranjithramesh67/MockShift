@@ -19,6 +19,7 @@ const { pool, query, authLib, access } = require('../shared');
 const { allocateUsername } = require('../../../../backend/src/api/username');
 const { provisionNewAccount } = require('../../../../backend/src/api/accountProvision');
 const { issueEmailVerification } = require('../../../../backend/src/api/emailVerification');
+const planChange = require('../planChange');
 
 const router = Router();
 
@@ -82,7 +83,8 @@ const ORDER_COLUMNS = `o.id, o.user_id, o.plan_id, o.status, o.billing_cycle,
   o.amount::text AS amount, o.currency, o.payment_method, o.created_at,
   o.subscription_id, o.gateway_status, o.gateway_provider, o.gateway_reference,
   o.gateway_order_id, o.gateway_session_id, o.paid_at, p.key AS plan_key,
-  p.name AS plan_name, p.trial_days AS plan_trial_days`;
+  p.name AS plan_name, p.trial_days AS plan_trial_days,
+  p.price_monthly AS plan_price_monthly, p.price_yearly AS plan_price_yearly`;
 
 function toOrderShape(r) {
   return {
@@ -312,6 +314,10 @@ router.post('/checkout', async (req, res, next) => {
     }
     if (!userId) return res.status(500).json({ error: 'Could not resolve account' });
 
+    // Activate (or retire) any plan change whose date has arrived before we
+    // classify a new one against the current plan.
+    await planChange.promoteScheduledSubscriptions(userId);
+
     const existing = await hasActiveSubscription(userId, plan.id);
     if (existing) {
       return res.status(409).json({
@@ -327,30 +333,50 @@ router.post('/checkout', async (req, res, next) => {
     };
 
     const result = await withUserTransaction(userId, async (client) => {
-      if (amount === 0) {
-        // Free plan — activate immediately; no order/invoice is created so a
-        // later paid purchase is still the customer's first recharge.
-        const { rows } = await client.query(
-          `INSERT INTO subscriptions
-             (user_id, plan_id, status, billing_cycle, current_period_start, current_period_end)
-           VALUES ($1, $2, 'ACTIVE', $3, now(), NULL)
-           RETURNING id`,
-          [userId, plan.id, cycle]
-        );
-        // A5 plan change: activating Free supersedes any other active plan the
-        // customer holds (paid -> free downgrade), keeping one current plan.
-        await client.query('SELECT app.supersede_subscriptions($1)', [rows[0].id]);
-        return { kind: 'free', subscription: await fetchSubscriptionShapeTx(client, rows[0].id) };
+      // Plan-change rules: block an immediate cheaper/same-price recharge,
+      // prorate upgrades, and queue a lower plan for the end of the period.
+      const decision = await planChange.classifyPlanChange(client, {
+        userId,
+        plan,
+        cycle,
+        newPrice: amount,
+      });
+
+      if (decision.kind === 'BLOCKED') {
+        return { kind: 'blocked', code: decision.code, message: decision.message };
       }
 
       const firstRechargeEligible = !(await hasPriorPaidOrder(userId, { userId }));
       const bonusDays = firstRechargeEligible && plan.trial_days > 0 ? plan.trial_days : 0;
 
+      // Upgrades are charged only the prorated difference; everything else pays
+      // the catalog price.
+      const amountDue = decision.kind === 'UPGRADE' ? decision.amountDue : amount;
+
+      if (amount === 0 || amountDue < 1) {
+        // Free plan, or an upgrade fully covered by the unused current period —
+        // no order/invoice; activate (or queue) immediately. A free activation
+        // never creates an order, so a later paid purchase is still the
+        // customer's first recharge.
+        const subscriptionId = await planChange.createSubscriptionForChange(client, {
+          userId,
+          planId: plan.id,
+          cycle,
+          decision,
+          bonusDays,
+        });
+        return {
+          kind: 'free',
+          scheduled: decision.kind === 'DOWNGRADE',
+          subscription: await fetchSubscriptionShapeTx(client, subscriptionId),
+        };
+      }
+
       const { rows: orderRows } = await client.query(
         `INSERT INTO orders (user_id, plan_id, amount, currency, billing_cycle, status)
          VALUES ($1, $2, $3, $4, $5, 'PENDING')
          RETURNING id`,
-        [userId, plan.id, amount, plan.currency, cycle]
+        [userId, plan.id, amountDue, plan.currency, cycle]
       );
       const orderId = orderRows[0].id;
 
@@ -359,7 +385,7 @@ router.post('/checkout', async (req, res, next) => {
         `INSERT INTO invoices (order_id, user_id, number, amount, currency, status)
          VALUES ($1, $2, $3, $4, $5, 'DRAFT')
          RETURNING id`,
-        [orderId, userId, number, amount, plan.currency]
+        [orderId, userId, number, amountDue, plan.currency]
       );
 
       const { rows: orderOut } = await client.query(
@@ -369,7 +395,7 @@ router.post('/checkout', async (req, res, next) => {
         [orderId]
       );
       const { rows: invoiceOut } = await client.query(
-        `SELECT ${INVOICE_COLUMNS} FROM invoices i WHERE id = $1`,
+        `SELECT ${INVOICE_COLUMNS} FROM invoices i WHERE i.id = $1`,
         [invoiceRows[0].id]
       );
 
@@ -378,8 +404,18 @@ router.post('/checkout', async (req, res, next) => {
         order: toOrderShape(orderOut[0]),
         invoice: toInvoiceShape(invoiceOut[0]),
         bonus: { firstRechargeEligible, days: bonusDays },
+        planChange: {
+          kind: decision.kind,
+          prorated: decision.kind === 'UPGRADE',
+          fullPrice: amount,
+          amountDue,
+        },
       };
     });
+
+    if (result.kind === 'blocked') {
+      return res.status(409).json({ error: result.message, code: result.code });
+    }
 
     if (accountSummary.created) {
       res.setHeader('Set-Cookie', authLib.sessionCookie(authLib.createSessionToken(userId)));
@@ -404,6 +440,7 @@ router.post('/checkout', async (req, res, next) => {
       return res.status(201).json({
         ok: true,
         requiresPayment: false,
+        scheduled: Boolean(result.scheduled),
         subscription: result.subscription,
         account: accountSummary,
       });
@@ -414,6 +451,7 @@ router.post('/checkout', async (req, res, next) => {
       order: result.order,
       invoice: result.invoice,
       bonus: result.bonus,
+      planChange: result.planChange || null,
       account: accountSummary,
     });
   } catch (err) {
@@ -500,6 +538,16 @@ async function settledOrderResponse(order, userId) {
 // order ever.
 router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, next) => {
   try {
+    // The mock confirmation flow is a demo-only shortcut (it marks an order
+    // PAID with no charge). Real orders settle through the Cashfree status poll
+    // / signed webhook, so this is off unless explicitly opted in.
+    if (process.env.ALLOW_MOCK_GATEWAY !== '1') {
+      return res.status(403).json({
+        error: 'The simulated payment confirmation flow is disabled',
+        code: 'mock_gateway_disabled',
+      });
+    }
+
     const { orderId } = req.params;
     if (!isUuid(orderId)) return res.status(400).json({ error: 'Invalid order id' });
 
@@ -558,27 +606,30 @@ router.post('/checkout/:orderId/confirm', access.requireAuth, async (req, res, n
         [orderId]
       );
 
-      const { rows: subRows } = await client.query(
-        `INSERT INTO subscriptions
-           (user_id, plan_id, status, billing_cycle, current_period_start,
-            current_period_end)
-         VALUES ($1, $2, 'ACTIVE', $3, now(),
-                 CASE WHEN $3 = 'YEARLY'
-                      THEN now() + interval '1 year' + make_interval(days => $4)
-                      ELSE now() + interval '1 month' + make_interval(days => $4)
-                 END)
-         RETURNING id`,
-        [req.user.id, order.plan_id, order.billing_cycle, bonus.days]
+      // Plan-change rules apply here too (a cheaper/lateral plan confirmed
+      // after a scheduled cancellation is queued, an upgrade is prorated).
+      const decision = planChange.decisionForPaidOrder(
+        await planChange.classifyPlanChange(client, {
+          userId: req.user.id,
+          cycle: order.billing_cycle,
+          newPrice: planChange.priceForCycle(
+            { price_monthly: order.plan_price_monthly, price_yearly: order.plan_price_yearly },
+            order.billing_cycle
+          ),
+        })
       );
-      const subscriptionId = subRows[0].id;
+
+      const subscriptionId = await planChange.createSubscriptionForChange(client, {
+        userId: req.user.id,
+        planId: order.plan_id,
+        cycle: order.billing_cycle,
+        decision,
+        bonusDays: bonus.days,
+      });
       await client.query(`UPDATE orders SET subscription_id = $1 WHERE id = $2`, [
         subscriptionId,
         orderId,
       ]);
-      // A5 plan change: confirming an order for a DIFFERENT plan moves the
-      // customer to it — every other ACTIVE/TRIALING subscription is cancelled
-      // immediately (migration 017), so one current plan always holds.
-      await client.query('SELECT app.supersede_subscriptions($1)', [subscriptionId]);
 
       return {
         subscription: await fetchSubscriptionShapeTx(client, subscriptionId),

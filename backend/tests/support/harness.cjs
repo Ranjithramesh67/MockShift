@@ -39,6 +39,9 @@ async function startApp() {
   psql('UPDATE portal_settings SET restrictions_enforced = false;');
 
   process.env.ALLOW_SELF_SIGNUP = '1';
+  // Opt into the demo gateway for tests that settle orders via the mock
+  // confirm/webhook routes (production leaves this unset).
+  process.env.ALLOW_MOCK_GATEWAY = '1';
   process.env.PGDATABASE = DBNAME;
   process.env.AUTH_SECRET = 'test-auth-secret-for-integration';
   process.env.VAULT_KEY = 'test-vault-key-do-not-use-in-prod';

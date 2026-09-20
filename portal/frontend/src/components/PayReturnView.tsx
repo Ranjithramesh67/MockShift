@@ -5,15 +5,26 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError } from '@/lib/portalApi';
 import { fetchCashfreeStatus } from '@/lib/checkoutApi';
 
-type Phase = 'checking' | 'pending' | 'error';
+type Phase = 'checking' | 'pending' | 'failed' | 'error';
 
-const MAX_ATTEMPTS = 10;
-const POLL_MS = 3000;
+const MAX_ATTEMPTS = 6;
+const POLL_MS = 2500;
+
+// Cashfree returns the browser with our own `orderId` query param, but may also
+// append its provider `order_id`. Our internal order id is the leading uuid.
+function resolveOrderId(raw: string | null): string {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const candidate = value.slice(0, 36);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate)
+    ? candidate
+    : value;
+}
 
 export default function PayReturnView() {
   const params = useSearchParams();
   const router = useRouter();
-  const orderId = params.get('orderId') || '';
+  const orderId = resolveOrderId(params.get('orderId') || params.get('order_id'));
 
   const [phase, setPhase] = useState<Phase>('checking');
   const [message, setMessage] = useState<string | null>(null);
@@ -29,6 +40,17 @@ export default function PayReturnView() {
       const status = await fetchCashfreeStatus(orderId);
       if (status.order.status === 'PAID') {
         router.replace(`/receipt/${encodeURIComponent(orderId)}`);
+        return 'stop' as const;
+      }
+      // A declined / dropped / expired attempt will never succeed on its own —
+      // stop polling and let the customer retry instead of hanging.
+      if (status.order.status === 'FAILED' || status.gateway?.terminal) {
+        setPhase('failed');
+        setMessage(
+          status.gateway?.payment_status
+            ? `Your payment was not completed (${status.gateway.payment_status}). No money was taken.`
+            : 'Your payment was not completed. No money was taken.'
+        );
         return 'stop' as const;
       }
       return 'again' as const;
@@ -76,6 +98,23 @@ export default function PayReturnView() {
     return (
       <div className="ck-loading" role="status" data-testid="pay-return-checking">
         Confirming your payment…
+      </div>
+    );
+  }
+
+  if (phase === 'failed') {
+    return (
+      <div className="ck-panel" role="alert" data-testid="pay-return-failed">
+        <h1 className="ck-title">Payment not completed</h1>
+        <p className="ck-lede">{message}</p>
+        <div className="gw-actions">
+          <a className="btn btn-primary" href={`/pay?orderId=${encodeURIComponent(orderId)}`}>
+            Try paying again
+          </a>
+          <a className="btn btn-ghost" href="/#pricing">
+            Back to pricing
+          </a>
+        </div>
       </div>
     );
   }
