@@ -178,7 +178,9 @@ export type CashfreeStatus = OrderStatusResult & {
     reference: string | null;
     status?: string | null;
     payment_status?: string | null;
+    payment_message?: string | null;
     attempts?: number | null;
+    cancelled?: boolean;
     terminal?: boolean;
   };
 };

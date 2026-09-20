@@ -25,6 +25,7 @@ let portalBase;
 const cashfree = require('../../portal/backend/src/cashfree');
 
 const remoteOrders = new Map();
+const remotePayments = new Map();
 let transportCalls;
 
 function installTransport() {
@@ -37,6 +38,11 @@ function installTransport() {
       remoteOrders.set(parsed.order_id, cf);
       remoteOrders.set(cf.cf_order_id, cf);
       return { ok: true, status: 200, json: async () => cf };
+    }
+    const paymentsMatch = /\/orders\/([^/]+)\/payments$/.exec(url);
+    if (paymentsMatch) {
+      const id = decodeURIComponent(paymentsMatch[1]);
+      return { ok: true, status: 200, json: async () => remotePayments.get(id) || [] };
     }
     if (/\/orders\//.test(url)) {
       const id = decodeURIComponent(url.split('/orders/')[1]);
@@ -123,6 +129,41 @@ test('cashfree session bootstrap returns a hosted checkout session', async () =>
   const status = await client.api('GET', `/api/public/gateway/cashfree/${orderId}/status`);
   assert.equal(status.status, 200);
   assert.equal(status.json.order.gateway.provider, 'CASHFREE');
+});
+
+test('a cancelled provider payment reports terminal with a reason', async () => {
+  const { client, orderId } = await createUnpaidCustomer('cf-cancel@test.io');
+  const session = await client.api('POST', `/api/public/gateway/cashfree/${orderId}/session`);
+  assert.equal(session.status, 200, JSON.stringify(session.json));
+  remotePayments.set(session.json.cf_order_id, [
+    {
+      payment_status: 'USER_DROPPED',
+      payment_message: 'Payment was cancelled by the user',
+      payment_time: new Date().toISOString(),
+    },
+  ]);
+
+  const status = await client.api('GET', `/api/public/gateway/cashfree/${orderId}/status`);
+  assert.equal(status.status, 200, JSON.stringify(status.json));
+  assert.equal(status.json.order.status, 'PENDING');
+  assert.equal(status.json.gateway.terminal, true);
+  assert.equal(status.json.gateway.cancelled, true);
+  assert.equal(status.json.gateway.payment_status, 'USER_DROPPED');
+  assert.equal(status.json.gateway.payment_message, 'Payment was cancelled by the user');
+});
+
+test('a declined provider payment is terminal but not cancelled', async () => {
+  const { client, orderId } = await createUnpaidCustomer('cf-decline@test.io');
+  const session = await client.api('POST', `/api/public/gateway/cashfree/${orderId}/session`);
+  remotePayments.set(session.json.cf_order_id, [
+    { payment_status: 'FAILED', payment_message: 'Insufficient funds', payment_time: new Date().toISOString() },
+  ]);
+
+  const status = await client.api('GET', `/api/public/gateway/cashfree/${orderId}/status`);
+  assert.equal(status.status, 200, JSON.stringify(status.json));
+  assert.equal(status.json.gateway.terminal, true);
+  assert.equal(status.json.gateway.cancelled, false);
+  assert.equal(status.json.gateway.payment_message, 'Insufficient funds');
 });
 
 test('status poll finalizes a provider-paid order and re-opens the account', async () => {

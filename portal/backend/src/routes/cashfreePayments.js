@@ -237,6 +237,9 @@ gatewayRouter.get('/cashfree/:orderId/status', access.requireAuth, async (req, r
           !gatewayPayments.pending &&
           gatewayPayments.failed
       );
+    const cancelled =
+      Boolean(gatewayPayments && gatewayPayments.cancelled) ||
+      cashfree.isCancelledStatus(remoteStatus);
 
     const { rows: invoiceOut } = await query(`SELECT ${INVOICE_COLUMNS} FROM invoices i WHERE i.order_id = $1`, [order.id]);
     res.json({
@@ -249,7 +252,9 @@ gatewayRouter.get('/cashfree/:orderId/status', access.requireAuth, async (req, r
         reference: order.gateway_reference || null,
         status: remoteStatus,
         payment_status: gatewayPayments ? gatewayPayments.latest : null,
+        payment_message: gatewayPayments ? gatewayPayments.message : null,
         attempts: gatewayPayments ? gatewayPayments.attempts : null,
+        cancelled,
         terminal,
       },
     });

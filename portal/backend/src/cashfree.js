@@ -182,14 +182,39 @@ function isPendingStatus(status) {
   );
 }
 
+// Terminal statuses caused by the payer cancelling or abandoning the attempt,
+// as opposed to a bank/provider decline.
+function isCancelledStatus(status) {
+  return ['CANCELLED', 'USER_DROPPED', 'VOID', 'TERMINATED', 'EXPIRED'].includes(
+    String(status || '').toUpperCase()
+  );
+}
+
+function paymentMessage(p) {
+  if (!p) return null;
+  if (typeof p.payment_message === 'string' && p.payment_message.trim()) {
+    return p.payment_message.trim();
+  }
+  const details = p.error_details;
+  if (details && typeof details === 'object') {
+    if (typeof details.message === 'string' && details.message.trim()) return details.message.trim();
+    if (typeof details.reason === 'string' && details.reason.trim()) return details.reason.trim();
+  }
+  if (typeof p.payment_status_reason === 'string' && p.payment_status_reason.trim()) {
+    return p.payment_status_reason.trim();
+  }
+  return null;
+}
+
 // Summarise an order's payment attempts into a terminal signal. Returns:
-//   { attempts, latest, failed: boolean, succeeded: boolean, pending: boolean }
+//   { attempts, latest, message, cancelled, failed, succeeded, pending }
 function summarizePayments(payments) {
   const list = Array.isArray(payments) ? payments : (payments && payments.payments) || [];
   const statuses = list
     .map((p) => ({
       status: p && (p.payment_status || p.status),
-      at: p && (p.payment_time || p.created_at || p.updated_at),
+      at: p && (p.payment_time || p.payment_completion_time || p.created_at || p.updated_at),
+      message: paymentMessage(p),
     }))
     .filter((p) => p.status)
     .sort((a, b) => {
@@ -205,9 +230,15 @@ function summarizePayments(payments) {
     else if (isFailedStatus(p.status)) failed = true;
     else if (isPendingStatus(p.status)) pending = true;
   }
+  const latest = statuses[0] || null;
+  // Prefer the most recent failed attempt's reason; fall back to the newest
+  // message we have at all.
+  const failedEntry = statuses.find((p) => isFailedStatus(p.status)) || null;
   return {
     attempts: statuses.length,
-    latest: statuses[0] ? statuses[0].status : null,
+    latest: latest ? latest.status : null,
+    message: (failedEntry && failedEntry.message) || (latest && latest.message) || null,
+    cancelled: !succeeded && statuses.some((p) => isCancelledStatus(p.status)),
     failed,
     succeeded,
     pending,
@@ -240,6 +271,7 @@ module.exports = {
   isPaidStatus,
   isFailedStatus,
   isPendingStatus,
+  isCancelledStatus,
   summarizePayments,
   verifyWebhookSignature,
   setTransportForTest,
