@@ -62,6 +62,40 @@ test('form mode: GET shows Params/Headers tabs, POST adds a Body tab and persist
   await expect(page.getByTestId('editor-json').locator('.cm-content')).toContainText('"customer"');
 });
 
+test('switching API type swaps the body content to suit the type', async ({ page }) => {
+  await openInCollection(page);
+
+  // SOAP is body-driven: it switches to POST, opens the Body tab and shows XML.
+  await page.getByTestId('api-type-SOAP').click();
+  await expect(page.getByTestId('create-method')).toHaveValue('POST');
+  await expect(page.getByTestId('create-body-editor')).toBeVisible();
+  await expect(page.getByTestId('create-body-type')).toHaveValue('XML');
+  await expect(page.getByTestId('create-body-input')).toHaveValue(/<soap:Envelope/);
+
+  // GraphQL swaps to a JSON query body.
+  await page.getByTestId('api-type-GRAPHQL').click();
+  await expect(page.getByTestId('create-body-type')).toHaveValue('JSON');
+  await expect(page.getByTestId('create-body-input')).toHaveValue(/query \{ ping \}/);
+
+  // Back to REST: JSON again, and the XML envelope is gone.
+  await page.getByTestId('api-type-REST').click();
+  await expect(page.getByTestId('create-body-type')).toHaveValue('JSON');
+  await expect(page.getByTestId('create-body-input')).toHaveValue(/"key": "value"/);
+  await expect(page.getByTestId('create-body-input')).not.toHaveValue(/Envelope/);
+});
+
+test('a hand-edited body is kept when switching API type', async ({ page }) => {
+  await openInCollection(page);
+
+  await page.getByTestId('create-method').selectOption('POST');
+  await page.getByTestId('create-tab-body').click();
+  await page.getByTestId('create-body-input').fill('{"customer":"A1"}');
+
+  await page.getByTestId('api-type-SOAP').click();
+  await expect(page.getByTestId('create-body-type')).toHaveValue('XML');
+  await expect(page.getByTestId('create-body-input')).toHaveValue('{"customer":"A1"}');
+});
+
 test('curl mode: pasting a curl command pre-fills the created request', async ({ page }) => {
   await openInCollection(page);
 

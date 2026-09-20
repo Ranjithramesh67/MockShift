@@ -1,6 +1,7 @@
 'use client';
 
 import type { ApiRequest, ApiType, BodyType, HttpMethod, RequestContentType } from '@/lib/types';
+import { bodyPresetForApiType } from '@/lib/apiBodyPreset';
 
 export const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
 export const API_TYPES: ApiType[] = ['REST', 'SOAP', 'GRAPHQL', 'AUTH'];
@@ -57,13 +58,6 @@ export function bodyTypeForKind(kind: BodyKind): { bodyType: BodyType; contentTy
   }
 }
 
-const SOAP_SEED = `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <GetUser><id>1</id></GetUser>
-  </soap:Body>
-</soap:Envelope>`;
-
 export function defaultsForApiType(apiType: ApiType): {
   method: HttpMethod;
   bodyType: BodyType;
@@ -75,7 +69,7 @@ export function defaultsForApiType(apiType: ApiType): {
       method: 'POST',
       bodyType: 'GRAPHQL',
       contentType: 'application/json',
-      bodyJson: JSON.stringify({ query: 'query { ping }', variables: {} }, null, 2),
+      bodyJson: bodyPresetForApiType('GRAPHQL').bodyText,
     };
   }
   if (apiType === 'SOAP') {
@@ -83,7 +77,7 @@ export function defaultsForApiType(apiType: ApiType): {
       method: 'POST',
       bodyType: 'XML',
       contentType: 'text/xml',
-      bodyJson: SOAP_SEED,
+      bodyJson: bodyPresetForApiType('SOAP').bodyText,
     };
   }
   return null;

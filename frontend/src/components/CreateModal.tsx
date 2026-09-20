@@ -6,6 +6,7 @@ import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
 import { contentApi } from '@/lib/api';
 import { isCurlCommand, parseCurl } from '@/lib/curl';
+import { isBodyMethod, resolveApiTypeSwitch } from '@/lib/apiBodyPreset';
 import { Modal } from './Modal';
 import { TabBar, type TabItem } from './TabBar';
 import { KeyValueRows } from './KeyValueRows';
@@ -20,11 +21,6 @@ const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: 
 ];
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
-
-// Methods that conventionally carry a request body. GET/DELETE/HEAD/OPTIONS
-// hide the Body tab and edit query params instead. QUERY is GET-like but
-// intentionally carries a body (RFC 10008), so it shows the Body tab.
-const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'QUERY']);
 
 type FormTab = 'params' | 'headers' | 'body';
 type CreateMode = 'form' | 'curl';
@@ -98,7 +94,7 @@ export function CreateModal({
   const canCreateWorkspace = organizations.some((o) => o.role === 'ADMIN');
 
   const isRequest = kind === 'request';
-  const supportsBody = isRequest && BODY_METHODS.has(method);
+  const supportsBody = isRequest && isBodyMethod(method);
   const formTabs: Array<TabItem<FormTab>> = [
     { id: 'params', label: 'Params', icon: RowsIcon },
     { id: 'headers', label: 'Headers', icon: ListIcon },
@@ -110,27 +106,20 @@ export function CreateModal({
   const curlPreview = isCurlCommand(curlText) ? parseCurl(curlText) : null;
 
   const setApiTypeSafe = (t: ApiType) => {
+    const result = resolveApiTypeSwitch({ apiType: t }, { method, bodyText });
     setApiType(t);
-    // SOAP / GraphQL / Auth requests are body-driven: switch a body-less
-    // method to POST so the Body tab is available.
-    if (t !== 'REST' && !BODY_METHODS.has(method)) {
-      setMethod('POST');
-    }
-    if (t === 'SOAP') {
-      setBodySel('XML');
+    if (result.method !== method) setMethod(result.method);
+    if (result.bodySel) setBodySel(result.bodySel as BodySel);
+    // Swap the below editor to content that matches the chosen type — JSON for
+    // REST/GraphQL/Auth, XML for SOAP. A body the user has already edited is
+    // preserved; only an empty or untouched seed body is replaced.
+    if (result.bodyChanged) setBodyText(result.bodyText);
+    // SOAP / GraphQL / Auth are body-driven, so reveal the Body tab; REST keeps
+    // whatever tab the user is on.
+    if (result.bodyTabAvailable && t !== 'REST') {
       setFormTab('body');
-      if (!bodyText.trim()) {
-        setBodyText(
-          '<?xml version="1.0" encoding="UTF-8"?>\n<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">\n  <soap:Body>\n    <GetUser><id>1</id></GetUser>\n  </soap:Body>\n</soap:Envelope>'
-        );
-      }
-    }
-    if (t === 'GRAPHQL') {
-      setBodySel('JSON');
-      setFormTab('body');
-      if (!bodyText.trim()) {
-        setBodyText(JSON.stringify({ query: 'query { ping }', variables: {} }, null, 2));
-      }
+    } else if (formTab === 'body' && !result.bodyTabAvailable) {
+      setFormTab('params');
     }
   };
 
