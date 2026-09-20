@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { type GlobalProject } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { canCreateProject } from '@/lib/activeProject';
 import { useWorkspace } from '@/store/WorkspaceStore';
@@ -14,9 +15,19 @@ export function ProjectSwitcher() {
   const [creating, setCreating] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  const projects = ws.tree?.projects ?? [];
+  const projects = ws.allProjects;
   const active = projects.find((p) => p.id === ws.activeProjectId) ?? null;
   const allowCreate = canCreateProject(ws.activeWorkspaceRole, user?.role);
+
+  const groups = useMemo(() => {
+    const byWorkspace = new Map<string, GlobalProject[]>();
+    for (const p of projects) {
+      const bucket = byWorkspace.get(p.workspace_name);
+      if (bucket) bucket.push(p);
+      else byWorkspace.set(p.workspace_name, [p]);
+    }
+    return Array.from(byWorkspace.entries());
+  }, [projects]);
 
   useEffect(() => {
     if (!open) return;
@@ -34,7 +45,7 @@ export function ProjectSwitcher() {
     };
   }, [open]);
 
-  if (!ws.activeWorkspaceId) return null;
+  if (!ws.activeWorkspaceId && projects.length === 0) return null;
 
   return (
     <div className="project-switcher" ref={wrapRef} data-testid="project-switcher">
@@ -53,29 +64,36 @@ export function ProjectSwitcher() {
       </button>
       {open && (
         <div className="project-dropdown" data-testid="project-dropdown" role="listbox">
-          {projects.length === 0 && <p className="hint">No projects in this workspace.</p>}
-          {projects.map((p) => (
-            <button
-              type="button"
-              key={p.id}
-              role="option"
-              aria-selected={p.id === ws.activeProjectId}
-              className={`project-option ${p.id === ws.activeProjectId ? 'active' : ''}`}
-              data-testid={`project-option-${p.name}`}
-              onClick={() => {
-                ws.selectProject(p.id).catch(() => undefined);
-                setOpen(false);
-              }}
-            >
-              <LayersIcon size={13} />
-              <span className="project-option-name">{p.name}</span>
-              {p.can_access ? (
-                <span className="vis-badge access-badge">MEMBER</span>
-              ) : p.access_status === 'PENDING' ? (
-                <span className="vis-badge pending-badge">PENDING</span>
-              ) : null}
-              {p.id === ws.activeProjectId && <CheckIcon size={13} />}
-            </button>
+          {projects.length === 0 && <p className="hint">No projects available.</p>}
+          {groups.map(([workspaceName, items]) => (
+            <div key={workspaceName} className="project-group">
+              <div className="project-group-head" title={workspaceName}>
+                {workspaceName}
+              </div>
+              {items.map((p) => (
+                <button
+                  type="button"
+                  key={p.id}
+                  role="option"
+                  aria-selected={p.id === ws.activeProjectId}
+                  className={`project-option ${p.id === ws.activeProjectId ? 'active' : ''}`}
+                  data-testid={`project-option-${p.name}`}
+                  onClick={() => {
+                    ws.selectProjectById(p.id).catch(() => undefined);
+                    setOpen(false);
+                  }}
+                >
+                  <LayersIcon size={13} />
+                  <span className="project-option-name">{p.name}</span>
+                  {p.can_access ? (
+                    <span className="vis-badge access-badge">MEMBER</span>
+                  ) : p.access_status === 'PENDING' ? (
+                    <span className="vis-badge pending-badge">PENDING</span>
+                  ) : null}
+                  {p.id === ws.activeProjectId && <CheckIcon size={13} />}
+                </button>
+              ))}
+            </div>
           ))}
           {allowCreate && (
             <button

@@ -243,7 +243,6 @@ export function TopBar({
         <span className="brand-env">
           {state.activeTab === 'request' ? 'Request Studio' : 'Workflow Builder'}
         </span>
-        <ProjectSwitcher />
       </div>
       <div className="top-bar-actions">
         <button
@@ -259,6 +258,7 @@ export function TopBar({
           <span className="btn-label">Search</span>
           <kbd className="global-search-kbd">{isMac ? 'Cmd K' : 'Ctrl K'}</kbd>
         </button>
+        <ProjectSwitcher />
         <div className="views-menu" ref={viewsRef} data-testid="views-menu">
           <button
             type="button"
