@@ -4,6 +4,8 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { ApiError } from '@/lib/api';
+import { portalUrlFor } from '@/lib/portalUrl';
 import { BoltIcon, CheckIcon, TeamIcon } from '@/components/icons';
 
 const FEATURES = [
@@ -34,6 +36,14 @@ export default function LoginPage() {
       await login(email.trim(), password);
       router.replace(nextPath);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 402) {
+        const body = (err.body ?? {}) as { portal_path?: string; order_id?: string };
+        const path =
+          body.portal_path ||
+          (body.order_id ? `/pay?orderId=${encodeURIComponent(body.order_id)}` : '/#pricing');
+        window.location.assign(portalUrlFor(path));
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setBusy(false);

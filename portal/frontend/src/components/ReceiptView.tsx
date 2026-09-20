@@ -91,7 +91,7 @@ export default function ReceiptView({
           </p>
         </div>
         <div className="rc-actions">
-          <a className="btn btn-primary" href={`/gateway?orderId=${encodeURIComponent(order.id)}`} data-testid="receipt-cta-gateway">
+          <a className="btn btn-primary" href={`/pay?orderId=${encodeURIComponent(order.id)}`} data-testid="receipt-cta-gateway">
             Continue to payment
           </a>
           <a className="btn btn-ghost" href={appUrl} target="_blank" rel="noreferrer" data-testid="receipt-cta-open-app">

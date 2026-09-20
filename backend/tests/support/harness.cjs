@@ -59,8 +59,8 @@ async function startApp() {
   };
 }
 
-function makeClient(base) {
-  let cookie = '';
+function makeClient(base, initialCookie) {
+  let cookie = initialCookie || '';
   async function api(method, url, body, extraHeaders) {
     const headers = { ...(extraHeaders || {}) };
     if (cookie) headers.Cookie = cookie;

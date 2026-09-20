@@ -17,6 +17,7 @@ const { provisionNewAccount } = require('../accountProvision');
 const { syncCompanyOrg } = require('../companyNetwork');
 const { generateToken, hashToken, expiryFor, createThrottle } = require('../authTokens');
 const { issueEmailVerification } = require('../emailVerification');
+const { pendingPaymentFor, paymentRequiredBody } = require('../paymentGate');
 const email = require('../email');
 
 const router = Router();
@@ -42,7 +43,7 @@ async function selfServiceOpen() {
   return rows[0].n === 0;
 }
 
-async function userSummary(userId) {
+async function userSummary(userId, pendingPayment = null) {
   const loaded = await loadUserById(userId);
   if (!loaded) return null;
   const { password_changed_at, session_epoch, ...user } = loaded;
@@ -55,7 +56,12 @@ async function userSummary(userId) {
       ORDER BY o.kind, o.name`,
     [userId]
   );
-  return { user, organizations: orgs };
+  return {
+    user,
+    organizations: orgs,
+    payment_required: Boolean(pendingPayment),
+    pending_order: pendingPayment || null,
+  };
 }
 
 router.post('/signup', async (req, res, next) => {
@@ -143,6 +149,14 @@ router.post('/login', async (req, res, next) => {
     }
     if (!user.is_active) {
       return res.status(403).json({ error: 'This account has been deactivated' });
+    }
+    // Real-gateway payment gate: a customer who created an account at checkout
+    // but has not paid yet may not sign in until the order is confirmed. The
+    // 402 body carries the pending order so the client can route them to the
+    // payment page to finish.
+    const pendingPayment = await pendingPaymentFor(user);
+    if (pendingPayment) {
+      return res.status(402).json(paymentRequiredBody(pendingPayment));
     }
     // A domain registered by an admin after this account was created should
     // still pull the user into their company organization. Best-effort: a
@@ -324,7 +338,7 @@ router.post('/logout', (req, res) => {
 
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    res.json(await userSummary(req.user.id));
+    res.json(await userSummary(req.user.id, req.pendingPayment || null));
   } catch (err) {
     next(err);
   }
@@ -339,7 +353,8 @@ router.get('/session', async (req, res, next) => {
     if (typeof payload.sv === 'number' && typeof user.session_epoch === 'number' && payload.sv !== user.session_epoch) {
       return res.json({ authenticated: false });
     }
-    res.json({ authenticated: true });
+    const pending = await pendingPaymentFor(user);
+    res.json({ authenticated: true, payment_required: Boolean(pending) });
   } catch (err) {
     next(err);
   }

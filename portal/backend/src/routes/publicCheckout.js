@@ -81,8 +81,8 @@ async function fetchSubscriptionShapeTx(client, id) {
 const ORDER_COLUMNS = `o.id, o.user_id, o.plan_id, o.status, o.billing_cycle,
   o.amount::text AS amount, o.currency, o.payment_method, o.created_at,
   o.subscription_id, o.gateway_status, o.gateway_provider, o.gateway_reference,
-  o.paid_at, p.key AS plan_key, p.name AS plan_name,
-  p.trial_days AS plan_trial_days`;
+  o.gateway_order_id, o.gateway_session_id, o.paid_at, p.key AS plan_key,
+  p.name AS plan_name, p.trial_days AS plan_trial_days`;
 
 function toOrderShape(r) {
   return {
@@ -415,6 +415,58 @@ router.post('/checkout', async (req, res, next) => {
       invoice: result.invoice,
       bonus: result.bonus,
       account: accountSummary,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------------- Resume
+// POST /api/public/checkout/resume — a customer whose account was created at
+// checkout but whose paid order is still unpaid can prove ownership with their
+// password and receive a session plus their PENDING order, so they can finish
+// paying. Without this the login gate would lock them out with no way back to
+// the payment gateway.
+router.post('/checkout/resume', async (req, res, next) => {
+  try {
+    const email = String((req.body || {}).email || '').trim().toLowerCase();
+    const password = String((req.body || {}).password || '');
+    if (!EMAIL_RE.test(email) || !password) {
+      return res.status(400).json({ error: 'A valid email and password are required' });
+    }
+    const { rows: users } = await query(
+      'SELECT id, email, name, password_hash, is_active FROM users WHERE lower(email) = $1',
+      [email]
+    );
+    const user = users[0];
+    if (!user || !(await authLib.verifyPassword(password, user.password_hash))) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    if (!user.is_active) return res.status(403).json({ error: 'This account has been deactivated' });
+
+    const { rows: pending } = await query(
+      `SELECT ${ORDER_COLUMNS}
+         FROM orders o JOIN plans p ON p.id = o.plan_id
+        WHERE o.user_id = $1 AND o.status = 'PENDING' AND o.amount > 0
+          AND NOT EXISTS (SELECT 1 FROM subscriptions s
+                           WHERE s.user_id = $1 AND s.status IN ('ACTIVE', 'TRIALING'))
+        ORDER BY o.created_at DESC LIMIT 1`,
+      [user.id]
+    );
+    const order = pending[0];
+    if (!order) {
+      return res.status(404).json({
+        error: 'No pending payment was found for this account',
+        code: 'no_pending_payment',
+      });
+    }
+
+    res.setHeader('Set-Cookie', authLib.sessionCookie(authLib.createSessionToken(user.id)));
+    res.json({
+      ok: true,
+      requiresPayment: true,
+      order: toOrderShape(order),
+      account: { id: user.id, name: user.name, email: user.email, created: false },
     });
   } catch (err) {
     next(err);

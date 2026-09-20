@@ -141,6 +141,59 @@ export async function fetchOrder(orderId: string): Promise<OrderStatusResult> {
   return apiFetch<OrderStatusResult>(`/api/public/orders/${orderId}`);
 }
 
+// ------------------------------------------------- real Cashfree gateway (A6)
+//
+// The checkout flow hands the browser to Cashfree's hosted checkout using the
+// `payment_session_id` minted by the portal backend. The session endpoint
+// settles an already-paid order inline (returning `alreadyProcessed`), so the
+// client can treat that as "done".
+
+export type CashfreeSession = {
+  ok: true;
+  alreadyProcessed?: boolean;
+  provider?: 'CASHFREE';
+  mode?: 'sandbox' | 'production';
+  order_id?: string;
+  cf_order_id?: string;
+  payment_session_id?: string;
+  amount?: string;
+  currency?: string;
+  order_status?: string;
+  order?: Order;
+  invoice?: Invoice | null;
+  subscription?: Subscription | null;
+};
+
+export async function startCashfreeSession(orderId: string): Promise<CashfreeSession> {
+  return apiFetch<CashfreeSession>(
+    `/api/public/gateway/cashfree/${encodeURIComponent(orderId)}/session`,
+    { method: 'POST', body: {} }
+  );
+}
+
+export type CashfreeStatus = OrderStatusResult & {
+  alreadyProcessed?: boolean;
+  gateway?: { provider: string; reference: string | null; status?: string | null };
+};
+
+export async function fetchCashfreeStatus(orderId: string): Promise<CashfreeStatus> {
+  return apiFetch<CashfreeStatus>(
+    `/api/public/gateway/cashfree/${encodeURIComponent(orderId)}/status`
+  );
+}
+
+// Recover a session for a customer whose account was created at checkout but is
+// still unpaid, so they can finish payment without the (gated) login.
+export async function resumeCheckout(
+  email: string,
+  password: string
+): Promise<{ ok: true; requiresPayment: true; order: Order; account: Account }> {
+  return apiFetch('/api/public/checkout/resume', {
+    method: 'POST',
+    body: { email, password },
+  });
+}
+
 export type Me = {
   user: { id: string; name: string; email: string; role: string };
   portalRole: string | null;

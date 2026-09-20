@@ -16,6 +16,10 @@ const settingsRouter = require('./routes/settings');
 const companyDomainsRouter = require('./routes/companyDomains');
 const paymentGatewayRouter = require('./routes/paymentGateway');
 const webhooksRouter = require('./routes/webhooks');
+const {
+  gatewayRouter: cashfreeGatewayRouter,
+  webhookRouter: cashfreeWebhookRouter,
+} = require('./routes/cashfreePayments');
 
 // Postgres data-exception / invalid-input codes -> 400 instead of a raw 500.
 const PG_INVALID_INPUT_CODES = new Set([
@@ -31,7 +35,16 @@ const PG_INVALID_INPUT_CODES = new Set([
 
 function createApp() {
   const app = express();
-  app.use(express.json({ limit: '5mb' }));
+  // Keep the raw body so the Cashfree webhook HMAC can be verified over the
+  // exact bytes the provider signed (the parsed JSON would not reproduce it).
+  app.use(
+    express.json({
+      limit: '5mb',
+      verify: (req, res, buf) => {
+        req.rawBody = buf;
+      },
+    })
+  );
 
   app.get('/api/health', (req, res) => {
     res.json({ ok: true, service: 'apihub-portal-api' });
@@ -64,6 +77,9 @@ function createApp() {
   // Portal A — simulated payment gateway + provider webhooks (A6).
   app.use('/api/public/gateway', paymentGatewayRouter);
   app.use('/api/public/webhooks', webhooksRouter);
+  // Portal A — real Cashfree gateway (session + status) and signed webhook.
+  app.use('/api/public/gateway', cashfreeGatewayRouter);
+  app.use('/api/public/webhooks', cashfreeWebhookRouter);
   // Portal A — subscriber self-service (session auth, own data only).
   app.use('/api/public/account', customerAccountRouter);
 

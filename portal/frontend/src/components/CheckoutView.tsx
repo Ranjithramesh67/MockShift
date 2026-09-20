@@ -99,7 +99,7 @@ export default function CheckoutView() {
         if (!result.requiresPayment) {
           setView({ kind: 'free-done', subscription: result.subscription });
         } else {
-          router.push(`/gateway?orderId=${encodeURIComponent(result.order.id)}`);
+          router.push(`/pay?orderId=${encodeURIComponent(result.order.id)}`);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Checkout failed. Please try again.';
@@ -265,7 +265,7 @@ export default function CheckoutView() {
           {plan
             ? amount === null || amount === 0
               ? 'A quick account step and you are in.'
-              : 'Create your account and confirm the order — payment is simulated for this demo.'
+                : 'Create your account and confirm the order — you’ll pay securely by card, UPI or net banking.'
             : ''}
         </p>
       </div>
@@ -410,7 +410,7 @@ export default function CheckoutView() {
                       : `Place order — ${formatMoney(amount)}`}
                 </button>
                 {amount !== null && amount > 0 && (
-                  <p className="ck-fine">You&rsquo;ll confirm the (simulated) payment on the next screen.</p>
+                  <p className="ck-fine">You&rsquo;ll pay on the secure Cashfree checkout on the next screen.</p>
                 )}
               </form>
             </div>

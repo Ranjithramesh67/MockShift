@@ -253,9 +253,11 @@ export interface AdminUser extends User {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  body: unknown;
+  constructor(status: number, message: string, body: unknown = null) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -271,13 +273,16 @@ export async function apiFetch<T = unknown>(
   });
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
+    let data: unknown = null;
     try {
-      const data = await res.json();
-      if (data && data.error) message = data.error;
+      data = await res.json();
+      if (data && typeof data === 'object' && 'error' in data && (data as { error?: unknown }).error) {
+        message = String((data as { error: unknown }).error);
+      }
     } catch {
       // non-JSON error body
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, data);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

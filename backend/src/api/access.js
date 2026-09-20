@@ -2,6 +2,7 @@
 
 const { query } = require('./db');
 const { readSessionToken, verifySession } = require('./authLib');
+const { pendingPaymentFor, paymentRequiredBody, isUnpaidAllowedPath } = require('./paymentGate');
 
 const ROLE_RANK = { ADMIN: 4, MANAGER: 3, EDITOR: 2, VIEWER: 1 };
 
@@ -25,6 +26,27 @@ async function loadUserById(userId) {
 }
 
 /**
+ * Payment gate: returns a 402 body when an authenticated, non-admin user still
+ * owes a paid PENDING order (and holds no active subscription), otherwise null.
+ * Caches the result on the request; admin users and the payment allowlist are
+ * exempt. Fail-open on a lookup error so a transient DB hiccup is not a total
+ * outage (the login route still refuses the customer).
+ */
+async function applyPaymentGate(req) {
+  if (req.paymentGateChecked) return null;
+  req.paymentGateChecked = true;
+  if (!req.user || req.user.role === 'ADMIN') return null;
+  try {
+    const pending = await pendingPaymentFor(req.user);
+    req.pendingPayment = pending || null;
+    if (pending && !isUnpaidAllowedPath(req)) return paymentRequiredBody(pending);
+  } catch (err) {
+    console.error('[access] payment gate check failed:', err && err.message);
+  }
+  return null;
+}
+
+/**
  * Express middleware: verifies the session cookie and attaches req.user.
  * Falls back to a personal API token (Bearer) when no valid session cookie is
  * present, so S4 machine clients can authenticate against any authenticated
@@ -34,7 +56,11 @@ async function loadUserById(userId) {
 async function requireAuth(req, res, next) {
   // A previous middleware in the chain may have already authenticated (e.g. a
   // mount-time feature gate); reuse it instead of re-loading the user.
-  if (req.user) return next();
+  if (req.user) {
+    const gate = await applyPaymentGate(req);
+    if (gate) return res.status(402).json(gate);
+    return next();
+  }
   try {
     const sessionPayload = verifySession(readSessionToken(req));
     if (sessionPayload) {
@@ -47,6 +73,8 @@ async function requireAuth(req, res, next) {
       if (typeof sessionPayload.sv === 'number' && typeof user.session_epoch === 'number' && sessionPayload.sv !== user.session_epoch) {
         return res.status(401).json({ error: 'Session expired — please sign in again' });
       }
+      const gate = await applyPaymentGate(req);
+      if (gate) return res.status(402).json(gate);
       return next();
     }
     if (readBearerTokenHeader(req)) {
@@ -67,6 +95,8 @@ async function requireAuth(req, res, next) {
           if (bindingError) {
             return res.status(bindingError.status).json({ error: bindingError.error });
           }
+          const gate = await applyPaymentGate(req);
+          if (gate) return res.status(402).json(gate);
           return next();
         }
       } catch (err) {
