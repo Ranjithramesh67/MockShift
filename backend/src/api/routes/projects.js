@@ -224,6 +224,59 @@ async function requireWorkspaceManager(req, res, next) {
   }
 }
 
+// Global project list for the top-nav project picker. Returns every project in
+// every workspace the caller can read (direct membership, team share, or a
+// PUBLIC workspace in an org they belong to). This is additive: it does not
+// change the workspace-scoped content endpoint.
+router.get('/projects', async (req, res, next) => {
+  try {
+    const { rows: workspaces } = await query(
+      `SELECT DISTINCT w.id, w.name
+         FROM workspaces w
+        WHERE EXISTS (SELECT 1 FROM workspace_members wm
+                       WHERE wm.workspace_id = w.id AND wm.user_id = $1)
+           OR EXISTS (SELECT 1 FROM workspace_teams wt
+                        JOIN team_members tm ON tm.team_id = wt.team_id
+                       WHERE wt.workspace_id = w.id AND tm.user_id = $1)
+           OR (w.visibility = 'PUBLIC'
+               AND EXISTS (SELECT 1 FROM organization_members om
+                            WHERE om.org_id = w.organization_id AND om.user_id = $1))`,
+      [req.user.id]
+    );
+    const workspaceIds = workspaces.map((w) => w.id);
+    if (workspaceIds.length === 0) return res.json({ projects: [] });
+
+    const { rows: projects } = await query(
+      `SELECT p.id, p.name, p.workspace_id, w.name AS workspace_name
+         FROM projects p
+         JOIN workspaces w ON w.id = p.workspace_id
+        WHERE p.workspace_id = ANY($1::uuid[])
+        ORDER BY w.name, p.name`,
+      [workspaceIds]
+    );
+
+    const result = await Promise.all(
+      projects.map(async (p) => {
+        const [access, requests] = await Promise.all([
+          getProjectAccess(req.user.id, p.id),
+          query(
+            `SELECT status FROM access_requests WHERE project_id = $1 AND user_id = $2`,
+            [p.id, req.user.id]
+          ),
+        ]);
+        return {
+          ...p,
+          can_access: !!access,
+          access_status: requests.rows[0]?.status ?? null,
+        };
+      })
+    );
+    res.json({ projects: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/projects', requireWorkspaceManager, async (req, res, next) => {
   try {
     const { workspaceId } = req.body || {};

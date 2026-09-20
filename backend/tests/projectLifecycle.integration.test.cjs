@@ -160,3 +160,24 @@ test('deleting a project twice is rejected', async () => {
   // Access middleware hides the now-missing project (no existence oracle).
   assert.equal((await outsider.client.api('DELETE', `/api/projects/${id}`)).status, 403);
 });
+
+test('GET /api/projects lists the caller projects across workspaces', async () => {
+  const res = await admin.client.api('GET', '/api/projects');
+  assert.equal(res.status, 200);
+  const theirs = res.json.projects.filter((p) => p.workspace_id === workspaceId);
+  assert.ok(theirs.length >= 1, 'lists projects in the admin workspace');
+  const def = theirs.find((p) => p.name === 'Default Project');
+  assert.ok(def, 'includes the Default Project');
+  assert.equal(def.can_access, true);
+  assert.equal(typeof def.workspace_name, 'string');
+});
+
+test('GET /api/projects hides projects from workspaces the caller cannot read', async () => {
+  const res = await outsider.client.api('GET', '/api/projects');
+  assert.equal(res.status, 200);
+  assert.ok(
+    !res.json.projects.some((p) => p.workspace_id === workspaceId),
+    'outsider does not see another org workspace projects'
+  );
+});
+
