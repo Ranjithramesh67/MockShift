@@ -822,16 +822,6 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
             <button
               type="button"
               className="icon-button"
-              aria-label="New project"
-              title="New project"
-              data-testid="new-project"
-              onClick={() => onOpenCreate('project')}
-            >
-              <LayersIcon size={14} />
-            </button>
-            <button
-              type="button"
-              className="icon-button"
               aria-label="New collection"
               title="New collection"
               data-testid="new-collection"
@@ -851,7 +841,12 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
           </>
         )}
       </div>
-      {!collapsed && tree.projects.map((p) => (
+      {!collapsed && !ws.activeProjectId && (
+        <p className="hint" data-testid="no-active-project">
+          Select a project in the top bar.
+        </p>
+      )}
+      {!collapsed && tree.projects.filter((p) => p.id === ws.activeProjectId).map((p) => (
         <div key={p.id} className="tree-project">
           {p.can_access ? (
             <div className="tree-project-head">
@@ -1065,7 +1060,9 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
             })}
         </div>
       ))}
-      {!collapsed && tree.collections.length === 0 && <p className="hint">No collections yet.</p>}
+      {!collapsed && ws.activeProjectId && tree.collections.filter((c) => c.project_id === ws.activeProjectId).length === 0 && (
+        <p className="hint">No collections yet.</p>
+      )}
       </div>
       <SendItemDialog open={Boolean(sendTarget)} item={sendTarget} onClose={() => setSendTarget(null)} />
       <ShareLinksModal
@@ -1272,16 +1269,25 @@ function TreeSearchResults({
     }
     if (!tree) return out;
 
+    const activeProjectId = ws.activeProjectId;
+    const activeCollectionIds = new Set(
+      tree.collections
+        .filter((c) => !activeProjectId || c.project_id === activeProjectId)
+        .map((c) => c.id)
+    );
+
     const projectName = new Map(tree.projects.map((p) => [p.id, p.name]));
     const collectionName = new Map(tree.collections.map((c) => [c.id, c.name]));
     const folderName = new Map(tree.folders.map((f) => [f.id, f.name]));
 
     for (const c of tree.collections) {
+      if (!activeCollectionIds.has(c.id)) continue;
       if (has(c.name)) {
         out.push({ kind: 'collection', id: c.id, name: c.name, meta: projectName.get(c.project_id) ?? 'Collection' });
       }
     }
     for (const f of tree.folders) {
+      if (!activeCollectionIds.has(f.collection_id)) continue;
       if (!has(f.name)) continue;
       const collection = collectionName.get(f.collection_id) ?? '';
       if (f.parent_id) {
@@ -1292,12 +1298,13 @@ function TreeSearchResults({
       }
     }
     for (const r of tree.requests) {
+      if (!activeCollectionIds.has(r.collection_id)) continue;
       const methodMatch = r.method.toLowerCase() === q;
       if (!methodMatch && !has(r.name, r.url)) continue;
       out.push({ kind: 'request', id: r.id, name: r.name, method: r.method, meta: collectionName.get(r.collection_id) ?? '' });
     }
     return out;
-  }, [query, ws.workspaces, ws.tree]);
+  }, [query, ws.workspaces, ws.tree, ws.activeProjectId]);
 
   const groups: Array<{ kind: TreeSearchKind; label: string }> = [
     { kind: 'workspace', label: 'Workspaces' },
@@ -1380,7 +1387,7 @@ export function Sidebar({
   const router = useRouter();
   const [rail, setRail] = useState<RailTab>(() => (state.activeTab === 'workflow' ? 'workflow' : 'apis'));
   const [collapsed, setCollapsed] = useState(false);
-  const [workspacesCollapsed, setWorkspacesCollapsed] = useState(false);
+  const [workspacesCollapsed, setWorkspacesCollapsed] = useState(true);
   const [collectionsCollapsed, setCollectionsCollapsed] = useState(false);
   const [treeSearch, setTreeSearch] = useState('');
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);

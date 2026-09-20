@@ -11,6 +11,7 @@ import { notificationApi, type Notification } from '@/lib/api';
 import { roomFor } from '@/lib/realtime';
 import { useRoomEvents } from './useRoomEvents';
 import { UserAvatar } from './UserAvatar';
+import { ProjectSwitcher } from './ProjectSwitcher';
 import {
   ImportIcon,
   LayoutIcon,
@@ -242,6 +243,7 @@ export function TopBar({
         <span className="brand-env">
           {state.activeTab === 'request' ? 'Request Studio' : 'Workflow Builder'}
         </span>
+        <ProjectSwitcher />
       </div>
       <div className="top-bar-actions">
         <button
