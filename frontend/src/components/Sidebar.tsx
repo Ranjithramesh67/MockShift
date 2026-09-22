@@ -11,7 +11,7 @@ import { useNavOrder } from '@/store/NavOrderStore';
 import { useAuth } from '@/lib/auth';
 import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { isUntitledWorkflow, UNTITLED_WORKFLOW_NAME } from '@/lib/workflowValidation';
-import { accessRequestApi } from '@/lib/api';
+import { accessRequestApi, type ContentTree } from '@/lib/api';
 import { docsSharedApi } from '@/lib/docsApi';
 import { CreateModal, type CreateKind } from './CreateModal';
 import { SharingModal } from './SharingModal';
@@ -382,9 +382,24 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
     }
   };
 
-  if (!ws.tree) return null;
-
-  const tree = ws.tree;
+  const projectTree = ws.projectTree;
+  // The project-first tree is mapped onto the legacy ContentTree shape so the
+  // existing folder/request renderers can be reused unchanged.
+  const tree: ContentTree | null = projectTree
+    ? {
+        workspaceId: projectTree.workspaces[0]?.id ?? '',
+        projects: [],
+        collections: projectTree.collections.map((c) => ({
+          id: c.id,
+          name: c.name,
+          project_id: ws.activeProjectId ?? '',
+          has_auth: c.has_auth,
+        })),
+        folders: projectTree.folders,
+        requests: projectTree.requests,
+      }
+    : ws.tree;
+  if (!tree) return null;
 
   // M10: native HTML5 drag-and-drop — request rows and folder rows are drag
   // sources; folder rows and collection roots are drop targets.
@@ -791,6 +806,225 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
     );
   };
 
+  const renderProjectHeader = (p: {
+    id: string;
+    name: string;
+    can_access: boolean;
+    access_status: ContentTree['projects'][number]['access_status'];
+  }) => (
+    <>
+      {p.can_access ? (
+        <div className="tree-project-head">
+          <button
+            type="button"
+            className="tree-project-name"
+            title={`Open ${p.name} overview`}
+            aria-label={`Open ${p.name} overview`}
+            onClick={() => onOpenProject({ id: p.id, name: p.name })}
+          >
+            <LayersIcon size={12} />
+            {p.name}
+            <span className="vis-badge access-badge">MEMBER</span>
+          </button>
+          <button
+            type="button"
+            className="icon-button tree-project-mock"
+            title={`Mock server for ${p.name}`}
+            aria-label={`Mock server for ${p.name}`}
+            data-testid={`mock-server-${p.name}`}
+            onClick={() => onOpenMockServer({ id: p.id, name: p.name })}
+          >
+            <ServerIcon size={12} />
+          </button>
+        </div>
+      ) : (
+        <div className="tree-project-name">
+          <LayersIcon size={12} />
+          {p.name}
+          {p.access_status === 'PENDING' ? (
+            <span className="vis-badge pending-badge">PENDING</span>
+          ) : null}
+        </div>
+      )}
+      {!p.can_access && p.access_status !== 'PENDING' && (
+        <button
+          type="button"
+          className="ghost-button small access-request-btn"
+          data-testid={`request-access-${p.name}`}
+          onClick={() => onRequestAccess({ id: p.id, name: p.name })}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <LockIcon size={11} />
+          Request access
+        </button>
+      )}
+    </>
+  );
+
+  const renderCollection = (c: { id: string; name: string; has_auth: string | null }) => {
+    const isCollapsed = !!collapsedNodes[c.id];
+    const rootFolders = tree.folders.filter(
+      (f) => f.collection_id === c.id && !f.parent_id
+    );
+    const rootRequests = tree.requests.filter(
+      (r) => r.collection_id === c.id && !r.folder_id
+    );
+    return (
+      <div key={c.id} className="tree-collection">
+        <div
+          className={`tree-collection-row ${dropTarget === `collection:${c.id}` ? 'tree-drop-target' : ''}`}
+          onDragOver={(e) => handleDragOver(e, `collection:${c.id}`)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, null)}
+        >
+          <button
+            type="button"
+            className={`tree-collection-name ${ws.activeCollectionId === c.id ? 'active' : ''}`}
+            data-testid={`collection-${c.name}`}
+            onClick={() => {
+              toggle(c.id);
+              ws.selectCollection(c.id, c.name).catch(() => undefined);
+              onNavigate();
+            }}
+          >
+            <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
+              <ChevronIcon size={12} />
+            </span>
+            <span className="tree-collection-icon">
+              <CollectionIcon size={14} />
+            </span>
+            <span className="name">{c.name}</span>
+            {c.has_auth && <span className="vis-badge auth-badge">AUTH</span>}
+          </button>
+          <div className="tree-collection-actions">
+            <button
+              type="button"
+              className="icon-button"
+              title="New API request"
+              aria-label={`New request in ${c.name}`}
+              data-testid={`new-request-${c.name}`}
+              onClick={() => onOpenCreate('request', c.id)}
+            >
+              <PlusIcon size={13} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="Collection options"
+              aria-label={`Options for ${c.name}`}
+              data-testid={`collection-options-${c.name}`}
+              data-tree-menu-trigger
+              onClick={() =>
+                setMenuFor(
+                  menuFor?.kind === 'collection' && menuFor.id === c.id
+                    ? null
+                    : { kind: 'collection', id: c.id }
+                )
+              }
+            >
+              <DotsIcon size={13} />
+            </button>
+          </div>
+          {menuFor?.kind === 'collection' && menuFor.id === c.id && (
+            <div className="tree-menu" data-testid={`collection-menu-${c.name}`}>
+              <button
+                type="button"
+                data-testid={`new-folder-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  onOpenCreate('folder', c.id);
+                }}
+              >
+                <FolderIcon size={13} />
+                New folder
+              </button>
+              <button
+                type="button"
+                data-testid={`run-collection-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  onRunCollection(c.id, c.name);
+                }}
+              >
+                <PlayIcon size={13} />
+                Run collection
+              </button>
+              <button
+                type="button"
+                data-testid={`auth-settings-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  onOpenAuth(c.id);
+                }}
+              >
+                <KeyIcon size={13} />
+                Auth settings
+              </button>
+              <button
+                type="button"
+                data-testid={`collection-send-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  setSendTarget({ id: c.id, type: 'collection', name: c.name });
+                }}
+              >
+                <SendIcon size={13} />
+                Send to user
+              </button>
+              <button
+                type="button"
+                data-testid={`collection-share-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  setShareTarget({ id: c.id, type: 'collection', name: c.name });
+                }}
+              >
+                <ShareIcon size={13} />
+                Share link
+              </button>
+              <button
+                type="button"
+                className="danger"
+                data-testid={`delete-collection-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  if (window.confirm(`Delete collection "${c.name}" and all of its requests?`)) {
+                    ws.deleteCollection(c.id).catch((err) =>
+                      alert(err instanceof Error ? err.message : 'Failed to delete collection')
+                    );
+                  }
+                }}
+              >
+                <TrashIcon size={13} />
+                Delete collection
+              </button>
+            </div>
+          )}
+        </div>
+        {!isCollapsed && (rootFolders.length > 0 || rootRequests.length > 0) && (
+          <div
+            className={`tree-collection-children ${dropTarget === `children:${c.id}` ? 'tree-drop-target' : ''}`}
+            onDragOver={(e) => handleDragOver(e, `children:${c.id}`)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, null)}
+          >
+            {rootFolders.map((f) => renderFolder(f, c.id))}
+            {rootRequests.length > 0 && (
+              <ul className="sidebar-list">
+                {rootRequests.map((r) => renderRequest(r))}
+              </ul>
+            )}
+          </div>
+        )}
+        {!isCollapsed && rootFolders.length === 0 && rootRequests.length === 0 && (
+          <p className="hint" style={{ padding: '4px 8px 6px 26px' }}>
+            No requests yet.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="sidebar-section tree-section">
@@ -846,221 +1080,62 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
           Select a project in the top bar.
         </p>
       )}
-      {!collapsed && tree.projects.filter((p) => p.id === ws.activeProjectId).map((p) => (
-        <div key={p.id} className="tree-project">
-          {p.can_access ? (
-            <div className="tree-project-head">
-              <button
-                type="button"
-                className="tree-project-name"
-                title={`Open ${p.name} overview`}
-                aria-label={`Open ${p.name} overview`}
-                onClick={() => onOpenProject({ id: p.id, name: p.name })}
-              >
-                <LayersIcon size={12} />
-                {p.name}
-                <span className="vis-badge access-badge">MEMBER</span>
-              </button>
-              <button
-                type="button"
-                className="icon-button tree-project-mock"
-                title={`Mock server for ${p.name}`}
-                aria-label={`Mock server for ${p.name}`}
-                data-testid={`mock-server-${p.name}`}
-                onClick={() => onOpenMockServer({ id: p.id, name: p.name })}
-              >
-                <ServerIcon size={12} />
-              </button>
-            </div>
-          ) : (
-            <div className="tree-project-name">
-              <LayersIcon size={12} />
-              {p.name}
-              {p.access_status === 'PENDING' ? (
-                <span className="vis-badge pending-badge">PENDING</span>
-              ) : null}
-            </div>
-          )}
-          {!p.can_access && p.access_status !== 'PENDING' && (
-            <button
-              type="button"
-              className="ghost-button small access-request-btn"
-              data-testid={`request-access-${p.name}`}
-              onClick={() => onRequestAccess({ id: p.id, name: p.name })}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <LockIcon size={11} />
-              Request access
-            </button>
-          )}
-          {tree.collections
-            .filter((c) => c.project_id === p.id)
-            .map((c) => {
-              const isCollapsed = !!collapsedNodes[c.id];
-              const rootFolders = tree.folders.filter(
-                (f) => f.collection_id === c.id && !f.parent_id
-              );
-              const rootRequests = tree.requests.filter(
-                (r) => r.collection_id === c.id && !r.folder_id
-              );
+      {!collapsed && projectTree && (() => {
+        const activeProject = ws.allProjects.find((p) => p.id === ws.activeProjectId);
+        const projectNode = activeProject ?? {
+          id: ws.activeProjectId ?? '',
+          name: 'Project',
+          can_access: true,
+          access_status: null,
+        };
+        return (
+          <div className="tree-project">
+            {renderProjectHeader(projectNode)}
+            {projectTree.workspaces.map((w) => {
+              const wKey = `workspace:${w.id}`;
+              const wCollapsed = !!collapsedNodes[wKey];
+              const collections = projectTree.collections.filter((c) => c.workspace_id === w.id);
               return (
-                <div key={c.id} className="tree-collection">
-                  <div
-                    className={`tree-collection-row ${dropTarget === `collection:${c.id}` ? 'tree-drop-target' : ''}`}
-                    onDragOver={(e) => handleDragOver(e, `collection:${c.id}`)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, null)}
+                <div key={w.id} className="tree-workspace" data-testid="workspace-node">
+                  <button
+                    type="button"
+                    className="tree-collection-name"
+                    aria-expanded={!wCollapsed}
+                    onClick={() => toggle(wKey)}
                   >
-                    <button
-                      type="button"
-                      className={`tree-collection-name ${ws.activeCollectionId === c.id ? 'active' : ''}`}
-                      data-testid={`collection-${c.name}`}
-                      onClick={() => {
-                        toggle(c.id);
-                        ws.selectCollection(c.id, c.name).catch(() => undefined);
-                        onNavigate();
-                      }}
-                    >
-                      <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
-                        <ChevronIcon size={12} />
-                      </span>
-                      <span className="tree-collection-icon">
-                        <CollectionIcon size={14} />
-                      </span>
-                      <span className="name">{c.name}</span>
-                      {c.has_auth && <span className="vis-badge auth-badge">AUTH</span>}
-                    </button>
-                    <div className="tree-collection-actions">
-                      <button
-                        type="button"
-                        className="icon-button"
-                        title="New API request"
-                        aria-label={`New request in ${c.name}`}
-                        data-testid={`new-request-${c.name}`}
-                        onClick={() => onOpenCreate('request', c.id)}
-                      >
-                        <PlusIcon size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        title="Collection options"
-                        aria-label={`Options for ${c.name}`}
-                        data-testid={`collection-options-${c.name}`}
-                        data-tree-menu-trigger
-                        onClick={() =>
-                          setMenuFor(
-                            menuFor?.kind === 'collection' && menuFor.id === c.id
-                              ? null
-                              : { kind: 'collection', id: c.id }
-                          )
-                        }
-                      >
-                        <DotsIcon size={13} />
-                      </button>
-                    </div>
-                    {menuFor?.kind === 'collection' && menuFor.id === c.id && (
-                      <div className="tree-menu" data-testid={`collection-menu-${c.name}`}>
-                        <button
-                          type="button"
-                          data-testid={`new-folder-${c.name}`}
-                          onClick={() => {
-                            setMenuFor(null);
-                            onOpenCreate('folder', c.id);
-                          }}
-                        >
-                          <FolderIcon size={13} />
-                          New folder
-                        </button>
-                        <button
-                          type="button"
-                          data-testid={`run-collection-${c.name}`}
-                          onClick={() => {
-                            setMenuFor(null);
-                            onRunCollection(c.id, c.name);
-                          }}
-                        >
-                          <PlayIcon size={13} />
-                          Run collection
-                        </button>
-                        <button
-                          type="button"
-                          data-testid={`auth-settings-${c.name}`}
-                          onClick={() => {
-                            setMenuFor(null);
-                            onOpenAuth(c.id);
-                          }}
-                        >
-                          <KeyIcon size={13} />
-                          Auth settings
-                        </button>
-                        <button
-                          type="button"
-                          data-testid={`collection-send-${c.name}`}
-                          onClick={() => {
-                            setMenuFor(null);
-                            setSendTarget({ id: c.id, type: 'collection', name: c.name });
-                          }}
-                        >
-                          <SendIcon size={13} />
-                          Send to user
-                        </button>
-                        <button
-                          type="button"
-                          data-testid={`collection-share-${c.name}`}
-                          onClick={() => {
-                            setMenuFor(null);
-                            setShareTarget({ id: c.id, type: 'collection', name: c.name });
-                          }}
-                        >
-                          <ShareIcon size={13} />
-                          Share link
-                        </button>
-                        <button
-                          type="button"
-                          className="danger"
-                          data-testid={`delete-collection-${c.name}`}
-                          onClick={() => {
-                            setMenuFor(null);
-                            if (window.confirm(`Delete collection "${c.name}" and all of its requests?`)) {
-                              ws.deleteCollection(c.id).catch((err) =>
-                                alert(err instanceof Error ? err.message : 'Failed to delete collection')
-                              );
-                            }
-                          }}
-                        >
-                          <TrashIcon size={13} />
-                          Delete collection
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {!isCollapsed && (rootFolders.length > 0 || rootRequests.length > 0) && (
-                    <div
-                      className={`tree-collection-children ${dropTarget === `children:${c.id}` ? 'tree-drop-target' : ''}`}
-                      onDragOver={(e) => handleDragOver(e, `children:${c.id}`)}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, null)}
-                    >
-                      {rootFolders.map((f) => renderFolder(f, c.id))}
-                      {rootRequests.length > 0 && (
-                        <ul className="sidebar-list">
-                          {rootRequests.map((r) => renderRequest(r))}
-                        </ul>
+                    <span className={`chevron ${wCollapsed ? '' : 'open'}`}>
+                      <ChevronIcon size={12} />
+                    </span>
+                    <span className="tree-collection-icon">
+                      <WorkspaceIcon size={13} />
+                    </span>
+                    <span className="name">{w.name}</span>
+                    {w.visibility === 'PUBLIC' && <span className="vis-badge">PUBLIC</span>}
+                  </button>
+                  {!wCollapsed && (
+                    <div className="tree-collection-children">
+                      {collections.map((c) => renderCollection(c))}
+                      {collections.length === 0 && (
+                        <p className="hint" style={{ padding: '4px 8px 6px 26px' }}>
+                          No collections yet.
+                        </p>
                       )}
                     </div>
-                  )}
-                  {!isCollapsed && rootFolders.length === 0 && rootRequests.length === 0 && (
-                    <p className="hint" style={{ padding: '4px 8px 6px 26px' }}>
-                      No requests yet.
-                    </p>
                   )}
                 </div>
               );
             })}
+            {projectTree.workspaces.length === 0 && <p className="hint">No workspaces yet.</p>}
+          </div>
+        );
+      })()}
+      {!collapsed && !projectTree && tree.projects.filter((p) => p.id === ws.activeProjectId).map((p) => (
+        <div key={p.id} className="tree-project">
+          {renderProjectHeader(p)}
+          {tree.collections.filter((c) => c.project_id === p.id).map((c) => renderCollection(c))}
         </div>
       ))}
-      {!collapsed && ws.activeProjectId && tree.collections.filter((c) => c.project_id === ws.activeProjectId).length === 0 && (
+      {!collapsed && !projectTree && ws.activeProjectId && tree.collections.filter((c) => c.project_id === ws.activeProjectId).length === 0 && (
         <p className="hint">No collections yet.</p>
       )}
       </div>

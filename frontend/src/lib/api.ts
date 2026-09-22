@@ -168,6 +168,16 @@ export interface ContentTree {
   }>;
 }
 
+// Project-first content tree: a project owns one or more workspaces, and each
+// collection belongs to a workspace via `workspace_id`.
+export interface ProjectContentTree {
+  projectId: string;
+  workspaces: Array<{ id: string; name: string; visibility: string }>;
+  collections: Array<{ id: string; name: string; workspace_id: string; has_auth: string | null }>;
+  folders: Folder[];
+  requests: ContentTree['requests'];
+}
+
 export interface RequestDetail {
   id: string;
   name: string;
@@ -396,8 +406,11 @@ export const teamApi = {
 };
 
 export const contentApi = {
-  createCollection: (projectId: string, name: string) =>
-    apiFetch<{ collection: { id: string; name: string; project_id: string } }>('/api/collections', { method: 'POST', body: { projectId, name } }),
+  createCollection: (projectId: string, name: string, workspaceId?: string) =>
+    apiFetch<{ collection: { id: string; name: string; project_id: string; workspace_id: string } }>('/api/collections', {
+      method: 'POST',
+      body: workspaceId ? { workspaceId, name } : { projectId, name },
+    }),
   deleteCollection: (collectionId: string) =>
     apiFetch(`/api/collections/${collectionId}`, { method: 'DELETE' }),
   createRequest: (input: { collectionId: string; name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) =>
@@ -488,21 +501,30 @@ export const folderApi = {
 export interface ProjectRef {
   id: string;
   name: string;
-  workspace_id: string;
+  workspace_id: string | null;
 }
 
-// A project as seen by the global top-nav picker: every workspace the caller
-// can read contributes its projects.
+// A project as seen by the global top-nav picker: every project the caller can
+// read, grouped by the organization that owns it.
 export interface GlobalProject extends ProjectRef {
-  workspace_name: string;
+  workspace_name: string | null;
+  organization_id: string;
+  organization_name: string | null;
   can_access: boolean;
   access_status: 'PENDING' | 'APPROVED' | 'DENIED' | null;
 }
 
 export const projectApi = {
   listAll: () => apiFetch<{ projects: GlobalProject[] }>('/api/projects'),
-  create: (input: { workspaceId: string; name: string }) =>
+  create: (input: { organizationId?: string; workspaceId?: string; name: string }) =>
     apiFetch<{ project: ProjectRef }>('/api/projects', { method: 'POST', body: input }),
+  content: (projectId: string) =>
+    apiFetch<ProjectContentTree>(`/api/projects/${projectId}/content`),
+  createWorkspace: (projectId: string, input: { name: string; visibility?: string }) =>
+    apiFetch<{ workspace: { id: string; name: string; visibility: string; project_id: string; organization_id: string; role: UserRole } }>(
+      `/api/projects/${projectId}/workspaces`,
+      { method: 'POST', body: input }
+    ),
   rename: (projectId: string, name: string) =>
     apiFetch<{ project: ProjectRef }>(`/api/projects/${projectId}`, {
       method: 'PATCH',

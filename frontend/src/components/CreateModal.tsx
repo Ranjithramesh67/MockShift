@@ -64,6 +64,13 @@ export function CreateModal({
   const [visibility, setVisibility] = useState<'PRIVATE' | 'PUBLIC'>('PRIVATE');
   const [organizationId, setOrganizationId] = useState(organizations[0]?.id ?? '');
   const accessibleProjects = ws.tree?.projects.filter((p) => p.can_access) ?? [];
+  // The organization that owns the current project (falling back to the active
+  // workspace's org) is the target for new projects in the top-nav picker.
+  const activeOrganizationId =
+    ws.allProjects.find((p) => p.id === ws.activeProjectId)?.organization_id ??
+    ws.workspaces.find((w) => w.id === ws.activeWorkspaceId)?.organization_id ??
+    organizations[0]?.id ??
+    '';
   const [targetProjectId, setTargetProjectId] = useState(
     ws.activeProjectId ??
       ws.tree?.collections.find((c) => c.id === ws.activeCollectionId)?.project_id ??
@@ -195,11 +202,15 @@ export function CreateModal({
     setBusy(true);
     try {
       if (kind === 'workspace') {
-        await ws.createWorkspace(name.trim(), visibility);
+        if (ws.activeProjectId) {
+          await ws.createWorkspaceInProject(name.trim());
+        } else {
+          await ws.createWorkspace(name.trim(), visibility);
+        }
       } else if (kind === 'project') {
-        await ws.createProject(name.trim());
+        await ws.createProject(name.trim(), activeOrganizationId || undefined);
       } else if (kind === 'collection') {
-        await ws.createCollection(name.trim(), targetProjectId || undefined);
+        await ws.createCollection(name.trim(), ws.activeWorkspaceId ?? undefined);
       } else if (kind === 'folder') {
         const targetCollectionId = collectionId ?? ws.activeCollectionId;
         if (!targetCollectionId) {

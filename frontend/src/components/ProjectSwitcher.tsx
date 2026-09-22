@@ -20,13 +20,14 @@ export function ProjectSwitcher() {
   const allowCreate = canCreateProject(ws.activeWorkspaceRole, user?.role);
 
   const groups = useMemo(() => {
-    const byWorkspace = new Map<string, GlobalProject[]>();
+    const byOrganization = new Map<string, GlobalProject[]>();
     for (const p of projects) {
-      const bucket = byWorkspace.get(p.workspace_name);
+      const key = p.organization_name || p.workspace_name || 'Personal';
+      const bucket = byOrganization.get(key);
       if (bucket) bucket.push(p);
-      else byWorkspace.set(p.workspace_name, [p]);
+      else byOrganization.set(key, [p]);
     }
-    return Array.from(byWorkspace.entries());
+    return Array.from(byOrganization.entries());
   }, [projects]);
 
   useEffect(() => {
@@ -65,10 +66,10 @@ export function ProjectSwitcher() {
       {open && (
         <div className="project-dropdown" data-testid="project-dropdown" role="listbox">
           {projects.length === 0 && <p className="hint">No projects available.</p>}
-          {groups.map(([workspaceName, items]) => (
-            <div key={workspaceName} className="project-group">
-              <div className="project-group-head" title={workspaceName}>
-                {workspaceName}
+          {groups.map(([organizationName, items]) => (
+            <div key={organizationName} className="project-group">
+              <div className="project-group-head" title={organizationName}>
+                {organizationName}
               </div>
               {items.map((p) => (
                 <button
