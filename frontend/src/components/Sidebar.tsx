@@ -2053,39 +2053,6 @@ export function Sidebar({
               <TreeSearchResults query={treeSearch} onSelect={onSearchSelect} />
             ) : (
               <>
-            <div className="sidebar-section">
-              <div className="sidebar-section-head">
-                <button
-                  type="button"
-                  className={`icon-button section-chevron ${workspacesCollapsed ? '' : 'open'}`}
-                  data-testid="collapse-workspaces"
-                  title={workspacesCollapsed ? 'Show workspaces' : 'Hide workspaces'}
-                  aria-label={workspacesCollapsed ? 'Show workspaces' : 'Hide workspaces'}
-                  aria-expanded={!workspacesCollapsed}
-                  onClick={() => setWorkspacesCollapsed((v) => !v)}
-                >
-                  <ChevronIcon size={13} />
-                </button>
-                <h3>Workspaces</h3>
-                <button
-                  type="button"
-                  className="ghost-button small"
-                  title="Environments & variables"
-                  data-testid="environments-open"
-                  onClick={() => setEnvironmentsOpen(true)}
-                >
-                  Env
-                </button>
-              </div>
-              {!workspacesCollapsed && (
-                <>
-                  {ws.loading && <p className="hint">Loading…</p>}
-                  {ws.error && <p className="auth-error">{ws.error}</p>}
-                  <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} onRequestWorkspace={(w) => setRequestingWorkspace(w)} onOpenShareLink={(w) => setShareLinkTarget({ id: w.id, type: 'workspace', name: w.name })} />
-                </>
-              )}
-            </div>
-
             {ws.tree && ws.activeWorkspaceId ? (
               <CollectionsTree
                 onOpenCreate={openCreate}
@@ -2131,10 +2098,43 @@ export function Sidebar({
                     </button>
                   </>
                 ) : (
-                  <p>Open a workspace above to see its collections.</p>
+                  <p>Open a workspace below to see its collections.</p>
                 )}
               </div>
             )}
+
+            <div className="sidebar-section sidebar-section-secondary">
+              <div className="sidebar-section-head">
+                <button
+                  type="button"
+                  className={`icon-button section-chevron ${workspacesCollapsed ? '' : 'open'}`}
+                  data-testid="collapse-workspaces"
+                  title={workspacesCollapsed ? 'Show workspaces' : 'Hide workspaces'}
+                  aria-label={workspacesCollapsed ? 'Show workspaces' : 'Hide workspaces'}
+                  aria-expanded={!workspacesCollapsed}
+                  onClick={() => setWorkspacesCollapsed((v) => !v)}
+                >
+                  <ChevronIcon size={13} />
+                </button>
+                <h3>Workspaces</h3>
+                <button
+                  type="button"
+                  className="ghost-button small"
+                  title="Environments & variables"
+                  data-testid="environments-open"
+                  onClick={() => setEnvironmentsOpen(true)}
+                >
+                  Env
+                </button>
+              </div>
+              {!workspacesCollapsed && (
+                <>
+                  {ws.loading && <p className="hint">Loading…</p>}
+                  {ws.error && <p className="auth-error">{ws.error}</p>}
+                  <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} onRequestWorkspace={(w) => setRequestingWorkspace(w)} onOpenShareLink={(w) => setShareLinkTarget({ id: w.id, type: 'workspace', name: w.name })} />
+                </>
+              )}
+            </div>
               </>
             )}
           </>

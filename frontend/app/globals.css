@@ -559,6 +559,14 @@ body.is-col-dragging .sidebar {
   padding: 4px 2px;
 }
 
+/* Secondary section (e.g. the Workspaces picker) sits below the primary tree
+   and is visually de-emphasised. */
+.sidebar-section-secondary {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
 .sidebar-section-head {
   display: flex;
   align-items: center;
