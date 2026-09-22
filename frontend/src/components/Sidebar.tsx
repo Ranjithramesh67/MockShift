@@ -8,6 +8,7 @@ import { useApp, makeId } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
 import { useMenuAccess } from '@/store/MenuAccessStore';
 import { useNavOrder } from '@/store/NavOrderStore';
+import { normalizeRailOrder } from '@/lib/menuKeys';
 import { useAuth } from '@/lib/auth';
 import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { isUntitledWorkflow, UNTITLED_WORKFLOW_NAME } from '@/lib/workflowValidation';
@@ -1470,6 +1471,10 @@ export function Sidebar({
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [navOrderOpen, setNavOrderOpen] = useState(false);
+  const [railDragKey, setRailDragKey] = useState<string | null>(null);
+  const [railDragOverKey, setRailDragOverKey] = useState<string | null>(null);
+  const railRef = useRef<HTMLElement | null>(null);
+  const railOverElRef = useRef<HTMLElement | null>(null);
   const [shareLinkTarget, setShareLinkTarget] = useState<SendableItem | null>(null);
   const [teamsOpen, setTeamsOpen] = useState(false);
   const [managingTeamId, setManagingTeamId] = useState<string | null>(null);
@@ -1631,6 +1636,55 @@ export function Sidebar({
     ...(canManage && menu.isEnabled('manage') ? ['manage'] : []),
     ...(user?.role === 'ADMIN' ? ['admin'] : []),
   ];
+  const railAvailableKeyList = railAvailableKeys.join(',');
+
+  // Mark the visible rail items as drag handles. Doing this here (rather than on
+  // each element) keeps the rail markup untouched and automatically respects the
+  // menus the current user can see.
+  useEffect(() => {
+    const nav = railRef.current;
+    if (!nav) return;
+    const allowed = new Set(railAvailableKeyList ? railAvailableKeyList.split(',') : []);
+    nav.querySelectorAll<HTMLElement>('[data-testid^="rail-"]').forEach((el) => {
+      const key = (el.getAttribute('data-testid') || '').replace(/^rail-/, '');
+      if (allowed.has(key)) {
+        el.setAttribute('draggable', 'true');
+        el.setAttribute('data-rail-key', key);
+      } else {
+        el.removeAttribute('draggable');
+        el.removeAttribute('data-rail-key');
+      }
+    });
+  }, [railAvailableKeyList]);
+
+  const railKeyFromTarget = (target: EventTarget | null): string | null => {
+    if (!(target instanceof Element)) return null;
+    return target.closest<HTMLElement>('[data-rail-key]')?.getAttribute('data-rail-key') ?? null;
+  };
+
+  const clearRailDropTarget = () => {
+    railOverElRef.current?.removeAttribute('data-dragover');
+    railOverElRef.current = null;
+  };
+
+  const endRailDrag = () => {
+    clearRailDropTarget();
+    setRailDragKey(null);
+    setRailDragOverKey(null);
+  };
+
+  const dropRail = (targetKey: string) => {
+    const from = railDragKey;
+    if (!from || from === targetKey) return;
+    const order = normalizeRailOrder(navOrder.order, railAvailableKeys);
+    const fromIndex = order.indexOf(from);
+    const toIndex = order.indexOf(targetKey);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const next = [...order];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    navOrder.save(next).catch(() => undefined);
+  };
 
   return (
     <>
@@ -1640,7 +1694,56 @@ export function Sidebar({
         data-testid="sidebar"
         style={railHidden ? undefined : { width }}
       >
-      <nav className="rail" aria-label="Sidebar navigation">
+      <nav
+        className="rail"
+        aria-label="Sidebar navigation"
+        ref={railRef}
+        data-dragging={railDragKey ? 'true' : undefined}
+        onDragStart={(e) => {
+          const key = railKeyFromTarget(e.target);
+          if (!key) return;
+          setRailDragKey(key);
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            try {
+              e.dataTransfer.setData('text/plain', key);
+            } catch {
+              // Some browsers restrict data during dragstart; the state above
+              // still tracks the item being moved.
+            }
+          }
+        }}
+        onDragOver={(e) => {
+          const key = railKeyFromTarget(e.target);
+          if (!key || !railDragKey || railDragKey === key) return;
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          const el =
+            e.target instanceof Element ? e.target.closest<HTMLElement>('[data-rail-key]') : null;
+          if (el && el !== railOverElRef.current) {
+            clearRailDropTarget();
+            railOverElRef.current = el;
+            el.setAttribute('data-dragover', 'true');
+          }
+          if (railDragOverKey !== key) setRailDragOverKey(key);
+        }}
+        onDragLeave={(e) => {
+          const el =
+            e.target instanceof Element ? e.target.closest<HTMLElement>('[data-rail-key]') : null;
+          if (el && el === railOverElRef.current) {
+            clearRailDropTarget();
+            setRailDragOverKey(null);
+          }
+        }}
+        onDrop={(e) => {
+          const key = railKeyFromTarget(e.target);
+          if (!key) return;
+          e.preventDefault();
+          dropRail(key);
+          endRailDrag();
+        }}
+        onDragEnd={endRailDrag}
+      >
         <button
           type="button"
           className={`rail-button ${view === 'workspace' && rail === 'apis' ? 'active' : ''}`}
@@ -1887,8 +1990,8 @@ export function Sidebar({
           type="button"
           className="rail-button rail-customize"
           data-testid="rail-customize"
-          title="Customize menu"
-          aria-label="Customize menu"
+          title="Customize menu (drag icons to reorder)"
+          aria-label="Customize menu (drag icons to reorder)"
           style={customRail ? { order: 997 } : undefined}
           onClick={() => setNavOrderOpen(true)}
         >

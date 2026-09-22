@@ -418,6 +418,21 @@ textarea {
   transform: rotate(180deg);
 }
 
+/* ---- Inline rail drag-to-reorder ---------------------------------------- */
+.rail-button[data-rail-key] {
+  cursor: grab;
+}
+
+.rail[data-dragging='true'] .rail-button[data-rail-key] {
+  opacity: 0.55;
+}
+
+.rail-button[data-dragover='true'] {
+  opacity: 1;
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 /* ---- Customize-menu dialog ----------------------------------------------- */
 .nav-order-hint {
   margin: 0 0 12px;
