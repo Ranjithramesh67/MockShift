@@ -1,22 +1,29 @@
 import { test, expect } from '@playwright/test';
 
-test('sidebar boots project-first: project header contains its workspaces', async ({ page }) => {
+test('sidebar boots workspace-first: workspaces above collections, no project node', async ({ page }) => {
   await page.goto('/login');
   await page.getByTestId('login-email').fill('boss1785867669@test.io');
   await page.getByTestId('login-password').fill('bosspass123');
   await page.getByTestId('login-submit').click();
-  await expect(page.getByTestId('sidebar')).toBeVisible({ timeout: 20000 });
 
-  const project = page.locator('.tree-project').first();
-  await expect(project).toBeVisible({ timeout: 20000 });
-  await expect(project.locator('.tree-project-name')).toBeVisible();
-  await expect(project.locator('[data-testid="workspace-node"]').first()).toBeVisible();
+  const sidebar = page.getByTestId('sidebar');
+  await expect(sidebar).toBeVisible({ timeout: 20000 });
 
-  // The project tree is primary: it must sit above the secondary Workspaces
-  // picker, so the project never reads as nested under a workspace.
-  const workspaces = page.locator('.sidebar-section-secondary');
-  await expect(workspaces).toBeVisible();
-  const projectBox = await project.boundingBox();
-  const workspacesBox = await workspaces.boundingBox();
-  expect(projectBox!.y).toBeLessThan(workspacesBox!.y);
+  // The project is chosen from the top bar and never rendered inside the tree.
+  await expect(page.getByTestId('project-switcher-button')).toBeVisible();
+  await expect(sidebar.locator('.tree-project')).toHaveCount(0);
+  await expect(sidebar.locator('.tree-workspace')).toHaveCount(0);
+
+  // Workspaces sit above Collections.
+  const workspacesHeading = sidebar.getByRole('heading', { name: 'Workspaces' });
+  const collectionsHeading = sidebar.getByRole('heading', { name: 'Collections' });
+  await expect(workspacesHeading).toBeVisible();
+  await expect(collectionsHeading).toBeVisible();
+  const workspacesBox = await workspacesHeading.boundingBox();
+  const collectionsBox = await collectionsHeading.boundingBox();
+  expect(workspacesBox!.y).toBeLessThan(collectionsBox!.y);
+
+  // The chips list the active project's workspaces.
+  await expect(page.getByTestId('workspace-chips')).toBeVisible();
+  await expect(page.locator('.workspace-chip').first()).toBeVisible();
 });

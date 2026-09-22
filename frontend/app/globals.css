@@ -265,6 +265,35 @@ textarea {
   color: var(--text-muted);
 }
 
+.project-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.project-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.project-action:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .project-group-head {
   padding: 8px 10px 4px;
   font-size: 11px;
@@ -557,14 +586,6 @@ body.is-col-dragging .sidebar {
 
 .sidebar-section {
   padding: 4px 2px;
-}
-
-/* Secondary section (e.g. the Workspaces picker) sits below the primary tree
-   and is visually de-emphasised. */
-.sidebar-section-secondary {
-  margin-top: 10px;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
 }
 
 .sidebar-section-head {

@@ -12,7 +12,7 @@ import { normalizeRailOrder } from '@/lib/menuKeys';
 import { useAuth } from '@/lib/auth';
 import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { isUntitledWorkflow, UNTITLED_WORKFLOW_NAME } from '@/lib/workflowValidation';
-import { accessRequestApi, type ContentTree } from '@/lib/api';
+import { type ContentTree } from '@/lib/api';
 import { docsSharedApi } from '@/lib/docsApi';
 import { CreateModal, type CreateKind } from './CreateModal';
 import { SharingModal } from './SharingModal';
@@ -22,7 +22,6 @@ import { TeamsModal } from './TeamsModal';
 import { AuthProviderModal } from './AuthProviderModal';
 import { CollectionRunnerModal } from './CollectionRunnerModal';
 import { EnvironmentsModal } from './EnvironmentsModal';
-import { MockServersModal } from './MockServersModal';
 import { CollectionImportExportModal } from './CollectionImportExportModal';
 import {
   WorkspaceIcon,
@@ -73,11 +72,13 @@ function WorkspaceChips({
   onNavigate,
   onRequestWorkspace,
   onOpenShareLink,
+  workspaces,
 }: {
   onOpenCreate: (kind: CreateKind) => void;
   onNavigate: () => void;
   onRequestWorkspace: (w: { id: string; name: string }) => void;
   onOpenShareLink: (w: { id: string; name: string }) => void;
+  workspaces: Array<{ id: string; name: string; visibility: string; role: string | null }>;
 }) {
   const ws = useWorkspace();
 
@@ -150,7 +151,7 @@ function WorkspaceChips({
     </div>
   );
 
-  const availableIds = new Set(ws.workspaces.map((w) => w.id));
+  const availableIds = new Set(workspaces.map((w) => w.id));
   const nonEmptyGroups = (ws.groups?.groups ?? []).filter((g) =>
     g.workspaces.some((w) => availableIds.has(w.id))
   );
@@ -160,9 +161,9 @@ function WorkspaceChips({
   if (!grouped) {
     body = (
       <>
-        {ws.workspaces.map((w) => renderChip(w))}
-        {ws.workspaces.length === 0 && !ws.loading && <p className="hint">No workspaces yet.</p>}
-        {ws.workspaces.length > 0 && (
+        {workspaces.map((w) => renderChip(w))}
+        {workspaces.length === 0 && !ws.loading && <p className="hint">No workspaces yet.</p>}
+        {workspaces.length > 0 && (
           <button
             type="button"
             className="workspace-chip new"
@@ -207,7 +208,7 @@ function WorkspaceChips({
     }
     const otherChips = ws.groups!.other.filter((w) => availableIds.has(w.id));
     otherChips.forEach((w) => accounted.add(w.id));
-    const leftoverChips = ws.workspaces.filter((w) => !accounted.has(w.id));
+    const leftoverChips = workspaces.filter((w) => !accounted.has(w.id));
     chipCount += otherChips.length + leftoverChips.length;
     if (otherChips.length > 0 || leftoverChips.length > 0) {
       sections.push(
@@ -256,16 +257,13 @@ function WorkspaceChips({
   );
 }
 
-function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProject, onRequestAccess, onNavigate, onRequestClose, onRunCollection, onOpenMockServer, onOpenImportExport, collapsed, onToggleCollapsed }: {
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, onRequestClose, onRunCollection, onOpenImportExport, collapsed, onToggleCollapsed }: {
   onOpenCreate: (kind: CreateKind, collectionId?: string, folderId?: string) => void;
   onOpenSharing: () => void;
   onOpenAuth: (collectionId: string) => void;
-  onOpenProject: (project: { id: string; name: string }) => void;
-  onRequestAccess: (project: { id: string; name: string }) => void;
   onNavigate: () => void;
   onRequestClose?: () => void;
   onRunCollection: (collectionId: string, collectionName: string) => void;
-  onOpenMockServer: (project: { id: string; name: string }) => void;
   onOpenImportExport: () => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
@@ -807,61 +805,6 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
     );
   };
 
-  const renderProjectHeader = (p: {
-    id: string;
-    name: string;
-    can_access: boolean;
-    access_status: ContentTree['projects'][number]['access_status'];
-  }) => (
-    <>
-      {p.can_access ? (
-        <div className="tree-project-head">
-          <button
-            type="button"
-            className="tree-project-name"
-            title={`Open ${p.name} overview`}
-            aria-label={`Open ${p.name} overview`}
-            onClick={() => onOpenProject({ id: p.id, name: p.name })}
-          >
-            <LayersIcon size={12} />
-            {p.name}
-            <span className="vis-badge access-badge">MEMBER</span>
-          </button>
-          <button
-            type="button"
-            className="icon-button tree-project-mock"
-            title={`Mock server for ${p.name}`}
-            aria-label={`Mock server for ${p.name}`}
-            data-testid={`mock-server-${p.name}`}
-            onClick={() => onOpenMockServer({ id: p.id, name: p.name })}
-          >
-            <ServerIcon size={12} />
-          </button>
-        </div>
-      ) : (
-        <div className="tree-project-name">
-          <LayersIcon size={12} />
-          {p.name}
-          {p.access_status === 'PENDING' ? (
-            <span className="vis-badge pending-badge">PENDING</span>
-          ) : null}
-        </div>
-      )}
-      {!p.can_access && p.access_status !== 'PENDING' && (
-        <button
-          type="button"
-          className="ghost-button small access-request-btn"
-          data-testid={`request-access-${p.name}`}
-          onClick={() => onRequestAccess({ id: p.id, name: p.name })}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-        >
-          <LockIcon size={11} />
-          Request access
-        </button>
-      )}
-    </>
-  );
-
   const renderCollection = (c: { id: string; name: string; has_auth: string | null }) => {
     const isCollapsed = !!collapsedNodes[c.id];
     const rootFolders = tree.folders.filter(
@@ -1076,69 +1019,32 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onOpenProjec
           </>
         )}
       </div>
-      {!collapsed && !ws.activeProjectId && (
+      {!collapsed && !ws.activeProjectId && !projectTree && (
         <p className="hint" data-testid="no-active-project">
           Select a project in the top bar.
         </p>
       )}
-      {!collapsed && projectTree && (() => {
-        const activeProject = ws.allProjects.find((p) => p.id === ws.activeProjectId);
-        const projectNode = activeProject ?? {
-          id: ws.activeProjectId ?? '',
-          name: 'Project',
-          can_access: true,
-          access_status: null,
-        };
+      {!collapsed && (() => {
+        // The sidebar is workspace-scoped: the project lives in the top bar, so
+        // the tree shows only the active workspace's collections.
+        const collections = projectTree
+          ? projectTree.collections.filter((c) => c.workspace_id === ws.activeWorkspaceId)
+          : ws.activeProjectId
+            ? tree.collections.filter((c) => c.project_id === ws.activeProjectId)
+            : tree.collections;
         return (
-          <div className="tree-project">
-            {renderProjectHeader(projectNode)}
-            {projectTree.workspaces.map((w) => {
-              const wKey = `workspace:${w.id}`;
-              const wCollapsed = !!collapsedNodes[wKey];
-              const collections = projectTree.collections.filter((c) => c.workspace_id === w.id);
-              return (
-                <div key={w.id} className="tree-workspace" data-testid="workspace-node">
-                  <button
-                    type="button"
-                    className="tree-collection-name"
-                    aria-expanded={!wCollapsed}
-                    onClick={() => toggle(wKey)}
-                  >
-                    <span className={`chevron ${wCollapsed ? '' : 'open'}`}>
-                      <ChevronIcon size={12} />
-                    </span>
-                    <span className="tree-collection-icon">
-                      <WorkspaceIcon size={13} />
-                    </span>
-                    <span className="name">{w.name}</span>
-                    {w.visibility === 'PUBLIC' && <span className="vis-badge">PUBLIC</span>}
-                  </button>
-                  {!wCollapsed && (
-                    <div className="tree-collection-children">
-                      {collections.map((c) => renderCollection(c))}
-                      {collections.length === 0 && (
-                        <p className="hint" style={{ padding: '4px 8px 6px 26px' }}>
-                          No collections yet.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {projectTree.workspaces.length === 0 && <p className="hint">No workspaces yet.</p>}
-          </div>
+          <>
+            {collections.map((c) => renderCollection(c))}
+            {collections.length === 0 && (
+              <p className="hint">
+                {ws.activeWorkspaceId
+                  ? 'No collections yet.'
+                  : 'Open a workspace to see its collections.'}
+              </p>
+            )}
+          </>
         );
       })()}
-      {!collapsed && !projectTree && tree.projects.filter((p) => p.id === ws.activeProjectId).map((p) => (
-        <div key={p.id} className="tree-project">
-          {renderProjectHeader(p)}
-          {tree.collections.filter((c) => c.project_id === p.id).map((c) => renderCollection(c))}
-        </div>
-      ))}
-      {!collapsed && !projectTree && ws.activeProjectId && tree.collections.filter((c) => c.project_id === ws.activeProjectId).length === 0 && (
-        <p className="hint">No collections yet.</p>
-      )}
       </div>
       <SendItemDialog open={Boolean(sendTarget)} item={sendTarget} onClose={() => setSendTarget(null)} />
       <ShareLinksModal
@@ -1463,7 +1369,7 @@ export function Sidebar({
   const router = useRouter();
   const [rail, setRail] = useState<RailTab>(() => (state.activeTab === 'workflow' ? 'workflow' : 'apis'));
   const [collapsed, setCollapsed] = useState(false);
-  const [workspacesCollapsed, setWorkspacesCollapsed] = useState(true);
+  const [workspacesCollapsed, setWorkspacesCollapsed] = useState(false);
   const [collectionsCollapsed, setCollectionsCollapsed] = useState(false);
   const [treeSearch, setTreeSearch] = useState('');
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
@@ -1482,9 +1388,6 @@ export function Sidebar({
   const [environmentsOpen, setEnvironmentsOpen] = useState(false);
   const [runnerOpen, setRunnerOpen] = useState(false);
   const [runnerCollectionName, setRunnerCollectionName] = useState('');
-  const [mockProject, setMockProject] = useState<{ id: string; name: string } | null>(null);
-  const [requestingProject, setRequestingProject] = useState<{ id: string; name: string } | null>(null);
-  const [accessReason, setAccessReason] = useState('');
   const [requestingWorkspace, setRequestingWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [workspaceReason, setWorkspaceReason] = useState('');
   const [importExportOpen, setImportExportOpen] = useState(false);
@@ -1563,19 +1466,6 @@ export function Sidebar({
       }
     } catch (err) {
       dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Failed to open result' });
-    }
-  };
-
-  const submitAccessRequest = async () => {
-    if (!requestingProject) return;
-    try {
-      await accessRequestApi.request(requestingProject.id, accessReason || undefined);
-      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Access requested for "${requestingProject.name}".` });
-      setRequestingProject(null);
-      setAccessReason('');
-      await ws.reloadTree();
-    } catch (err) {
-      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Request failed' });
     }
   };
 
@@ -2053,57 +1943,7 @@ export function Sidebar({
               <TreeSearchResults query={treeSearch} onSelect={onSearchSelect} />
             ) : (
               <>
-            {ws.tree && ws.activeWorkspaceId ? (
-              <CollectionsTree
-                onOpenCreate={openCreate}
-                onOpenSharing={() => setSharingOpen(true)}
-                onOpenAuth={onOpenAuth}
-                onOpenProject={(p) => {
-                  goWorkspace();
-                  dispatch({ type: 'SET_TAB', tab: 'request' });
-                  onRequestClose?.();
-                  ws.selectProjectOverview(p).catch((err) =>
-                    dispatch({
-                      type: 'SHOW_TOAST',
-                      kind: 'error',
-                      message: err instanceof Error ? err.message : 'Failed to open project',
-                    })
-                  );
-                }}
-                onRequestAccess={(p) => setRequestingProject(p)}
-                onNavigate={goWorkspace}
-                onRequestClose={onRequestClose}
-                onRunCollection={onRunCollection}
-                onOpenMockServer={(p) => setMockProject(p)}
-                onOpenImportExport={() => setImportExportOpen(true)}
-                collapsed={collectionsCollapsed}
-                onToggleCollapsed={() => setCollectionsCollapsed((v) => !v)}
-              />
-            ) : ws.loading || (ws.activeWorkspaceId && !ws.tree && !ws.error) ? (
-              <p className="hint workspace-loading-hint">Loading collections…</p>
-            ) : (
-              <div className="empty-state" data-testid="empty-state">
-                <CollectionIcon size={20} />
-                {ws.workspaces.length === 0 ? (
-                  <>
-                    <p>No workspaces yet. Create one to add collections and requests.</p>
-                    <button
-                      type="button"
-                      className="primary-button small"
-                      data-testid="empty-new-workspace"
-                      onClick={() => openCreate('workspace')}
-                    >
-                      <PlusIcon size={13} />
-                      New workspace
-                    </button>
-                  </>
-                ) : (
-                  <p>Open a workspace below to see its collections.</p>
-                )}
-              </div>
-            )}
-
-            <div className="sidebar-section sidebar-section-secondary">
+            <div className="sidebar-section">
               <div className="sidebar-section-head">
                 <button
                   type="button"
@@ -2131,10 +1971,61 @@ export function Sidebar({
                 <>
                   {ws.loading && <p className="hint">Loading…</p>}
                   {ws.error && <p className="auth-error">{ws.error}</p>}
-                  <WorkspaceChips onOpenCreate={openCreate} onNavigate={goWorkspace} onRequestWorkspace={(w) => setRequestingWorkspace(w)} onOpenShareLink={(w) => setShareLinkTarget({ id: w.id, type: 'workspace', name: w.name })} />
+                  <WorkspaceChips
+                    onOpenCreate={openCreate}
+                    onNavigate={goWorkspace}
+                    onRequestWorkspace={(w) => setRequestingWorkspace(w)}
+                    onOpenShareLink={(w) => setShareLinkTarget({ id: w.id, type: 'workspace', name: w.name })}
+                    workspaces={
+                      ws.projectTree
+                        ? ws.projectTree.workspaces.map((pw) => {
+                            const full = ws.workspaces.find((w) => w.id === pw.id);
+                            return (
+                              full ?? { id: pw.id, name: pw.name, visibility: pw.visibility, role: null }
+                            );
+                          })
+                        : ws.workspaces
+                    }
+                  />
                 </>
               )}
             </div>
+
+            {ws.tree && ws.activeWorkspaceId ? (
+              <CollectionsTree
+                onOpenCreate={openCreate}
+                onOpenSharing={() => setSharingOpen(true)}
+                onOpenAuth={onOpenAuth}
+                onNavigate={goWorkspace}
+                onRequestClose={onRequestClose}
+                onRunCollection={onRunCollection}
+                onOpenImportExport={() => setImportExportOpen(true)}
+                collapsed={collectionsCollapsed}
+                onToggleCollapsed={() => setCollectionsCollapsed((v) => !v)}
+              />
+            ) : ws.loading || (ws.activeWorkspaceId && !ws.tree && !ws.error) ? (
+              <p className="hint workspace-loading-hint">Loading collections…</p>
+            ) : (
+              <div className="empty-state" data-testid="empty-state">
+                <CollectionIcon size={20} />
+                {(ws.projectTree ? ws.projectTree.workspaces.length : ws.workspaces.length) === 0 ? (
+                  <>
+                    <p>No workspaces yet. Create one to add collections and requests.</p>
+                    <button
+                      type="button"
+                      className="primary-button small"
+                      data-testid="empty-new-workspace"
+                      onClick={() => openCreate('workspace')}
+                    >
+                      <PlusIcon size={13} />
+                      New workspace
+                    </button>
+                  </>
+                ) : (
+                  <p>Open a workspace above to see its collections.</p>
+                )}
+              </div>
+            )}
               </>
             )}
           </>
@@ -2178,42 +2069,6 @@ export function Sidebar({
         folderId={targetFolderId ?? undefined}
         onClose={() => setCreateKind(null)}
       />
-    )}
-    {requestingProject && (
-      <div className="modal-overlay" data-testid="access-request-modal" onClick={() => setRequestingProject(null)}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h2>Request access</h2>
-          </div>
-          <div className="modal-body">
-            <p className="hint">
-              Request access to <strong>{requestingProject.name}</strong>. A project manager or admin
-              will review your request.
-            </p>
-            <div className="modal-form">
-              <label className="field">
-                <span className="field-label">Reason (optional)</span>
-                <textarea
-                  className="text-input"
-                  data-testid="access-request-reason"
-                  rows={3}
-                  placeholder="e.g. I need to view the mocked APIs for the payments team"
-                  value={accessReason}
-                  onChange={(e) => setAccessReason(e.target.value)}
-                />
-              </label>
-            </div>
-          </div>
-          <div className="modal-actions">
-            <button type="button" className="ghost-button" data-testid="access-request-cancel" onClick={() => setRequestingProject(null)}>
-              Cancel
-            </button>
-            <button type="button" className="primary-button" data-testid="access-request-confirm" onClick={submitAccessRequest}>
-              Request access
-            </button>
-          </div>
-        </div>
-      </div>
     )}
     {requestingWorkspace && (
       <div
@@ -2284,14 +2139,6 @@ export function Sidebar({
     />
     <EnvironmentsModal open={environmentsOpen} onClose={() => setEnvironmentsOpen(false)} />
     <AuthProviderModal open={authOpen} onClose={() => setAuthOpen(false)} />
-    {mockProject && (
-      <MockServersModal
-        open
-        projectId={mockProject.id}
-        projectName={mockProject.name}
-        onClose={() => setMockProject(null)}
-      />
-    )}
     <CollectionRunnerModal
       open={runnerOpen}
       running={ws.collectionRunRunning}

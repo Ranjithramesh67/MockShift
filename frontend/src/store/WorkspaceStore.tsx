@@ -488,7 +488,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const selectWorkspace = useCallback(async (workspaceId: string) => {
     setError(null);
     selectSeqRef.current += 1; // invalidate any in-flight request selection
-    setProjectTree(null);
+    // Keep the project-first tree when the chosen workspace belongs to the
+    // active project, so the sidebar stays scoped to that project's workspaces.
+    setProjectTree((prev) =>
+      prev && prev.workspaces.some((w) => w.id === workspaceId) ? prev : null
+    );
     setOverview(null);
     setOverviewError(null);
     setActiveWorkspaceId(workspaceId);

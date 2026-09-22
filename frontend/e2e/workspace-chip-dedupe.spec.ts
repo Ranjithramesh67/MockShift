@@ -17,7 +17,16 @@ test('a workspace shared to two teams renders a single chip', async ({ page }) =
   await page.getByTestId('login-submit').click();
   await expect(page.getByTestId('sidebar')).toBeVisible();
 
-  const created = await page.request.post('/api/workspaces', { data: { name: wsName } });
+  // The sidebar scopes workspace chips to the active project, so create the
+  // workspace inside that project (the boot default) for it to be visible.
+  const projectsRes = await page.request.get('/api/projects');
+  const projects = ((await projectsRes.json()) as { projects: Array<{ id: string; name: string }> })
+    .projects;
+  const project = projects.find((p) => p.name === 'Default Project') ?? projects[0];
+
+  const created = await page.request.post(`/api/projects/${project.id}/workspaces`, {
+    data: { name: wsName },
+  });
   expect(created.ok()).toBeTruthy();
   const wsId = ((await created.json()) as { workspace: { id: string } }).workspace.id;
 
