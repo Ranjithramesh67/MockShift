@@ -169,10 +169,10 @@ async function canReadWorkspace(userId, workspaceId) {
   );
   if (rows.length > 0) return true;
   const grant = await query(
-    `SELECT 1 FROM projects p
-       LEFT JOIN project_managers pm ON pm.project_id = p.id AND pm.user_id = $2
-       LEFT JOIN project_members pme ON pme.project_id = p.id AND pme.user_id = $2
-      WHERE p.workspace_id = $1 AND (pm.user_id IS NOT NULL OR pme.user_id IS NOT NULL)
+    `SELECT 1 FROM workspaces w
+       LEFT JOIN project_managers pm ON pm.project_id = w.project_id AND pm.user_id = $2
+       LEFT JOIN project_members pme ON pme.project_id = w.project_id AND pme.user_id = $2
+      WHERE w.id = $1 AND (pm.user_id IS NOT NULL OR pme.user_id IS NOT NULL)
       LIMIT 1`,
     [workspaceId, userId]
   );
@@ -239,16 +239,15 @@ async function getOrgIdsForUser(userId) {
 async function getProjectAccess(userId, projectId) {
   const { rows } = await query(
     `SELECT p.workspace_id,
-            w.organization_id,
+            p.organization_id,
             (SELECT role FROM users WHERE id = $1) AS global_role,
             EXISTS (SELECT 1 FROM organization_members om
-                     WHERE om.org_id = w.organization_id AND om.user_id = $1 AND om.role = 'ADMIN') AS is_org_admin,
+                     WHERE om.org_id = p.organization_id AND om.user_id = $1 AND om.role = 'ADMIN') AS is_org_admin,
             EXISTS (SELECT 1 FROM project_managers pm
                      WHERE pm.project_id = p.id AND pm.user_id = $1) AS is_manager,
             (SELECT pm.role FROM project_members pm
               WHERE pm.project_id = p.id AND pm.user_id = $1) AS member_role
        FROM projects p
-       JOIN workspaces w ON w.id = p.workspace_id
       WHERE p.id = $2`,
     [userId, projectId]
   );
@@ -263,6 +262,7 @@ async function getProjectAccess(userId, projectId) {
   if (row.member_role) {
     return { level: row.member_role, workspaceRole: row.member_role, isManager: false };
   }
+  if (!row.workspace_id) return null;
   const workspaceRole = await getWorkspaceRole(userId, row.workspace_id);
   if (!workspaceRole) return null;
   return { level: workspaceRole, workspaceRole, isManager: false };

@@ -201,28 +201,127 @@ async function projectNameTaken(workspaceId, name, excludeProjectId) {
   return rows.length > 0;
 }
 
-// Creating a project changes the workspace structure. Workspace MANAGER+
-// (and platform MANAGER/ADMIN) may do it; EDITOR/VIEWER may not.
-async function requireWorkspaceManager(req, res, next) {
+// Creating a project is a top-level operation. Callers may either:
+//   * pass organizationId (project-centric): require org ADMIN or platform MANAGER+; or
+//   * pass workspaceId (legacy workspace-centric path): require workspace MANAGER+.
+async function requireProjectCreator(req, res, next) {
   try {
-    const { workspaceId } = req.body || {};
-    if (!workspaceId || !UUID_RE.test(workspaceId)) {
-      return res.status(400).json({ error: 'workspaceId is required' });
-    }
-    if (roleAtLeast(req.user.role, 'MANAGER')) {
-      req.workspaceRole = req.user.role;
+    const { workspaceId, organizationId } = req.body || {};
+    if (workspaceId) {
+      if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: 'workspaceId is invalid' });
+      req.legacyWorkspaceId = workspaceId;
+      if (roleAtLeast(req.user.role, 'MANAGER')) return next();
+      const role = await getWorkspaceRole(req.user.id, workspaceId);
+      if (!roleAtLeast(role, 'MANAGER')) {
+        return res.status(403).json({ error: 'Workspace manager or admin required' });
+      }
       return next();
     }
-    const role = await getWorkspaceRole(req.user.id, workspaceId);
-    if (!roleAtLeast(role, 'MANAGER')) {
-      return res.status(403).json({ error: 'Workspace manager or admin required' });
+    if (organizationId) {
+      if (!UUID_RE.test(organizationId)) return res.status(400).json({ error: 'organizationId is invalid' });
+      req.projectOrgId = organizationId;
+      if (roleAtLeast(req.user.role, 'MANAGER')) return next();
+      const { rows } = await query(
+        `SELECT 1 FROM organization_members
+          WHERE org_id = $1 AND user_id = $2 AND role = 'ADMIN'`,
+        [organizationId, req.user.id]
+      );
+      if (rows.length === 0) return res.status(403).json({ error: 'Organization admin required' });
+      return next();
     }
-    req.workspaceRole = role;
-    next();
+    return res.status(400).json({ error: 'organizationId or workspaceId is required' });
   } catch (err) {
     next(err);
   }
 }
+
+// Project-rooted content tree for the inverted hierarchy
+// (project -> workspace -> collection -> folder -> request). Workspaces are the
+// direct children of the project; collections belong to a workspace. Any caller
+// with read access on the project may load the whole tree.
+router.get('/projects/:projectId/content', requireProjectRead, async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { rows: workspaces } = await query(
+      `SELECT id, name, visibility
+         FROM workspaces WHERE project_id = $1 ORDER BY name`,
+      [projectId]
+    );
+    const workspaceIds = workspaces.map((w) => w.id);
+    let collections = [];
+    let folders = [];
+    let requests = [];
+    if (workspaceIds.length) {
+      collections = (await query(
+        `SELECT c.id, c.name, c.workspace_id,
+                (SELECT ap.auth_type FROM auth_providers ap WHERE ap.collection_id = c.id) AS has_auth
+           FROM collections c WHERE c.workspace_id = ANY($1::uuid[]) ORDER BY c.name`,
+        [workspaceIds]
+      )).rows;
+      const collectionIds = collections.map((c) => c.id);
+      if (collectionIds.length) {
+        folders = (await query(
+          `SELECT id, name, collection_id, parent_id
+             FROM folders WHERE collection_id = ANY($1::uuid[]) ORDER BY name`,
+          [collectionIds]
+        )).rows;
+        requests = (await query(
+          `SELECT id, name, method, url, api_type, collection_id, folder_id
+             FROM api_requests WHERE collection_id = ANY($1::uuid[]) ORDER BY name`,
+          [collectionIds]
+        )).rows;
+      }
+    }
+    res.json({ projectId, workspaces, collections, folders, requests });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Create a workspace inside a project (the new hierarchy's nesting operation).
+// Project managers and above may create workspaces.
+router.post('/projects/:projectId/workspaces', requireProjectManager, async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+    const vis = req.body?.visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE';
+
+    const { rows: proj } = await query(
+      `SELECT organization_id FROM projects WHERE id = $1`,
+      [projectId]
+    );
+    if (proj.length === 0) return res.status(404).json({ error: 'Project not found' });
+    const orgId = proj[0].organization_id;
+
+    const gate = await checkCountGate({ userId: req.user.id, orgId, key: 'workspaces' });
+    if (gate) return res.status(403).json(gate);
+
+    const client = await require('../db').pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `INSERT INTO workspaces (organization_id, project_id, name, visibility)
+         VALUES ($1, $2, $3, $4) RETURNING id, name, visibility, project_id`,
+        [orgId, projectId, name, vis]
+      );
+      await client.query(
+        `INSERT INTO workspace_members (workspace_id, user_id, role)
+         VALUES ($1, $2, 'ADMIN') ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+        [rows[0].id, req.user.id]
+      );
+      await client.query('COMMIT');
+      res.status(201).json({ workspace: { ...rows[0], organization_id: orgId, role: 'ADMIN' } });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Global project list for the top-nav project picker. Returns every project in
 // every workspace the caller can read (direct membership, team share, or a
@@ -244,15 +343,20 @@ router.get('/projects', async (req, res, next) => {
       [req.user.id]
     );
     const workspaceIds = workspaces.map((w) => w.id);
-    if (workspaceIds.length === 0) return res.json({ projects: [] });
 
     const { rows: projects } = await query(
-      `SELECT p.id, p.name, p.workspace_id, w.name AS workspace_name
+      `SELECT p.id, p.name, p.workspace_id, p.organization_id,
+              w.name AS workspace_name, o.name AS organization_name
          FROM projects p
-         JOIN workspaces w ON w.id = p.workspace_id
+         LEFT JOIN workspaces w ON w.id = p.workspace_id
+         LEFT JOIN organizations o ON o.id = p.organization_id
         WHERE p.workspace_id = ANY($1::uuid[])
-        ORDER BY w.name, p.name`,
-      [workspaceIds]
+           OR p.organization_id IN (SELECT om.org_id FROM organization_members om
+                                     WHERE om.user_id = $2 AND om.role = 'ADMIN')
+           OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $2)
+           OR EXISTS (SELECT 1 FROM project_managers pm WHERE pm.project_id = p.id AND pm.user_id = $2)
+        ORDER BY o.name, p.name`,
+      [workspaceIds, req.user.id]
     );
 
     const result = await Promise.all(
@@ -277,28 +381,48 @@ router.get('/projects', async (req, res, next) => {
   }
 });
 
-router.post('/projects', requireWorkspaceManager, async (req, res, next) => {
+router.post('/projects', requireProjectCreator, async (req, res, next) => {
   try {
-    const { workspaceId } = req.body || {};
+    const workspaceId = req.legacyWorkspaceId || null;
     const name = normalizeProjectName(req.body?.name);
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
-    const { rows: wsRows } = await query(
-      `SELECT organization_id FROM workspaces WHERE id = $1`,
-      [workspaceId]
-    );
-    if (wsRows.length === 0) return res.status(404).json({ error: 'Workspace not found' });
-    if (await projectNameTaken(workspaceId, name)) {
-      return res.status(409).json({ error: `A project named "${name}" already exists in this workspace` });
+    let orgId = req.projectOrgId || null;
+    if (workspaceId) {
+      const { rows: wsRows } = await query(
+        `SELECT organization_id FROM workspaces WHERE id = $1`,
+        [workspaceId]
+      );
+      if (wsRows.length === 0) return res.status(404).json({ error: 'Workspace not found' });
+      orgId = wsRows[0].organization_id;
+      if (await projectNameTaken(workspaceId, name)) {
+        return res.status(409).json({ error: `A project named "${name}" already exists in this workspace` });
+      }
+    } else {
+      const dup = await query(
+        `SELECT 1 FROM projects WHERE organization_id = $1 AND lower(name) = lower($2) LIMIT 1`,
+        [orgId, name]
+      );
+      if (dup.rows.length > 0) {
+        return res.status(409).json({ error: `A project named "${name}" already exists in this organization` });
+      }
     }
+
     // L2 gate — projects are counted against the org pool plan.
-    const gate = await checkCountGate({ userId: req.user.id, orgId: wsRows[0].organization_id, key: 'projects' });
+    const gate = await checkCountGate({ userId: req.user.id, orgId, key: 'projects' });
     if (gate) return res.status(403).json(gate);
 
-    const { rows } = await query(
-      `INSERT INTO projects (workspace_id, name) VALUES ($1, $2) RETURNING id, name, workspace_id`,
-      [workspaceId, name]
-    );
+    const { rows } = workspaceId
+      ? await query(
+          `INSERT INTO projects (workspace_id, organization_id, name)
+           VALUES ($1, $2, $3) RETURNING id, name, workspace_id, organization_id`,
+          [workspaceId, orgId, name]
+        )
+      : await query(
+          `INSERT INTO projects (organization_id, name)
+           VALUES ($1, $2) RETURNING id, name, workspace_id, organization_id`,
+          [orgId, name]
+        );
     await logAudit({
       actorId: req.user.id,
       entityType: 'project',
@@ -309,7 +433,7 @@ router.post('/projects', requireWorkspaceManager, async (req, res, next) => {
     res.status(201).json({ project: rows[0] });
   } catch (err) {
     if (err && err.code === '23505') {
-      return res.status(409).json({ error: 'A project with that name already exists in this workspace' });
+      return res.status(409).json({ error: 'A project with that name already exists' });
     }
     next(err);
   }

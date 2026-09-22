@@ -285,9 +285,16 @@ router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
 
 router.post('/collections', async (req, res, next) => {
   try {
-    const { projectId, name } = req.body || {};
+    const { projectId: bodyProjectId, workspaceId, name } = req.body || {};
     const trimmedName = typeof name === 'string' ? name.trim() : '';
-    if (!projectId || !trimmedName) return res.status(400).json({ error: 'projectId and name are required' });
+    if (!trimmedName) return res.status(400).json({ error: 'name is required' });
+    let projectId = bodyProjectId;
+    if (!projectId && workspaceId) {
+      const { rows: ws } = await query(`SELECT project_id FROM workspaces WHERE id = $1`, [workspaceId]);
+      if (ws.length === 0) return res.status(404).json({ error: 'Workspace not found' });
+      projectId = ws[0].project_id;
+    }
+    if (!projectId) return res.status(400).json({ error: 'projectId or workspaceId is required' });
     if (!(await canWriteProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'Editor, manager or admin access required' });
     }
@@ -296,8 +303,9 @@ router.post('/collections', async (req, res, next) => {
     const gate = await checkCountGate({ userId: req.user.id, orgId, key: 'collections' });
     if (gate) return res.status(403).json(gate);
     const { rows } = await query(
-      `INSERT INTO collections (project_id, name) VALUES ($1, $2) RETURNING id, name, project_id`,
-      [projectId, trimmedName]
+      `INSERT INTO collections (project_id, workspace_id, name)
+       VALUES ($1, $2, $3) RETURNING id, name, project_id, workspace_id`,
+      [projectId, workspaceId || null, trimmedName]
     );
     res.status(201).json({ collection: rows[0] });
   } catch (err) {
