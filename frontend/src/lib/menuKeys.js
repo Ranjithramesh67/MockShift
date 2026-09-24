@@ -38,6 +38,7 @@ const RAIL_ORDER_KEYS = [
   'network',
   'manage',
   'admin',
+  'access',
 ];
 
 /** @returns {Record<string, boolean>} */

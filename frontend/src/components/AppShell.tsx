@@ -28,6 +28,7 @@ const ScratchpadWorkspace = dynamic(() => import('./ScratchpadWorkspace').then((
 const AutomationsView = dynamic(() => import('./views/AutomationsView').then((m) => m.AutomationsView));
 const ManageView = dynamic(() => import('./views/ManageView').then((m) => m.ManageView));
 const AdminView = dynamic(() => import('./views/AdminView').then((m) => m.AdminView));
+const IamView = dynamic(() => import('./views/IamView').then((m) => m.IamView));
 const HistoryView = dynamic(() => import('./views/HistoryView').then((m) => m.HistoryView));
 const DocsView = dynamic(() => import('./views/DocsView').then((m) => m.default));
 const InboxView = dynamic(() => import('./InboxView').then((m) => m.InboxView));
@@ -258,6 +259,10 @@ export function AppShell() {
                   <JsonCompareView />
                 ) : view === 'network' ? (
                   <NetworkView />
+                ) : view === 'admin' ? (
+                  <AdminView />
+                ) : view === 'access' ? (
+                  <IamView />
                 ) : (
                   <AdminView />
                 )}

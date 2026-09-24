@@ -1361,7 +1361,7 @@ export function Sidebar({
   onRequestClose?: () => void;
 }) {
   const ws = useWorkspace();
-  const { user } = useAuth();
+  const { user, organizations } = useAuth();
   const { state, dispatch } = useApp();
   const { view, setView } = useNav();
   const menu = useMenuAccess();
@@ -1503,6 +1503,9 @@ export function Sidebar({
   };
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const canAccess =
+    user?.role === 'ADMIN' ||
+    organizations.some((o) => o.role === 'ADMIN' || o.role === 'MANAGER');
 
   // Rail order is applied through CSS flex `order`, so the built-in DOM order is
   // untouched until the user saves a custom arrangement.
@@ -1525,6 +1528,7 @@ export function Sidebar({
     ...(menu.isEnabled('network') ? ['network'] : []),
     ...(canManage && menu.isEnabled('manage') ? ['manage'] : []),
     ...(user?.role === 'ADMIN' ? ['admin'] : []),
+    ...(canAccess ? ['access'] : []),
   ];
   const railAvailableKeyList = railAvailableKeys.join(',');
 
@@ -1874,6 +1878,22 @@ export function Sidebar({
             }}
           >
             <UserIcon size={17} />
+          </Link>
+        )}
+        {canAccess && (
+          <Link
+            href="/access"
+            className={`rail-button ${view === 'access' ? 'active' : ''}`}
+            data-testid="rail-access"
+            title="Access"
+            aria-label="Access"
+            style={railOrderStyle('access')}
+            onClick={() => {
+              setView('access');
+              onRequestClose?.();
+            }}
+          >
+            <LockIcon size={17} />
           </Link>
         )}
         <button

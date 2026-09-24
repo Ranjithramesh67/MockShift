@@ -686,6 +686,81 @@ export interface AdminCompanyDomain {
   created_at: string;
 }
 
+// ---------------------------------------------------------------- IAM (RBAC)
+export interface IamPermission {
+  key: string;
+  label: string;
+}
+
+export interface IamPermissionGroup {
+  key: string;
+  label: string;
+  permissions: IamPermission[];
+}
+
+export interface IamRoleRef {
+  id: string;
+  name: string;
+  systemKey: string | null;
+  isSystem: boolean;
+}
+
+export interface IamRole extends IamRoleRef {
+  description: string | null;
+  permissions: string[];
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface IamMember {
+  userId: string;
+  name: string;
+  username: string;
+  email: string;
+  legacyRole: UserRole;
+  isOwner: boolean;
+  roles: IamRoleRef[];
+}
+
+export interface IamOrg {
+  id: string;
+  name: string;
+  role: UserRole;
+  isAdmin: boolean;
+}
+
+export interface IamRoleInput {
+  name: string;
+  description?: string;
+  permissions: string[];
+}
+
+export interface IamRolePatch {
+  name?: string;
+  description?: string;
+  permissions?: string[];
+}
+
+export const iamApi = {
+  orgs: () => apiFetch<{ organizations: IamOrg[] }>('/api/orgs'),
+  permissions: () => apiFetch<{ groups: IamPermissionGroup[] }>('/api/permissions'),
+  members: (orgId: string) => apiFetch<{ members: IamMember[] }>(`/api/orgs/${orgId}/members`),
+  roles: (orgId: string) => apiFetch<{ roles: IamRole[] }>(`/api/orgs/${orgId}/roles`),
+  createRole: (orgId: string, input: IamRoleInput) =>
+    apiFetch<{ role: IamRole }>(`/api/orgs/${orgId}/roles`, { method: 'POST', body: input }),
+  updateRole: (orgId: string, roleId: string, input: IamRolePatch) =>
+    apiFetch<{ role: IamRole }>(`/api/orgs/${orgId}/roles/${roleId}`, { method: 'PATCH', body: input }),
+  deleteRole: (orgId: string, roleId: string) =>
+    apiFetch<void>(`/api/orgs/${orgId}/roles/${roleId}`, { method: 'DELETE' }),
+  setMemberRoles: (orgId: string, userId: string, roleIds: string[]) =>
+    apiFetch<{ roles: IamRoleRef[] }>(`/api/orgs/${orgId}/members/${userId}/roles`, {
+      method: 'PUT',
+      body: { roleIds },
+    }),
+  myPermissions: (orgId: string) =>
+    apiFetch<{ permissions: string[]; roles: IamRoleRef[] }>(`/api/orgs/${orgId}/me/permissions`),
+};
+
 // ---------------------------------------------------------------- Manage API
 export interface ManageOverview {
   scope: 'all' | 'managed';

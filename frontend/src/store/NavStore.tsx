@@ -7,6 +7,7 @@ export type AppView =
   | 'automations'
   | 'manage'
   | 'admin'
+  | 'access'
   | 'history'
   | 'docs'
   | 'inbox'

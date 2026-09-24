@@ -10,6 +10,7 @@ const teamRoutes = require('./routes/teams');
 const contentRoutes = require('./routes/content');
 const manageRoutes = require('./routes/manage');
 const projectRoutes = require('./routes/projects');
+const iamRoutes = require('./routes/iam');
 const workflowRoutes = require('./routes/workflows');
 const automationRoutes = require('./routes/automations').router;
 const notificationRoutes = require('./routes/notifications');
@@ -118,6 +119,7 @@ function createApp() {
   app.use('/api/tokens', tokenRoutes);
   app.use('/api', sendRoutes);
   app.use('/api', projectRoutes);
+  app.use('/api', iamRoutes);
   app.use('/api/search', searchRoutes);
   app.use('/api', workflowRoutes);
   app.use('/api/automations', requireMenuEnabled('automations'));

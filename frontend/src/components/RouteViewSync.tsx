@@ -18,6 +18,7 @@ export function RouteViewSync() {
     let view: AppView = 'workspace';
     if (pathname.startsWith('/manage')) view = 'manage';
     else if (pathname.startsWith('/admin')) view = 'admin';
+    else if (pathname.startsWith('/access')) view = 'access';
     else if (pathname.startsWith('/automations')) view = 'automations';
     else if (pathname.startsWith('/history')) view = 'history';
     else if (pathname.startsWith('/docs')) view = 'docs';

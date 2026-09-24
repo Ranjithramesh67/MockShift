@@ -59,6 +59,7 @@ const RAIL_ORDER_KEYS = Object.freeze([
   'network',
   'manage',
   'admin',
+  'access',
 ]);
 
 function isRailOrderKey(key) {

@@ -15,6 +15,7 @@
 
 const { classifyEmail, companyNameFromDomain } = require('./emailDomain');
 const { lookupRegisteredCompany, linkRegisteredCompany } = require('./companyNetwork');
+const { ensureSystemRolesForOrg } = require('./permissions');
 
 /**
  * @param {import('pg').PoolClient} client an open transaction client
@@ -82,6 +83,19 @@ async function provisionNewAccount(client, { userId, email, displayName }) {
     `INSERT INTO organization_members (org_id, user_id, role)
      VALUES ($1, $2, $3)
      ON CONFLICT (org_id, user_id) DO NOTHING`,
+    [orgId, userId, orgRole]
+  );
+
+  // Layer IAM on top of the legacy membership: seed the org's system roles and
+  // grant this member the matching system role. Both are idempotent, and the
+  // upsert uses the transaction client so it sees the just-created org.
+  await ensureSystemRolesForOrg(orgId, run);
+  await client.query(
+    `INSERT INTO iam_member_roles (organization_id, user_id, role_id)
+     SELECT $1, $2, r.id
+       FROM iam_roles r
+      WHERE r.organization_id = $1 AND r.system_key = $3 AND r.is_system
+     ON CONFLICT (organization_id, user_id, role_id) DO NOTHING`,
     [orgId, userId, orgRole]
   );
 

@@ -6413,3 +6413,105 @@ body.is-col-dragging .sidebar {
   padding: 5px 12px;
   font-size: 12px;
 }
+
+/* ==========================================================================
+   Access (IAM) view
+   ========================================================================== */
+.iam-org-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.iam-org-picker .compact-select {
+  min-width: 200px;
+}
+.iam-empty {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+}
+.iam-empty h1,
+.iam-empty h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+.iam-role-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.iam-owner-badge,
+.iam-system-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.iam-owner-badge {
+  margin-left: 8px;
+}
+.iam-role-chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.iam-perm-summary {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iam-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.iam-perm-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.iam-perm-group {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--bg-panel);
+}
+.iam-perm-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.iam-perm-group-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.iam-perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 14px;
+}
+.iam-check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.iam-check-row input[type='checkbox'] {
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
