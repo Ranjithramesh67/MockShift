@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { XIcon } from './icons';
 
 export function Modal({
@@ -14,6 +15,12 @@ export function Modal({
   children: React.ReactNode;
   testId?: string;
 }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -22,7 +29,13 @@ export function Modal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  // Rendered through a portal: several hosts (e.g. the top bar's
+  // backdrop-filter) create a containing block that would otherwise trap the
+  // `position: fixed` backdrop and push the dialog off-screen. Portalling to
+  // <body> keeps every dialog anchored to the viewport.
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="modal-backdrop" data-testid={testId ? `${testId}-backdrop` : undefined} onClick={onClose}>
       <div
         className="modal"
@@ -46,6 +59,7 @@ export function Modal({
         </div>
         <div className="modal-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
