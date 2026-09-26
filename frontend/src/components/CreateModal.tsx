@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ApiType, KeyValueEntry } from '@/lib/types';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useAuth } from '@/lib/auth';
-import { contentApi } from '@/lib/api';
+import { contentApi, ApiError } from '@/lib/api';
+import { PORTAL_PLANS_URL, portalPlansUrl } from '@/lib/portalUrl';
 import { isCurlCommand, parseCurl } from '@/lib/curl';
 import { isBodyMethod, resolveApiTypeSwitch } from '@/lib/apiBodyPreset';
 import { Modal } from './Modal';
@@ -33,6 +34,23 @@ function deriveRequestName(method: string, url: string): string {
   const base = clean || url || 'request';
   const host = base.split('/')[0];
   return `${method} ${host}`;
+}
+
+// Rendered after a plan-limit failure. The server message explains the limit;
+// this adds the one thing it cannot: a way to act on it. The portal origin is
+// resolved after mount (env override or the preview sibling host).
+function PlanLimitHint() {
+  const [href, setHref] = useState(PORTAL_PLANS_URL);
+  useEffect(() => {
+    setHref(portalPlansUrl());
+  }, []);
+  return (
+    <p className="create-plan-limit" data-testid="create-plan-limit">
+      <a className="primary-button" href={href}>
+        See plans &amp; pricing
+      </a>
+    </p>
+  );
 }
 
 export function CreateModal({
@@ -78,6 +96,7 @@ export function CreateModal({
       ''
   );
   const [error, setError] = useState('');
+  const [planLimit, setPlanLimit] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // Request-only: which source mode and which method-related tab is active.
@@ -137,9 +156,19 @@ export function CreateModal({
     setFormTab(tab);
   };
 
+  // Surface the server message verbatim and flag plan-limit failures so the
+  // modal can also offer an upgrade link instead of a dead end.
+  const failWith = (err: unknown) => {
+    setError(err instanceof Error ? err.message : 'Failed to create');
+    const body = err instanceof ApiError ? (err.body as { code?: string } | null) : null;
+    setPlanLimit(body?.code === 'plan_limit');
+    setBusy(false);
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setPlanLimit(false);
     const collection = collectionId ?? ws.activeCollectionId;
     if (isRequest && !collection) {
       setError('Select a collection in the sidebar first.');
@@ -178,8 +207,7 @@ export function CreateModal({
         await ws.reloadTree();
         await ws.selectRequest(request.id);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create');
-        setBusy(false);
+        failWith(err);
         return;
       }
       setBusy(false);
@@ -284,8 +312,7 @@ export function CreateModal({
       setBusy(false);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create');
-      setBusy(false);
+      failWith(err);
     }
   };
 
@@ -332,6 +359,7 @@ export function CreateModal({
             {error}
           </p>
         )}
+        {planLimit && <PlanLimitHint />}
 
         {!isRequest && (
           <label className="auth-field">

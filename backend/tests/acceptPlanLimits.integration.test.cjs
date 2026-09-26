@@ -65,6 +65,13 @@ test('accepting a send respects the recipient plan limits', async () => {
   assert.equal(blocked.status, 403);
   assert.equal(blocked.json.code, 'plan_limit');
   assert.equal(blocked.json.key, 'projects');
+  // The copy must be actionable: correct singular unit and the NEXT plan, never
+  // the plan the org is already on.
+  assert.equal(
+    blocked.json.error,
+    'Plan limit reached: the Free plan allows 1 project and you have used 1. Upgrade to Starter for more.'
+  );
+  assert.equal(blocked.json.upgradeTo, 'Starter');
 
   const unchanged = await recipient.client.api('GET', `/api/workspaces/${to.wsId}/content`);
   assert.equal(unchanged.json.projects.length, before.json.projects.length);

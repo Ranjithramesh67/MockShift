@@ -331,21 +331,56 @@ async function currentRunUsage(orgId, now = new Date()) {
 /**
  * Build a 403 `plan_limit` response body for a count-limit block.
  */
-function planLimitBody({ key, limit, used, planKey, planName, label }) {
+// "1 project" reads better than "1 projects"; only applied when the (finite)
+// limit is exactly one, and a trailing "ss" is left intact.
+function singularUnit(label, limit) {
+  if (limit !== 1) return label;
+  const words = label.split(' ');
+  const last = words[words.length - 1];
+  if (last.endsWith('s') && !last.endsWith('ss')) words[words.length - 1] = last.slice(0, -1);
+  return words.join(' ');
+}
+
+// Human-readable name of the next published plan above `planKey`, or null when
+// the org is already on the top plan (then the copy stays generic rather than
+// telling them to "upgrade" to the plan they are already on).
+let planLadderCache = null;
+async function planLadder() {
+  if (planLadderCache) return planLadderCache;
+  const { rows } = await query(
+    `SELECT key, name FROM plans WHERE status = 'PUBLISHED' ORDER BY sort_order`
+  );
+  planLadderCache = rows;
+  return planLadderCache;
+}
+
+async function upgradePlanName(planKey) {
+  if (!planKey) return null;
+  const ladder = await planLadder();
+  const idx = ladder.findIndex((p) => p.key === planKey);
+  if (idx === -1) return null;
+  const next = ladder[idx + 1];
+  return next ? next.name : null;
+}
+
+function planLimitBody({ key, limit, used, planKey, planName, label, upgradeTo }) {
   const n = limit === null ? 'unlimited' : String(limit);
-  const human =
-    label || key.replace(/_/g, ' ');
-  const message = planName
-    ? `Plan limit reached: this plan allows ${n} ${human} and you have used ${used}. Upgrade to ${planName} for more.`
-    : `Plan limit reached: this plan allows ${n} ${human} and you have used ${used}.`;
+  const human = singularUnit(label || key.replace(/_/g, ' '), limit);
+  const planLabel = planName ? `the ${planName} plan` : 'the current plan';
+  const tail = upgradeTo
+    ? `Upgrade to ${upgradeTo} for more.`
+    : 'Upgrade your plan for more.';
+  const message = `Plan limit reached: ${planLabel} allows ${n} ${human} and you have used ${used}. ${tail}`;
   return {
     error: message,
+    message,
     code: 'plan_limit',
     key,
     label: human,
     limit,
     usage: used,
     upgrade: true,
+    upgradeTo: upgradeTo || null,
     plan: planKey,
   };
 }
@@ -364,7 +399,14 @@ async function checkCountGate({ userId, orgId, key, extra = 1, exec = query }) {
   const used = usage[key];
   if (used === undefined) return null;
   if (used + extra > limit) {
-    return planLimitBody({ key, limit, used, planKey: en.planKey, planName: en.planName });
+    return planLimitBody({
+      key,
+      limit,
+      used,
+      planKey: en.planKey,
+      planName: en.planName,
+      upgradeTo: await upgradePlanName(en.planKey),
+    });
   }
   return null;
 }
@@ -434,7 +476,14 @@ async function checkSeatGate({ userId, orgId, targetUserId }) {
   );
   if (rows.length > 0) return null; // already seated → upsert/role change is fine
   if (used + 1 > limit) {
-    return planLimitBody({ key: 'seats', limit, used, planKey: en.planKey, planName: en.planName });
+    return planLimitBody({
+      key: 'seats',
+      limit,
+      used,
+      planKey: en.planKey,
+      planName: en.planName,
+      upgradeTo: await upgradePlanName(en.planKey),
+    });
   }
   return null;
 }
@@ -447,14 +496,20 @@ async function checkPublicSharingGate({ userId, orgId }) {
   const en = await resolveLimits(userId, orgId);
   if (!en.enforced) return null;
   if (en.limits.public_sharing === false) {
+    const upgradeTo = await upgradePlanName(en.planKey);
+    const message = `Plan limit reached: the ${en.planName || 'current'} plan does not allow public sharing. ${
+      upgradeTo ? `Upgrade to ${upgradeTo} to enable public workspaces and share links.` : 'Upgrade your plan to enable public workspaces and share links.'
+    }`;
     return {
-      error: `Your current plan does not allow public sharing. Upgrade to enable public workspaces and share links.`,
+      error: message,
+      message,
       code: 'plan_limit',
       key: 'public_sharing',
       label: 'public sharing',
       limit: false,
       usage: 1,
       upgrade: true,
+      upgradeTo: upgradeTo || null,
       plan: en.planKey,
     };
   }
@@ -503,7 +558,14 @@ async function chargeRuns({ userId, orgId, n = 1 }) {
         limit,
         enforced: en.enforced,
         orgId,
-        body: planLimitBody({ key: 'runs_per_month', limit, used, planKey: en.planKey, planName: en.planName }),
+        body: planLimitBody({
+          key: 'runs_per_month',
+          limit,
+          used,
+          planKey: en.planKey,
+          planName: en.planName,
+          upgradeTo: await upgradePlanName(en.planKey),
+        }),
       };
     }
     await client.query(

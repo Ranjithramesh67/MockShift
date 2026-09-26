@@ -1414,7 +1414,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       workspaces.find((w) => w.id === activeWorkspaceId)?.organization_id ??
       null;
     const wsId = activeWorkspaceId ?? workspaces[0]?.id ?? null;
-    if (!orgId && !wsId) return;
+    if (!orgId && !wsId) {
+      throw new Error('No organization or workspace available to create a project.');
+    }
     setOverview(null);
     setOverviewError(null);
     const { project } = orgId
