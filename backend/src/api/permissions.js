@@ -250,6 +250,117 @@ function requireOrgPermission(permissionKey) {
   };
 }
 
+/**
+ * Resolve the owning organization id for a resource identified by `kind`+`id`.
+ * Returns null when the resource does not exist (or its org cannot be
+ * determined), which lets callers fall through to the legacy guards.
+ */
+async function orgIdForResource(kind, id) {
+  if (!id) return null;
+  let rows;
+  switch (kind) {
+    case 'project':
+      ({ rows } = await query(`SELECT organization_id FROM projects WHERE id = $1`, [id]));
+      break;
+    case 'workspace':
+      ({ rows } = await query(`SELECT organization_id FROM workspaces WHERE id = $1`, [id]));
+      break;
+    case 'collection':
+      ({ rows } = await query(
+        `SELECT w.organization_id FROM collections c
+           JOIN workspaces w ON w.id = c.workspace_id
+          WHERE c.id = $1`,
+        [id]
+      ));
+      break;
+    case 'folder':
+      ({ rows } = await query(
+        `SELECT w.organization_id FROM folders f
+           JOIN collections c ON c.id = f.collection_id
+           JOIN workspaces w ON w.id = c.workspace_id
+          WHERE f.id = $1`,
+        [id]
+      ));
+      break;
+    case 'request':
+      ({ rows } = await query(
+        `SELECT w.organization_id FROM api_requests r
+           JOIN collections c ON c.id = r.collection_id
+           JOIN workspaces w ON w.id = c.workspace_id
+          WHERE r.id = $1`,
+        [id]
+      ));
+      break;
+    case 'team': {
+      // teams carries an optional organization_id; fall back to the org of a
+      // workspace it is shared into when that column is unset.
+      ({ rows } = await query(`SELECT organization_id FROM teams WHERE id = $1`, [id]));
+      if (rows[0] && rows[0].organization_id) return rows[0].organization_id;
+      const viaWorkspace = await query(
+        `SELECT w.organization_id FROM workspace_teams wt
+           JOIN workspaces w ON w.id = wt.workspace_id
+          WHERE wt.team_id = $1
+          LIMIT 1`,
+        [id]
+      );
+      rows = viaWorkspace.rows;
+      break;
+    }
+    default:
+      return null;
+  }
+  return (rows[0] && rows[0].organization_id) || null;
+}
+
+const DEFAULT_PERMISSION_PARAMS = {
+  project: 'projectId',
+  workspace: 'workspaceId',
+  collection: 'collectionId',
+  folder: 'folderId',
+  request: 'requestId',
+  team: 'teamId',
+};
+
+/**
+ * Express middleware factory gated on a permission scoped to the org returned
+ * by `orgResolver(req)`. Everything is additive to the legacy guards:
+ *   * a global ADMIN is always allowed;
+ *   * an unresolvable org is allowed through (legacy guards own the 404/403);
+ *   * a caller who is not an organization member is allowed through so team
+ *     collaborators and cross-org grants keep working under the legacy rules;
+ *   * only a confirmed org member lacking the catalog key is refused.
+ */
+function requirePermissionFor(orgResolver, permissionKey) {
+  return async function requirePermissionForMiddleware(req, res, next) {
+    try {
+      if (req.user && req.user.role === 'ADMIN') return next();
+      const orgId = await orgResolver(req);
+      if (!orgId) return next();
+      const { rows } = await query(
+        `SELECT 1 FROM organization_members WHERE org_id = $1 AND user_id = $2`,
+        [orgId, req.user.id]
+      );
+      if (rows.length === 0) return next();
+      const { permissions } = await getEffectivePermissions(req.user.id, orgId);
+      if (!permissions.has(permissionKey)) {
+        return res.status(403).json({ error: 'Insufficient permissions' });
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+/**
+ * Convenience wrapper resolving the resource id from a route param (defaults
+ * documented in DEFAULT_PERMISSION_PARAMS).
+ */
+function requireResourcePermission(kind, permissionKey, paramName) {
+  const name = paramName || DEFAULT_PERMISSION_PARAMS[kind];
+  return requirePermissionFor((req) => orgIdForResource(kind, req.params[name]), permissionKey);
+}
+
 module.exports = {
   PERMISSION_GROUPS,
   ALL_PERMISSION_KEYS,
@@ -264,4 +375,7 @@ module.exports = {
   hasPermission,
   requireOrgMember,
   requireOrgPermission,
+  orgIdForResource,
+  requirePermissionFor,
+  requireResourcePermission,
 };

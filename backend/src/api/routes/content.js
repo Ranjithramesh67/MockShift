@@ -3,6 +3,7 @@
 const { Router } = require('express');
 const { query, pool } = require('../db');
 const { requireAuth, roleAtLeast, getProjectAccess, canReadWorkspace } = require('../access');
+const { requirePermissionFor, requireResourcePermission, orgIdForResource } = require('../permissions');
 const { runRequest, runInMemoryRequest, runTokenRequest } = require('../runner');
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
 const { fireWorkflowEvent } = require('../workflowService');
@@ -283,7 +284,27 @@ router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
   }
 });
 
-router.post('/collections', async (req, res, next) => {
+// Org a collection is being created into, from the create body. Prefer the
+// workspace, then the explicit project id. Unknown -> null (legacy guard rules).
+async function resolveCollectionCreateOrg(req) {
+  const { workspaceId, projectId } = req.body || {};
+  if (workspaceId) {
+    const { rows } = await query(`SELECT organization_id FROM workspaces WHERE id = $1`, [workspaceId]);
+    if (rows[0]) return rows[0].organization_id;
+  }
+  if (projectId) {
+    const { rows } = await query(`SELECT organization_id FROM projects WHERE id = $1`, [projectId]);
+    if (rows[0]) return rows[0].organization_id;
+  }
+  return null;
+}
+
+// Org of the collection referenced by a create body (body.collectionId).
+function resolveBodyCollectionOrg(req) {
+  return orgIdForResource('collection', req.body && req.body.collectionId);
+}
+
+router.post('/collections', requirePermissionFor(resolveCollectionCreateOrg, 'workspace.write'), async (req, res, next) => {
   try {
     const { projectId: bodyProjectId, workspaceId, name } = req.body || {};
     const trimmedName = typeof name === 'string' ? name.trim() : '';
@@ -314,7 +335,7 @@ router.post('/collections', async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------- Folders
-router.post('/folders', async (req, res, next) => {
+router.post('/folders', requirePermissionFor(resolveBodyCollectionOrg, 'workspace.write'), async (req, res, next) => {
   try {
     const { collectionId, name, parentId } = req.body || {};
     const trimmedName = typeof name === 'string' ? name.trim() : '';
@@ -343,7 +364,7 @@ router.post('/folders', async (req, res, next) => {
   }
 });
 
-router.put('/folders/:folderId', async (req, res, next) => {
+router.put('/folders/:folderId', requireResourcePermission('folder', 'workspace.write'), async (req, res, next) => {
   try {
     const { folderId } = req.params;
     const existing = await query(
@@ -417,7 +438,7 @@ router.put('/folders/:folderId', async (req, res, next) => {
   }
 });
 
-router.delete('/folders/:folderId', async (req, res, next) => {
+router.delete('/folders/:folderId', requireResourcePermission('folder', 'workspace.write'), async (req, res, next) => {
   try {
     const { folderId } = req.params;
     const existing = await query(`SELECT id FROM folders WHERE id = $1`, [folderId]);
@@ -562,7 +583,7 @@ router.post('/folders/:folderId/duplicate', async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------- Requests
-router.post('/requests', async (req, res, next) => {
+router.post('/requests', requirePermissionFor(resolveBodyCollectionOrg, 'workspace.write'), async (req, res, next) => {
   try {
     const { collectionId, name, method, url, apiType, folderId } = req.body || {};
     const trimmedName = typeof name === 'string' ? name.trim() : '';
@@ -684,7 +705,7 @@ router.get('/requests/:requestId', async (req, res, next) => {
   }
 });
 
-router.put('/requests/:requestId', async (req, res, next) => {
+router.put('/requests/:requestId', requireResourcePermission('request', 'workspace.write'), async (req, res, next) => {
   try {
     const { requestId } = req.params;
     const existing = await query(
@@ -818,7 +839,7 @@ router.put('/requests/:requestId', async (req, res, next) => {
   }
 });
 
-router.delete('/requests/:requestId', async (req, res, next) => {
+router.delete('/requests/:requestId', requireResourcePermission('request', 'workspace.write'), async (req, res, next) => {
   try {
     const { requestId } = req.params;
     const existing = await query(
@@ -933,7 +954,7 @@ router.delete('/collections/:collectionId', async (req, res, next) => {
   }
 });
 
-router.post('/requests/:requestId/run', async (req, res, next) => {
+router.post('/requests/:requestId/run', requireResourcePermission('request', 'request.send'), async (req, res, next) => {
   try {
     const { requestId } = req.params;
     const existing = await query(
@@ -1000,7 +1021,7 @@ router.post('/runs', async (req, res, next) => {
 });
 
 // ----------------------------------------------------------- Collection runner
-router.post('/collections/:collectionId/run', async (req, res, next) => {
+router.post('/collections/:collectionId/run', requireResourcePermission('collection', 'request.send'), async (req, res, next) => {
   try {
     const { collectionId } = req.params;
     const projectId = await projectOfCollection(collectionId);

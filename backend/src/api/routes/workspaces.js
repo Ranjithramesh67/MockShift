@@ -3,6 +3,7 @@
 const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth, getWorkspaceRole, roleAtLeast } = require('../access');
+const { requirePermissionFor, requireResourcePermission } = require('../permissions');
 const { getRetentionDays, MIN_RETENTION_DAYS } = require('../retention');
 const { logAudit } = require('../audit');
 const { checkCountGate, checkPublicSharingGate } = require('../entitlements');
@@ -46,7 +47,18 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+// Org a workspace is being created into: prefer an explicit projectId's org,
+// else the organizationId from the body. Unknown -> null (legacy guard rules).
+async function resolveWorkspaceCreateOrg(req) {
+  const { projectId, organizationId } = req.body || {};
+  if (projectId) {
+    const { rows } = await query(`SELECT organization_id FROM projects WHERE id = $1`, [projectId]);
+    if (rows[0]) return rows[0].organization_id;
+  }
+  return organizationId || null;
+}
+
+router.post('/', requirePermissionFor(resolveWorkspaceCreateOrg, 'workspace.create'), async (req, res, next) => {
   try {
     const { organizationId, name, visibility } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
@@ -112,7 +124,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.patch('/:workspaceId', async (req, res, next) => {
+router.patch('/:workspaceId', requireResourcePermission('workspace', 'workspace.update'), async (req, res, next) => {
   try {
     const { workspaceId } = req.params;
     const role = await getWorkspaceRole(req.user.id, workspaceId);
@@ -148,7 +160,7 @@ router.patch('/:workspaceId', async (req, res, next) => {
   }
 });
 
-router.delete('/:workspaceId', async (req, res, next) => {
+router.delete('/:workspaceId', requireResourcePermission('workspace', 'workspace.delete'), async (req, res, next) => {
   try {
     const { workspaceId } = req.params;
     const role = await getWorkspaceRole(req.user.id, workspaceId);
@@ -181,7 +193,7 @@ router.get('/:workspaceId/settings', async (req, res, next) => {
   }
 });
 
-router.patch('/:workspaceId/settings', async (req, res, next) => {
+router.patch('/:workspaceId/settings', requireResourcePermission('workspace', 'workspace.update'), async (req, res, next) => {
   try {
     const { workspaceId } = req.params;
     const role = await getWorkspaceRole(req.user.id, workspaceId);
@@ -233,7 +245,7 @@ router.get('/:workspaceId/teams', async (req, res, next) => {
   }
 });
 
-router.post('/:workspaceId/teams', async (req, res, next) => {
+router.post('/:workspaceId/teams', requireResourcePermission('workspace', 'workspace.manage_members'), async (req, res, next) => {
   try {
     const { workspaceId } = req.params;
     const { teamId, role } = req.body || {};
@@ -261,7 +273,7 @@ router.post('/:workspaceId/teams', async (req, res, next) => {
   }
 });
 
-router.delete('/:workspaceId/teams/:teamId', async (req, res, next) => {
+router.delete('/:workspaceId/teams/:teamId', requireResourcePermission('workspace', 'workspace.manage_members'), async (req, res, next) => {
   try {
     const { workspaceId, teamId } = req.params;
     const wsRole = await getWorkspaceRole(req.user.id, workspaceId);

@@ -3,6 +3,7 @@
 const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth, roleAtLeast, getWorkspaceRole } = require('../access');
+const { requirePermissionFor, requireResourcePermission } = require('../permissions');
 const { listWorkspaces } = require('./workspaces');
 const { checkCountGate, checkSeatGate } = require('../entitlements');
 
@@ -98,7 +99,18 @@ router.get('/groups', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+// Org a team is being created into: prefer an explicit workspaceId's org, else
+// the organizationId from the body. Unknown -> null (legacy guard rules).
+async function resolveTeamCreateOrg(req) {
+  const { workspaceId, organizationId } = req.body || {};
+  if (workspaceId) {
+    const { rows } = await query(`SELECT organization_id FROM workspaces WHERE id = $1`, [workspaceId]);
+    if (rows[0]) return rows[0].organization_id;
+  }
+  return organizationId || null;
+}
+
+router.post('/', requirePermissionFor(resolveTeamCreateOrg, 'team.manage'), async (req, res, next) => {
   try {
     const { organizationId, name } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
@@ -146,7 +158,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.delete('/:teamId', async (req, res, next) => {
+router.delete('/:teamId', requireResourcePermission('team', 'team.manage'), async (req, res, next) => {
   try {
     const { teamId } = req.params;
     const myRole = await teamRole(req.user.id, teamId);
@@ -210,7 +222,7 @@ router.get('/:teamId/org-users', async (req, res, next) => {
   }
 });
 
-router.post('/:teamId/members', async (req, res, next) => {
+router.post('/:teamId/members', requireResourcePermission('team', 'team.manage'), async (req, res, next) => {
   try {
     const { teamId } = req.params;
     const { email, userId, username, role } = req.body || {};
@@ -255,7 +267,7 @@ router.post('/:teamId/members', async (req, res, next) => {
   }
 });
 
-router.patch('/:teamId/members/:userId', async (req, res, next) => {
+router.patch('/:teamId/members/:userId', requireResourcePermission('team', 'team.manage'), async (req, res, next) => {
   try {
     const { teamId, userId } = req.params;
     const { role } = req.body || {};
@@ -288,7 +300,7 @@ router.patch('/:teamId/members/:userId', async (req, res, next) => {
   }
 });
 
-router.delete('/:teamId/members/:userId', async (req, res, next) => {
+router.delete('/:teamId/members/:userId', requireResourcePermission('team', 'team.manage'), async (req, res, next) => {
   try {
     const { teamId, userId } = req.params;
     const myRole = await teamRole(req.user.id, teamId);

@@ -9,6 +9,7 @@ const {
   getWorkspaceRole,
   roleAtLeast,
 } = require('../access');
+const { requirePermissionFor, requireResourcePermission } = require('../permissions');
 const { logAudit } = require('../audit');
 const { checkSeatGate, checkCountGate } = require('../entitlements');
 const { notifyUsers, projectReviewerIds } = require('../notify');
@@ -235,6 +236,17 @@ async function requireProjectCreator(req, res, next) {
   }
 }
 
+// Org a project is being created into: prefer the workspace's org, else the
+// explicit organizationId from the body. Unknown -> null (legacy guard rules).
+async function resolveProjectCreateOrg(req) {
+  const { workspaceId, organizationId } = req.body || {};
+  if (workspaceId) {
+    const { rows } = await query(`SELECT organization_id FROM workspaces WHERE id = $1`, [workspaceId]);
+    if (rows[0]) return rows[0].organization_id;
+  }
+  return organizationId || null;
+}
+
 // Project-rooted content tree for the inverted hierarchy
 // (project -> workspace -> collection -> folder -> request). Workspaces are the
 // direct children of the project; collections belong to a workspace. Any caller
@@ -280,7 +292,7 @@ router.get('/projects/:projectId/content', requireProjectRead, async (req, res, 
 
 // Create a workspace inside a project (the new hierarchy's nesting operation).
 // Project managers and above may create workspaces.
-router.post('/projects/:projectId/workspaces', requireProjectManager, async (req, res, next) => {
+router.post('/projects/:projectId/workspaces', requireProjectManager, requireResourcePermission('project', 'workspace.create'), async (req, res, next) => {
   try {
     const { projectId } = req.params;
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
@@ -381,7 +393,7 @@ router.get('/projects', async (req, res, next) => {
   }
 });
 
-router.post('/projects', requireProjectCreator, async (req, res, next) => {
+router.post('/projects', requireProjectCreator, requirePermissionFor(resolveProjectCreateOrg, 'project.create'), async (req, res, next) => {
   try {
     const workspaceId = req.legacyWorkspaceId || null;
     const name = normalizeProjectName(req.body?.name);
@@ -439,7 +451,7 @@ router.post('/projects', requireProjectCreator, async (req, res, next) => {
   }
 });
 
-router.patch('/projects/:projectId', requireProjectManager, async (req, res, next) => {
+router.patch('/projects/:projectId', requireProjectManager, requireResourcePermission('project', 'project.update'), async (req, res, next) => {
   try {
     const { projectId } = req.params;
     const name = normalizeProjectName(req.body?.name);
@@ -474,7 +486,7 @@ router.patch('/projects/:projectId', requireProjectManager, async (req, res, nex
   }
 });
 
-router.delete('/projects/:projectId', requireProjectManager, async (req, res, next) => {
+router.delete('/projects/:projectId', requireProjectManager, requireResourcePermission('project', 'project.delete'), async (req, res, next) => {
   try {
     const { projectId } = req.params;
     const { rows } = await query(
@@ -618,7 +630,7 @@ router.get('/projects/:projectId/org-users', requireProjectManager, async (req, 
 
 // Grant or update a member's role on a project. Project managers and admins
 // may only assign editor/viewer roles here (never elevate to manager).
-router.post('/projects/:projectId/members', requireProjectManager, async (req, res, next) => {
+router.post('/projects/:projectId/members', requireProjectManager, requireResourcePermission('project', 'project.manage_members'), async (req, res, next) => {
   try {
     const { projectId } = req.params;
     const { userId, role } = req.body || {};
@@ -664,7 +676,7 @@ router.post('/projects/:projectId/members', requireProjectManager, async (req, r
 });
 
 // Change an existing member's role (no-op if the user is a manager).
-router.patch('/projects/:projectId/members/:userId', requireProjectManager, async (req, res, next) => {
+router.patch('/projects/:projectId/members/:userId', requireProjectManager, requireResourcePermission('project', 'project.manage_members'), async (req, res, next) => {
   try {
     const { projectId, userId } = req.params;
     const { role } = req.body || {};
@@ -701,7 +713,7 @@ router.patch('/projects/:projectId/members/:userId', requireProjectManager, asyn
 
 // Remove a member from the project. Project managers can only remove plain
 // members (never managers); the removee keeps any workspace-level access.
-router.delete('/projects/:projectId/members/:userId', requireProjectManager, async (req, res, next) => {
+router.delete('/projects/:projectId/members/:userId', requireProjectManager, requireResourcePermission('project', 'project.manage_members'), async (req, res, next) => {
   try {
     const { projectId, userId } = req.params;
     if (userId === req.user.id) {
