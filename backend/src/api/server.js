@@ -65,7 +65,7 @@ function createApp() {
   app.use(express.json({ limit: '25mb' }));
 
   app.get('/api/health', (req, res) => {
-    res.json({ ok: true, service: 'apihub-api' });
+    res.json({ ok: true, service: 'mockshift-api' });
   });
 
   // Public webhook trigger for WEBHOOK automations (no auth by design).
