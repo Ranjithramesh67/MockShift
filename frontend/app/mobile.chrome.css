@@ -36,7 +36,10 @@
   }
   .brand {
     flex: 1 1 0;
-    min-width: 0;
+    /* Never let the brand collapse to 0 and let the menu button overflow on
+       top of the action icons; clip the (truncated) brand text instead. */
+    min-width: 40px;
+    overflow: hidden;
     gap: 8px;
   }
   .brand-name {
@@ -272,6 +275,15 @@
     gap: 4px;
   }
 
+  /* Phones cannot fit every top-bar control: the row overflowed and the
+     avatar got pushed off-screen. Drop the two least essential ones — the
+     full-screen toggle and the plan chip (the plan still shows in the avatar
+     menu) — so the remaining icons never collide. */
+  .top-bar [data-testid='fullscreen-toggle'],
+  .top-bar .subscription-chip {
+    display: none;
+  }
+
   .sidebar,
   .sidebar.sidebar-rail-only {
     width: min(90vw, 320px) !important;
@@ -319,6 +331,16 @@
    ========================================================================== */
 @media (max-width: 420px) {
   .brand-name {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   <= 340px — very small phones: the brand mark would be clipped by the
+   compacted bar, so keep only the menu button.
+   ========================================================================== */
+@media (max-width: 340px) {
+  .brand-mark {
     display: none;
   }
 }
