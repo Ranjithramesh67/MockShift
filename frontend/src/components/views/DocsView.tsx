@@ -6,6 +6,7 @@ import { useNav } from '@/store/NavStore';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { isApiMention, type DocsApiRef, type DocsMention } from '@/lib/docsApi';
 import { ApiReference } from '../docs/ApiReference';
+import { SdkGuide } from '../docs/SdkGuide';
 import { DocsHome } from '../docs/DocsHome';
 import { DocsPageView } from '../docs/DocsPageView';
 
@@ -79,6 +80,8 @@ export default function DocsView() {
     <main className="admin-main" data-testid="docs-view">
       {pathname === '/docs/api-reference' ? (
         <ApiReference />
+      ) : pathname === '/docs/sdk' ? (
+        <SdkGuide />
       ) : pageId ? (
         <DocsPageView pageId={pageId} onBack={closePage} onOpenApi={openMention} />
       ) : (

@@ -398,6 +398,14 @@ export function DocsHome({ onOpenPage }: { onOpenPage: (pageId: string) => void 
           <button
             type="button"
             className="ghost-button"
+            data-testid="docs-sdk-guide"
+            onClick={() => router.push('/docs/sdk')}
+          >
+            SDK guide
+          </button>
+          <button
+            type="button"
+            className="ghost-button"
             data-testid="docs-api-reference"
             onClick={() => router.push('/docs/api-reference')}
           >

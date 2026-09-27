@@ -129,6 +129,7 @@ function SdkConfigPanel({
   projectName?: string | null;
   workspaceName?: string | null;
 }) {
+  const router = useRouter();
   const config = buildSdkConfig({
     token,
     baseUrl: defaultSdkBaseUrl(),
@@ -175,9 +176,11 @@ function SdkConfigPanel({
       <p className="profile-field-hint">
         New to the SDK? Follow the{' '}
         <a
-          href="https://github.com/Ranjithramesh67/MockShift/blob/master/docs/GETTING_STARTED_SDK.md"
-          target="_blank"
-          rel="noreferrer"
+          href="/docs/sdk"
+          onClick={(e) => {
+            e.preventDefault();
+            router.push('/docs/sdk');
+          }}
         >
           implementation guide
         </a>
