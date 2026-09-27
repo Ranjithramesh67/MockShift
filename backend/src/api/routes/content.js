@@ -324,9 +324,9 @@ router.post('/collections', requirePermissionFor(resolveCollectionCreateOrg, 'wo
     const gate = await checkCountGate({ userId: req.user.id, orgId, key: 'collections' });
     if (gate) return res.status(403).json(gate);
     const { rows } = await query(
-      `INSERT INTO collections (project_id, workspace_id, name)
-       VALUES ($1, $2, $3) RETURNING id, name, project_id, workspace_id`,
-      [projectId, workspaceId || null, trimmedName]
+      `INSERT INTO collections (project_id, workspace_id, name, created_by)
+       VALUES ($1, $2, $3, $4) RETURNING id, name, project_id, workspace_id`,
+      [projectId, workspaceId || null, trimmedName, req.user.id]
     );
     res.status(201).json({ collection: rows[0] });
   } catch (err) {
@@ -353,10 +353,10 @@ router.post('/folders', requirePermissionFor(resolveBodyCollectionOrg, 'workspac
     }
     const folderName = await uniqueFolderName(collectionId, parentId || null, trimmedName, null);
     const { rows } = await query(
-      `INSERT INTO folders (collection_id, name, parent_id)
-       VALUES ($1, $2, $3)
+      `INSERT INTO folders (collection_id, name, parent_id, created_by)
+       VALUES ($1, $2, $3, $4)
        RETURNING id, name, collection_id, parent_id`,
-      [collectionId, folderName, parentId || null]
+      [collectionId, folderName, parentId || null, req.user.id]
     );
     res.status(201).json({ folder: rows[0] });
   } catch (err) {
@@ -525,10 +525,10 @@ router.post('/folders/:folderId/duplicate', async (req, res, next) => {
       const newParentId = folder.id === source.id ? source.parent_id : idMap.get(folder.parent_id) || null;
       const copyFolderName = folder.id === source.id ? rootCopyName : folder.name;
       const { rows } = await client.query(
-        `INSERT INTO folders (collection_id, name, parent_id)
-         VALUES ($1, $2, $3)
+        `INSERT INTO folders (collection_id, name, parent_id, created_by)
+         VALUES ($1, $2, $3, $4)
          RETURNING id, name, collection_id, parent_id`,
-        [folder.collection_id, copyFolderName, newParentId]
+        [folder.collection_id, copyFolderName, newParentId, req.user.id]
       );
       idMap.set(folder.id, rows[0].id);
       createdFolders.push(rows[0]);

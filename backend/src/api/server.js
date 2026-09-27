@@ -4,6 +4,8 @@ const express = require('express');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const adminRoutes = require('./routes/admin');
+const platformAdminRoutes = require('./routes/platformAdmin');
+const orgAnalyticsRoutes = require('./routes/orgAnalytics');
 const workspaceRoutes = require('./routes/workspaces');
 const environmentRoutes = require('./routes/environments');
 const teamRoutes = require('./routes/teams');
@@ -107,6 +109,8 @@ function createApp() {
   app.use('/api/profile', profileRoutes);
   app.use('/api', shareRoutes);
   app.use('/api/admin', adminRoutes);
+  // Platform superadmin (global users.role='ADMIN') cross-org read surface.
+  app.use('/api/platform', platformAdminRoutes);
   // Feature gates: a disabled menu must reject direct API access. Each gate runs
   // before the router that serves its prefix; the gate authenticates the request
   // itself, so the router's own requireAuth is a cheap no-op (see access.js).
@@ -119,6 +123,7 @@ function createApp() {
   app.use('/api/tokens', tokenRoutes);
   app.use('/api', sendRoutes);
   app.use('/api', projectRoutes);
+  app.use('/api', orgAnalyticsRoutes);
   app.use('/api', iamRoutes);
   app.use('/api/search', searchRoutes);
   app.use('/api', workflowRoutes);

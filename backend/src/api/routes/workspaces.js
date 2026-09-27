@@ -99,8 +99,9 @@ router.post('/', requirePermissionFor(resolveWorkspaceCreateOrg, 'workspace.crea
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(
-        `INSERT INTO workspaces (organization_id, name, visibility) VALUES ($1, $2, $3) RETURNING id`,
-        [orgId, name.trim(), vis]
+        `INSERT INTO workspaces (organization_id, name, visibility, created_by)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [orgId, name.trim(), vis, req.user.id]
       );
       const wsId = rows[0].id;
       await client.query(
@@ -108,8 +109,8 @@ router.post('/', requirePermissionFor(resolveWorkspaceCreateOrg, 'workspace.crea
         [wsId, req.user.id]
       );
       await client.query(
-        `INSERT INTO projects (workspace_id, name) VALUES ($1, $2)`,
-        [wsId, 'Default Project']
+        `INSERT INTO projects (workspace_id, name, created_by) VALUES ($1, $2, $3)`,
+        [wsId, 'Default Project', req.user.id]
       );
       await client.query('COMMIT');
       res.status(201).json({ workspace: { id: wsId, name: name.trim(), visibility: vis, organization_id: orgId, role: 'ADMIN' } });

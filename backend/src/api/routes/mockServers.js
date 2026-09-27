@@ -118,12 +118,12 @@ router.post('/projects/:projectId/mock-server', requireProjectWrite, async (req,
     const name = String(req.body?.name || '').trim() || 'Mock Server';
     const enabled = req.body?.enabled !== false;
     const { rows } = await query(
-      `INSERT INTO mock_servers (project_id, name, enabled)
-       VALUES ($1, $2, $3)
+      `INSERT INTO mock_servers (project_id, name, enabled, created_by)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (project_id)
        DO UPDATE SET name = EXCLUDED.name, enabled = EXCLUDED.enabled
        RETURNING id, project_id, name, enabled, created_at`,
-      [projectId, name, enabled]
+      [projectId, name, enabled, req.user.id]
     );
     await logAudit({
       actorId: req.user.id,

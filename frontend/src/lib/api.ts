@@ -1479,3 +1479,139 @@ export const networkApi = {
   contacts: () => apiFetch<{ contacts: NetworkPerson[] }>('/api/network/contacts'),
   removeContact: (userId: string) => apiFetch<void>(`/api/network/contacts/${userId}`, { method: 'DELETE' }),
 };
+
+// --------------------------------------------------------- Platform superadmin
+export interface PlatformOverviewCounts {
+  organizations: number;
+  users: number;
+  workspaces: number;
+  projects: number;
+  collections: number;
+  folders: number;
+  requests: number;
+  mock_servers: number;
+  active_mock_servers: number;
+  runs: number;
+  audit_entries: number;
+  organizations_30d: number;
+  users_30d: number;
+  projects_unattributed: number;
+  mock_servers_unattributed: number;
+}
+
+export interface PlatformOrganization {
+  id: string;
+  name: string;
+  kind: 'PERSONAL' | 'COMPANY';
+  domain: string | null;
+  created_at: string;
+  owner_id: string;
+  owner_name: string | null;
+  owner_email: string | null;
+  members: number;
+  workspaces: number;
+  projects: number;
+  collections: number;
+  folders: number;
+  requests: number;
+  mock_servers: number;
+  active_mock_servers: number;
+  runs: number;
+}
+
+export interface PlatformMockServer {
+  id: string;
+  name: string;
+  enabled: boolean;
+  created_at: string;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_by_email: string | null;
+  project_id: string;
+  project_name: string;
+  workspace_id: string | null;
+  workspace_name: string | null;
+  organization_id: string | null;
+  organization_name: string | null;
+  route_count: number;
+}
+
+export const platformApi = {
+  overview: () => apiFetch<{ scope: string; counts: PlatformOverviewCounts }>('/api/platform/overview'),
+  organizations: (search?: string) =>
+    apiFetch<{ organizations: PlatformOrganization[] }>(
+      `/api/platform/organizations${search ? `?search=${encodeURIComponent(search)}` : ''}`
+    ),
+  mockServers: (opts?: { active?: boolean; search?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.active) params.set('active', 'true');
+    if (opts?.search) params.set('search', opts.search);
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return apiFetch<{ mockServers: PlatformMockServer[] }>(
+      `/api/platform/mock-servers${qs ? `?${qs}` : ''}`
+    );
+  },
+};
+
+// ------------------------------------------------------------ Org analytics
+export interface OrgAnalyticsSummary {
+  members: number;
+  workspaces: number;
+  projects: number;
+  collections: number;
+  folders: number;
+  requests: number;
+  mock_servers: number;
+  active_mock_servers: number;
+  request_revisions: number;
+  runs: number;
+  runs_this_month: number;
+}
+
+export interface OrgMostTriggered {
+  request_id: string;
+  name: string;
+  method: string;
+  url: string | null;
+  collection_name: string | null;
+  project_name: string | null;
+  runs: number;
+  last_run_at: string | null;
+}
+
+export interface OrgRunTrendPoint {
+  day: string;
+  runs: number;
+}
+
+export interface OrgAnalytics {
+  orgId: string;
+  summary: OrgAnalyticsSummary;
+  mostTriggered: OrgMostTriggered[];
+  runTrend: OrgRunTrendPoint[];
+}
+
+export interface OrgAnalyticsMember {
+  user_id: string;
+  name: string;
+  username: string;
+  email: string;
+  role: UserRole;
+  projects_created: number;
+  workspaces_created: number;
+  collections_created: number;
+  folders_created: number;
+  requests_created: number;
+  mock_servers_created: number;
+  revisions_created: number;
+  runs: number;
+}
+
+export const orgAnalyticsApi = {
+  summary: (orgId: string) => apiFetch<OrgAnalytics>(`/api/orgs/${orgId}/analytics`),
+  members: (orgId: string) =>
+    apiFetch<{ orgId: string; members: OrgAnalyticsMember[] }>(
+      `/api/orgs/${orgId}/analytics/members`
+    ),
+};

@@ -60,6 +60,8 @@ const RAIL_ORDER_KEYS = Object.freeze([
   'manage',
   'admin',
   'access',
+  'superadmin',
+  'org-analytics',
 ]);
 
 function isRailOrderKey(key) {

@@ -300,8 +300,8 @@ router.post('/collections/import', async (req, res, next) => {
 
     await client.query('BEGIN');
     const { rows: colRows } = await client.query(
-      `INSERT INTO collections (project_id, name) VALUES ($1, $2) RETURNING id, name, project_id`,
-      [projectId, collectionName]
+      `INSERT INTO collections (project_id, name, created_by) VALUES ($1, $2, $3) RETURNING id, name, project_id`,
+      [projectId, collectionName, req.user.id]
     );
     const newCollection = colRows[0];
 
@@ -309,10 +309,10 @@ router.post('/collections/import', async (req, res, next) => {
     const folderIdMap = new Map();
     for (const f of orderedFolders) {
       const { rows: folderRows } = await client.query(
-        `INSERT INTO folders (collection_id, parent_id, name)
-         VALUES ($1, $2, $3)
+        `INSERT INTO folders (collection_id, parent_id, name, created_by)
+         VALUES ($1, $2, $3, $4)
          RETURNING id`,
-        [newCollection.id, f.parentSourceId ? folderIdMap.get(f.parentSourceId) : null, f.name]
+        [newCollection.id, f.parentSourceId ? folderIdMap.get(f.parentSourceId) : null, f.name, req.user.id]
       );
       folderIdMap.set(f.sourceId, folderRows[0].id);
     }

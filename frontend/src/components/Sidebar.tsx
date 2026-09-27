@@ -56,6 +56,8 @@ import {
   XIcon,
   CompareIcon,
   NetworkIcon,
+  CrownIcon,
+  GaugeIcon,
   GripIcon,
 } from './icons';
 import { NavOrderDialog } from './NavOrderDialog';
@@ -1526,6 +1528,8 @@ export function Sidebar({
     ...(menu.isEnabled('collab') ? ['collab'] : []),
     ...(menu.isEnabled('json-compare') ? ['json-compare'] : []),
     ...(menu.isEnabled('network') ? ['network'] : []),
+    ...(user?.role === 'ADMIN' ? ['superadmin'] : []),
+    ...(canAccess ? ['org-analytics'] : []),
     ...(canManage && menu.isEnabled('manage') ? ['manage'] : []),
     ...(user?.role === 'ADMIN' ? ['admin'] : []),
     ...(canAccess ? ['access'] : []),
@@ -1846,6 +1850,38 @@ export function Sidebar({
             }}
           >
             <NetworkIcon size={17} />
+          </Link>
+        )}
+        {user?.role === 'ADMIN' && (
+          <Link
+            href="/superadmin"
+            className={`rail-button ${view === 'superadmin' ? 'active' : ''}`}
+            data-testid="rail-superadmin"
+            title="Superadmin"
+            aria-label="Superadmin"
+            style={railOrderStyle('superadmin')}
+            onClick={() => {
+              setView('superadmin');
+              onRequestClose?.();
+            }}
+          >
+            <CrownIcon size={17} />
+          </Link>
+        )}
+        {canAccess && (
+          <Link
+            href="/org-analytics"
+            className={`rail-button ${view === 'org-analytics' ? 'active' : ''}`}
+            data-testid="rail-org-analytics"
+            title="Org analytics"
+            aria-label="Org analytics"
+            style={railOrderStyle('org-analytics')}
+            onClick={() => {
+              setView('org-analytics');
+              onRequestClose?.();
+            }}
+          >
+            <GaugeIcon size={17} />
           </Link>
         )}
         {canManage && menu.isEnabled('manage') && (

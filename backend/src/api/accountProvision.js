@@ -100,10 +100,10 @@ async function provisionNewAccount(client, { userId, email, displayName }) {
   );
 
   const ws = await client.query(
-    `INSERT INTO workspaces (organization_id, name, visibility)
-     VALUES ($1, $2, 'PRIVATE')
+    `INSERT INTO workspaces (organization_id, name, visibility, created_by)
+     VALUES ($1, $2, 'PRIVATE', $3)
      RETURNING id`,
-    [orgId, 'My Workspace']
+    [orgId, 'My Workspace', userId]
   );
   const workspaceId = ws.rows[0].id;
   await client.query(
@@ -111,10 +111,10 @@ async function provisionNewAccount(client, { userId, email, displayName }) {
      VALUES ($1, $2, 'ADMIN')`,
     [workspaceId, userId]
   );
-  await client.query(`INSERT INTO projects (workspace_id, name) VALUES ($1, $2)`, [
-    workspaceId,
-    'Default Project',
-  ]);
+  await client.query(
+    `INSERT INTO projects (workspace_id, name, created_by) VALUES ($1, $2, $3)`,
+    [workspaceId, 'Default Project', userId]
+  );
 
   return { orgId, orgName, orgRole, accountType, domain, joinedExisting, workspaceId };
 }

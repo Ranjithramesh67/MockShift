@@ -174,6 +174,23 @@ async function resolveLimits(userId, orgId = null) {
   if (!poolOrgId) poolOrgId = await primaryOrgFor(userId || null);
   const poolScope = poolOrgId ? 'org' : 'none';
 
+  // Platform superadmin (users.role = 'ADMIN') is never plan-limited, in any
+  // org pool. Mirrors the cross-org bypass in permissions.js/access.js.
+  if (userId) {
+    const { rows: adminRows } = await query(`SELECT role FROM users WHERE id = $1`, [userId]);
+    if (adminRows[0] && adminRows[0].role === 'ADMIN') {
+      return {
+        enforced: false,
+        limits: defaultLimits(),
+        planKey: 'platform_admin',
+        planName: 'Platform Admin',
+        reason: 'platform_admin',
+        poolOrgId,
+        poolScope,
+      };
+    }
+  }
+
   const cover = poolOrgId ? await coveringPlan(poolOrgId) : null;
 
   let plan = cover;

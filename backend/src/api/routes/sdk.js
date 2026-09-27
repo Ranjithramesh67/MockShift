@@ -60,8 +60,8 @@ async function resolveProject(req, manifest, exec) {
     const gate = await checkCountGate({ userId: req.user.id, orgId: await orgOfWorkspace(workspace.id, exec), key: 'projects', extra: 1, exec });
     if (gate) return { error: { status: 403, body: gate } };
     const created = (await exec(
-      `INSERT INTO projects (workspace_id, name) VALUES ($1, $2) RETURNING id, name, workspace_id`,
-      [workspace.id, name]
+      `INSERT INTO projects (workspace_id, name, created_by) VALUES ($1, $2, $3) RETURNING id, name, workspace_id`,
+      [workspace.id, name, req.user.id]
     )).rows[0];
     return { project: created };
   }
@@ -94,8 +94,8 @@ async function resolveCollection(req, project, manifest, summary, exec) {
   if (gate) return { error: { status: 403, body: gate } };
   const used = (await exec(`SELECT name FROM collections WHERE project_id = $1`, [project.id])).rows.map((r) => r.name);
   const collection = (await exec(
-    `INSERT INTO collections (project_id, name, source) VALUES ($1, $2, $3) RETURNING id, name`,
-    [project.id, pickUniqueName(name, used), manifest.source]
+    `INSERT INTO collections (project_id, name, source, created_by) VALUES ($1, $2, $3, $4) RETURNING id, name`,
+    [project.id, pickUniqueName(name, used), manifest.source, req.user.id]
   )).rows[0];
   summary.collections.created += 1;
   return collection;
@@ -129,9 +129,9 @@ async function upsertFolders(req, collection, manifest, summary, exec) {
       [collection.id, parentId]
     )).rows.map((r) => r.name);
     const created = (await exec(
-      `INSERT INTO folders (collection_id, name, parent_id, external_key, source)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [collection.id, pickUniqueName(folder.name, siblings), parentId, folder.key, manifest.source]
+      `INSERT INTO folders (collection_id, name, parent_id, external_key, source, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [collection.id, pickUniqueName(folder.name, siblings), parentId, folder.key, manifest.source, req.user.id]
     )).rows[0];
     idByKey.set(folder.key, created.id);
     summary.folders.created += 1;

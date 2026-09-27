@@ -40,6 +40,10 @@ const CopilotPanel = dynamic(() => import('./copilot/CopilotPanel').then((m) => 
 const CollabView = dynamic(() => import('./collab/CollabPanel').then((m) => m.CollabView));
 const JsonCompareView = dynamic(() => import('./views/JsonCompareView').then((m) => m.JsonCompareView));
 const NetworkView = dynamic(() => import('./views/NetworkView').then((m) => m.NetworkView));
+const SuperadminView = dynamic(() => import('./views/SuperadminView').then((m) => m.SuperadminView));
+const OrgAnalyticsView = dynamic(() =>
+  import('./views/OrgAnalyticsView').then((m) => m.OrgAnalyticsView)
+);
 
 const VIEW_MENU_KEY: Partial<Record<string, MenuKey>> = {
   automations: 'automations',
@@ -259,6 +263,10 @@ export function AppShell() {
                   <JsonCompareView />
                 ) : view === 'network' ? (
                   <NetworkView />
+                ) : view === 'superadmin' ? (
+                  <SuperadminView />
+                ) : view === 'org-analytics' ? (
+                  <OrgAnalyticsView />
                 ) : view === 'admin' ? (
                   <AdminView />
                 ) : view === 'access' ? (

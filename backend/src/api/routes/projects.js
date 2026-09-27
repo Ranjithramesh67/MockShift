@@ -313,9 +313,9 @@ router.post('/projects/:projectId/workspaces', requireProjectManager, requireRes
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(
-        `INSERT INTO workspaces (organization_id, project_id, name, visibility)
-         VALUES ($1, $2, $3, $4) RETURNING id, name, visibility, project_id`,
-        [orgId, projectId, name, vis]
+        `INSERT INTO workspaces (organization_id, project_id, name, visibility, created_by)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, name, visibility, project_id`,
+        [orgId, projectId, name, vis, req.user.id]
       );
       await client.query(
         `INSERT INTO workspace_members (workspace_id, user_id, role)
@@ -426,14 +426,14 @@ router.post('/projects', requireProjectCreator, requirePermissionFor(resolveProj
 
     const { rows } = workspaceId
       ? await query(
-          `INSERT INTO projects (workspace_id, organization_id, name)
-           VALUES ($1, $2, $3) RETURNING id, name, workspace_id, organization_id`,
-          [workspaceId, orgId, name]
+          `INSERT INTO projects (workspace_id, organization_id, name, created_by)
+           VALUES ($1, $2, $3, $4) RETURNING id, name, workspace_id, organization_id`,
+          [workspaceId, orgId, name, req.user.id]
         )
       : await query(
-          `INSERT INTO projects (organization_id, name)
-           VALUES ($1, $2) RETURNING id, name, workspace_id, organization_id`,
-          [orgId, name]
+          `INSERT INTO projects (organization_id, name, created_by)
+           VALUES ($1, $2, $3) RETURNING id, name, workspace_id, organization_id`,
+          [orgId, name, req.user.id]
         );
     await logAudit({
       actorId: req.user.id,

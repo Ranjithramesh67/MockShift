@@ -182,8 +182,8 @@ router.post('/import', async (req, res, next) => {
       const { rows: existing } = await query(`SELECT name FROM collections WHERE project_id = $1`, [projectId]);
       const collectionName = pickUniqueName(generated.collectionName, existing.map((row) => row.name));
       const { rows } = await query(
-        `INSERT INTO collections (project_id, name) VALUES ($1, $2) RETURNING id, name, project_id`,
-        [projectId, collectionName]
+        `INSERT INTO collections (project_id, name, created_by) VALUES ($1, $2, $3) RETURNING id, name, project_id`,
+        [projectId, collectionName, req.user.id]
       );
       collection = rows[0];
     }
@@ -227,9 +227,9 @@ router.post('/import', async (req, res, next) => {
         const folderName = pickUniqueName(folder.name, usedFolderNames);
         usedFolderNames.push(folderName);
         const { rows } = await query(
-          `INSERT INTO folders (collection_id, name, parent_id) VALUES ($1, $2, NULL)
+          `INSERT INTO folders (collection_id, name, parent_id, created_by) VALUES ($1, $2, NULL, $3)
            RETURNING id, name, collection_id, parent_id`,
-          [collection.id, folderName]
+          [collection.id, folderName, req.user.id]
         );
         folderIds.set(folder.name, rows[0].id);
         folders.push(rows[0]);

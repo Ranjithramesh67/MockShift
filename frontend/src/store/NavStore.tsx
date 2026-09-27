@@ -18,7 +18,9 @@ export type AppView =
   | 'copilot'
   | 'collab'
   | 'json-compare'
-  | 'network';
+  | 'network'
+  | 'superadmin'
+  | 'org-analytics';
 
 interface NavState {
   view: AppView;

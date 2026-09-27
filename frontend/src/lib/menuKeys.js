@@ -39,6 +39,8 @@ const RAIL_ORDER_KEYS = [
   'manage',
   'admin',
   'access',
+  'superadmin',
+  'org-analytics',
 ];
 
 /** @returns {Record<string, boolean>} */

@@ -328,8 +328,8 @@ async function ensureRecipientDefaultWorkspace(client, recipientId, recipientNam
   }
   const wsName = await uniqueWorkspaceName(client.query.bind(client), org.id, 'My Workspace');
   const { rows } = await client.query(
-    `INSERT INTO workspaces (organization_id, name, visibility) VALUES ($1, $2, 'PRIVATE') RETURNING id, name, organization_id`,
-    [org.id, wsName]
+    `INSERT INTO workspaces (organization_id, name, visibility, created_by) VALUES ($1, $2, 'PRIVATE', $3) RETURNING id, name, organization_id`,
+    [org.id, wsName, recipientId]
   );
   await client.query(
     `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'ADMIN')`,
@@ -463,29 +463,29 @@ async function acceptPlanLimit(send, item, recipientId) {
 // Every created object gets a sibling-unique name, so an existing name never
 // collides: the accepted copy appends " (copy)" and re-parents to the fresh ids.
 
-async function insertProject(exec, workspaceId, name) {
+async function insertProject(exec, workspaceId, name, createdBy) {
   const finalName = await uniqueProjectName(exec, workspaceId, name);
   const { rows } = await exec(
-    `INSERT INTO projects (workspace_id, name) VALUES ($1, $2) RETURNING id, name, workspace_id`,
-    [workspaceId, finalName]
+    `INSERT INTO projects (workspace_id, name, created_by) VALUES ($1, $2, $3) RETURNING id, name, workspace_id`,
+    [workspaceId, finalName, createdBy || null]
   );
   return rows[0];
 }
 
-async function insertCollection(exec, projectId, name) {
+async function insertCollection(exec, projectId, name, createdBy) {
   const finalName = await uniqueCollectionName(exec, projectId, name);
   const { rows } = await exec(
-    `INSERT INTO collections (project_id, name) VALUES ($1, $2) RETURNING id, name, project_id`,
-    [projectId, finalName]
+    `INSERT INTO collections (project_id, name, created_by) VALUES ($1, $2, $3) RETURNING id, name, project_id`,
+    [projectId, finalName, createdBy || null]
   );
   return rows[0];
 }
 
-async function insertFolder(exec, collectionId, parentId, name) {
+async function insertFolder(exec, collectionId, parentId, name, createdBy) {
   const finalName = await uniqueFolderName(exec, collectionId, parentId, name);
   const { rows } = await exec(
-    `INSERT INTO folders (collection_id, name, parent_id) VALUES ($1, $2, $3) RETURNING id, name, collection_id, parent_id`,
-    [collectionId, finalName, parentId || null]
+    `INSERT INTO folders (collection_id, name, parent_id, created_by) VALUES ($1, $2, $3, $4) RETURNING id, name, collection_id, parent_id`,
+    [collectionId, finalName, parentId || null, createdBy || null]
   );
   return rows[0];
 }
@@ -520,7 +520,7 @@ async function insertRequest(exec, source, collectionId, folderId, name) {
 
 // Copy the full folder tree + requests of one source collection into an already
 // created target collection, re-parenting copies to the fresh folder ids.
-async function copyCollectionContent(exec, sourceCollectionId, targetCollectionId) {
+async function copyCollectionContent(exec, sourceCollectionId, targetCollectionId, createdBy) {
   const { rows: folders } = await exec(
     `SELECT id, name, parent_id FROM folders WHERE collection_id = $1 ORDER BY name`,
     [sourceCollectionId]
@@ -542,7 +542,8 @@ async function copyCollectionContent(exec, sourceCollectionId, targetCollectionI
       exec,
       targetCollectionId,
       folder.parent_id ? idMap.get(folder.parent_id) || null : null,
-      folder.name
+      folder.name,
+      createdBy
     );
     idMap.set(folder.id, copy.id);
     for (const child of byParent.get(folder.id) || []) queue.push(child);
@@ -567,20 +568,20 @@ async function copyCollectionContent(exec, sourceCollectionId, targetCollectionI
 
 // Copy every collection (with folders + requests) of a source project into a
 // target project.
-async function copyProjectContent(exec, sourceProjectId, targetProjectId) {
+async function copyProjectContent(exec, sourceProjectId, targetProjectId, createdBy) {
   const { rows: collections } = await exec(
     `SELECT id, name FROM collections WHERE project_id = $1 ORDER BY name`,
     [sourceProjectId]
   );
   for (const collection of collections) {
-    const copy = await insertCollection(exec, targetProjectId, collection.name);
-    await copyCollectionContent(exec, collection.id, copy.id);
+    const copy = await insertCollection(exec, targetProjectId, collection.name, createdBy);
+    await copyCollectionContent(exec, collection.id, copy.id, createdBy);
   }
 }
 
 // Rebuild the ancestor chain of a source folder as fresh (uniquified) folder
 // shells inside targetCollectionId so a lone request keeps its folder context.
-async function copyFolderAncestry(exec, sourceFolderId, targetCollectionId) {
+async function copyFolderAncestry(exec, sourceFolderId, targetCollectionId, createdBy) {
   const { rows } = await exec(`SELECT id, name, parent_id FROM folders WHERE id = $1`, [sourceFolderId]);
   const leaf = rows[0];
   if (!leaf) return null;
@@ -597,7 +598,7 @@ async function copyFolderAncestry(exec, sourceFolderId, targetCollectionId) {
   let parentCopyId = null;
   let deepest = null;
   for (const folder of chain) {
-    deepest = await insertFolder(exec, targetCollectionId, parentCopyId, folder.name);
+    deepest = await insertFolder(exec, targetCollectionId, parentCopyId, folder.name, createdBy);
     parentCopyId = deepest.id;
   }
   return deepest;
@@ -605,7 +606,7 @@ async function copyFolderAncestry(exec, sourceFolderId, targetCollectionId) {
 
 // Deep-copy a single folder subtree (sourceFolderId and all descendants) into a
 // target collection, re-parenting copies to the fresh ids.
-async function copyFolderSubtree(exec, sourceFolder, targetCollectionId) {
+async function copyFolderSubtree(exec, sourceFolder, targetCollectionId, createdBy) {
   const { rows: allFolders } = await exec(
     `SELECT id, name, parent_id, collection_id FROM folders WHERE collection_id = $1`,
     [sourceFolder.collection_id]
@@ -634,7 +635,7 @@ async function copyFolderSubtree(exec, sourceFolder, targetCollectionId) {
   for (const folder of subtree) {
     const isRoot = folder.id === sourceFolder.id;
     const newParentId = isRoot ? null : idMap.get(folder.parent_id) || null;
-    const copy = await insertFolder(exec, targetCollectionId, newParentId, folder.name);
+    const copy = await insertFolder(exec, targetCollectionId, newParentId, folder.name, createdBy);
     if (isRoot) rootCopy = copy;
     idMap.set(folder.id, copy.id);
   }
@@ -672,15 +673,15 @@ async function cloneWorkspaceFor(exec, client, recipientId, sourceWorkspaceId, i
   }
   const wsName = await uniqueWorkspaceName(exec, org.id, item.name || 'Workspace');
   const { rows } = await client.query(
-    `INSERT INTO workspaces (organization_id, name, visibility) VALUES ($1, $2, 'PRIVATE') RETURNING id, name, organization_id`,
-    [org.id, wsName]
+    `INSERT INTO workspaces (organization_id, name, visibility, created_by) VALUES ($1, $2, 'PRIVATE', $3) RETURNING id, name, organization_id`,
+    [org.id, wsName, recipientId]
   );
   const targetWorkspace = rows[0];
   await client.query(
     `INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'ADMIN')`,
     [targetWorkspace.id, recipientId]
   );
-  await copyAllProjects(exec, sourceWorkspaceId, targetWorkspace.id);
+  await copyAllProjects(exec, sourceWorkspaceId, targetWorkspace.id, recipientId);
   return {
     type: 'workspace',
     name: targetWorkspace.name,
@@ -689,14 +690,14 @@ async function cloneWorkspaceFor(exec, client, recipientId, sourceWorkspaceId, i
   };
 }
 
-async function copyAllProjects(exec, sourceWorkspaceId, targetWorkspaceId) {
+async function copyAllProjects(exec, sourceWorkspaceId, targetWorkspaceId, createdBy) {
   const { rows: projects } = await exec(
     `SELECT id, name FROM projects WHERE workspace_id = $1 ORDER BY name`,
     [sourceWorkspaceId]
   );
   for (const project of projects) {
-    const copy = await insertProject(exec, targetWorkspaceId, project.name);
-    await copyProjectContent(exec, project.id, copy.id);
+    const copy = await insertProject(exec, targetWorkspaceId, project.name, createdBy);
+    await copyProjectContent(exec, project.id, copy.id, createdBy);
   }
 }
 
@@ -708,8 +709,8 @@ async function cloneProjectFor(exec, client, recipientId, sourceProjectId) {
     await recipientName(client, recipientId),
     source.workspace_id
   );
-  const copy = await insertProject(exec, targetWs.id, source.name);
-  await copyProjectContent(exec, sourceProjectId, copy.id);
+  const copy = await insertProject(exec, targetWs.id, source.name, recipientId);
+  await copyProjectContent(exec, sourceProjectId, copy.id, recipientId);
   return {
     type: 'project',
     name: copy.name,
@@ -731,8 +732,8 @@ async function createContentShell(exec, client, recipientId, sourceProject, sour
     await recipientName(client, recipientId),
     sourceProject.workspace_id
   );
-  const projectCopy = await insertProject(exec, targetWs.id, sourceProject.name);
-  const collectionCopy = await insertCollection(exec, projectCopy.id, sourceCollection.name);
+  const projectCopy = await insertProject(exec, targetWs.id, sourceProject.name, recipientId);
+  const collectionCopy = await insertCollection(exec, projectCopy.id, sourceCollection.name, recipientId);
   return { targetWs, projectCopy, collectionCopy };
 }
 
@@ -746,7 +747,7 @@ async function cloneCollectionFor(exec, client, recipientId, sourceCollectionId)
     project,
     source
   );
-  await copyCollectionContent(exec, source.id, collectionCopy.id);
+  await copyCollectionContent(exec, source.id, collectionCopy.id, recipientId);
   return {
     type: 'collection',
     name: collectionCopy.name,
@@ -770,7 +771,7 @@ async function cloneFolderFor(exec, client, recipientId, sourceFolderId) {
     project,
     collection
   );
-  const rootCopy = await copyFolderSubtree(exec, source, collectionCopy.id);
+  const rootCopy = await copyFolderSubtree(exec, source, collectionCopy.id, recipientId);
   return {
     type: 'folder',
     name: rootCopy ? rootCopy.name : source.name,
@@ -799,7 +800,7 @@ async function cloneRequestFor(exec, client, recipientId, sourceRequestId) {
   let landingFolderId = null;
   let landingFolderName = null;
   if (source.folder_id) {
-    const ancestry = await copyFolderAncestry(exec, source.folder_id, collectionCopy.id);
+    const ancestry = await copyFolderAncestry(exec, source.folder_id, collectionCopy.id, recipientId);
     if (ancestry) {
       landingFolderId = ancestry.id;
       landingFolderName = ancestry.name;

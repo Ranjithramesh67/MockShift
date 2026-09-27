@@ -494,3 +494,18 @@ export const NetworkIcon = (p: IconProps) => (
     <path d="M8.8 9.2 8.4 15.3M9.4 7.6l5.9-.1M16.4 9.3l-5.2 6.2" />
   </svg>
 );
+
+export const CrownIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M3 18h18" />
+    <path d="M4 18 2.5 7l5.5 4L12 4l4 7 5.5-4L20 18" />
+  </svg>
+);
+
+export const GaugeIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <path d="M3.5 19a9 9 0 1 1 17 0" />
+    <path d="m12 14 4.5-4.5" />
+    <circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none" />
+  </svg>
+);
