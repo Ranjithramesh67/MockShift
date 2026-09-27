@@ -1096,7 +1096,7 @@ function buildDocumentShell(title, contentHtml, asWord) {
     `${wordMeta}<style>\n${pageCss}${EXPORT_THEME_CSS}\n</style>\n</head>\n` +
     `<body class="doc-body">\n<div class="WordSection1">\n` +
     `<div class="doc-card">\n` +
-    `<div class="doc-brand"><span class="dot"></span>API Hub · Docs</div>\n` +
+    `<div class="doc-brand"><span class="dot"></span>Mockshift · Docs</div>\n` +
     `${contentHtml}\n` +
     `</div>\n</div>\n</body>\n</html>\n`
   );

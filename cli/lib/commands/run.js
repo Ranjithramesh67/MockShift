@@ -6,7 +6,7 @@ const { buildSession, makeApiClient, parseKeyValuePairs } = require('../session'
 const { normalizeRun, okStatus } = require('../runmeta');
 const { makePainter, elide, friendlyBytes } = require('../format');
 
-const HELP = `Usage: apihub run <requestId> [options]
+const HELP = `Usage: mockshift run <requestId> [options]
 
 Trigger a server-side run of a stored request via POST /api/runs and print
 the outcome. Requires an API token with the "runs" or "write" scope.
@@ -20,7 +20,7 @@ Options:
 
 Exit codes: 0 = run passed (2xx and every assertion passed), 1 = run failed.
 
-Alias: apihub ci run <requestId> [same options] — same behaviour, forced
+Alias: mockshift ci run <requestId> [same options] — same behaviour, forced
 plain output so CI logs are clean.`;
 
 function runFailed(run) {
@@ -68,7 +68,7 @@ function printRunSummary(run, ctx, io) {
 
 async function runRequest(ctx, io) {
   const requestId = ctx.args[0];
-  if (!requestId) throw new UsageError('Usage: apihub run <requestId> [options]');
+  if (!requestId) throw new UsageError('Usage: mockshift run <requestId> [options]');
 
   const session = buildSession(ctx);
   const client = makeApiClient(session);

@@ -238,8 +238,8 @@ export function TopBar({
         >
           {drawerOpen ? <XIcon size={18} /> : <MenuIcon size={18} />}
         </button>
-        <span className="brand-mark">AH</span>
-        <span className="brand-name">API Hub</span>
+        <span className="brand-mark">MS</span>
+        <span className="brand-name">Mockshift</span>
         <span className="brand-env">
           {state.activeTab === 'request' ? 'Request Studio' : 'Workflow Builder'}
         </span>

@@ -1,6 +1,6 @@
 'use strict';
 
-const { ApiHubError } = require('./errors');
+const { MockshiftError } = require('./errors');
 
 function createClient(config) {
   const base = String(config.baseUrl || '').replace(/\/+$/, '');
@@ -16,7 +16,7 @@ function createClient(config) {
         signal: AbortSignal.timeout(config.timeoutMs || 5000),
       });
     } catch (cause) {
-      throw new ApiHubError(`apihub sync failed: ${cause.message}`, { cause });
+      throw new MockshiftError(`mockshift sync failed: ${cause.message}`, { cause });
     }
     const text = await res.text();
     let body;
@@ -26,7 +26,7 @@ function createClient(config) {
       body = { raw: text };
     }
     if (!res.ok) {
-      throw new ApiHubError(`apihub sync failed: HTTP ${res.status}${body.error ? ` ${body.error}` : ''}`, {
+      throw new MockshiftError(`mockshift sync failed: HTTP ${res.status}${body.error ? ` ${body.error}` : ''}`, {
         status: res.status,
         body,
       });

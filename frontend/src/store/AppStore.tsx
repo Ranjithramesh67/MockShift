@@ -11,7 +11,7 @@ import React, {
 import type { AppState, ApiRequest, MockResponse, ViewMode, Workflow } from '@/lib/types';
 import { defaultState, makeId } from '@/lib/defaultState';
 
-const STORAGE_KEY = 'apihub.state.v1';
+const STORAGE_KEY = 'mockshift.state.v1';
 
 type Action =
   | { type: 'SET_TAB'; tab: AppState['activeTab'] }

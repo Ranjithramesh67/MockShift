@@ -1,12 +1,12 @@
-// Cross-app link to the main API Hub app. Portal A is a public showcase; its
-// "Open app" / "Sign in" CTAs point back at the running API Hub app.
+// Cross-app link to the main Mockshift app. Portal A is a public showcase; its
+// "Open app" / "Sign in" CTAs point back at the running Mockshift app.
 //
 // Resolution order for the app origin:
 //   1. NEXT_PUBLIC_APP_URL — explicit override when the app is served from a
 //      fixed origin (deploy/showcase).
 //   2. The current request host, when it looks like a preview host of the
 //      form `<port>-<session>.monkeycode-ai.live`: the sibling app is served
-//      at `<other-port>-<session>.monkeycode-ai.live`, so the API Hub app
+//      at `<other-port>-<session>.monkeycode-ai.live`, so the Mockshift app
 //      (local dev port 3000) is derived from whatever host the portal is
 //      reached through. This is what keeps "Open app" pointing at the live
 //      preview instead of a stale hardcoded session hostname.
@@ -23,8 +23,8 @@ export function previewSiblingUrl(currentHost: string, targetPort: number): stri
   return `https://${targetPort}-${match[2]}`;
 }
 
-// Server-only: resolves the sibling API Hub app origin for the current request.
-export function apiHubAppUrl(): string {
+// Server-only: resolves the sibling Mockshift app origin for the current request.
+export function mockshiftAppUrl(): string {
   const override = process.env.NEXT_PUBLIC_APP_URL;
   if (override) return override.replace(/\/+$/, '');
   const host = headers().get('host') || '';

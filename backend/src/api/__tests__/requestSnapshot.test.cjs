@@ -20,6 +20,8 @@ test('serializeRequest maps snake_case columns to the camelCase snapshot shape',
     folder_id: null,
     formula: '',
     assertions: [],
+    request_schema: { type: 'object' },
+    response_schema: { type: 'object' },
   };
   assert.deepEqual(serializeRequest(row), {
     id: 'r1',
@@ -36,6 +38,8 @@ test('serializeRequest maps snake_case columns to the camelCase snapshot shape',
     folderId: null,
     formula: '',
     assertions: [],
+    requestSchema: { type: 'object' },
+    responseSchema: { type: 'object' },
   });
 });
 
@@ -54,7 +58,8 @@ test('serializeRequest applies defaults for null jsonb columns and passes throug
 test('REQUEST_SELECT lists the columns serializeRequest reads', () => {
   const tokens = REQUEST_SELECT.split(', ');
   for (const col of ['id', 'name', 'method', 'url', 'headers', 'query_params', 'body_type',
-    'body_json', 'body_text', 'body_parts', 'api_type', 'folder_id', 'formula', 'assertions']) {
+    'body_json', 'body_text', 'body_parts', 'api_type', 'folder_id', 'formula', 'assertions',
+    'request_schema', 'response_schema']) {
     assert.ok(tokens.includes(col), `REQUEST_SELECT is missing column ${col}`);
   }
 });

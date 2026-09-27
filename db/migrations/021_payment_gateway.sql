@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 021_payment_gateway.sql
+-- Mockshift — 021_payment_gateway.sql
 -- Portal A (A6) simulated payment gateway + webhook finalization.
 --
 -- A4 confirmed an order instantly (PENDING -> PAID) with no explicit payment

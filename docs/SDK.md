@@ -1,6 +1,6 @@
-# apihub-sdk - Route Sync SDK
+# mockshift-sdk - Route Sync SDK
 
-`apihub-sdk` syncs the routes your Express app defines into API Hub as
+`mockshift-sdk` syncs the routes your Express app defines into Mockshift as
 collections, nested folders and testable requests. Once configured, `npm start`
 or a CLI command turns your running Express routes into ready-to-run entries in
 the hub.
@@ -8,14 +8,14 @@ the hub.
 - Package: `sdk/`
 - Backend endpoint: `POST /api/sdk/sync`
 - Backend manifest helpers: `backend/src/api/sdkManifest.js`
-- Migration: `db/migrations/037_sdk_sync.sql`
+- Migrations: `db/migrations/037_sdk_sync.sql`, `db/migrations/061_sdk_response_schema.sql`
 
 ---
 
 ## 1. Installation
 
 ```bash
-npm install apihub-sdk
+npm install mockshift-sdk
 ```
 
 Requires Node.js 18+ (the client uses the global `fetch` and
@@ -27,12 +27,12 @@ Requires Node.js 18+ (the client uses the global `fetch` and
 
 ```js
 const express = require('express');
-const { attach } = require('apihub-sdk');
+const { attach } = require('mockshift-sdk');
 
 const app = express();
+// Reads ./mockshift.json (token, baseUrl, ...) — download it from the portal
+// when you create a token with the "SDK" scope.
 const hub = attach(app, {
-  apiKey: process.env.APIHUB_API_KEY,
-  baseUrl: 'http://localhost:3001',
   collection: 'Backend',
   targetBaseUrl: 'http://localhost:4000',
   folder: (route) => route.path.split('/').filter(Boolean)[0] || 'Root',
@@ -46,6 +46,19 @@ hub.test('GET /users/:id', { status: 200, json: { id: '1' } });
 app.listen(4000);
 ```
 
+You can also configure it entirely with options/env:
+
+```js
+attach(app, {
+  apiKey: process.env.MOCKSHIFT_API_KEY, // legacy: APIHUB_API_KEY
+  baseUrl: 'http://localhost:3001',
+});
+```
+
+By default the SDK **observes live traffic** and infers request/response
+structure, suggested assertions and formula suggestions. Disable with
+`capture: { enabled: false }` / `assertions: { suggest: false }`.
+
 ---
 
 ## 3. Configuration
@@ -55,24 +68,49 @@ environment variables.
 
 | Option | Env var | Default | Meaning |
 | --- | --- | --- | --- |
-| `apiKey` | `APIHUB_API_KEY` | - | Project- or workspace-bound key (required). |
-| `baseUrl` | `APIHUB_BASE_URL` | `http://localhost:3001` | API Hub backend base URL. |
-| `project` | `APIHUB_PROJECT` | - | Project name (required for a workspace-bound key). |
-| `workspace` | `APIHUB_WORKSPACE` | - | Workspace name (informational). |
-| `collection` | `APIHUB_COLLECTION` | project name | Collection to sync into. |
-| `targetBaseUrl` | `APIHUB_TARGET_BASE_URL` | `''` | Base URL prepended to each route path. |
+| `apiKey` / `token` | `MOCKSHIFT_API_KEY` | - | Project- or workspace-bound key (required). |
+| `configFile` | `MOCKSHIFT_CONFIG` | `mockshift.json` | Portal-generated config file to load. |
+| `baseUrl` | `MOCKSHIFT_BASE_URL` | `http://localhost:3001` | Mockshift backend base URL. |
+| `project` | `MOCKSHIFT_PROJECT` | - | Project name (required for a workspace-bound key). |
+| `workspace` | `MOCKSHIFT_WORKSPACE` | - | Workspace name (informational). |
+| `collection` | `MOCKSHIFT_COLLECTION` | project name | Collection to sync into. |
+| `targetBaseUrl` | `MOCKSHIFT_TARGET_BASE_URL` | `''` | Base URL prepended to each route path. |
 | `folder` | - | first path segment | String or `(route) => 'A/B'` nested folder path. |
 | `structure` | - | - | `{ '/users': 'Users', '/users/:id/posts': 'Users/Posts' }` longest-prefix map. |
 | `include` / `exclude` | - | `[]` | Path prefixes to include/exclude. |
+| `pathRules` | - | `[]` | `[{ pattern, replacement, flags? }]` applied before `:id` collapsing. |
+| `capture` | - | `{ enabled: true, requestBodies: true, responseBodies: true, maxBodyBytes: 100000 }` | Runtime traffic observation. |
+| `assertions` | - | `{ status: true, json: true, maxTopLevelFields: 5 }` | Inference knobs; `suggest: false` disables suggestion. |
 | `autoSync` | - | `true` | Sync once the server starts listening. |
 | `prune` | - | `false` | Delete synced requests missing from the manifest. |
 | `timeoutMs` | - | `5000` | HTTP timeout for a sync call. |
 | `onError` | - | `null` | Callback for non-blocking sync errors. |
 | `source` | - | `express` | Source tag stored on synced rows. |
 
-The API key may also come from `APIHUB_PROJECT_KEY` or
-`APIHUB_WORKSPACE_KEY`. The key is required and is sent as
-`Authorization: Bearer <key>`; missing keys throw `ApiHubConfigError`.
+The API key may also come from `MOCKSHIFT_TOKEN` (or the legacy
+`APIHUB_API_KEY`, `APIHUB_PROJECT_KEY`, `APIHUB_WORKSPACE_KEY`). The key is
+required and is sent as `Authorization: Bearer <key>`; missing keys throw
+`MockshiftConfigError`.
+
+### `mockshift.json`
+
+The portal writes a config when you create an SDK-scoped token:
+
+```json
+{
+  "token": "tkh_…",
+  "baseUrl": "https://mockshift.example.com",
+  "collection": "Backend",
+  "include": ["/api"],
+  "exclude": ["/health"],
+  "capture": { "enabled": true },
+  "assertions": { "status": true, "json": true }
+}
+```
+
+Lookup order: an explicit `configFile`/`MOCKSHIFT_CONFIG`, then `./mockshift.json`,
+`./mockshift.config.json`, `./.mockshift/mockshift.json`. Options override the
+file; environment variables sit in between.
 
 See `sdk/src/config.js` for the exact resolution order.
 
@@ -86,12 +124,16 @@ Import surface (`sdk/src/index.js`, types in `sdk/src/index.d.ts`):
 | --- | --- |
 | `createHub(options)` | Create a hub without touching an Express app. |
 | `attach(app, options)` | Create a hub **and** install the Express adapter. |
+| `attachHttp(server, options)` | Create a hub **and** capture from a plain `http.Server`. |
 | `hub.register(route)` | Manually register `{ method, path, ... }`; deduped by method+path. |
 | `hub.test(key, expects)` | Attach friendly assertions to a registered route. |
-| `hub.manifest()` | Build the manifest that would be sent. |
+| `hub.record(observation)` | Fold one observed request/response into the route table. |
+| `hub.inspect()` / `hub.manifest()` | Build the manifest that would be sent. |
 | `await hub.sync()` | Send the manifest; resolves to the server result. |
 | `hub.syncSoon()` | Non-blocking `sync()`; routes errors to `onError`. |
 | `hub.express(app, options)` | Install the adapter on an app manually. |
+| `hub.http(server)` | Install runtime capture on a plain `http.Server`. |
+| `hub.middleware()` | Express middleware that captures without patching `app.listen`. |
 
 `register` merges repeated registrations for the same method+path rather than
 duplicating them.
@@ -144,7 +186,7 @@ folders are recreated in order.
 
 ## 7. Assertions (`hub.test`)
 
-`hub.test(key, expects)` maps a friendly object onto the API Hub assertion
+`hub.test(key, expects)` maps a friendly object onto the Mockshift assertion
 shape via `normalizeExpects` (`sdk/src/assertions.js`):
 
 | `expects` field | Generated assertion |
@@ -156,34 +198,54 @@ shape via `normalizeExpects` (`sdk/src/assertions.js`):
 
 Generated assertion ids are `sdk-a1`, `sdk-a2`, ... Status and expected values
 are stringified. The `key` must match a registered route's `key` (defaults to
-`METHOD /path`) or an `ApiHubConfigError` is thrown.
+`METHOD /path`) or a `MockshiftConfigError` is thrown.
+
+---
+
+## 7b. Runtime inference (capture)
+
+When capture is enabled the SDK observes each response and folds it into the
+route table (`sdk/src/infer.js`):
+
+- **Path templating** — numeric/UUID/opaque segments collapse to `:id`
+  (`/users/42` → `/users/:id`); `pathRules` run first.
+- **Request schema** — inferred JSON schema of the observed request body.
+- **Response schema** — merged JSON schema across samples.
+- **Assertions** — a `status` assertion plus `jsonPath` assertions for stable
+  top-level fields (ids and timestamps are skipped). Explicit `hub.test()`
+  assertions always win; set `assertions: { suggest: false }` to disable.
+- **Formula suggestions** — advisory `$utils.*` snippets for dynamic fields.
+
+Inferred fields are persisted on the synced request (`request_schema`,
+`response_schema`, `formula`) and returned by `GET /api/requests/:id`.
 
 ---
 
 ## 8. CLI
 
 ```bash
-npx apihub-sdk sync --config ./apihub.config.cjs
+# JSON config (from the portal) or a JS module exporting a hub
+npx mockshift-sdk sync --config ./mockshift.json
 ```
 
-The config module must export a configured hub (created with `createHub`) that
-has a `sync()` method. The CLI prints a one-line summary of created/updated
-requests and created folders, and returns:
+The CLI accepts either a `mockshift.json` config file or a JS module that
+exports a configured hub (created with `createHub`) with a `sync()` method. It
+prints a one-line summary of created/updated requests and created folders, and
+returns:
 
 - `0` success
 - `1` load/sync failure
 - `2` usage error (missing command or `--config`)
 
-Example `apihub.config.cjs`:
+Example `mockshift.config.cjs`:
 
 ```js
-const { createHub } = require('apihub-sdk');
+const { createHub } = require('mockshift-sdk');
 
 module.exports = createHub({
-  apiKey: process.env.APIHUB_API_KEY,
+  apiKey: process.env.MOCKSHIFT_API_KEY,
   collection: 'Backend',
   targetBaseUrl: 'https://api.example.com',
-  routes: [],
 });
 
 module.exports.register({ method: 'GET', path: '/users' });
@@ -225,7 +287,10 @@ The SDK POSTs a JSON manifest to `/api/sdk/sync` with the Bearer token.
       "bodyJson": null,
       "bodyText": null,
       "assertions": [],
-      "sourceFile": null
+      "sourceFile": null,
+      "requestSchema": { "type": "object", "properties": { "q": { "type": "string" } } },
+      "responseSchema": { "type": "object", "properties": { "id": { "type": "number" } } },
+      "formula": null
     }
   ]
 }
@@ -282,7 +347,7 @@ The response is `201`:
 ```mermaid
 sequenceDiagram
     participant App as "Express app"
-    participant Hub as "apihub-sdk"
+    participant Hub as "mockshift-sdk"
     participant API as "POST /api/sdk/sync"
     participant DB as "PostgreSQL"
     App->>Hub: "app.listen()"
@@ -303,7 +368,7 @@ sequenceDiagram
 
 | Symptom | Cause / fix |
 | --- | --- |
-| `API key is required` | Set `apiKey` or `APIHUB_API_KEY`. |
+| `API key is required` | Set `apiKey` / `token`, or `MOCKSHIFT_API_KEY` (legacy `APIHUB_API_KEY`). |
 | `403 API token requires the "sdk" or "write" scope` | Recreate the token with the `sdk` or `write` scope. |
 | Routes missing from the sync | Adapter installed after routes, or paths excluded; install `attach` first and check `include`/`exclude`. |
 | Catch-all route synced | Exclude `/*`; see section 5. |
@@ -316,14 +381,14 @@ sequenceDiagram
 
 ## 12. Testing
 
-- SDK unit tests: `cd sdk && npm test` (covers config, client, manifest,
-  folders, assertions, CLI, express adapter, index).
-- Backend manifest unit test: `backend/src/api/__tests__/sdkManifest.test.cjs`
-  (or `sdkManifest.test.cjs`).
-- Backend integration test: `sdkSync.integration.test.cjs` (uses the scratch
-  Postgres cluster on port 5441).
+- SDK unit tests: `cd sdk && npm test` (covers config, config file, client,
+  manifest, folders, assertions, inference, capture, CLI, express/http adapter,
+  index).
+- Backend manifest unit test: `backend/src/api/__tests__/sdkManifest.test.cjs`.
+- Backend integration test: `sdkSync.integration.test.cjs` (uses a scratch
+  Postgres cluster; set `INTEGRATION_PGPORT` — never the dev DB on 5432).
 
 > **Gap:** the checkboxes in
-> `docs/superpowers/plans/2026-09-10-apihub-sdk-route-sync.md` are still
+> `docs/superpowers/plans/2026-09-10-mockshift-sdk-route-sync.md` are still
 > unticked even though the implementation and tests exist. The plan document
 > should be updated or archived.

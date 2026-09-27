@@ -82,14 +82,14 @@ function parseArgs(argv, { options = null } = {}) {
     const canonical = normalizeOptionName(name);
     if (allowed && !allowed.has(canonical)) {
       throw new UsageError(
-        `Unknown option "--${canonical}" for this command (see "apihub <command> --help")`
+        `Unknown option "--${canonical}" for this command (see "mockshift <command> --help")`
       );
     }
 
     let type = describeOption(canonical);
     if (!type) {
       throw new UsageError(
-        `Unknown option "${arg.startsWith('-') ? arg : '--' + canonical}" (see "apihub --help")`
+        `Unknown option "${arg.startsWith('-') ? arg : '--' + canonical}" (see "mockshift --help")`
       );
     }
     if (type !== 'bool' && inlineValue === undefined) {

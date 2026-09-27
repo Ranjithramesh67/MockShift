@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 014_user_username.sql
+-- Mockshift — 014_user_username.sql
 -- Unique public username on users for search, invite, and add-to-team
 -- without exposing email.
 -- ============================================================================

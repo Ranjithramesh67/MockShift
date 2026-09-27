@@ -1,7 +1,7 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Portal backend shares the repo's DB + auth primitives with the main API Hub
+// Portal backend shares the repo's DB + auth primitives with the main Mockshift
 // backend (same cookie session, same AUTH_SECRET, same scrypt password hashes,
 // same users table). Keeping the portal code separate while reusing these
 // modules avoids drifting crypto/session logic.

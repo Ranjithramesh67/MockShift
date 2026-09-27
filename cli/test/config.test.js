@@ -9,14 +9,14 @@ const path = require('node:path');
 const configModule = require('../lib/config');
 
 function withTempConfigDir(fn) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apihub-config-test-'));
-  const previous = process.env.APIHUB_CONFIG_DIR;
-  process.env.APIHUB_CONFIG_DIR = dir;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mockshift-config-test-'));
+  const previous = process.env.MOCKSHIFT_CONFIG_DIR;
+  process.env.MOCKSHIFT_CONFIG_DIR = dir;
   try {
     return fn(dir);
   } finally {
-    if (previous === undefined) delete process.env.APIHUB_CONFIG_DIR;
-    else process.env.APIHUB_CONFIG_DIR = previous;
+    if (previous === undefined) delete process.env.MOCKSHIFT_CONFIG_DIR;
+    else process.env.MOCKSHIFT_CONFIG_DIR = previous;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -85,11 +85,28 @@ test('resolveBaseUrl precedence: flag > env > config > default', () => {
   });
 });
 
-test('resolveBaseUrl reads APIHUB_BASE_URL from env', () => {
-  const previous = process.env.APIHUB_BASE_URL;
-  process.env.APIHUB_BASE_URL = 'http://env-host:4100';
+test('resolveBaseUrl reads MOCKSHIFT_BASE_URL from env', () => {
+  const previous = process.env.MOCKSHIFT_BASE_URL;
+  process.env.MOCKSHIFT_BASE_URL = 'http://env-host:4100';
   try {
-    assert.strictEqual(configModule.resolveBaseUrl({ env: 'APIHUB_BASE_URL' }), 'http://env-host:4100');
+    assert.strictEqual(
+      configModule.resolveBaseUrl({ env: ['MOCKSHIFT_BASE_URL', 'APIHUB_BASE_URL'] }),
+      'http://env-host:4100'
+    );
+  } finally {
+    if (previous === undefined) delete process.env.MOCKSHIFT_BASE_URL;
+    else process.env.MOCKSHIFT_BASE_URL = previous;
+  }
+});
+
+test('resolveBaseUrl falls back to the legacy APIHUB_BASE_URL', () => {
+  const previous = process.env.APIHUB_BASE_URL;
+  process.env.APIHUB_BASE_URL = 'http://legacy-host:4200';
+  try {
+    assert.strictEqual(
+      configModule.resolveBaseUrl({ env: ['MOCKSHIFT_BASE_URL', 'APIHUB_BASE_URL'] }),
+      'http://legacy-host:4200'
+    );
   } finally {
     if (previous === undefined) delete process.env.APIHUB_BASE_URL;
     else process.env.APIHUB_BASE_URL = previous;
@@ -101,14 +118,17 @@ test('resolveToken precedence: flag > env > config', () => {
     configModule.saveConfig({ token: 'cfg-token' });
     assert.strictEqual(configModule.resolveToken({ flag: 'flag-token', config: configModule.loadConfig() }), 'flag-token');
 
-    const previous = process.env.APIHUB_TOKEN;
-    process.env.APIHUB_TOKEN = 'env-token';
+    const previous = process.env.MOCKSHIFT_TOKEN;
+    process.env.MOCKSHIFT_TOKEN = 'env-token';
     try {
-      assert.strictEqual(configModule.resolveToken({ env: 'APIHUB_TOKEN', config: configModule.loadConfig() }), 'env-token');
+      assert.strictEqual(
+        configModule.resolveToken({ env: ['MOCKSHIFT_TOKEN', 'APIHUB_TOKEN'], config: configModule.loadConfig() }),
+        'env-token'
+      );
       assert.strictEqual(configModule.resolveToken({ config: configModule.loadConfig() }), 'cfg-token');
     } finally {
-      if (previous === undefined) delete process.env.APIHUB_TOKEN;
-      else process.env.APIHUB_TOKEN = previous;
+      if (previous === undefined) delete process.env.MOCKSHIFT_TOKEN;
+      else process.env.MOCKSHIFT_TOKEN = previous;
     }
   });
 });

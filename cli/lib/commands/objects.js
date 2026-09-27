@@ -6,26 +6,26 @@ const { firstOption, hasFlag } = require('../parser');
 const { buildSession, makeApiClient, defaultWorkspaceId } = require('../session');
 const { renderTable, elide, makePainter } = require('../format');
 
-const HELP_TOP = `Commands to browse and manage API Hub workspaces, projects,
+const HELP_TOP = `Commands to browse and manage Mockshift workspaces, projects,
 collections and requests:
 
-  apihub workspace list
-  apihub workspace use <id>
-  apihub project list [--workspace <id>]
-  apihub project create <name> [--workspace <id>] [--description <text>]
-  apihub collection list [--project <id>] [--workspace <id>]
-  apihub request list [--collection <id>] [--workspace <id>]
-  apihub request show <requestId>
+  mockshift workspace list
+  mockshift workspace use <id>
+  mockshift project list [--workspace <id>]
+  mockshift project create <name> [--workspace <id>] [--description <text>]
+  mockshift collection list [--project <id>] [--workspace <id>]
+  mockshift request list [--collection <id>] [--workspace <id>]
+  mockshift request show <requestId>
 
-Run "apihub <command> --help" for details on a command.`;
+Run "mockshift <command> --help" for details on a command.`;
 
 async function requireWorkspace(ctx, config, { forCreate = false } = {}) {
   const id = defaultWorkspaceId(ctx, config);
   if (!id) {
     throw new UsageError(
       forCreate
-        ? 'A workspace is required. Pass --workspace <id> or select a default with "apihub workspace use <id>".'
-        : 'No workspace selected. Pass --workspace <id> or select a default with "apihub workspace use <id>".'
+        ? 'A workspace is required. Pass --workspace <id> or select a default with "mockshift workspace use <id>".'
+        : 'No workspace selected. Pass --workspace <id> or select a default with "mockshift workspace use <id>".'
     );
   }
   return id;
@@ -63,13 +63,13 @@ async function workspaceList(ctx, io) {
     paint: painter,
   }));
   io.out('');
-  io.out(painter.dim('* = default workspace (apihub workspace use <id>)'));
+  io.out(painter.dim('* = default workspace (mockshift workspace use <id>)'));
   return 0;
 }
 
 async function workspaceUse(ctx, io) {
   const id = ctx.args[0];
-  if (!id) throw new UsageError('Usage: apihub workspace use <workspaceId>');
+  if (!id) throw new UsageError('Usage: mockshift workspace use <workspaceId>');
 
   const session = buildSession(ctx);
   const client = makeApiClient(session);
@@ -78,7 +78,7 @@ async function workspaceUse(ctx, io) {
   const match = workspaces.find((w) => w.id === id);
   if (!match) {
     throw new UsageError(
-      `Workspace "${id}" is not accessible. List your workspaces with "apihub workspace list".`
+      `Workspace "${id}" is not accessible. List your workspaces with "mockshift workspace list".`
     );
   }
   const config = loadConfig();
@@ -159,7 +159,7 @@ async function projectList(ctx, io) {
 
 async function projectCreate(ctx, io) {
   const name = ctx.args[0];
-  if (!name) throw new UsageError('Usage: apihub project create <name> [--workspace <id>] [--description <text>]');
+  if (!name) throw new UsageError('Usage: mockshift project create <name> [--workspace <id>] [--description <text>]');
   const session = buildSession(ctx);
   const config = loadConfig();
   const workspaceId = await requireWorkspace(ctx, config, { forCreate: true });
@@ -279,7 +279,7 @@ async function requestList(ctx, io) {
 
 async function requestShow(ctx, io) {
   const id = ctx.args[0];
-  if (!id) throw new UsageError('Usage: apihub request show <requestId>');
+  if (!id) throw new UsageError('Usage: mockshift request show <requestId>');
   const session = buildSession(ctx);
   const client = makeApiClient(session);
   const res = await client.get(`/api/requests/${encodeURIComponent(id)}`);

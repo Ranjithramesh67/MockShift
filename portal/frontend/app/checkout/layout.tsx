@@ -11,7 +11,7 @@ export default function CheckoutLayout({ children }: { children: ReactNode }) {
             <span className="ck-brand-mark" aria-hidden="true">
               AH
             </span>
-            <span className="ck-brand-name">API Hub</span>
+            <span className="ck-brand-name">Mockshift</span>
             <span className="ck-pill">Checkout</span>
           </a>
           <nav className="ck-nav-links" aria-label="Checkout">
@@ -23,7 +23,7 @@ export default function CheckoutLayout({ children }: { children: ReactNode }) {
       </header>
       <main className="ck-main">{children}</main>
       <footer className="ck-foot">
-        <strong>API Hub</strong> — public showcase (Portal A) · subscription management (Portal B) is internal
+        <strong>Mockshift</strong> — public showcase (Portal A) · subscription management (Portal B) is internal
       </footer>
     </div>
   );

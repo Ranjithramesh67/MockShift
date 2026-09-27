@@ -163,7 +163,7 @@ gatewayRouter.post('/cashfree/:orderId/session', access.requireAuth, async (req,
       amount: order.amount,
       currency: order.currency,
       customer: { id: req.user.id, name: req.user.name, email: req.user.email },
-      note: `API Hub ${order.plan_name} (${order.billing_cycle})`,
+      note: `Mockshift ${order.plan_name} (${order.billing_cycle})`,
     });
 
     if (!remote || !remote.payment_session_id) {

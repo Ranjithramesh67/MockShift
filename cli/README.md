@@ -1,6 +1,6 @@
-# apihub-cli
+# mockshift-cli
 
-Official command-line client for the API Hub. Browse workspaces, projects,
+Official command-line client for the Mockshift. Browse workspaces, projects,
 collections and requests, trigger server-side runs, and turn results into
 CI-friendly JUnit or Markdown reports.
 
@@ -14,33 +14,33 @@ npm link
 npm install -g /path/to/this/repo
 ```
 
-Then run `apihub --help`.
+Then run `mockshift --help`.
 
 ## Quickstart
 
 ```bash
-# 1. Authenticate (writes the token to ~/.config/apihub/config.json)
-apihub login --base-url http://localhost:3001 --token tkh_xxx
+# 1. Authenticate (writes the token to ~/.config/mockshift/config.json)
+mockshift login --base-url http://localhost:3001 --token tkh_xxx
 
 # 2. Verify identity and pick a workspace
-apihub whoami
-apihub workspace list
-apihub workspace use <workspaceId>   # becomes the default for list commands
+mockshift whoami
+mockshift workspace list
+mockshift workspace use <workspaceId>   # becomes the default for list commands
 
 # 3. Browse
-apihub project list
-apihub collection list
-apihub request list --collection <collectionId>
-apihub request show <requestId>
+mockshift project list
+mockshift collection list
+mockshift request list --collection <collectionId>
+mockshift request show <requestId>
 
 # 4. Run a stored request on the server
-apihub run <requestId>               # exit 0 = PASSED, exit 1 = FAILED
-apihub run <requestId> --json > run.json
+mockshift run <requestId>               # exit 0 = PASSED, exit 1 = FAILED
+mockshift run <requestId> --json > run.json
 
 # 5. Generate CI reports from the last run
-apihub report junit <runId> -o junit.xml
-apihub report markdown <runId> -o report.md
-apihub report junit --from run.json -o junit.xml   # reuse a saved payload
+mockshift report junit <runId> -o junit.xml
+mockshift report markdown <runId> -o report.md
+mockshift report junit --from run.json -o junit.xml   # reuse a saved payload
 ```
 
 ## Commands
@@ -62,12 +62,12 @@ apihub report junit --from run.json -o junit.xml   # reuse a saved payload
 Notes:
 
 - `run <requestId>` requires an API token with the `runs` or `write` scope.
-  The run itself executes on the API Hub server, so stored credentials,
+  The run itself executes on the Mockshift server, so stored credentials,
   environments and collection variables of the request owner apply.
 - Run "passed" means the HTTP call returned and every enabled assertion
   passed. A request with no assertions passes if the server completed the
   run (`status: ok`).
-- `project create` is implemented but the current API Hub backend exposes no
+- `project create` is implemented but the current Mockshift backend exposes no
   create-project route (projects are created implicitly with workspaces), so
   it will fail until such a route exists.
 
@@ -75,13 +75,13 @@ Notes:
 
 | Option | Env var | Meaning |
 | --- | --- | --- |
-| `--base-url <url>` | `APIHUB_BASE_URL` | Server URL (default `http://localhost:3001`) |
-| `--token <token>` | `APIHUB_TOKEN` | Personal API token |
+| `--base-url <url>` | `MOCKSHIFT_BASE_URL` | Server URL (default `http://localhost:3001`) |
+| `--token <token>` | `MOCKSHIFT_TOKEN` | Personal API token |
 | `--json` | — | Raw JSON output for list/show/run |
 | `--no-color` | `NO_COLOR` | Disable ANSI colors |
 
 Credentials are resolved in this order: command-line flags, then
-environment variables, then `~/.config/apihub/config.json` (only the entry
+environment variables, then `~/.config/mockshift/config.json` (only the entry
 matching the current base URL).
 
 ## Exit codes
@@ -92,15 +92,15 @@ matching the current base URL).
 | 1 | The run FAILED, or an API/operational error occurred |
 | 2 | Usage error or not authenticated |
 
-This contract is what makes `apihub ci run` safe to gate a pipeline on.
+This contract is what makes `mockshift ci run` safe to gate a pipeline on.
 
 ## Configuration & security
 
-- Config file: `~/.config/apihub/config.json` (created with mode `0600`;
+- Config file: `~/.config/mockshift/config.json` (created with mode `0600`;
   the directory is created with mode `0700`). Override the location with
-  `APIHUB_CONFIG_DIR` (used by the test suite).
+  `MOCKSHIFT_CONFIG_DIR` (used by the test suite).
 - The token is stored as-is (same value you pass to `--token`). Log out
-  after use on a shared machine (`apihub logout`).
+  after use on a shared machine (`mockshift logout`).
 - Never paste tokens into scripts; use the CI secret mechanism instead (see
   `ci/`).
 
@@ -109,9 +109,9 @@ This contract is what makes `apihub ci run` safe to gate a pipeline on.
 See `ci/README.md` for ready-made GitHub Actions and GitLab CI examples:
 
 ```bash
-apihub login --base-url "$BASE_URL" --token "$APIHUB_TOKEN"
-apihub ci run "$REQUEST_ID"
-apihub report junit --from latest-run.json -o junit.xml   # or report markdown
+mockshift login --base-url "$BASE_URL" --token "$MOCKSHIFT_TOKEN"
+mockshift ci run "$REQUEST_ID"
+mockshift report junit --from latest-run.json -o junit.xml   # or report markdown
 ```
 
 ## Development
@@ -123,7 +123,7 @@ node --test "test/*.test.js"   # 58 unit tests, zero dependencies
 Layout:
 
 ```
-bin/apihub.js            executable entry point
+bin/mockshift.js            executable entry point
 lib/cli.js               dispatch, help, exit-code mapping
 lib/commands/            auth, browse, run, reports
 lib/report/              JUnit XML + Markdown builders

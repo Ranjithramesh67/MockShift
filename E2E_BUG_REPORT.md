@@ -1,4 +1,4 @@
-# End-to-End Test Report — MockShift / API Hub
+# End-to-End Test Report — Mockshift
 
 Date: 2026-09-15
 Scope: full application (main app frontend + backend API) and the Portal app (Portal A/B).

@@ -12,6 +12,12 @@ import {
   type ApiToken,
   type ApiTokenScope,
 } from '@/lib/tokens';
+import {
+  buildSdkConfig,
+  defaultSdkBaseUrl,
+  renderSdkConfig,
+  sdkInstallSnippet,
+} from '@/lib/sdkConfig';
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -94,7 +100,97 @@ function TokenRow({ token, onRevoke, revoking }: TokenRowProps) {
   );
 }
 
-function OneTimeReveal({ secret, name, onClose }: { secret: string; name: string; onClose: () => void }) {
+function CopyButton({ value, label, testId }: { value: string; label: string; testId: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+  return (
+    <button type="button" className="ghost-button" onClick={() => void copy()} data-testid={testId}>
+      {copied ? 'Copied!' : label}
+    </button>
+  );
+}
+
+// The SDK config file (`mockshift.json`) is generated at token-creation time
+// because this is the only moment the plaintext token is available.
+function SdkConfigPanel({
+  token,
+  projectName,
+  workspaceName,
+}: {
+  token: string;
+  projectName?: string | null;
+  workspaceName?: string | null;
+}) {
+  const config = buildSdkConfig({
+    token,
+    baseUrl: defaultSdkBaseUrl(),
+    project: projectName || null,
+    workspace: workspaceName || null,
+  });
+  const configText = renderSdkConfig(config);
+  const snippet = sdkInstallSnippet();
+
+  const download = () => {
+    const blob = new Blob([configText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mockshift.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="apitoken-sdk" data-testid="apitoken-sdk-config">
+      <h4 className="apitoken-sdk-title">SDK config (mockshift.json)</h4>
+      <p className="profile-field-hint">
+        Save this next to your server entrypoint. mockshift-sdk reads it automatically and syncs your routes.
+      </p>
+      <div className="apitoken-secret-row">
+        <pre className="apitoken-sdk-code" data-testid="apitoken-sdk-config-code">{configText}</pre>
+      </div>
+      <div className="apitoken-sdk-actions">
+        <CopyButton value={configText} label="Copy config" testId="apitoken-sdk-copy" />
+        <button type="button" className="ghost-button" onClick={download} data-testid="apitoken-sdk-download">
+          Download mockshift.json
+        </button>
+      </div>
+      <h4 className="apitoken-sdk-title">Install &amp; attach</h4>
+      <div className="apitoken-secret-row">
+        <pre className="apitoken-sdk-code" data-testid="apitoken-sdk-snippet">{snippet}</pre>
+      </div>
+      <div className="apitoken-sdk-actions">
+        <CopyButton value={snippet} label="Copy snippet" testId="apitoken-sdk-snippet-copy" />
+      </div>
+    </div>
+  );
+}
+
+function OneTimeReveal({
+  secret,
+  name,
+  scopes = [],
+  projectName,
+  workspaceName,
+  onClose,
+}: {
+  secret: string;
+  name: string;
+  scopes?: ApiTokenScope[];
+  projectName?: string | null;
+  workspaceName?: string | null;
+  onClose: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -120,8 +216,11 @@ function OneTimeReveal({ secret, name, onClose }: { secret: string; name: string
         </button>
       </div>
       <p className="profile-field-hint">
-        Use it as <code>Authorization: Bearer {secret.slice(0, 12)}…</code> when calling the API Hub API.
+        Use it as <code>Authorization: Bearer {secret.slice(0, 12)}…</code> when calling the Mockshift API.
       </p>
+      {scopes.includes('sdk') ? (
+        <SdkConfigPanel token={secret} projectName={projectName} workspaceName={workspaceName} />
+      ) : null}
       <button type="button" className="primary-button" onClick={onClose} data-testid="apitoken-reveal-done">
         Done
       </button>
@@ -129,7 +228,15 @@ function OneTimeReveal({ secret, name, onClose }: { secret: string; name: string
   );
 }
 
-function CreateTokenForm({ onCreated, onMessage }: { onCreated: (secret: string, name: string) => void; onMessage: (msg: { kind: 'ok' | 'err'; text: string } | null) => void }) {
+interface CreatedSecret {
+  token: string;
+  name: string;
+  scopes: ApiTokenScope[];
+  projectName: string | null;
+  workspaceName: string | null;
+}
+
+function CreateTokenForm({ onCreated, onMessage }: { onCreated: (created: CreatedSecret) => void; onMessage: (msg: { kind: 'ok' | 'err'; text: string } | null) => void }) {
   const [name, setName] = useState('');
   const [scopes, setScopes] = useState<ApiTokenScope[]>(['read']);
   const [expiryEnabled, setExpiryEnabled] = useState(false);
@@ -184,7 +291,17 @@ function CreateTokenForm({ onCreated, onMessage }: { onCreated: (secret: string,
       const created = await tokensApi.create(input);
       onMessage(null);
       setBusy(false);
-      onCreated(created.token, created.apiToken.name);
+      const projectName =
+        bindingKind === 'project' ? projects.find((p) => p.id === bindingTarget)?.name ?? null : null;
+      const workspaceName =
+        bindingKind === 'workspace' ? workspaces.find((w) => w.id === bindingTarget)?.name ?? null : null;
+      onCreated({
+        token: created.token,
+        name: created.apiToken.name,
+        scopes: created.apiToken.scopes,
+        projectName,
+        workspaceName,
+      });
     } catch (err) {
       setBusy(false);
       onMessage({
@@ -278,7 +395,7 @@ function CreateTokenForm({ onCreated, onMessage }: { onCreated: (secret: string,
           </select>
         ) : null}
         <small className="apitoken-hint">
-          Project/workspace keys let apihub-sdk sync routes without a personal key.
+          Project/workspace keys let mockshift-sdk sync routes without a personal key.
         </small>
       </div>
 
@@ -321,7 +438,7 @@ export function ApiTokensView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
-  const [secret, setSecret] = useState<{ token: string; name: string } | null>(null);
+  const [secret, setSecret] = useState<CreatedSecret | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -379,7 +496,7 @@ export function ApiTokensView() {
       <div className="profile-head">
         <div className="profile-head-text">
           <h1>API tokens</h1>
-          <p className="profile-head-meta">Personal tokens for machine authentication against the API Hub API.</p>
+          <p className="profile-head-meta">Personal tokens for machine authentication against the Mockshift API.</p>
         </div>
         <button
           type="button"
@@ -403,7 +520,14 @@ export function ApiTokensView() {
 
       {secret ? (
         <section className="profile-card" aria-label="One-time token">
-          <OneTimeReveal secret={secret.token} name={secret.name} onClose={() => setSecret(null)} />
+          <OneTimeReveal
+            secret={secret.token}
+            name={secret.name}
+            scopes={secret.scopes}
+            projectName={secret.projectName}
+            workspaceName={secret.workspaceName}
+            onClose={() => setSecret(null)}
+          />
         </section>
       ) : null}
 
@@ -413,9 +537,9 @@ export function ApiTokensView() {
         </h2>
         <CreateTokenForm
           onMessage={setMsg}
-          onCreated={(token, name) => {
+          onCreated={(created) => {
             void reload();
-            setSecret({ token, name });
+            setSecret(created);
           }}
         />
       </section>

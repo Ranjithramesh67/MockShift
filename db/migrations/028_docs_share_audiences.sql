@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 028_docs_share_audiences.sql
+-- Mockshift — 028_docs_share_audiences.sql
 -- Targeted doc sharing (Docs round 3, DR1): a page can be shared with
 -- specific users, with a team, with a whole organization, or kept as a public
 -- link.

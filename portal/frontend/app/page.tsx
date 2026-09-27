@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import CatalogPreview from '@/components/CatalogPreview';
 import AccountLink from '@/components/AccountLink';
-import { apiHubAppUrl } from '@/lib/appUrl';
+import { mockshiftAppUrl } from '@/lib/appUrl';
 
 type IconName =
   | 'edit'
@@ -69,7 +69,7 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
 }
 
 function BrandMark() {
-  return <span className="brand-mark" aria-hidden="true">AH</span>;
+  return <span className="brand-mark" aria-hidden="true">MS</span>;
 }
 
 function CheckSvg() {
@@ -115,7 +115,7 @@ const FEATURES: Feature[] = [
   {
     icon: 'curl',
     title: 'Paste cURL, get structure',
-    body: 'Stop rebuilding requests by hand. Drop a cURL command anywhere and API Hub parses the method, URL, query params, headers and body for you.',
+    body: 'Stop rebuilding requests by hand. Drop a cURL command anywhere and Mockshift parses the method, URL, query params, headers and body for you.',
     bullets: [
       'Auto-detected in the create request modal and straight into the URL field',
       'Scratchpad to test a cURL without saving anything to your collection',
@@ -255,8 +255,8 @@ const SECURITY_POINTS: Array<{ key: string; node: ReactNode }> = [
 
 const FAQS = [
   {
-    q: 'What exactly is API Hub?',
-    a: 'API Hub is a collaborative, Postman-style platform for designing, testing and automating API requests. You build requests in a browser workspace, run them against live or mock endpoints, assert the results, and chain them into workflows — with teams, workspaces, projects and role-based access on top.',
+    q: 'What exactly is Mockshift?',
+    a: 'Mockshift is a collaborative, Postman-style platform for designing, testing and automating API requests. You build requests in a browser workspace, run them against live or mock endpoints, assert the results, and chain them into workflows — with teams, workspaces, projects and role-based access on top.',
   },
   {
     q: 'Do I need a credit card to try a paid plan?',
@@ -289,14 +289,14 @@ const FAQS = [
 export default function Home() {
   // Sibling main-app origin for the current request (env override, or the
   // *.monkeycode-ai.live preview sibling, or localhost:3000 in local dev).
-  const appUrl = apiHubAppUrl();
+  const appUrl = mockshiftAppUrl();
   return (
     <div className="site">
       <header className="site-nav">
         <div className="nav-inner">
           <a className="brand" href="#top">
             <BrandMark />
-            <span>API Hub</span>
+            <span>Mockshift</span>
           </a>
           <nav className="nav-links" aria-label="Page">
             <a href="#product">Product</a>
@@ -326,7 +326,7 @@ export default function Home() {
             Test your APIs, <em>on autopilot.</em>
           </h1>
           <p className="hero-lede">
-            <strong>API Hub</strong> is a collaborative workspace for designing, testing and
+            <strong>Mockshift</strong> is a collaborative workspace for designing, testing and
             automating API requests. Paste a cURL, build requests in your browser, chain them
             into workflows with sandboxed formulas, stand up mock servers — all across teams
             with fine-grained access control.
@@ -448,7 +448,7 @@ export default function Home() {
                 Safe by default
               </h3>
               <p>
-                Testing means touching real systems — API Hub makes sure only intended data
+                Testing means touching real systems — Mockshift makes sure only intended data
                 moves, and everything is sandboxed.
               </p>
               <ul className="tick-list">
@@ -475,7 +475,7 @@ export default function Home() {
             <span className="kicker">Teams &amp; workspaces</span>
             <h2>Built for teams that ship together</h2>
             <p className="section-lede">
-              From a solo side-project to an organisation with many teams, API Hub keeps the
+              From a solo side-project to an organisation with many teams, Mockshift keeps the
               right requests in front of the right people.
             </p>
           </div>
@@ -555,7 +555,7 @@ export default function Home() {
               See plans &amp; pricing
             </a>
             <a className="btn btn-outline btn-lg" href={appUrl} target="_blank" rel="noreferrer">
-              Open API Hub <Icon name="external" size={16} />
+              Open Mockshift <Icon name="external" size={16} />
             </a>
           </div>
         </section>
@@ -565,7 +565,7 @@ export default function Home() {
         <div className="footer-inner">
           <a className="brand brand-sm" href="#top">
             <BrandMark />
-            <span>API Hub</span>
+            <span>Mockshift</span>
           </a>
           <nav className="footer-links" aria-label="Footer">
             <a href="#product">Product</a>
@@ -576,7 +576,7 @@ export default function Home() {
             </a>
           </nav>
           <p className="footer-note">
-            <strong>API Hub</strong> — secure payments powered by Cashfree
+            <strong>Mockshift</strong> — secure payments powered by Cashfree
           </p>
         </div>
       </footer>

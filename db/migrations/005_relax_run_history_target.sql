@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 005_relax_run_history_target.sql
+-- Mockshift — 005_relax_run_history_target.sql
 -- Fixes `DELETE /requests/:id` / `DELETE /workflows/:id` failing with a
 -- `run_history_target` check violation once a run exists.
 --

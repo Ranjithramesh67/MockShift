@@ -1,4 +1,4 @@
-# Issues — MockShift / API Hub
+# Issues — Mockshift
 
 Tracking register for defects found by the full E2E pass on 2026-09-15.
 Source report: `E2E_BUG_REPORT.md`. Raw evidence: `/tmp/opencode/e2e-reports/`.

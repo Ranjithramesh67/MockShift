@@ -116,7 +116,7 @@ export default function ManageShell({
             AH
           </span>
           <span className="pm-brand-text">
-            <div className="pm-brand-name">API Hub</div>
+            <div className="pm-brand-name">Mockshift</div>
             <div className="pm-brand-sub">Management</div>
           </span>
         </div>

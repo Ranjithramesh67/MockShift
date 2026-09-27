@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 033_monitors.sql
+-- Mockshift — 033_monitors.sql
 -- E2 — API monitoring & alerting (P2).
 --
 -- A *monitor* is a saved synthetic check: it targets either one stored request

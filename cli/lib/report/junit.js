@@ -42,7 +42,7 @@ function buildJunitXml(run) {
   const summary = countSummary(run);
   const total = summary.total;
   const failures = summary.failed;
-  const suiteName = run.name || run.id || 'apihub run';
+  const suiteName = run.name || run.id || 'mockshift run';
   const suiteTime = seconds(run.durationMs);
 
   const cases = run.testCases.map((tc) => {
@@ -58,7 +58,7 @@ function buildJunitXml(run) {
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<testsuites name="apihub" tests="${total}" failures="${failures}" errors="0" time="${suiteTime}">`,
+    `<testsuites name="mockshift" tests="${total}" failures="${failures}" errors="0" time="${suiteTime}">`,
     `  <testsuite name="${xmlEscape(suiteName)}" tests="${total}" failures="${failures}" errors="0" skipped="0" time="${suiteTime}" timestamp="${xmlEscape(timestamp(run.startedAt))}">`,
     ...cases,
     '  </testsuite>',

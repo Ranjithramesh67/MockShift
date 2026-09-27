@@ -9,7 +9,7 @@ main(process.argv.slice(2)).then(
   },
   (err) => {
     const message = err && err.message ? err.message : String(err);
-    process.stderr.write(`apihub: ${message}\n`);
+    process.stderr.write(`mockshift: ${message}\n`);
     process.exitCode = err && err.exitCode !== undefined ? err.exitCode : 1;
   }
 );

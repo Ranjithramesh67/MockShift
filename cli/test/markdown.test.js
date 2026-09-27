@@ -30,7 +30,7 @@ const run = normalizeRun({
 
 test('markdown report contains a passing/failing summary', () => {
   const md = buildMarkdown(run);
-  assert.match(md, /# API Hub run report/);
+  assert.match(md, /# Mockshift run report/);
   assert.match(md, /\*\*FAILED\*\* \(1\/2 checks passed\)/);
   assert.match(md, /\| Run \| mr-1 \|/);
   assert.match(md, /\| HTTP status \| 503 \|/);

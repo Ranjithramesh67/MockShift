@@ -1,4 +1,4 @@
--- API Hub — 056_user_nav_order.sql
+-- Mockshift — 056_user_nav_order.sql
 --
 -- Per-user navigation rail order.
 --

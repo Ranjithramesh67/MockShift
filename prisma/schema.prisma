@@ -1,4 +1,4 @@
-// API Hub — Prisma ORM schema.
+// Mockshift — Prisma ORM schema.
 //
 // NOTE: This schema is the application-facing ORM model. The authoritative
 // DDL (constraints, CHECK rules, pgcrypto encryption, Row-Level Security)

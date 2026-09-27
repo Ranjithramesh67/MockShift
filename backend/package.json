@@ -1,5 +1,5 @@
 {
-  "name": "@apihub/execution-engine",
+  "name": "@mockshift/execution-engine",
   "version": "0.1.0",
   "private": true,
   "description": "Sandboxed formula execution and API request dispatch",

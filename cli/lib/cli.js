@@ -35,55 +35,55 @@ function readVersion() {
   }
 }
 
-const GLOBAL_USAGE = `apihub — official API Hub CLI (v${readVersion()})
+const GLOBAL_USAGE = `mockshift — official Mockshift CLI (v${readVersion()})
 
 Usage:
-  apihub login [--base-url <url>] [--token <token>]
-  apihub logout
-  apihub whoami
-  apihub workspace list | workspace use <id>
-  apihub project list [--workspace <id>] | project create <name> [options]
-  apihub collection list [--project <id>] [--workspace <id>]
-  apihub request list [--collection <id>] | request show <requestId>
-  apihub run <requestId> [--collection-vars k=v] [options]
-  apihub ci run <requestId> [options]
-  apihub report junit|markdown <runId> [--from <file>] [-o <out>]
+  mockshift login [--base-url <url>] [--token <token>]
+  mockshift logout
+  mockshift whoami
+  mockshift workspace list | workspace use <id>
+  mockshift project list [--workspace <id>] | project create <name> [options]
+  mockshift collection list [--project <id>] [--workspace <id>]
+  mockshift request list [--collection <id>] | request show <requestId>
+  mockshift run <requestId> [--collection-vars k=v] [options]
+  mockshift ci run <requestId> [options]
+  mockshift report junit|markdown <runId> [--from <file>] [-o <out>]
 
 Global options:
-  --base-url <url>   API Hub server URL (env: APIHUB_BASE_URL)
-  --token <token>    personal API token (env: APIHUB_TOKEN)
+  --base-url <url>   Mockshift server URL (env: MOCKSHIFT_BASE_URL)
+  --token <token>    personal API token (env: MOCKSHIFT_TOKEN)
   --json             emit raw JSON for list/show/run commands
   --no-color         disable colored output (also honours NO_COLOR)
   --help, --version
 
 Credentials are read from flags, then environment variables, then
-~/.config/apihub/config.json (saved by "apihub login").
+~/.config/mockshift/config.json (saved by "mockshift login").
 
 Exit codes:
   0  success
   1  the run failed, or an API/operational error occurred
   2  usage or configuration error
 
-Run "apihub <command> --help" for details on a command.`;
+Run "mockshift <command> --help" for details on a command.`;
 
 const COMMAND_HELP = {
   login: { run: () => authCommands.HELP },
-  logout: { run: () => 'Usage: apihub logout\n\nRemove the stored API token from the local config.\n' },
-  whoami: { run: () => 'Usage: apihub whoami\n\nPrint the authenticated user and the token prefix for the current base URL.\n' },
+  logout: { run: () => 'Usage: mockshift logout\n\nRemove the stored API token from the local config.\n' },
+  whoami: { run: () => 'Usage: mockshift whoami\n\nPrint the authenticated user and the token prefix for the current base URL.\n' },
   workspace: {
-    list: { run: () => 'Usage: apihub workspace list\n\nList the workspaces this token can access. "*" marks the default workspace.\n' },
-    use: { run: () => 'Usage: apihub workspace use <workspaceId>\n\nSet the default workspace used by project/collection listing commands.\n' },
+    list: { run: () => 'Usage: mockshift workspace list\n\nList the workspaces this token can access. "*" marks the default workspace.\n' },
+    use: { run: () => 'Usage: mockshift workspace use <workspaceId>\n\nSet the default workspace used by project/collection listing commands.\n' },
   },
   project: {
-    list: { run: () => 'Usage: apihub project list [--workspace <id>]\n\nList projects in a workspace (default workspace unless --workspace is given).\n' },
-    create: { run: () => 'Usage: apihub project create <name> [--workspace <id>] [--description <text>]\n\nCreate a project. Note: the current API Hub backend exposes no create-project\nroute (projects are created implicitly with workspaces), so this command needs\nsuch a route before it can succeed.\n' },
+    list: { run: () => 'Usage: mockshift project list [--workspace <id>]\n\nList projects in a workspace (default workspace unless --workspace is given).\n' },
+    create: { run: () => 'Usage: mockshift project create <name> [--workspace <id>] [--description <text>]\n\nCreate a project. Note: the current Mockshift backend exposes no create-project\nroute (projects are created implicitly with workspaces), so this command needs\nsuch a route before it can succeed.\n' },
   },
   collection: {
-    list: { run: () => 'Usage: apihub collection list [--project <id>] [--workspace <id>]\n\nList collections in a project or in the default workspace.\n' },
+    list: { run: () => 'Usage: mockshift collection list [--project <id>] [--workspace <id>]\n\nList collections in a project or in the default workspace.\n' },
   },
   request: {
-    list: { run: () => 'Usage: apihub request list [--collection <id>] [--workspace <id>]\n\nList requests in a collection (or all requests in the default workspace).\n' },
-    show: { run: () => 'Usage: apihub request show <requestId>\n\nShow the stored definition of a single request.\n' },
+    list: { run: () => 'Usage: mockshift request list [--collection <id>] [--workspace <id>]\n\nList requests in a collection (or all requests in the default workspace).\n' },
+    show: { run: () => 'Usage: mockshift request show <requestId>\n\nShow the stored definition of a single request.\n' },
   },
   run: { run: () => runCommands.HELP },
   ci: { run: () => runCommands.HELP },
@@ -115,7 +115,7 @@ function resolveCommand(positionals) {
   if (command === 'ci') {
     const sub = positionals[1];
     if (sub === 'run') return { command, handler: 'run', words: ['ci', 'run'], args: positionals.slice(2) };
-    throw new UsageError('Usage: apihub ci run <requestId> [options] (ci accepts only the "run" subcommand)');
+    throw new UsageError('Usage: mockshift ci run <requestId> [options] (ci accepts only the "run" subcommand)');
   }
   if (command === 'report') {
     const format = positionals[1];
@@ -125,7 +125,7 @@ function resolveCommand(positionals) {
     const sub = positionals[1];
     if (!sub) {
       throw new UsageError(
-        `Usage: apihub ${command} list | ${command} ${command === 'workspace' ? 'use <id>' : command === 'project' ? 'create <name>' : command === 'request' ? 'show <requestId>' : '...'}\nSee "apihub ${command} --help".`
+        `Usage: mockshift ${command} list | ${command} ${command === 'workspace' ? 'use <id>' : command === 'project' ? 'create <name>' : command === 'request' ? 'show <requestId>' : '...'}\nSee "mockshift ${command} --help".`
       );
     }
     return { command, handler: sub, words: [command, sub], args: positionals.slice(2) };
@@ -133,7 +133,7 @@ function resolveCommand(positionals) {
   if (['login', 'logout', 'whoami', 'run'].includes(command)) {
     return { command, handler: null, words: [command], args: positionals.slice(1) };
   }
-  throw new UsageError(`Unknown command "${command}". Run "apihub --help".`);
+  throw new UsageError(`Unknown command "${command}". Run "mockshift --help".`);
 }
 
 async function runCommand(resolved, ctx, io) {
@@ -181,7 +181,7 @@ async function main(argv, { stdout = process.stdout, stderr = process.stderr } =
       : colorEnabled(stdout);
 
   if (hasFlag(options, 'version')) {
-    stdout.write(`apihub ${readVersion()}\n`);
+    stdout.write(`mockshift ${readVersion()}\n`);
     return 0;
   }
 
@@ -193,7 +193,7 @@ async function main(argv, { stdout = process.stdout, stderr = process.stderr } =
       stdout.write(GLOBAL_USAGE);
       return 0;
     }
-    stderr.write(`apihub: ${err.message}\n`);
+    stderr.write(`mockshift: ${err.message}\n`);
     return 2;
   }
 
@@ -222,7 +222,7 @@ async function main(argv, { stdout = process.stdout, stderr = process.stderr } =
   );
   if (disallowed.length > 0) {
     stderr.write(
-      `apihub: option(s) not valid here: ${disallowed.map((d) => `--${d}`).join(', ')}\n`
+      `mockshift: option(s) not valid here: ${disallowed.map((d) => `--${d}`).join(', ')}\n`
     );
     return 2;
   }
@@ -233,18 +233,18 @@ async function main(argv, { stdout = process.stdout, stderr = process.stderr } =
     return await runCommand(resolved, ctx, io);
   } catch (err) {
     if (err instanceof UsageError) {
-      stderr.write(`apihub: ${err.message}\n`);
+      stderr.write(`mockshift: ${err.message}\n`);
       return err.exitCode;
     }
     if (err instanceof ApiError) {
       const code = err.status ? `HTTP ${err.status}` : 'network error';
-      stderr.write(`apihub: ${code}: ${err.message}\n`);
+      stderr.write(`mockshift: ${code}: ${err.message}\n`);
       if (err.status === 401) {
-        stderr.write('apihub: not authenticated — run "apihub login" or set APIHUB_TOKEN/--token.\n');
+        stderr.write('mockshift: not authenticated — run "mockshift login" or set MOCKSHIFT_TOKEN/--token.\n');
       }
       return err.exitCode;
     }
-    stderr.write(`apihub: ${err && err.message ? err.message : err}\n`);
+    stderr.write(`mockshift: ${err && err.message ? err.message : err}\n`);
     return 1;
   }
 }

@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 020_plan_usage_counter.sql
+-- Mockshift — 020_plan_usage_counter.sql
 -- Per-plan usage restrictions (Portal B), L4: calendar-month run counters.
 --
 -- Runs are metered against the ORG pool (R1): chargeRuns() in

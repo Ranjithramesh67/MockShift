@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import AccountLink from '@/components/AccountLink';
-import { apiHubAppUrl } from '@/lib/appUrl';
+import { mockshiftAppUrl } from '@/lib/appUrl';
 import '../checkout/checkout.css';
 import './receipt.css';
 
 export default function ReceiptLayout({ children }: { children: ReactNode }) {
-  const appUrl = apiHubAppUrl();
+  const appUrl = mockshiftAppUrl();
   return (
     <div className="site ck">
       <header className="ck-nav">
@@ -14,7 +14,7 @@ export default function ReceiptLayout({ children }: { children: ReactNode }) {
             <span className="ck-brand-mark" aria-hidden="true">
               AH
             </span>
-            <span className="ck-brand-name">API Hub</span>
+            <span className="ck-brand-name">Mockshift</span>
             <span className="ck-pill">Receipt</span>
           </a>
           <nav className="ck-nav-links" aria-label="Receipt">
@@ -29,7 +29,7 @@ export default function ReceiptLayout({ children }: { children: ReactNode }) {
       </header>
       <main className="ck-main">{children}</main>
       <footer className="ck-foot">
-        <strong>API Hub</strong> — public showcase (Portal A) · subscription management (Portal B) is internal
+        <strong>Mockshift</strong> — public showcase (Portal A) · subscription management (Portal B) is internal
       </footer>
     </div>
   );

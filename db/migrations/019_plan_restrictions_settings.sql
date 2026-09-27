@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 019_plan_restrictions_settings.sql
+-- Mockshift — 019_plan_restrictions_settings.sql
 -- Per-plan usage restrictions (Portal B), L1: the master "restrictions
 -- enforced" switch plus the canonical limit catalog backfill.
 --

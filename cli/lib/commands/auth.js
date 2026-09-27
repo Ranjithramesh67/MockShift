@@ -6,27 +6,32 @@ const { makeClient } = require('../client');
 const { firstOption } = require('../parser');
 const { promptText, promptSecret } = require('../prompt');
 
-const HELP = `Usage: apihub login [--base-url <url>] [--token <token>]
+const HELP = `Usage: mockshift login [--base-url <url>] [--token <token>]
 
-Store API Hub credentials (base URL + personal API token) so commands run
+Store Mockshift credentials (base URL + personal API token) so commands run
 without repeating them. Prompts interactively for anything not provided via
-flags or the APIHUB_BASE_URL / APIHUB_TOKEN environment variables.
+flags or the MOCKSHIFT_BASE_URL / MOCKSHIFT_TOKEN environment variables
+(legacy: APIHUB_BASE_URL / APIHUB_TOKEN).
 
 Credentials are validated live against GET /api/auth/me (falling back to
-GET /api/profile) and then saved to ~/.config/apihub/config.json (0600).
+GET /api/profile) and then saved to ~/.config/mockshift/config.json (0600).
 
-  apihub logout                 remove the stored token
-  apihub whoami                 show the authenticated user + token prefix
+  mockshift logout                 remove the stored token
+  mockshift whoami                 show the authenticated user + token prefix
 `;
 
 function resolveLoginInputs(ctx) {
   const config = loadConfig();
   const flagUrl = firstOption(ctx.options, 'base-url');
   const flagToken = firstOption(ctx.options, 'token');
-  const envUrl = process.env.APIHUB_BASE_URL;
-  const envToken = process.env.APIHUB_TOKEN;
+  const envUrl = process.env.MOCKSHIFT_BASE_URL || process.env.APIHUB_BASE_URL;
+  const envToken = process.env.MOCKSHIFT_TOKEN || process.env.APIHUB_TOKEN;
 
-  let baseUrl = resolveBaseUrl({ flag: flagUrl, env: 'APIHUB_BASE_URL', config });
+  let baseUrl = resolveBaseUrl({
+    flag: flagUrl,
+    env: ['MOCKSHIFT_BASE_URL', 'APIHUB_BASE_URL'],
+    config,
+  });
   let token = flagToken || envToken;
 
   const interactive = Boolean(process.stdin.isTTY);
@@ -40,14 +45,14 @@ function resolveLoginInputs(ctx) {
     }
   } else if (!token) {
     throw new UsageError(
-      'No token available. Pass --token <token> or set APIHUB_TOKEN, or run interactively.'
+      'No token available. Pass --token <token> or set MOCKSHIFT_TOKEN, or run interactively.'
     );
   }
   return { baseUrl, token, config };
 }
 
 function awaitQuestion(defaultValue) {
-  return promptText('API Hub base URL', defaultValue);
+  return promptText('Mockshift base URL', defaultValue);
 }
 
 function awaitSecret(question) {
@@ -63,7 +68,7 @@ async function loginCommand(ctx, io) {
   if (!user) {
     throw new ApiError(
       401,
-      'The API did not accept this token. Confirm the token is active, that this API Hub backend accepts personal API tokens (Authorization: Bearer) on /api/auth/me or /api/profile, and that --base-url points at the right server.'
+      'The API did not accept this token. Confirm the token is active, that this Mockshift backend accepts personal API tokens (Authorization: Bearer) on /api/auth/me or /api/profile, and that --base-url points at the right server.'
     );
   }
 
@@ -138,7 +143,7 @@ async function whoamiCommand(ctx, io) {
     }
   }
   const cfg = load();
-  io.out('Authenticated to API Hub');
+  io.out('Authenticated to Mockshift');
   io.out(`  server:  ${session.baseUrl}`);
   io.out(`  token:   ${tokenPrefix(session.token)}…`);
   if (user) {

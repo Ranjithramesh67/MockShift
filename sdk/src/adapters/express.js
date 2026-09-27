@@ -1,19 +1,13 @@
 'use strict';
 
-const METHODS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all'];
+const { pathMatches } = require('../match');
+const { attachHttp } = require('./capture');
 
-function pathMatches(path, config) {
-  const p = String(path);
-  const include = config.include || [];
-  const exclude = config.exclude || [];
-  if (include.length && !include.some((prefix) => p.startsWith(prefix))) return false;
-  if (exclude.some((prefix) => p.startsWith(prefix))) return false;
-  return true;
-}
+const METHODS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all'];
 
 function createExpressAdapter(hub, app, options = {}) {
   if (!app || typeof app !== 'function') {
-    throw new TypeError('apihub.express(app): a valid Express app is required');
+    throw new TypeError('mockshift.express(app): a valid Express app is required');
   }
   if (options.folder !== undefined) hub.config.folder = options.folder;
   if (options.name !== undefined) hub.config.name = options.name;
@@ -43,6 +37,7 @@ function createExpressAdapter(hub, app, options = {}) {
   const originalListen = app.listen.bind(app);
   app.listen = function patchedListen(...args) {
     const server = originalListen(...args);
+    if (hub.config.capture && hub.config.capture.enabled) attachHttp(hub, server, { autoSync: false });
     if (hub.config.autoSync) hub.syncSoon();
     return server;
   };

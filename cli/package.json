@@ -1,12 +1,13 @@
 {
-  "name": "apihub-cli",
+  "name": "mockshift-cli",
   "version": "0.1.0",
-  "description": "Official command-line interface for API Hub: browse workspaces, projects, collections and requests and trigger server-side request runs from CI.",
+  "description": "Official command-line interface for Mockshift: browse workspaces, projects, collections and requests and trigger server-side request runs from CI.",
   "license": "UNLICENSED",
   "private": true,
   "main": "lib/cli.js",
   "bin": {
-    "apihub": "./bin/apihub.js"
+    "mockshift": "./bin/mockshift.js",
+    "mockshift-cli": "./bin/mockshift.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -20,7 +21,7 @@
     "README.md"
   ],
   "keywords": [
-    "apihub",
+    "mockshift",
     "cli",
     "api-testing"
   ]

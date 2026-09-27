@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 054_plan_change_rules.sql
+-- Mockshift — 054_plan_change_rules.sql
 -- Plan-change rules for subscriptions (lower-plan recharge + prorated upgrades).
 --
 -- Product rules this migration makes representable:

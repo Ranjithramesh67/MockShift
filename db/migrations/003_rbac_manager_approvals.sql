@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 003_rbac_manager_approvals.sql
+-- Mockshift — 003_rbac_manager_approvals.sql
 -- Project-scoped governance additions:
 --   1. New global role MANAGER (sits between EDITOR and ADMIN).
 --   2. project_managers: users assigned to manage a project.

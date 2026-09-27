@@ -33,7 +33,7 @@ function serverRun(overrides) {
 test('junit XML declares a testsuite with the right counts', () => {
   const xml = buildJunitXml(require('../lib/runmeta').normalizeRun(serverRun()));
   assert.match(xml, /<\?xml version="1\.0" encoding="UTF-8"\?>/);
-  assert.match(xml, /<testsuites name="apihub" tests="2" failures="1" errors="0"/);
+  assert.match(xml, /<testsuites name="mockshift" tests="2" failures="1" errors="0"/);
   assert.match(xml, /<testsuite name="Get posts" tests="2" failures="1" errors="0" skipped="0"/);
   assert.match(xml, /time="0\.250"/);
 });

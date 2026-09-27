@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 016_portal_checkout_rls.sql
+-- Mockshift — 016_portal_checkout_rls.sql
 -- Portal A (A4) purchase flow defense-in-depth.
 --
 -- Migration 013 gave `subscriptions` an INSERT policy (own user OR a portal

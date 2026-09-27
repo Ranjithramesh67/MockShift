@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 031_docs_table_blocks.sql
+-- Mockshift — 031_docs_table_blocks.sql
 -- Docs round 3 (DR6): widen doc_blocks.block_type to admit a 'table' block.
 -- Table content is { rows: string[][], caption? } with server-side size/cell
 -- guardrails enforced in the route layer (TABLE_MAX_ROWS/COLS/CELL).

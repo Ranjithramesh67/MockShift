@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 032_openapi_contracts.sql
+-- Mockshift — 032_openapi_contracts.sql
 -- OpenAPI import + contract validation (E1):
 --   contract_specs   an imported OpenAPI/Swagger 3.x document, scoped to a
 --                    project (optionally bound to the collection generated from

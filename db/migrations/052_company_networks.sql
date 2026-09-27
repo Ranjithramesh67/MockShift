@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 052_company_networks.sql
+-- Mockshift — 052_company_networks.sql
 -- Organization networks: an admin-maintained registry of company domains,
 -- individual-to-individual invitations (friend requests), and the resulting
 -- contact list.

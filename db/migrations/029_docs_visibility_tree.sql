@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 029_docs_visibility_tree.sql
+-- Mockshift — 029_docs_visibility_tree.sql
 -- Docs round 3 (DR3 + DR4 groundwork): per-doc visibility and a Confluence
 -- style document tree.
 --

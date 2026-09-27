@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 012_request_body_parts.sql
+-- Mockshift — 012_request_body_parts.sql
 -- Structured multipart/form-data body parts (Postman-style) so requests can
 -- carry text AND file parts. The parts array lives in api_requests.body_parts
 -- (jsonb):

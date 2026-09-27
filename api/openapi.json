@@ -1,14 +1,14 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "API Hub machine API",
+    "title": "Mockshift machine API",
     "version": "1.0.0",
     "description": "Server-side endpoints for running stored requests and managing the account from scripts and CI. Personal API tokens are created in the app under Settings > API tokens; the secret is shown once and is sent as `Authorization: Bearer <token>` (never commit it). Browser-session endpoints use the `ah.session` cookie instead.\n\nAll request and response bodies are JSON. URLs below are relative to the deployment base URL (`<BASE_URL>`, e.g. `http://localhost:3001`). Response snapshots are run through the credential redactor before they are returned."
   },
   "servers": [
     {
       "url": "{baseUrl}",
-      "description": "Your API Hub deployment",
+      "description": "Your Mockshift deployment",
       "variables": {
         "baseUrl": {
           "default": "http://localhost:3001",

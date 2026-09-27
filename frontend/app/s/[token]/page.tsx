@@ -199,7 +199,7 @@ export default function SharedRequestPage({ params }: { params: { token: string 
   return (
     <div className="share-public-page">
       <header className="share-public-header">
-        <span className="share-brand">API Hub</span>
+        <span className="share-brand">Mockshift</span>
         <span className="hint">shared item</span>
       </header>
 
@@ -214,7 +214,7 @@ export default function SharedRequestPage({ params }: { params: { token: string 
           <div className="share-card" data-testid="share-login-required">
             <h2>Sign in to view this shared item</h2>
             <p className="hint">
-              Shared links are login-gated. Sign in with any API Hub account to view it — no paid plan
+              Shared links are login-gated. Sign in with any Mockshift account to view it — no paid plan
               required.
             </p>
             <Link
@@ -278,7 +278,7 @@ export default function SharedRequestPage({ params }: { params: { token: string 
             )}
 
             <Link href="/" className="share-open-cta" data-testid="share-open-app">
-              Open in API Hub
+              Open in Mockshift
             </Link>
           </div>
         </main>

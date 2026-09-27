@@ -4,7 +4,7 @@
  * Client-side helpers for collection export / import.
  *
  * - `parseCollectionFile(text)`  — validate that a JSON file looks like an
- *   API Hub collection export and return a normalized summary for the import UI.
+ *   Mockshift collection export and return a normalized summary for the import UI.
  * - `collectionFileName(name)`   — safe `.json` download filename.
  * - `buildCurl(collection)`      — per-request `curl` commands (reuses the
  *   editor's `generateCurl`).
@@ -26,7 +26,7 @@ function collectionFileName(name) {
 
 /**
  * Parse + lightly validate an uploaded export file. Throws with a friendly
- * message when the content is not a usable API Hub collection export.
+ * message when the content is not a usable Mockshift collection export.
  *
  * @param {string} text
  * @returns {{ name: string, requestCount: number, data: unknown }}

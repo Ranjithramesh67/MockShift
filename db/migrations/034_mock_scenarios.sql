@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 034_mock_scenarios.sql
+-- Mockshift — 034_mock_scenarios.sql
 -- E3 (P3): mock server scenarios and call logs.
 --
 -- Adds, without touching mock_servers / mock_routes (007):

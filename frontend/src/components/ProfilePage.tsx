@@ -144,7 +144,7 @@ function SubscriptionCard({ profile }: { profile: Profile }) {
         </h2>
         <div className="profile-upsell-body">
           <p className="profile-upsell-text">
-            <strong>No active plan</strong> — you are using API Hub without a paid subscription. Pick a plan to unlock
+            <strong>No active plan</strong> — you are using Mockshift without a paid subscription. Pick a plan to unlock
             more requests, team seats and workflow runs.
           </p>
           <UpsellPlansLink />
@@ -555,8 +555,8 @@ export function ProfilePage() {
     <div className="profile-screen" data-testid="profile-page">
       <header className="profile-topbar">
         <Link href="/" className="profile-topbar-brand" data-testid="profile-topbar-brand" aria-label="Back to workspace">
-          <span className="brand-mark">AH</span>
-          <span className="brand-name">API Hub</span>
+          <span className="brand-mark">MS</span>
+          <span className="brand-name">Mockshift</span>
         </Link>
         <span className="profile-topbar-divider" aria-hidden="true" />
         <span className="profile-topbar-title">Profile</span>

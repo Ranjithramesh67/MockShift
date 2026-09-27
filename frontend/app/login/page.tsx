@@ -55,8 +55,8 @@ export default function LoginPage() {
       <div className="auth-shell">
         <div className="auth-brand-panel">
           <div className="auth-brand">
-            <span className="brand-mark">AH</span>
-            <span className="brand-name">API Hub</span>
+            <span className="brand-mark">MS</span>
+            <span className="brand-name">Mockshift</span>
           </div>
           <div className="auth-brand-tagline">
             <h2>

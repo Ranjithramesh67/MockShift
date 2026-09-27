@@ -77,7 +77,7 @@ router.post('/signup', async (req, res, next) => {
     if (!(await selfServiceOpen())) {
       return res.status(403).json({
         error:
-          'Self-service signup is closed — choose a plan on the API Hub plans page to create your account',
+          'Self-service signup is closed — choose a plan on the Mockshift plans page to create your account',
       });
     }
     const displayName = (name || '').trim() || email.split('@')[0];

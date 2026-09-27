@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 039_organizations_identity.sql
+-- Mockshift — 039_organizations_identity.sql
 -- Account identity: distinguish an individual's personal organization from a
 -- company organization, and record the company email domain so teammates on
 -- the same domain auto-join one shared org (auto-join by domain).

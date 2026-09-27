@@ -201,7 +201,7 @@ export function SendItemDialog({
             ) : recipients.length === 0 ? (
               <p className="hint">
                 No one in your organization or shared workspaces yet. You can still send to any
-                API Hub user by email below.
+                Mockshift user by email below.
               </p>
             ) : (
               <>

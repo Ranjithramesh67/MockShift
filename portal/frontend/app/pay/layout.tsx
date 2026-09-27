@@ -12,7 +12,7 @@ export default function PayLayout({ children }: { children: ReactNode }) {
             <span className="ck-brand-mark" aria-hidden="true">
               AH
             </span>
-            <span className="ck-brand-name">API Hub</span>
+            <span className="ck-brand-name">Mockshift</span>
             <span className="ck-pill">Secure payment</span>
           </a>
           <nav className="ck-nav-links" aria-label="Payment">
@@ -24,7 +24,7 @@ export default function PayLayout({ children }: { children: ReactNode }) {
       </header>
       <main className="ck-main">{children}</main>
       <footer className="ck-foot">
-        <strong>API Hub</strong> — secure payments powered by Cashfree
+        <strong>Mockshift</strong> — secure payments powered by Cashfree
       </footer>
     </div>
   );

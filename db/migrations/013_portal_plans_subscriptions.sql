@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 013_portal_plans_subscriptions.sql
+-- Mockshift — 013_portal_plans_subscriptions.sql
 -- Subscription portal domain (milestone A1 + B1 of the two-portal plan):
 --
 --  1. New global role SUPPORT (sits between VIEWER and MANAGER) for the

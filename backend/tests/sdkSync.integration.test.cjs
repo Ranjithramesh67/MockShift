@@ -1,6 +1,6 @@
 'use strict';
 
-// Round 5 — apihub-sdk route sync integration test.
+// Round 5 — mockshift-sdk route sync integration test.
 // Boots a minimal app with auth + tokens + sdk routers, creates a bound token,
 // and exercises idempotent sync (create then update, no duplicates).
 
@@ -125,7 +125,12 @@ const MANIFEST = {
     { key: 'Users/Admin', name: 'Admin', parent: 'Users' },
   ],
   requests: [
-    { key: 'GET /health', name: 'Health', method: 'GET', path: '/health' },
+    {
+      key: 'GET /health', name: 'Health', method: 'GET', path: '/health',
+      responseSchema: { type: 'object', properties: { ok: { type: 'boolean' } } },
+      requestSchema: { type: 'object', properties: { verbose: { type: 'boolean' } } },
+      formula: 'req.headers.XTraceId = $utils.uuid()',
+    },
     { key: 'GET /users/:id', name: 'Get user', method: 'GET', path: '/users/:id', folder: 'Users' },
     {
       key: 'DELETE /users/:id', name: 'Delete user', method: 'DELETE', path: '/users/:id',
@@ -185,6 +190,16 @@ test('assertions and target URL are persisted', async () => {
   const delDetail = await admin.api('GET', `/api/requests/${del.id}`);
   assert.equal(delDetail.json.request.assertions.length, 1);
   assert.equal(delDetail.json.request.assertions[0].expected, '204');
+});
+
+test('inferred schemas and formula are persisted', async () => {
+  const tree = await admin.api('GET', `/api/workspaces/${workspaceId}/content`);
+  const collection = tree.json.collections.find((c) => c.project_id === projectId && c.name === 'Backend');
+  const req = tree.json.requests.find((r) => r.collection_id === collection.id && r.method === 'GET' && r.name === 'Health probe');
+  const detail = await admin.api('GET', `/api/requests/${req.id}`);
+  assert.equal(detail.json.request.responseSchema.properties.ok.type, 'boolean');
+  assert.equal(detail.json.request.requestSchema.properties.verbose.type, 'boolean');
+  assert.equal(detail.json.request.formula, 'req.headers.XTraceId = $utils.uuid()');
 });
 
 test('a project-bound key cannot sync into another project', async () => {

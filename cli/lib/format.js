@@ -8,8 +8,9 @@ function stripAnsi(text) {
 
 function colorEnabled(stream) {
   if (process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== '') return false;
-  if (process.env.APIHUB_FORCE_COLOR !== undefined && process.env.APIHUB_FORCE_COLOR !== '') {
-    return !['0', 'false'].includes(process.env.APIHUB_FORCE_COLOR);
+  const force = process.env.MOCKSHIFT_FORCE_COLOR ?? process.env.APIHUB_FORCE_COLOR;
+  if (force !== undefined && force !== '') {
+    return !['0', 'false'].includes(force);
   }
   if (process.env.TERM === 'dumb') return false;
   return Boolean(stream && stream.isTTY);

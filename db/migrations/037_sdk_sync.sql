@@ -1,6 +1,6 @@
 -- ============================================================================
--- API Hub — 037_sdk_sync.sql
--- Route sync for the apihub-sdk JS library (round 5).
+-- Mockshift — 037_sdk_sync.sql
+-- Route sync for the mockshift-sdk JS library (round 5).
 --
 --   api_tokens.project_id / workspace_id  optional binding: a key scoped to a
 --                                         single project OR workspace (not both)
@@ -70,7 +70,7 @@ CREATE TABLE sdk_sync_runs (
 CREATE INDEX sdk_sync_runs_project_idx ON sdk_sync_runs (project_id, created_at DESC);
 
 COMMENT ON TABLE sdk_sync_runs IS
-  'One row per apihub-sdk sync call; summary holds { folders:{created,updated}, requests:{created,updated,pruned} }.';
+  'One row per mockshift-sdk sync call; summary holds { folders:{created,updated}, requests:{created,updated,pruned} }.';
 
 -- ------------------------------------------------------------------ Grants
 GRANT SELECT, INSERT, UPDATE, DELETE ON sdk_sync_runs TO app_user;

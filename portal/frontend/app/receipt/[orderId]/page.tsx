@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import ReceiptView from '@/components/ReceiptView';
-import { apiHubAppUrl } from '@/lib/appUrl';
+import { mockshiftAppUrl } from '@/lib/appUrl';
 
 type Props = {
   params: { orderId: string };
@@ -10,7 +10,7 @@ type Props = {
 export default function ReceiptOrderPage({ params, searchParams }: Props) {
   const raw = Array.isArray(searchParams?.bonus) ? searchParams?.bonus[0] : searchParams?.bonus;
   const bonusDays = Math.max(0, Number(raw) || 0);
-  const appUrl = apiHubAppUrl();
+  const appUrl = mockshiftAppUrl();
   return (
     <Suspense
       fallback={

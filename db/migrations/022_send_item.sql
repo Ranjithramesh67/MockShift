@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 022_send_item.sql
+-- Mockshift — 022_send_item.sql
 -- Send an item (request / folder / collection / project / workspace) to another
 -- user. The recipient sees it as a pending "send" in their inbox and may ACCEPT
 -- (a copy is cloned into their own account/workspace — the sender keeps the

@@ -47,7 +47,7 @@ function createApp() {
   );
 
   app.get('/api/health', (req, res) => {
-    res.json({ ok: true, service: 'apihub-portal-api' });
+    res.json({ ok: true, service: 'mockshift-portal-api' });
   });
 
   // Auth reuses the repo session scheme (same users table + cookie signature).

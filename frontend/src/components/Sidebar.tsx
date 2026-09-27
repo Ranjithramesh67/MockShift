@@ -67,7 +67,7 @@ type RailTab = 'apis' | 'teams' | 'workflow';
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 560;
 const SIDEBAR_DEFAULT_WIDTH = 296;
-const SIDEBAR_WIDTH_KEY = 'apihub.sidebarWidth';
+const SIDEBAR_WIDTH_KEY = 'mockshift.sidebarWidth';
 
 function WorkspaceChips({
   onOpenCreate,

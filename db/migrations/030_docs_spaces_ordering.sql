@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 030_docs_spaces_ordering.sql
+-- Mockshift — 030_docs_spaces_ordering.sql
 -- Docs round 3 (DR4 remainder): team ("space") binding + sibling ordering.
 --
 --   doc_pages.team_id   optional Confluence-style "space" binding. A page can

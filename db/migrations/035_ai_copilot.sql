@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 035_ai_copilot.sql
+-- Mockshift — 035_ai_copilot.sql
 -- AI copilot (E4 / P4): audit trail for LLM-backed copilot capabilities.
 --
 -- The copilot itself (backend/src/api/llm.js + routes/copilot.js) is BYO-key:

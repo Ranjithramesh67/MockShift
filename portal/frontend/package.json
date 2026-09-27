@@ -1,5 +1,5 @@
 {
-  "name": "@apihub-portal/frontend",
+  "name": "@mockshift-portal/frontend",
   "version": "0.1.0",
   "private": true,
   "description": "Subscription portal frontend — Portal A (public showcase + purchase) and Portal B (management, RBAC)",

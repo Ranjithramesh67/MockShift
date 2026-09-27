@@ -1,6 +1,6 @@
 'use strict';
 
-// Map a friendly `expects` object into the API Hub assertion shape:
+// Map a friendly `expects` object into the Mockshift assertion shape:
 //   { id, type: 'status'|'jsonPath'|'header'|'responseTime',
 //     operator: 'eq'|'neq'|'contains'|'gt'|'lt', path?, expected? }
 function normalizeExpects(expects = {}) {

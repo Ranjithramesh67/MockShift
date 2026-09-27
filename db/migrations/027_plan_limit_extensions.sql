@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 027_plan_limit_extensions.sql
+-- Mockshift — 027_plan_limit_extensions.sql
 -- Per-plan usage restrictions (Portal B): three NEW canonical limit keys for
 -- each non-enterprise plan:
 --

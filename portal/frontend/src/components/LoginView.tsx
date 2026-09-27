@@ -41,7 +41,7 @@ export default function LoginView() {
           AH
         </span>
         <h1>Sign in</h1>
-        <p className="ac-muted">Manage your API Hub subscription — plan, invoices, cancel or change.</p>
+        <p className="ac-muted">Manage your Mockshift subscription — plan, invoices, cancel or change.</p>
 
         {error ? (
           <div className="ac-banner ac-banner-err" data-testid="login-error" role="alert">
@@ -79,7 +79,7 @@ export default function LoginView() {
         </button>
 
         <p className="ac-login-foot">
-          New to API Hub?{' '}
+          New to Mockshift?{' '}
           <a href="/#pricing" className="ac-link">
             Start with a plan
           </a>{' '}

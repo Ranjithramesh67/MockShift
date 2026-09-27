@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 026_docs_image_share.sql
+-- Mockshift — 026_docs_image_share.sql
 -- Docs extension (L1):
 --
 --  1. doc_blocks.block_type CHECK is widened to admit an 'image' block so a

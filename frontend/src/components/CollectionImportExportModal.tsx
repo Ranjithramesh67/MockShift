@@ -16,7 +16,7 @@ type Tab = 'export' | 'import';
 type ExportFormat = 'json' | 'curl' | 'openapi';
 
 const FORMAT_LABELS: Record<ExportFormat, string> = {
-  json: 'JSON (API Hub)',
+  json: 'JSON (Mockshift)',
   curl: 'cURL commands',
   openapi: 'OpenAPI 3.0',
 };
@@ -223,7 +223,7 @@ export function CollectionImportExportModal({
             </label>
           </div>
           <p className="hint">
-            JSON round-trips back into API Hub; cURL and OpenAPI are convenience exports for
+            JSON round-trips back into Mockshift; cURL and OpenAPI are convenience exports for
             sharing with other tools.
           </p>
           {exportError && (
@@ -278,7 +278,7 @@ export function CollectionImportExportModal({
               <span className="ie-dropzone-empty">
                 <ImportIcon size={18} />
                 <strong>Drop a collection file here</strong>
-                <span>or click to browse (JSON from API Hub)</span>
+                <span>or click to browse (JSON from Mockshift)</span>
               </span>
             )}
           </label>

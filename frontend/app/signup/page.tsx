@@ -83,8 +83,8 @@ export default function SignupPage() {
         <div className="auth-shell">
           <div className="auth-brand-panel">
             <div className="auth-brand">
-              <span className="brand-mark">AH</span>
-              <span className="brand-name">API Hub</span>
+              <span className="brand-mark">MS</span>
+              <span className="brand-name">Mockshift</span>
             </div>
             <div className="auth-brand-tagline">
               <h2>
@@ -108,7 +108,7 @@ export default function SignupPage() {
             <div className="auth-card" data-testid="signup-gateway">
               <h1 className="auth-title">Choose a plan to get started</h1>
               <p className="auth-hint">
-                Accounts are created through the API Hub plans page — pick a plan
+                Accounts are created through the Mockshift plans page — pick a plan
                 (Free or paid) and your workspace is set up automatically.
               </p>
               <a
@@ -136,8 +136,8 @@ export default function SignupPage() {
       <div className="auth-shell">
         <div className="auth-brand-panel">
           <div className="auth-brand">
-            <span className="brand-mark">AH</span>
-            <span className="brand-name">API Hub</span>
+            <span className="brand-mark">MS</span>
+            <span className="brand-name">Mockshift</span>
           </div>
           <div className="auth-brand-tagline">
             <h2>

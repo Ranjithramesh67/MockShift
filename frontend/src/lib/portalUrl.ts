@@ -1,5 +1,5 @@
 // Cross-app link to the Portal A (subscription showcase / purchase) frontend.
-// The main API Hub app never creates accounts directly any more — self-service
+// The main Mockshift app never creates accounts directly any more — self-service
 // signup happens on the portal's plans page.
 //
 // Resolution order for the portal origin:

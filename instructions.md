@@ -356,7 +356,7 @@ views → modals) with a disjoint TSX file list:
   Automations/Workflow CSS-only; collapsible overview grid.
 - Modals/auth/share: bottom-sheet modals ≤640px (`100dvh`, safe-area, sticky
   header/actions); input ≥42px/48px auth at 16px (no iOS zoom); `.table-scroll`
-  wrappers; share page "Open in API Hub" CTA (`share-open-app`).
+  wrappers; share page "Open in Mockshift" CTA (`share-open-app`).
 
 Verified: `tsc --noEmit` clean, `npm test` 89/89, `next build` green, 390px
 smoke passed; desktop e2e 1280px green except one environment-flaky spec per

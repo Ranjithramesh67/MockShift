@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 036_collab_reviews.sql
+-- Mockshift — 036_collab_reviews.sql
 -- Collaboration round (P5 / E5): comment threads, a lightweight collection
 -- review flow, and version snapshots with diff.
 --

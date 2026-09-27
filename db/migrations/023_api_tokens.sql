@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 023_api_tokens.sql
+-- Mockshift — 023_api_tokens.sql
 -- Personal API tokens (roadmap S4): machine authentication for the main API.
 --
 -- A token is a random secret returned in PLAINTEXT exactly once at creation.

@@ -53,5 +53,5 @@ export const API_TOKEN_SCOPE_HINT: Record<ApiTokenScope, string> = {
   read: 'List and inspect resources',
   write: 'Create and update resources',
   runs: 'Execute stored requests server-side',
-  sdk: 'Sync routes from apihub-sdk into a project or workspace',
+  sdk: 'Sync routes from mockshift-sdk into a project or workspace',
 };

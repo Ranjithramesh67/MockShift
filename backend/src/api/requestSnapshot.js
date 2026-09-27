@@ -23,6 +23,8 @@ const REQUEST_COLUMNS = [
   'folder_id',
   'formula',
   'assertions',
+  'request_schema',
+  'response_schema',
 ];
 
 // SQL column list for SELECTs that feed serializeRequest().
@@ -45,6 +47,8 @@ function serializeRequest(row) {
     folderId: row.folder_id ?? null,
     formula: row.formula || '',
     assertions: row.assertions || [],
+    requestSchema: row.request_schema ?? null,
+    responseSchema: row.response_schema ?? null,
   };
 }
 

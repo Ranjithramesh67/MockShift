@@ -104,6 +104,9 @@ function normalizeRequest(raw, baseUrl, defaultSource) {
     assertions: Array.isArray(raw.assertions) ? raw.assertions : [],
     sourceFile: raw.sourceFile ? String(raw.sourceFile) : null,
     source: raw.source || defaultSource || null,
+    requestSchema: raw.requestSchema && typeof raw.requestSchema === 'object' ? raw.requestSchema : null,
+    responseSchema: raw.responseSchema && typeof raw.responseSchema === 'object' ? raw.responseSchema : null,
+    formula: raw.formula ? String(raw.formula) : null,
   };
 }
 

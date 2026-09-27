@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 040_menu_settings.sql
+-- Mockshift — 040_menu_settings.sql
 -- Admin-configurable menu (feature) visibility.
 --
 -- A platform admin may disable a rail feature either for a whole organization

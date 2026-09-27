@@ -1,8 +1,8 @@
-# Running apihub checks in CI
+# Running mockshift checks in CI
 
-`apihub ci run <requestId>` is designed for pipelines: it streams a short
+`mockshift ci run <requestId>` is designed for pipelines: it streams a short
 summary to stdout and exits `0` on PASS, `1` on FAIL, `2` on configuration
-errors. It is a pure alias of `apihub run` with CI-friendly output and exit
+errors. It is a pure alias of `mockshift run` with CI-friendly output and exit
 codes, so no extra setup is needed beyond installing the CLI and logging in.
 
 Always pass the API token through the platform's masked secret store; never
@@ -19,7 +19,7 @@ on:
     - cron: '0 6 * * *'   # nightly smoke against live endpoints
 
 jobs:
-  apihub:
+  mockshift:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,41 +27,41 @@ jobs:
       - name: Install CLI
         run: npm install -g /path/to/repo   # or `npm ci` in the cli folder then npm link
 
-      - name: Login to API Hub
-        run: apihub login --base-url "${{ secrets.APIHUB_BASE_URL }}" --token "${{ secrets.APIHUB_TOKEN }}"
+      - name: Login to Mockshift
+        run: mockshift login --base-url "${{ secrets.MOCKSHIFT_BASE_URL }}" --token "${{ secrets.MOCKSHIFT_TOKEN }}"
 
       - name: Run checks
-        id: apihub-run
-        run: apihub ci run "${{ vars.REQUEST_ID }}"
+        id: mockshift-run
+        run: mockshift ci run "${{ vars.REQUEST_ID }}"
         # Non-zero exit from `ci run` fails the job automatically.
 
       - name: Archive report on failure
         if: failure()
         run: |
-          apihub run "${{ vars.REQUEST_ID }}" --json > latest-run.json
-          apihub report markdown --from latest-run.json -o report.md
+          mockshift run "${{ vars.REQUEST_ID }}" --json > latest-run.json
+          mockshift report markdown --from latest-run.json -o report.md
 
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: apihub-report
+          name: mockshift-report
           path: report.md
 ```
 
 ## GitLab CI
 
 ```yaml
-apihub-smoke:
+mockshift-smoke:
   stage: test
   image: node:22
   variables:
     REQUEST_ID: "your-request-id-here"
   script:
     - npm install -g /path/to/repo
-    - apihub login --base-url "${APIHUB_BASE_URL}" --token "${APIHUB_TOKEN}"
-    - apihub ci run "${REQUEST_ID}"
-    - apihub run "${REQUEST_ID}" --json > latest-run.json
-    - apihub report junit --from latest-run.json -o junit.xml
+    - mockshift login --base-url "${MOCKSHIFT_BASE_URL}" --token "${MOCKSHIFT_TOKEN}"
+    - mockshift ci run "${REQUEST_ID}"
+    - mockshift run "${REQUEST_ID}" --json > latest-run.json
+    - mockshift report junit --from latest-run.json -o junit.xml
   artifacts:
     when: always
     reports:
@@ -71,7 +71,7 @@ apihub-smoke:
     expire_in: 30 days
 ```
 
-`APIHUB_BASE_URL` and `APIHUB_TOKEN` are CI/CD variables; mark the token as
+`MOCKSHIFT_BASE_URL` and `MOCKSHIFT_TOKEN` are CI/CD variables; mark the token as
 **masked** and **protected**.
 
 ## Tips

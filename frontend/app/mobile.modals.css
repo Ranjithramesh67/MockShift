@@ -11,7 +11,7 @@
    .signup-*, .share-*, .dropdown, .user-dropdown, .toast-*.
    ========================================================================== */
 
-/* Mobile-only element: "Open in API Hub" CTA on the public share page. It is
+/* Mobile-only element: "Open in Mockshift" CTA on the public share page. It is
    hidden by default so the desktop (>900px) share page stays byte-identical
    to before, and revealed only inside the responsive breakpoints below. */
 .share-open-cta {

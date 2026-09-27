@@ -1,6 +1,6 @@
 'use strict';
 
-// Round 5 — apihub-sdk route sync.
+// Round 5 — mockshift-sdk route sync.
 //   POST /api/sdk/sync  (Bearer token, scope "sdk" or "write")
 //
 // The SDK sends a manifest of folders + requests. We resolve the target
@@ -156,7 +156,8 @@ async function upsertRequests(req, collection, manifest, folderIdByKey, summary,
         `UPDATE api_requests
             SET name = $2, method = $3, url = $4, api_type = $5, headers = $6, query_params = $7,
                 body_type = $8, body_json = $9, body_text = $10, assertions = $11, folder_id = $12,
-                source = $13, source_file = $14, synced_at = now()
+                source = $13, source_file = $14, request_schema = $15, response_schema = $16,
+                formula = $17, synced_at = now()
           WHERE id = $1`,
         [
           existing.id, r.name, r.method, r.url, r.apiType,
@@ -164,6 +165,9 @@ async function upsertRequests(req, collection, manifest, folderIdByKey, summary,
           r.bodyType, r.bodyJson === null ? null : JSON.stringify(r.bodyJson), r.bodyText,
           JSON.stringify(r.assertions), folderId,
           r.source || manifest.source, r.sourceFile,
+          r.requestSchema === null ? null : JSON.stringify(r.requestSchema),
+          r.responseSchema === null ? null : JSON.stringify(r.responseSchema),
+          r.formula || '',
         ]
       );
       updated.push(existing.id);
@@ -185,14 +189,18 @@ async function upsertRequests(req, collection, manifest, folderIdByKey, summary,
     const inserted = (await exec(
       `INSERT INTO api_requests
          (collection_id, name, method, url, api_type, headers, query_params, body_type,
-          body_json, body_text, assertions, folder_id, external_key, source, source_file, synced_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
+          body_json, body_text, assertions, folder_id, external_key, source, source_file,
+          request_schema, response_schema, formula, synced_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, now())
        RETURNING id`,
       [
         collection.id, pickUniqueName(r.name, siblings), r.method, r.url, r.apiType,
         JSON.stringify(r.headers), JSON.stringify(r.queryParams), r.bodyType,
         r.bodyJson === null ? null : JSON.stringify(r.bodyJson), r.bodyText,
         JSON.stringify(r.assertions), folderId, r.key, r.source || manifest.source, r.sourceFile,
+        r.requestSchema === null ? null : JSON.stringify(r.requestSchema),
+        r.responseSchema === null ? null : JSON.stringify(r.responseSchema),
+        r.formula || '',
       ]
     )).rows[0];
     created.push(inserted.id);

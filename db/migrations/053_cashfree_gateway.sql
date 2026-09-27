@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 053_cashfree_gateway.sql
+-- Mockshift — 053_cashfree_gateway.sql
 -- Real payment gateway (Cashfree) integration + login gate state.
 --
 -- Portal A previously settled orders through a simulated gateway. This

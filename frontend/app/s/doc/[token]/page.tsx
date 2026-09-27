@@ -38,7 +38,7 @@ export default function SharedDocPage({ params }: { params: Promise<{ token: str
   return (
     <div className="share-public-page" data-testid="shared-doc-view">
       <header className="share-public-header">
-        <span className="share-brand">API Hub</span>
+        <span className="share-brand">Mockshift</span>
         <span className="hint">shared doc</span>
       </header>
 

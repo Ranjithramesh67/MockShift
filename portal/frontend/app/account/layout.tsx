@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import './account.css';
 
 export const metadata: Metadata = {
-  title: 'My subscription — API Hub',
+  title: 'My subscription — Mockshift',
 };
 
 export default function AccountLayout({ children }: { children: ReactNode }) {
@@ -15,7 +15,7 @@ export default function AccountLayout({ children }: { children: ReactNode }) {
             <span className="ac-brand-mark" aria-hidden="true">
               AH
             </span>
-            <span className="ac-brand-name">API Hub</span>
+            <span className="ac-brand-name">Mockshift</span>
             <span className="ac-pill">My subscription</span>
           </a>
           <nav className="ac-nav-links" aria-label="Account">
@@ -26,7 +26,7 @@ export default function AccountLayout({ children }: { children: ReactNode }) {
       </header>
       <main className="ac-main">{children}</main>
       <footer className="ac-foot">
-        <strong>API Hub</strong> — subscriber self-service (Portal A)
+        <strong>Mockshift</strong> — subscriber self-service (Portal A)
       </footer>
     </div>
   );

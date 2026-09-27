@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 015_portal_audit_promo.sql
+-- Mockshift — 015_portal_audit_promo.sql
 -- Portal B management tables (milestone B4/B5 of the two-portal plan):
 --
 --  1. audit_log    — immutable trail of every admin/manager action in Portal B

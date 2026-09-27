@@ -7,7 +7,7 @@
 //   SMTP_HOST, SMTP_PORT        default 587
 //   SMTP_SECURE=1               implicit TLS (usually port 465)
 //   SMTP_USER, SMTP_PASS
-//   SMTP_FROM                   default "API Hub <noreply@keerainnovations.com>"
+//   SMTP_FROM                   default "Mockshift <noreply@keerainnovations.com>"
 //   APP_URL                     public base URL used to build links (default http://localhost:3000)
 // ---------------------------------------------------------------------------
 
@@ -36,7 +36,7 @@ function appUrl() {
 }
 
 function fromAddress() {
-  return process.env.SMTP_FROM || 'API Hub <noreply@keerainnovations.com>';
+  return process.env.SMTP_FROM || 'Mockshift <noreply@keerainnovations.com>';
 }
 
 let transportOverride;
@@ -123,18 +123,18 @@ function escapeHtml(value) {
 function passwordResetMessage(link) {
   const href = escapeHtml(link);
   return {
-    subject: 'Reset your API Hub password',
-    text: `We received a request to reset your API Hub password.\n\nOpen this link to choose a new password:\n${link}\n\nThis link expires in 1 hour. If you did not request it, you can ignore this email.`,
-    html: `<p>We received a request to reset your API Hub password.</p><p><a href="${href}">Choose a new password</a></p><p>This link expires in 1 hour. If you did not request it, you can ignore this email.</p>`,
+    subject: 'Reset your Mockshift password',
+    text: `We received a request to reset your Mockshift password.\n\nOpen this link to choose a new password:\n${link}\n\nThis link expires in 1 hour. If you did not request it, you can ignore this email.`,
+    html: `<p>We received a request to reset your Mockshift password.</p><p><a href="${href}">Choose a new password</a></p><p>This link expires in 1 hour. If you did not request it, you can ignore this email.</p>`,
   };
 }
 
 function verifyEmailMessage(link) {
   const href = escapeHtml(link);
   return {
-    subject: 'Verify your API Hub email',
-    text: `Welcome to API Hub.\n\nConfirm your email address:\n${link}\n\nThis link expires in 24 hours.`,
-    html: `<p>Welcome to API Hub.</p><p><a href="${href}">Confirm your email address</a></p><p>This link expires in 24 hours.</p>`,
+    subject: 'Verify your Mockshift email',
+    text: `Welcome to Mockshift.\n\nConfirm your email address:\n${link}\n\nThis link expires in 24 hours.`,
+    html: `<p>Welcome to Mockshift.</p><p><a href="${href}">Confirm your email address</a></p><p>This link expires in 24 hours.</p>`,
   };
 }
 
@@ -144,9 +144,9 @@ function invitationMessage({ inviterName, message, link }) {
   const note = message ? `<p style="color:#555">"${escapeHtml(message)}"</p>` : '';
   const noteText = message ? `\n\nMessage from ${who}:\n"${message}"` : '';
   return {
-    subject: `${who} invited you to connect on API Hub`,
-    text: `${who} invited you to connect on API Hub.${noteText}\n\nOpen API Hub to accept:\n${link}\n\nIf you were not expecting this, you can ignore this email.`,
-    html: `<p><strong>${escapeHtml(who)}</strong> invited you to connect on API Hub.</p>${note}<p><a href="${href}">View invitation</a></p><p>If you were not expecting this, you can ignore this email.</p>`,
+    subject: `${who} invited you to connect on Mockshift`,
+    text: `${who} invited you to connect on Mockshift.${noteText}\n\nOpen Mockshift to accept:\n${link}\n\nIf you were not expecting this, you can ignore this email.`,
+    html: `<p><strong>${escapeHtml(who)}</strong> invited you to connect on Mockshift.</p>${note}<p><a href="${href}">View invitation</a></p><p>If you were not expecting this, you can ignore this email.</p>`,
   };
 }
 

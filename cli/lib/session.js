@@ -29,12 +29,12 @@ function buildSession(ctx, { needToken = true } = {}) {
   const flagUrl = firstOption(ctx.options, 'base-url');
   const flagToken = firstOption(ctx.options, 'token');
   const config = loadConfig();
-  const baseUrl = resolveBaseUrl({ flag: flagUrl, env: 'APIHUB_BASE_URL', config });
-  const token = resolveToken({ flag: flagToken, env: 'APIHUB_TOKEN', config });
+  const baseUrl = resolveBaseUrl({ flag: flagUrl, env: ['MOCKSHIFT_BASE_URL', 'APIHUB_BASE_URL'], config });
+  const token = resolveToken({ flag: flagToken, env: ['MOCKSHIFT_TOKEN', 'APIHUB_TOKEN'], config });
 
   if (needToken && !token) {
     throw new UsageError(
-      'Not logged in. Run "apihub login", set APIHUB_TOKEN, or pass --token <token>.'
+      'Not logged in. Run "mockshift login", set MOCKSHIFT_TOKEN, or pass --token <token>.'
     );
   }
   return { baseUrl, token, config };

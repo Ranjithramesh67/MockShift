@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 025_docs.sql
+-- Mockshift — 025_docs.sql
 -- Confluence-style "Docs" workspace feature:
 --   doc_pages                  a documentation page living in a workspace,
 --                              optionally bound to one of its projects.

@@ -1,5 +1,5 @@
 {
-  "name": "@apihub-portal/backend",
+  "name": "@mockshift-portal/backend",
   "version": "0.1.0",
   "private": true,
   "description": "Subscription portal backend (Portal A public catalog + Portal B management, RBAC)",

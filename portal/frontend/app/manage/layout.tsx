@@ -49,7 +49,7 @@ function DeniedScreen({ user }: { user: MeUser }) {
           </p>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
             <a className="pm-btn pm-btn-ghost" href="/">
-              Back to API Hub site
+              Back to Mockshift site
             </a>
             <button
               type="button"

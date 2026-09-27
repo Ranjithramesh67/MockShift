@@ -73,8 +73,8 @@ async function main() {
   console.log(`Sending a test message to ${to}...`);
   const result = await email.sendMail({
     to,
-    subject: 'API Hub SMTP test',
-    text: 'This is a test message from API Hub. If you received it, outbound email works.',
+    subject: 'Mockshift SMTP test',
+    text: 'This is a test message from Mockshift. If you received it, outbound email works.',
   });
   if (result.skipped) {
     console.error('FAIL: skipped — SMTP is not configured.');

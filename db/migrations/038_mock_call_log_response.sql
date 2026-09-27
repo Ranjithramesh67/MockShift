@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 038_mock_call_log_response.sql
+-- Mockshift — 038_mock_call_log_response.sql
 -- Capture the served mock response on the call log.
 --
 --   response_headers  response headers actually written (lower-cased keys)

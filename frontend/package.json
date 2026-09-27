@@ -1,5 +1,5 @@
 {
-  "name": "apihub-frontend",
+  "name": "mockshift-frontend",
   "version": "0.1.0",
   "private": true,
   "description": "API testing platform frontend - Postman-like request builder and workflow automation",

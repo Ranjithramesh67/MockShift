@@ -1,6 +1,6 @@
 'use strict';
 
-const STORAGE_KEY = 'apihub.activeProject.v1';
+const STORAGE_KEY = 'mockshift.activeProject.v1';
 
 const ROLE_RANK = { ADMIN: 4, MANAGER: 3, EDITOR: 2, VIEWER: 1 };
 

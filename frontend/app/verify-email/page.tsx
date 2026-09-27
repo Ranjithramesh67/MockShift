@@ -46,7 +46,7 @@ function VerifyEmailInner() {
               </p>
             )}
             <p className="auth-alt">
-              <Link href="/">Continue to API Hub</Link>
+              <Link href="/">Continue to Mockshift</Link>
             </p>
           </div>
         </div>

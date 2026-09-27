@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 001_init.sql
+-- Mockshift — 001_init.sql
 -- Authoritative DDL for the API orchestration platform.
 --
 -- Layered security model:

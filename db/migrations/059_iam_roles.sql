@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 059_iam_roles.sql
+-- Mockshift — 059_iam_roles.sql
 --
 -- Organization-scoped IAM roles, layered additively on top of the legacy
 -- ADMIN/MANAGER/EDITOR/VIEWER/SUPPORT enum stored per membership scope.

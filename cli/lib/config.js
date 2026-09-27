@@ -7,7 +7,11 @@ const path = require('path');
 const DEFAULT_BASE_URL = 'http://localhost:3001';
 
 function configDir() {
-  return process.env.APIHUB_CONFIG_DIR || path.join(os.homedir(), '.config', 'apihub');
+  return (
+    process.env.MOCKSHIFT_CONFIG_DIR ||
+    process.env.APIHUB_CONFIG_DIR ||
+    path.join(os.homedir(), '.config', 'mockshift')
+  );
 }
 
 function configPath() {
@@ -73,10 +77,18 @@ function normalizeBaseUrl(input) {
   return trimmed.replace(/\/+$/, '');
 }
 
+function envValue(env) {
+  const names = Array.isArray(env) ? env : [env];
+  for (const name of names) {
+    if (name && process.env[name] !== undefined) return process.env[name];
+  }
+  return undefined;
+}
+
 function resolveBaseUrl({ flag, env, config } = {}) {
   const fromFlag = normalizeBaseUrl(flag);
   if (fromFlag) return fromFlag;
-  const fromEnv = normalizeBaseUrl(env && process.env[env]);
+  const fromEnv = normalizeBaseUrl(envValue(env));
   if (fromEnv) return fromEnv;
   const fromConfig = config ? normalizeBaseUrl(config.baseUrl) : undefined;
   return fromConfig || DEFAULT_BASE_URL;
@@ -84,9 +96,8 @@ function resolveBaseUrl({ flag, env, config } = {}) {
 
 function resolveToken({ flag, env, config } = {}) {
   if (flag && String(flag).trim()) return String(flag).trim();
-  if (env && process.env[env] && String(process.env[env]).trim()) {
-    return String(process.env[env]).trim();
-  }
+  const value = envValue(env);
+  if (value && String(value).trim()) return String(value).trim();
   if (config && config.token && String(config.token).trim()) return String(config.token).trim();
   return undefined;
 }

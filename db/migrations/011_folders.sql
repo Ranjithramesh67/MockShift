@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 011_folders.sql
+-- Mockshift — 011_folders.sql
 -- Nested folders inside collections (Postman-style), plus optional
 -- placement of requests inside a folder.
 --

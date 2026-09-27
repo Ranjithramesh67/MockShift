@@ -191,7 +191,7 @@ function LoginForm() {
 
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 18, fontSize: 13.5 }}>
             <a className="pm-text-btn" href="/">
-              ← Back to API Hub site
+              ← Back to Mockshift site
             </a>
           </div>
         </div>

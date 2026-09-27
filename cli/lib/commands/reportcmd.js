@@ -12,11 +12,11 @@ const { buildMarkdown } = require('../report/markdown');
 
 const FORMATS = new Set(['junit', 'markdown']);
 
-const HELP = `Usage: apihub report <format> <runId | --from <json-file>> [-o <out-file>]
+const HELP = `Usage: mockshift report <format> <runId | --from <json-file>> [-o <out-file>]
 
 Convert a server run into a report. The run can be fetched live by id
 (GET /api/history/<runId>) or read from a JSON file produced by
-"apihub run --json" (or a raw server response).
+"mockshift run --json" (or a raw server response).
 
 Formats:
   junit     JUnit XML (testcase per assertion/request step)
@@ -47,7 +47,7 @@ async function readRunFromFile(file) {
 
 async function reportCommand(ctx, io) {
   const format = ctx.args[0];
-  if (!format) throw new UsageError('Usage: apihub report <junit|markdown> <runId> [--from <file>] [-o <out>]');
+  if (!format) throw new UsageError('Usage: mockshift report <junit|markdown> <runId> [--from <file>] [-o <out>]');
   if (!FORMATS.has(format)) {
     throw new UsageError(`Unknown report format "${format}" — expected junit or markdown.`);
   }
@@ -60,7 +60,7 @@ async function reportCommand(ctx, io) {
     const runId = ctx.args[1];
     if (!runId) {
       throw new UsageError(
-        'Provide a runId or pass --from <file> with a run JSON payload (from "apihub run --json").'
+        'Provide a runId or pass --from <file> with a run JSON payload (from "mockshift run --json").'
       );
     }
     const session = buildSession(ctx);

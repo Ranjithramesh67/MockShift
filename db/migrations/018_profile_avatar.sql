@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 018_profile_avatar.sql
+-- Mockshift — 018_profile_avatar.sql
 -- PR-1 profile surface: avatar columns on users.
 --
 -- An avatar is either a predefined preset key (rendered from frontend bundled

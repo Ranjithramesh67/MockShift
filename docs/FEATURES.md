@@ -1,4 +1,4 @@
-# API Hub / MockShift - Complete Feature Guide
+# Mockshift / MockShift - Complete Feature Guide
 
 This document describes every user-facing and programmatic feature in the
 repository, how the pieces fit together, and which parts are incomplete. It is
@@ -8,7 +8,7 @@ written for both operators and contributors.
 - Frontend: Next.js 14 app on port 3000 (`frontend`)
 - Database: PostgreSQL 15 (`apihub`) + Redis/BullMQ + isolated-vm
 - Portal A/B: separate app under `portal/` (backend 3102, frontend 3002)
-- SDK: `apihub-sdk` package under `sdk/`
+- SDK: `mockshift-sdk` package under `sdk/`
 
 The frontend reverse-proxies `/api/*` and `/mock/*` to the backend via
 `frontend/next.config.mjs`, so a browser only ever talks to one origin.
@@ -413,11 +413,11 @@ Token auth is implemented in `backend/src/api/tokenAuth.js` and is accepted by
 
 ---
 
-## 13. SDK (`apihub-sdk`)
+## 13. SDK (`mockshift-sdk`)
 
 Full details are in `docs/SDK.md`. Summary:
 
-- Syncs the routes an Express app defines into API Hub as collections, nested
+- Syncs the routes an Express app defines into Mockshift as collections, nested
   folders and testable requests.
 - `POST /api/sdk/sync` (Bearer token with `sdk` or `write` scope) accepts a
   manifest and upserts folders/requests by `external_key`, so repeat syncs
@@ -828,7 +828,7 @@ This only reduces completeness; it never exposes data the caller cannot read.
 3. **`api/openapi.json` is partial** - it documents the machine API but omits
    SDK and copilot endpoints.
 4. **SDK plan checkboxes are unticked** in
-   `docs/superpowers/plans/2026-09-10-apihub-sdk-route-sync.md` even though the
+   `docs/superpowers/plans/2026-09-10-mockshift-sdk-route-sync.md` even though the
    implementation exists; the plan document was not updated.
 5. **`SUPPORT` role** exists in the enum but has no rank or dedicated behavior.
 6. **Portal A/B** (`portal/`) is separate and its backend is not part of the
@@ -1055,7 +1055,7 @@ SMTP_URL                    e.g. smtp://user:pass@host:587
 SMTP_HOST, SMTP_PORT        port defaults to 587
 SMTP_SECURE=1               implicit TLS, usually port 465
 SMTP_USER, SMTP_PASS
-SMTP_FROM                   default "API Hub <noreply@keerainnovations.com>"
+SMTP_FROM                   default "Mockshift <noreply@keerainnovations.com>"
 APP_URL                     public base URL for links, default http://localhost:3000
 ```
 

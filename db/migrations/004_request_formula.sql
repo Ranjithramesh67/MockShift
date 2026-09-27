@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 004_request_formula.sql
+-- Mockshift — 004_request_formula.sql
 -- Adds the pre-request formula column to api_requests so the request editor's
 -- Formula tab is persisted and executed by the Run path.
 -- ============================================================================

@@ -660,7 +660,8 @@ router.get('/requests/:requestId', async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
-              body_parts, api_type, collection_id, folder_id, formula, assertions
+              body_parts, api_type, collection_id, folder_id, formula, assertions,
+              request_schema, response_schema
          FROM api_requests WHERE id = $1`,
       [req.params.requestId]
     );
@@ -695,6 +696,8 @@ router.get('/requests/:requestId', async (req, res, next) => {
         folderId: request.folder_id ?? null,
         formula: request.formula || '',
         assertions: request.assertions || [],
+        requestSchema: request.request_schema ?? null,
+        responseSchema: request.response_schema ?? null,
         workspaceId: ws,
         workspaceRole: access ? access.level : null,
         authProvider: normalizeProvider(provider.rows[0]),

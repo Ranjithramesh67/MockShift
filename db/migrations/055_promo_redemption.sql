@@ -1,4 +1,4 @@
--- API Hub — 055_promo_redemption.sql
+-- Mockshift — 055_promo_redemption.sql
 --
 -- Promo-code redemption at self-service checkout.
 --

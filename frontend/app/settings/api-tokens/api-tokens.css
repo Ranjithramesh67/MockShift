@@ -249,3 +249,54 @@
   font-size: 11px;
   color: var(--text-muted);
 }
+
+/* SDK config (mockshift.json) generated with an sdk-scoped token. */
+.apitoken-sdk {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.apitoken-sdk-title {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.apitoken-sdk .apitoken-secret-row {
+  align-items: stretch;
+}
+
+.apitoken-sdk-code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  white-space: pre;
+  user-select: all;
+}
+
+.apitoken-sdk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .apitoken-sdk-code {
+    max-height: 160px;
+  }
+}
+

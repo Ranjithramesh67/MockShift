@@ -33,7 +33,7 @@ test('posts the manifest with a Bearer token and returns the body', async () => 
   server.close();
 });
 
-test('throws ApiHubError with the status on a non-2xx response', async () => {
+test('throws MockshiftError with the status on a non-2xx response', async () => {
   const server = await startServer((req, res) => {
     res.writeHead(403, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'nope' }));

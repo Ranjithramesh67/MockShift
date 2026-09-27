@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 041_individual_llm.sql
+-- Mockshift — 041_individual_llm.sql
 -- Individual "bring your own LLM" configuration, gated by a platform-admin
 -- global toggle.
 --

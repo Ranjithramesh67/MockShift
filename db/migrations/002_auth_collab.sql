@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 002_auth_collab.sql
+-- Mockshift — 002_auth_collab.sql
 -- Collaborative platform additions:
 --   1. Global user role + active flag (drives the admin panel).
 --   2. Teams belong to an organization; teams can be shared into workspaces

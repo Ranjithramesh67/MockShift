@@ -1,5 +1,5 @@
 -- ============================================================================
--- API Hub — 017_portal_self_service.sql
+-- Mockshift — 017_portal_self_service.sql
 -- Portal A (A5) subscriber self-service support.
 --
 -- Customer-created accounts are global role EDITOR, which is deliberately NOT

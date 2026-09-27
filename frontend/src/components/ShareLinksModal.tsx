@@ -110,7 +110,7 @@ export function ShareLinksModal({
         <>
           <p className="hint">
             Anyone with this link can view <strong>{itemName}</strong> and its latest state — read-only.
-            Viewers must be signed in to API Hub (no paid plan needed).
+            Viewers must be signed in to Mockshift (no paid plan needed).
           </p>
           <div className="share-url-row">
             <input
