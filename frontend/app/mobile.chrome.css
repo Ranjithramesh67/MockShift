@@ -105,6 +105,27 @@
     display: none;
   }
 
+  /* Project switcher: the full project name is too wide on tablets/phones and
+     collided with the neighbouring search/views/avatar controls. Collapse the
+     trigger to word initials inside a narrow button; the dropdown, the title
+     and the aria-label keep the full name. */
+  .top-bar .project-switcher-button {
+    max-width: 72px;
+    gap: 4px;
+    padding: 0 8px;
+  }
+  .top-bar .project-switcher-name {
+    display: none;
+  }
+  .top-bar .project-switcher-abbr {
+    display: inline;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
   /* Import cURL / Test cURL move into the avatar menu on tablet & phone so the
      bar never has to squeeze (their menu entries are mobile-only). */
   .top-bar-actions > [data-testid="topbar-import-curl"],
@@ -316,6 +337,10 @@
     display: none !important;
   }
   .mobile-only-item {
+    display: none !important;
+  }
+  /* The initials label is mobile-only; desktop shows the full project name. */
+  .project-switcher-abbr {
     display: none !important;
   }
 }

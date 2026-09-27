@@ -10,6 +10,22 @@ import { CreateModal } from './CreateModal';
 import { MockServersModal } from './MockServersModal';
 import { CheckIcon, ChevronIcon, LayersIcon, LockIcon, PlusIcon, ServerIcon } from './icons';
 
+// Mobile label for the project switcher: initials of each word (e.g.
+// "Boss Payments API" -> "BPA"). A single-word name keeps its first few
+// letters so it stays recognisable. The full name is always available in the
+// dropdown, the button title and its aria-label.
+function projectInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '—';
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+  const letters = words
+    .map((w) => w.match(/[a-z0-9]/i)?.[0] ?? '')
+    .join('')
+    .slice(0, 3)
+    .toUpperCase();
+  return letters || name.slice(0, 3).toUpperCase();
+}
+
 export function ProjectSwitcher() {
   const ws = useWorkspace();
   const { dispatch } = useApp();
@@ -79,19 +95,25 @@ export function ProjectSwitcher() {
 
   if (!ws.activeWorkspaceId && projects.length === 0) return null;
 
+  const activeLabel = active?.name ?? 'Select project';
+
   return (
     <div className="project-switcher" ref={wrapRef} data-testid="project-switcher">
       <button
         type="button"
         className="ghost-button project-switcher-button"
         data-testid="project-switcher-button"
-        aria-label="Project"
+        aria-label={`Project: ${activeLabel}`}
+        title={activeLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
         <LayersIcon size={14} />
-        <span className="project-switcher-name">{active?.name ?? 'Select project'}</span>
+        <span className="project-switcher-name">{activeLabel}</span>
+        <span className="project-switcher-abbr" aria-hidden="true">
+          {projectInitials(activeLabel)}
+        </span>
         <ChevronIcon size={12} />
       </button>
       {open && (
