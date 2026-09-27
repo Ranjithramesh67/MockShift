@@ -392,3 +392,33 @@ sequenceDiagram
 > `docs/superpowers/plans/2026-09-10-mockshift-sdk-route-sync.md` are still
 > unticked even though the implementation and tests exist. The plan document
 > should be updated or archived.
+
+---
+
+## 13. Publishing the npm package
+
+The SDK is published as `mockshift-sdk` (currently `0.2.0`); the name is
+unclaimed on the public registry and `sdk/package.json` is already
+release-ready (`files` whitelist, `prepublishOnly: npm test`, `repository`,
+`bin`, `exports`, TypeScript types).
+
+Short version:
+
+```bash
+cd sdk
+npm test
+npm pack --dry-run
+npm login
+npm publish
+git push origin master --follow-tags
+```
+
+- `sdk/README.md` is the public package page (install, quick start, config,
+  API).
+- `sdk/PUBLISHING.md` is the maintainer release guide: npm account/2FA setup,
+  preflight checks, `npm version` bumping, GitHub Actions automation with
+  `NPM_TOKEN` + `--provenance`, and alternatives (GitHub Packages, Verdaccio,
+  install-from-git).
+- Publishing requires an npm account and token, which are not present in this
+  environment (`npm whoami` → `ENEEDAUTH`), so the actual `npm publish` must be
+  run by a maintainer or CI.
