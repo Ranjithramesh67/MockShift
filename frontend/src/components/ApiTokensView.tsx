@@ -172,6 +172,17 @@ function SdkConfigPanel({
       <div className="apitoken-sdk-actions">
         <CopyButton value={snippet} label="Copy snippet" testId="apitoken-sdk-snippet-copy" />
       </div>
+      <p className="profile-field-hint">
+        New to the SDK? Follow the{' '}
+        <a
+          href="https://github.com/Ranjithramesh67/MockShift/blob/master/docs/GETTING_STARTED_SDK.md"
+          target="_blank"
+          rel="noreferrer"
+        >
+          implementation guide
+        </a>
+        .
+      </p>
     </div>
   );
 }

@@ -12,6 +12,9 @@ The SDK can:
 - **Honour include/exclude** prefixes and custom path rules.
 - Read a portal-generated **`mockshift.json`** config file, so app code stays minimal.
 
+New here? Follow the step-by-step guide:
+[Implement Mockshift in your application](https://github.com/Ranjithramesh67/MockShift/blob/master/docs/GETTING_STARTED_SDK.md).
+
 ## Install
 
 ```bash

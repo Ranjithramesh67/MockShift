@@ -10,6 +10,10 @@ the hub.
 - Backend manifest helpers: `backend/src/api/sdkManifest.js`
 - Migrations: `db/migrations/037_sdk_sync.sql`, `db/migrations/061_sdk_response_schema.sql`
 
+> **Implementing it for the first time?** Start with the walkthrough in
+> `docs/GETTING_STARTED_SDK.md` (portal token -> install -> attach -> verify ->
+> capture). This file is the deeper reference.
+
 ---
 
 ## 1. Installation
