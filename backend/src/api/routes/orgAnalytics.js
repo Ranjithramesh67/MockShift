@@ -181,7 +181,8 @@ router.get(
                JOIN workspaces w ON w.id = c.workspace_id
               WHERE w.organization_id = $1 AND rh.user_id IS NOT NULL
               GROUP BY rh.user_id
-           ) runs ON runs.user_id = om.user_id
+            ) runs ON runs.user_id = om.user_id
+          WHERE om.org_id = $1
           ORDER BY (
             COALESCE(pj.c, 0) + COALESCE(ws.c, 0) + COALESCE(col.c, 0) +
             COALESCE(fd.c, 0) + COALESCE(req.c, 0) + COALESCE(ms.c, 0)

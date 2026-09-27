@@ -115,6 +115,15 @@ test('org analytics member leaderboard credits the creator', async () => {
   assert.ok(me.collections_created >= 1);
   assert.ok(me.mock_servers_created >= 1);
   assert.ok(me.workspaces_created >= 1);
+
+  // The leaderboard must be scoped to the requested org: a user from another
+  // org must never leak in, and the row count must match the summary members.
+  assert.ok(
+    res.json.members.every((m) => m.user_id !== outsider.id),
+    'members from other orgs must not appear'
+  );
+  const summary = await admin.client.api('GET', `/api/orgs/${adminOrgId}/analytics`);
+  assert.equal(res.json.members.length, summary.json.summary.members);
 });
 
 test('org analytics is forbidden to a non-member', async () => {
