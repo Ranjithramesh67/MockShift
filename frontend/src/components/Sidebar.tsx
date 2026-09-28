@@ -115,40 +115,40 @@ function WorkspaceChips({
         </button>
       )}
       {w.role && (
-        <button
-          type="button"
-          className="icon-button workspace-chip-share"
-          title={`Share link for ${w.name}`}
-          aria-label={`Share link for ${w.name}`}
-          data-testid={`share-workspace-${w.name}`}
-          onClick={() => onOpenShareLink({ id: w.id, name: w.name })}
-        >
-          <ShareIcon size={16} />
-        </button>
-      )}
-      {w.role && (
-        <button
-          type="button"
-          className="icon-button danger workspace-chip-delete"
-          title="Delete workspace"
-          aria-label={`Delete workspace ${w.name}`}
-          data-testid={`delete-workspace-${w.name}`}
-          disabled={w.name === 'My Workspace'}
-          onClick={() => {
-            if (w.name === 'My Workspace') return;
-            if (
-              window.confirm(
-                `Delete workspace "${w.name}"? This removes all of its projects, collections and requests.`
-              )
-            ) {
-              ws.deleteWorkspace(w.id).catch((err) =>
-                alert(err instanceof Error ? err.message : 'Failed to delete workspace')
-              );
-            }
-          }}
-        >
-          <TrashIcon size={16} />
-        </button>
+        <span className="workspace-chip-actions">
+          <button
+            type="button"
+            className="icon-button workspace-chip-share"
+            title={`Share link for ${w.name}`}
+            aria-label={`Share link for ${w.name}`}
+            data-testid={`share-workspace-${w.name}`}
+            onClick={() => onOpenShareLink({ id: w.id, name: w.name })}
+          >
+            <ShareIcon size={15} />
+          </button>
+          <button
+            type="button"
+            className="icon-button danger workspace-chip-delete"
+            title="Delete workspace"
+            aria-label={`Delete workspace ${w.name}`}
+            data-testid={`delete-workspace-${w.name}`}
+            disabled={w.name === 'My Workspace'}
+            onClick={() => {
+              if (w.name === 'My Workspace') return;
+              if (
+                window.confirm(
+                  `Delete workspace "${w.name}"? This removes all of its projects, collections and requests.`
+                )
+              ) {
+                ws.deleteWorkspace(w.id).catch((err) =>
+                  alert(err instanceof Error ? err.message : 'Failed to delete workspace')
+                );
+              }
+            }}
+          >
+            <TrashIcon size={15} />
+          </button>
+        </span>
       )}
     </div>
   );

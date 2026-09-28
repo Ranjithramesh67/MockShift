@@ -1312,60 +1312,46 @@ body.is-col-dragging .sidebar {
   white-space: nowrap;
 }
 
-.workspace-chip-delete {
-  position: absolute;
-  right: -10px;
-  top: -10px;
-  z-index: 2;
-  width: 28px;
-  height: 28px;
+.workspace-chip-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-width 0.18s var(--ease), opacity 0.14s var(--ease);
+}
+
+.workspace-chip-wrap:hover .workspace-chip-actions,
+.workspace-chip-wrap:focus-within .workspace-chip-actions {
+  max-width: 72px;
+  opacity: 1;
+}
+
+/* Touch devices have no hover state, so keep the actions reachable. */
+@media (hover: none) {
+  .workspace-chip-actions {
+    max-width: 72px;
+    opacity: 1;
+  }
+}
+
+.workspace-chip-actions .icon-button {
+  width: 27px;
+  height: 27px;
+  min-width: 27px;
   padding: 0;
   border-radius: 50%;
   background: var(--bg-panel);
   border: 1px solid var(--border);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
-  opacity: 0;
-  transform: scale(0.8);
-  transition: opacity var(--speed) var(--ease), transform var(--speed) var(--ease);
+  flex: 0 0 auto;
 }
 
-.workspace-chip-wrap:hover .workspace-chip-delete,
-.workspace-chip-wrap:focus-within .workspace-chip-delete {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.workspace-chip-delete svg {
-  width: 16px;
-  height: 16px;
-}
-
-.workspace-chip-share {
-  position: absolute;
-  right: 20px;
-  top: -10px;
-  z-index: 2;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
-  opacity: 0;
-  transform: scale(0.8);
-  transition: opacity var(--speed) var(--ease), transform var(--speed) var(--ease);
-}
-
-.workspace-chip-wrap:hover .workspace-chip-share,
-.workspace-chip-wrap:focus-within .workspace-chip-share {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.workspace-chip-share svg {
-  width: 16px;
-  height: 16px;
+.workspace-chip-actions .icon-button.workspace-chip-share svg,
+.workspace-chip-actions .icon-button.workspace-chip-delete svg {
+  width: 15px;
+  height: 15px;
 }
 
 .vis-dot {
