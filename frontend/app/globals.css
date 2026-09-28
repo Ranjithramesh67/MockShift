@@ -1314,14 +1314,16 @@ body.is-col-dragging .sidebar {
 
 .workspace-chip-delete {
   position: absolute;
-  right: -8px;
-  top: -8px;
-  width: 24px;
-  height: 24px;
+  right: -10px;
+  top: -10px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border-radius: 50%;
   background: var(--bg-panel);
   border: 1px solid var(--border);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
   opacity: 0;
   transform: scale(0.8);
   transition: opacity var(--speed) var(--ease), transform var(--speed) var(--ease);
@@ -1334,20 +1336,22 @@ body.is-col-dragging .sidebar {
 }
 
 .workspace-chip-delete svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
 }
 
 .workspace-chip-share {
   position: absolute;
-  right: 18px;
-  top: -8px;
-  width: 24px;
-  height: 24px;
+  right: 20px;
+  top: -10px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border-radius: 50%;
   background: var(--bg-panel);
   border: 1px solid var(--border);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
   opacity: 0;
   transform: scale(0.8);
   transition: opacity var(--speed) var(--ease), transform var(--speed) var(--ease);
@@ -1360,8 +1364,8 @@ body.is-col-dragging .sidebar {
 }
 
 .workspace-chip-share svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
 }
 
 .vis-dot {

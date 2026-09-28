@@ -123,7 +123,7 @@ function WorkspaceChips({
           data-testid={`share-workspace-${w.name}`}
           onClick={() => onOpenShareLink({ id: w.id, name: w.name })}
         >
-          <ShareIcon size={12} />
+          <ShareIcon size={16} />
         </button>
       )}
       {w.role && (
@@ -147,7 +147,7 @@ function WorkspaceChips({
             }
           }}
         >
-          <TrashIcon size={12} />
+          <TrashIcon size={16} />
         </button>
       )}
     </div>
