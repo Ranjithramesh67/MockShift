@@ -4,7 +4,7 @@
 // cancel-at-period-end / reactivate, plan change (routes through the A4
 // checkout), invoice history, account + sign out.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   cancelSubscription,
   fetchAccountOverview,
@@ -57,6 +57,7 @@ export default function AccountView() {
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [wantChange, setWantChange] = useState(false);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -135,10 +136,28 @@ export default function AccountView() {
     setSwitcherOpen((open) => !open);
   }, [plans]);
 
+  // The main app's profile "Change plan" link lands here with ?change=1 so the
+  // upgrade options are shown without an extra click.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    setWantChange(params.get('change') === '1');
+  }, []);
+
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!wantChange || autoOpened.current) return;
+    if (status !== 'ready' || !data?.current) return;
+    autoOpened.current = true;
+    void openSwitcher();
+  }, [wantChange, status, data, openSwitcher]);
+
   const onSignOut = useCallback(async () => {
     await signOut();
     window.location.assign('/');
   }, []);
+
+  const signInHref = `/login?next=${encodeURIComponent(wantChange ? '/account?change=1' : '/account')}`;
 
   if (status === 'loading') {
     return (
@@ -158,11 +177,11 @@ export default function AccountView() {
           </span>
           <h2>Sign in to see your subscription</h2>
           <p>
-            Your account, current plan, invoices and cancel / change controls live here. Use the same
-            credentials you chose at checkout.
+            Sign in with your Mockshift account to see your current plan, upgrade options,
+            invoices and cancel / change controls.
           </p>
           <div className="ac-actions">
-            <a className="ac-btn ac-btn-primary" href="/login?next=/account">
+            <a className="ac-btn ac-btn-primary" href={signInHref}>
               Sign in
             </a>
             <a className="ac-btn ac-btn-ghost" href="/#pricing">

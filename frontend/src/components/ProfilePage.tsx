@@ -161,9 +161,7 @@ function SubscriptionCard({ profile }: { profile: Profile }) {
   const trialEnd = sub.status === 'TRIALING' ? fmtDate(sub.trial_ends_at) : '';
   const periodLabel = sub.cancel_at_period_end ? 'Valid through' : 'Renews on';
   const manageHref = portalUrlFor('/account');
-  const changeHref = portalUrlFor(
-    `/checkout?plan=${encodeURIComponent(sub.plan.key)}&cycle=${encodeURIComponent(sub.billing_cycle)}`
-  );
+  const changeHref = portalUrlFor('/account?change=1');
 
   return (
     <section className="profile-card profile-sub-card" data-testid="profile-sub-card" aria-labelledby="profile-sub-title">
