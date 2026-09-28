@@ -33,6 +33,44 @@ function cycleLabel(cycle: string): string {
   return cycle === 'YEARLY' ? 'Yearly' : 'Monthly';
 }
 
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      width="16"
+      height="16"
+      aria-hidden="true"
+      className="check-ic"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 10.5 8.2 15 16 6" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      width="16"
+      height="16"
+      aria-hidden="true"
+      className={`ac-switch-chevron${open ? ' open' : ''}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m5 8 5 5 5-5" />
+    </svg>
+  );
+}
+
 // L5/L6 — "Plan usage" rows: live org-pool counters against the resolved
 // plan's caps. `limit === null` means the plan does not cap the resource.
 type UsageRow = { label: string; used: number; limit: number | null };
@@ -58,6 +96,7 @@ export default function AccountView() {
   const [busy, setBusy] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [wantChange, setWantChange] = useState(false);
+  const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -355,20 +394,64 @@ export default function AccountView() {
                         const href = price
                           ? `/checkout?plan=${encodeURIComponent(p.key)}&cycle=${p.billing_cycles.includes(activeCycle as 'MONTHLY' | 'YEARLY') ? activeCycle : 'MONTHLY'}`
                           : null;
+                        const open = expandedPlan === p.key;
+                        const features = Array.isArray(p.features)
+                          ? p.features.filter((f) => typeof f === 'string' && f.trim() !== '')
+                          : [];
+                        const monthly = p.price_monthly ? formatMoney(p.price_monthly) : null;
+                        const yearly = p.price_yearly ? formatMoney(p.price_yearly) : null;
+                        const panelId = `account-switch-details-${p.key}`;
                         return (
-                          <li key={p.key} className="ac-switch-row">
-                            <span>
-                              <strong>{p.name}</strong>
-                              <span className="ac-muted">{p.tagline}</span>
-                            </span>
-                            <span className="ac-switch-price">{price ? `${price}/mo` : 'Custom'}</span>
-                            {href ? (
-                              <a className="ac-btn ac-btn-primary ac-btn-sm" href={href} data-testid={`account-switch-plan-${p.key}`}>
-                                {p.key === 'free' ? 'Switch to Free' : 'Choose'}
-                              </a>
-                            ) : (
-                              <span className="ac-muted ac-contact-sales">Contact sales</span>
-                            )}
+                          <li key={p.key} className="ac-switch-item">
+                            <div className="ac-switch-row">
+                              <button
+                                type="button"
+                                className="ac-switch-head"
+                                aria-expanded={open}
+                                aria-controls={panelId}
+                                onClick={() => setExpandedPlan((prev) => (prev === p.key ? null : p.key))}
+                                data-testid={`account-switch-toggle-${p.key}`}
+                              >
+                                <span className="ac-switch-head-text">
+                                  <strong>{p.name}</strong>
+                                  {p.tagline ? <span className="ac-muted">{p.tagline}</span> : null}
+                                </span>
+                                <ChevronIcon open={open} />
+                              </button>
+                              <span className="ac-switch-price">{price ? `${price}/mo` : 'Custom'}</span>
+                              {href ? (
+                                <a className="ac-btn ac-btn-primary ac-btn-sm" href={href} data-testid={`account-switch-plan-${p.key}`}>
+                                  {p.key === 'free' ? 'Switch to Free' : 'Choose'}
+                                </a>
+                              ) : (
+                                <span className="ac-muted ac-contact-sales">Contact sales</span>
+                              )}
+                            </div>
+                            {open ? (
+                              <div className="ac-switch-panel" id={panelId} data-testid={panelId}>
+                                {p.description ? <p className="ac-switch-desc">{p.description}</p> : null}
+                                {monthly || yearly ? (
+                                  <div className="ac-switch-detail-price">
+                                    {monthly ? <span>{monthly}/mo</span> : null}
+                                    {yearly ? <span>{yearly}/yr</span> : null}
+                                  </div>
+                                ) : (
+                                  <div className="ac-switch-detail-price">
+                                    <span>Custom pricing — contact sales</span>
+                                  </div>
+                                )}
+                                {features.length > 0 ? (
+                                  <ul className="ac-switch-features">
+                                    {features.map((feature) => (
+                                      <li key={feature}>
+                                        <CheckIcon />
+                                        <span>{feature}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </li>
                         );
                       })}

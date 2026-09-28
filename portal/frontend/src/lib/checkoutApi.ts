@@ -9,6 +9,9 @@ export type CatalogPlan = {
   key: string;
   name: string;
   tagline: string | null;
+  description: string | null;
+  features: string[];
+  limits?: Record<string, unknown> | null;
   price_monthly: string | null;
   price_yearly: string | null;
   currency: string;

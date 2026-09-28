@@ -378,20 +378,54 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+.ac-switch-item {
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
 .ac-switch-row {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: 1rem;
-  background: var(--bg-panel-2);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-md);
   padding: 0.7rem 0.9rem;
 }
-.ac-switch-row > span:first-child {
+.ac-switch-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.ac-switch-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.ac-switch-head-text {
   display: flex;
   flex-direction: column;
   line-height: 1.35;
+  min-width: 0;
+}
+.ac-switch-head:hover strong {
+  color: var(--accent);
+}
+.ac-switch-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform var(--speed) var(--ease);
+}
+.ac-switch-chevron.open {
+  transform: rotate(180deg);
 }
 .ac-switch-price {
   font-family: var(--font-mono);
@@ -400,6 +434,48 @@
 }
 .ac-contact-sales {
   font-size: 12.5px;
+}
+.ac-switch-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  border-top: 1px solid var(--border-soft);
+  padding: 0.85rem 0.9rem 1rem;
+  background: var(--bg-panel);
+}
+.ac-switch-desc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ac-switch-detail-price {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.ac-switch-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.ac-switch-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.ac-switch-features .check-ic {
+  margin-top: 2px;
+  color: var(--accent);
 }
 
 /* ----------------------------------------------------------- invoices */
