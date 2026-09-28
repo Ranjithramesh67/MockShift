@@ -6,8 +6,9 @@ const {
   hashPassword,
   verifyPassword,
   createSessionToken,
-  sessionCookie,
-  clearSessionCookie,
+  sessionCookieHeaders,
+  clearSessionCookieHeaders,
+  cookieDomain,
   readSessionToken,
   verifySession,
 } = require('../authLib');
@@ -115,7 +116,7 @@ router.post('/signup', async (req, res, next) => {
         console.error('[auth] verification email failed:', err.message);
       }
 
-      res.setHeader('Set-Cookie', sessionCookie(createSessionToken(userId, rows[0].session_epoch)));
+      res.setHeader('Set-Cookie', sessionCookieHeaders(createSessionToken(userId, rows[0].session_epoch), req));
       res.status(201).json({ user: await userSummary(userId), emailVerification });
     } catch (err) {
       await client.query('ROLLBACK');
@@ -166,7 +167,7 @@ router.post('/login', async (req, res, next) => {
     } catch (err) {
       console.error('[auth] company sync failed:', err.message);
     }
-    res.setHeader('Set-Cookie', sessionCookie(createSessionToken(user.id, user.session_epoch)));
+    res.setHeader('Set-Cookie', sessionCookieHeaders(createSessionToken(user.id, user.session_epoch), req));
     res.json({ user: await userSummary(user.id) });
   } catch (err) {
     next(err);
@@ -332,12 +333,24 @@ router.post('/reset-password', async (req, res, next) => {
 });
 
 router.post('/logout', (req, res) => {
-  res.setHeader('Set-Cookie', clearSessionCookie());
+  res.setHeader('Set-Cookie', clearSessionCookieHeaders(req));
   res.json({ ok: true });
 });
 
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
+    // Existing sessions were minted before the shared parent-domain cookie was
+    // introduced, so they are host-only and invisible to the portal. Re-issue a
+    // domain-scoped cookie here (the session bootstrap the SPA calls on load) so
+    // an already-signed-in customer reaches the portal without logging in again.
+    // Only when a shared domain actually applies; host-only deployments keep the
+    // original cookie untouched.
+    if (cookieDomain(req)) {
+      res.setHeader(
+        'Set-Cookie',
+        sessionCookieHeaders(createSessionToken(req.user.id, req.user.session_epoch), req)
+      );
+    }
     res.json(await userSummary(req.user.id, req.pendingPayment || null));
   } catch (err) {
     next(err);

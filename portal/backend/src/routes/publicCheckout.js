@@ -466,7 +466,7 @@ router.post('/checkout', async (req, res, next) => {
     }
 
     if (accountSummary.created) {
-      res.setHeader('Set-Cookie', authLib.sessionCookie(authLib.createSessionToken(userId)));
+      res.setHeader('Set-Cookie', authLib.sessionCookieHeaders(authLib.createSessionToken(userId), req));
       // This is the production account-creation path (self-service signup is
       // closed), so the buyer is the one who sees the "verify your email"
       // banner. Issue the link here or nobody ever gets one. Best-effort: a
@@ -633,7 +633,7 @@ router.post('/checkout/resume', async (req, res, next) => {
       });
     }
 
-    res.setHeader('Set-Cookie', authLib.sessionCookie(authLib.createSessionToken(user.id)));
+    res.setHeader('Set-Cookie', authLib.sessionCookieHeaders(authLib.createSessionToken(user.id), req));
     res.json({
       ok: true,
       requiresPayment: true,

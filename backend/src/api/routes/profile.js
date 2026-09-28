@@ -22,7 +22,7 @@
 const { Router } = require('express');
 const { query } = require('../db');
 const { requireAuth } = require('../access');
-const { hashPassword, verifyPassword, createSessionToken, sessionCookie } = require('../authLib');
+const { hashPassword, verifyPassword, createSessionToken, sessionCookieHeaders } = require('../authLib');
 const { usernameError } = require('../username');
 const { resolveLimits, countPoolUsage, currentRunUsage } = require('../entitlements');
 const { RAIL_ORDER_KEYS, isRailOrderKey } = require('../menuAccess');
@@ -389,7 +389,7 @@ router.post('/password', async (req, res, next) => {
         RETURNING session_epoch`,
       [await hashPassword(new_password), req.user.id]
     );
-    res.setHeader('Set-Cookie', sessionCookie(createSessionToken(req.user.id, updated[0].session_epoch)));
+    res.setHeader('Set-Cookie', sessionCookieHeaders(createSessionToken(req.user.id, updated[0].session_epoch), req));
     res.json({ ok: true });
   } catch (err) {
     next(err);

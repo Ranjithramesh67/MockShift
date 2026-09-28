@@ -88,14 +88,67 @@ function secureCookieAttribute() {
   return on ? '; Secure' : '';
 }
 
-function sessionCookie(token) {
+// The main app and the subscription portal are separate origins that share the
+// same users table and session signature (see portal/backend/src/shared.js). A
+// host-only cookie never reaches the sibling origin, so the portal would keep
+// asking an already-signed-in customer to log in again. Widening the cookie to
+// a shared parent domain makes one login work on both:
+//   - Production sets COOKIE_DOMAIN explicitly (e.g. `.example.com`).
+//   - The online preview serves the apps as `<port>-<session>.monkeycode-ai.live`
+//     siblings, so the session-scoped parent (`<session>.monkeycode-ai.live`) is
+//     derived from the request host. Only the two ports of the same session
+//     share it, never another visitor's session.
+// Anything else stays host-only, which is the safe default.
+const PREVIEW_HOST_RE = /^\d+-(.+\.monkeycode-ai\.live)$/i;
+
+function requestHost(req) {
+  const raw =
+    (req && req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || '';
+  return String(raw).split(',')[0].trim().split(':')[0].toLowerCase();
+}
+
+function cookieDomain(req) {
+  const explicit = String(process.env.COOKIE_DOMAIN || '').trim();
+  if (explicit) return explicit.startsWith('.') ? explicit : `.${explicit}`;
+  const host = requestHost(req);
+  if (!host) return null;
+  const match = PREVIEW_HOST_RE.exec(host);
+  return match ? `.${match[1]}` : null;
+}
+
+function cookieDomainAttribute(req) {
+  const domain = cookieDomain(req);
+  return domain ? `; Domain=${domain}` : '';
+}
+
+function sessionCookie(token, req) {
   return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(
     SESSION_TTL_MS / 1000
+  )}${cookieDomainAttribute(req)}${secureCookieAttribute()}`;
+}
+
+function clearSessionCookie(req) {
+  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${cookieDomainAttribute(
+    req
   )}${secureCookieAttribute()}`;
 }
 
-function clearSessionCookie() {
+// A session cookie minted before the shared parent domain existed is host-only
+// and lingers alongside the new domain-scoped cookie (same name, different
+// domain => two distinct cookies). Expire that legacy cookie in the same
+// response so exactly one session cookie remains. Never the primary value.
+function hostOnlyClearCookie() {
   return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureCookieAttribute()}`;
+}
+
+function sessionCookieHeaders(token, req) {
+  const primary = sessionCookie(token, req);
+  return cookieDomain(req) ? [primary, hostOnlyClearCookie()] : primary;
+}
+
+function clearSessionCookieHeaders(req) {
+  const primary = clearSessionCookie(req);
+  return cookieDomain(req) ? [primary, hostOnlyClearCookie()] : primary;
 }
 
 function readSessionToken(req) {
@@ -118,5 +171,8 @@ module.exports = {
   createSessionToken,
   sessionCookie,
   clearSessionCookie,
+  sessionCookieHeaders,
+  clearSessionCookieHeaders,
+  cookieDomain,
   readSessionToken,
 };
