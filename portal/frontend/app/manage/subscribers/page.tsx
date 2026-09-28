@@ -4,6 +4,7 @@ import '../manage.css';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Alert,
   Card,
@@ -12,6 +13,7 @@ import {
   PageHead,
   Pager,
   StatusBadge,
+  can,
   formatDate,
   formatMoney,
 } from '@/components/manage/ui';
@@ -58,9 +60,29 @@ type ListResponse = {
 
 type PlanOption = { id: string; key: string; name: string; status: string };
 
+type MeResponse = { portalRole: string | null };
+
+type CreatedSubscriber = {
+  user: { id: string; name: string; email: string; username: string | null };
+  subscription: { id: string; status: string } | null;
+  temporaryPassword?: string;
+};
+
 type Filters = { search: string; status: string; planId: string; accountType: string };
 
+const ROLE_CHOICES = ['EDITOR', 'VIEWER'] as const;
+
+const EMPTY_FORM = {
+  name: '',
+  email: '',
+  password: '',
+  role: 'EDITOR' as (typeof ROLE_CHOICES)[number],
+  planId: '',
+  billingCycle: 'MONTHLY',
+};
+
 export default function SubscribersPage() {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [planId, setPlanId] = useState('');
@@ -76,11 +98,23 @@ export default function SubscribersPage() {
   const [plans, setPlans] = useState<PlanOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [meRole, setMeRole] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [created, setCreated] = useState<CreatedSubscriber | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const canManage = can(meRole, 'MANAGER');
 
   useEffect(() => {
     apiFetch<{ plans: PlanOption[] }>('/api/plans')
       .then((res) => setPlans(res.plans ?? []))
       .catch(() => setPlans([]));
+    apiFetch<MeResponse>('/api/me')
+      .then((res) => setMeRole(res.portalRole ?? null))
+      .catch(() => setMeRole(null));
   }, []);
 
   const reload = useCallback(async () => {
@@ -113,10 +147,59 @@ export default function SubscribersPage() {
     setPage(1);
   };
 
+  const openCreate = () => {
+    setForm({ ...EMPTY_FORM });
+    setFormError(null);
+    setCreated(null);
+    setCreateOpen(true);
+  };
+
+  const closeCreate = () => {
+    if (saving) return;
+    setCreateOpen(false);
+    setCreated(null);
+  };
+
+  const submitCreate = async (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError(null);
+    try {
+      const payload: Record<string, unknown> = {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        role: form.role,
+      };
+      if (form.password.trim()) payload.password = form.password;
+      if (form.planId) {
+        payload.planId = form.planId;
+        payload.billingCycle = form.billingCycle;
+      }
+      const res = await apiFetch<CreatedSubscriber>('/api/subscribers', {
+        method: 'POST',
+        body: payload,
+      });
+      setCreated(res);
+      await reload();
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : 'Failed to create the subscriber');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const options = useMemo(
     () =>
       plans
         .filter((p) => p.status === 'PUBLISHED' || p.status === 'DRAFT')
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [plans]
+  );
+
+  const grantPlans = useMemo(
+    () =>
+      plans
+        .filter((p) => p.status === 'PUBLISHED')
         .sort((a, b) => a.name.localeCompare(b.name)),
     [plans]
   );
@@ -126,6 +209,18 @@ export default function SubscribersPage() {
       <PageHead
         title="Subscribers"
         description="Users with a plan — search, filter by status or plan, and open a profile for lifecycle actions."
+        actions={
+          canManage ? (
+            <button
+              type="button"
+              className="pm-btn pm-btn-primary"
+              data-testid="subscriber-create"
+              onClick={openCreate}
+            >
+              New subscriber
+            </button>
+          ) : null
+        }
       />
 
       {error ? <Alert kind="error">{error}</Alert> : null}
@@ -296,6 +391,204 @@ export default function SubscribersPage() {
           />
         ) : null}
       </Card>
+
+      {createOpen && canManage ? (
+        <div
+          className="pm-modal-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeCreate();
+          }}
+        >
+          <div
+            className="pm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="New subscriber"
+          >
+            <div className="pm-modal-head">
+              <div className="pm-modal-title">
+                {created ? 'Subscriber created' : 'New subscriber'}
+              </div>
+              <button type="button" className="pm-modal-close" aria-label="Close" onClick={closeCreate}>
+                ×
+              </button>
+            </div>
+
+            {created ? (
+              <div className="pm-modal-body">
+                <p className="pm-hint">
+                  {created.user.name} ({created.user.email}) is ready
+                  {created.subscription ? ' with a plan assigned' : ''}.
+                </p>
+                {created.temporaryPassword ? (
+                  <div className="pm-field pm-field-full">
+                    <span className="pm-label">Temporary password (shown once)</span>
+                    <div className="pm-copy-row">
+                      <input className="pm-input" readOnly value={created.temporaryPassword} />
+                      <button
+                        type="button"
+                        className="pm-btn pm-btn-ghost"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(created.temporaryPassword ?? '');
+                          setCopied(true);
+                          window.setTimeout(() => setCopied(false), 1500);
+                        }}
+                      >
+                        {copied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    <span className="pm-hint">
+                      Share this with the user securely; it cannot be shown again.
+                    </span>
+                  </div>
+                ) : null}
+                <div className="pm-modal-foot">
+                  <button type="button" className="pm-btn pm-btn-ghost" onClick={closeCreate}>
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    className="pm-btn pm-btn-primary"
+                    data-testid="subscriber-created-open"
+                    onClick={() => router.push(`/manage/subscribers/${created.user.id}`)}
+                  >
+                    Open profile
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={submitCreate} noValidate>
+                <div className="pm-modal-body">
+                  {formError ? (
+                    <div style={{ marginBottom: 16 }}>
+                      <Alert kind="error">{formError}</Alert>
+                    </div>
+                  ) : null}
+                  <div className="pm-form-grid">
+                    <div className="pm-field pm-field-full">
+                      <label className="pm-label" htmlFor="sub-name">
+                        Name <span className="pm-req">*</span>
+                      </label>
+                      <input
+                        id="sub-name"
+                        className="pm-input"
+                        data-testid="subscriber-create-name"
+                        value={form.name}
+                        onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="pm-field pm-field-full">
+                      <label className="pm-label" htmlFor="sub-email">
+                        Email <span className="pm-req">*</span>
+                      </label>
+                      <input
+                        id="sub-email"
+                        type="email"
+                        className="pm-input"
+                        data-testid="subscriber-create-email"
+                        value={form.email}
+                        onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    </div>
+                    <div className="pm-field pm-field-full">
+                      <label className="pm-label" htmlFor="sub-password">
+                        Password
+                      </label>
+                      <input
+                        id="sub-password"
+                        type="text"
+                        className="pm-input"
+                        data-testid="subscriber-create-password"
+                        value={form.password}
+                        onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                        placeholder="Leave blank to generate one"
+                        autoComplete="new-password"
+                        spellCheck={false}
+                      />
+                      <span className="pm-hint">At least 8 characters, or leave blank to auto-generate.</span>
+                    </div>
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="sub-role">
+                        App role
+                      </label>
+                      <select
+                        id="sub-role"
+                        className="pm-select"
+                        data-testid="subscriber-create-role"
+                        value={form.role}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            role: e.target.value as (typeof ROLE_CHOICES)[number],
+                          }))
+                        }
+                      >
+                        {ROLE_CHOICES.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="sub-plan">
+                        Plan (optional)
+                      </label>
+                      <select
+                        id="sub-plan"
+                        className="pm-select"
+                        data-testid="subscriber-create-plan"
+                        value={form.planId}
+                        onChange={(e) => setForm((f) => ({ ...f, planId: e.target.value }))}
+                      >
+                        <option value="">No plan</option>
+                        {grantPlans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {form.planId ? (
+                      <div className="pm-field">
+                        <label className="pm-label" htmlFor="sub-cycle">
+                          Billing cycle
+                        </label>
+                        <select
+                          id="sub-cycle"
+                          className="pm-select"
+                          data-testid="subscriber-create-cycle"
+                          value={form.billingCycle}
+                          onChange={(e) => setForm((f) => ({ ...f, billingCycle: e.target.value }))}
+                        >
+                          <option value="MONTHLY">Monthly</option>
+                          <option value="YEARLY">Yearly</option>
+                        </select>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="pm-modal-foot">
+                  <button type="button" className="pm-btn pm-btn-ghost" onClick={closeCreate} disabled={saving}>
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="pm-btn pm-btn-primary"
+                    data-testid="subscriber-create-submit"
+                    disabled={saving}
+                  >
+                    {saving ? 'Creating…' : 'Create subscriber'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

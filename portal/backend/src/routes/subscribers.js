@@ -5,17 +5,23 @@
 // actions from CONTRACT.md live beneath it as /subscriptions/...,
 // /orders/... and /invoices/... sub-routes. Response shapes match CONTRACT.md.
 
+const crypto = require('crypto');
 const { Router } = require('express');
-const { pool, query } = require('../shared');
+const { pool, query, authLib } = require('../shared');
 const { access, roleAtLeast, requirePortalRole } = require('../portalAccess');
 const { logAudit } = require('../auditLog');
+const { allocateUsername } = require('../../../../backend/src/api/username');
 
 const router = Router();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const SUB_STATUSES = ['TRIALING', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED', 'EXPIRED'];
 const LIST_STATUSES = [...SUB_STATUSES, 'NONE'];
 const CYCLES = ['MONTHLY', 'YEARLY', 'CUSTOM'];
+// Roles a portal admin may assign while creating a subscriber account. Kept to
+// the non-privileged app roles so the portal cannot mint app ADMIN/MANAGER.
+const SUB_ROLE_CHOICES = ['EDITOR', 'VIEWER'];
 
 // Base: any portal role (VIEWER+). Mutations stack MANAGER/ADMIN per route.
 router.use(access.requireAuth);
@@ -140,6 +146,54 @@ function parsePaging(query) {
   const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
   const rawSize = Number.isFinite(pageSize) && pageSize >= 1 ? pageSize : 20;
   return { page: safePage, pageSize: Math.min(100, rawSize) };
+}
+
+/* --------------------------------------------------- Manual onboarding helpers */
+
+function normalizeEmail(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+// Random url-safe password for admin-created accounts; returned once when the
+// caller does not supply one.
+function generatePassword() {
+  return crypto.randomBytes(12).toString('base64url');
+}
+
+async function fetchPlan(planId, options) {
+  const { rows } = await query(
+    `SELECT id, key, name, currency, billing_cycles, trial_days FROM plans WHERE id = $1`,
+    [planId],
+    options
+  );
+  return rows[0] || null;
+}
+
+function defaultCycle(plan) {
+  if (plan.billing_cycles.includes('MONTHLY')) return 'MONTHLY';
+  return plan.billing_cycles[0] || 'MONTHLY';
+}
+
+// Insert a subscription for a user. Manual grants start now and default to
+// ACTIVE (or TRIALING when the plan ships a trial) until the admin overrides.
+async function grantSubscription({ userId, plan, cycle, status }, options) {
+  const chosenStatus = status || (plan.trial_days > 0 ? 'TRIALING' : 'ACTIVE');
+  const { rows } = await query(
+    `INSERT INTO subscriptions
+       (user_id, plan_id, status, billing_cycle,
+        current_period_start, current_period_end, trial_ends_at)
+     VALUES ($1, $2, $3, $4, now(),
+             CASE $4
+               WHEN 'MONTHLY' THEN now() + interval '1 month'
+               WHEN 'YEARLY' THEN now() + interval '1 year'
+               ELSE NULL
+             END,
+             CASE WHEN $5::int > 0 THEN now() + ($5::int || ' days')::interval ELSE NULL END)
+     RETURNING id`,
+    [userId, plan.id, chosenStatus, cycle, plan.trial_days],
+    options
+  );
+  return fetchSubscription(rows[0].id, options);
 }
 
 /* ------------------------------------------------------------- List users */
@@ -361,6 +415,221 @@ router.get('/:userId', requirePortalRole('SUPPORT'), async (req, res, next) => {
         paid_at: r.paid_at,
       })),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ------------------------------------------------- Create subscriber (MANAGER+) */
+
+// POST /api/subscribers
+// Body: { name, email, password?, role?, username?, planId?, billingCycle?, status? }
+// Creates a user account and optionally grants a plan, so an admin can onboard
+// a customer manually without waiting for self-service signup. When `password`
+// is omitted a random one is generated and returned as `temporaryPassword`.
+router.post('/', requirePortalRole('MANAGER'), async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = [];
+    const email = normalizeEmail(body.email);
+    const name = String(body.name ?? '').trim();
+    if (!name) errors.push('name is required');
+    if (!email || !EMAIL_RE.test(email)) errors.push('a valid email is required');
+
+    const role =
+      body.role === undefined || body.role === null || body.role === ''
+        ? 'EDITOR'
+        : String(body.role).toUpperCase();
+    if (!SUB_ROLE_CHOICES.includes(role)) {
+      errors.push(`role must be one of ${SUB_ROLE_CHOICES.join('/')}`);
+    }
+
+    let password =
+      body.password === undefined || body.password === null ? '' : String(body.password);
+    let generated = false;
+    if (password) {
+      if (password.length < 8) errors.push('password must be at least 8 characters');
+    } else {
+      password = generatePassword();
+      generated = true;
+    }
+
+    const status =
+      body.status === undefined || body.status === null || body.status === ''
+        ? null
+        : String(body.status).toUpperCase();
+    if (status && !SUB_STATUSES.includes(status)) {
+      errors.push(`status must be one of ${SUB_STATUSES.join('/')}`);
+    }
+    if (
+      body.billingCycle !== undefined &&
+      body.billingCycle !== null &&
+      body.billingCycle !== '' &&
+      !CYCLES.includes(String(body.billingCycle).toUpperCase())
+    ) {
+      errors.push(`billingCycle must be one of ${CYCLES.join('/')}`);
+    }
+
+    let plan = null;
+    const hasPlan = body.planId !== undefined && body.planId !== null && body.planId !== '';
+    if (hasPlan) {
+      if (!isUuid(String(body.planId))) {
+        errors.push('planId must be a valid id');
+      } else {
+        plan = await fetchPlan(String(body.planId), { userId: req.user.id });
+        if (!plan) errors.push('Plan not found');
+      }
+    }
+    if (errors.length) return res.status(400).json({ error: errors.join('; ') });
+
+    const existing = await query(
+      `SELECT id FROM users WHERE lower(email) = $1`,
+      [email],
+      { userId: req.user.id }
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'A user with that email already exists' });
+    }
+
+    let cycle = null;
+    if (plan) {
+      cycle = body.billingCycle
+        ? String(body.billingCycle).toUpperCase()
+        : defaultCycle(plan);
+      if (!plan.billing_cycles.includes(cycle)) {
+        return res
+          .status(400)
+          .json({ error: `Plan ${plan.key} does not support billing cycle ${cycle}` });
+      }
+    }
+
+    const username = await allocateUsername(query, {
+      username: body.username,
+      email,
+      name,
+    });
+    const { rows: userRows } = await query(
+      `INSERT INTO users (email, password_hash, name, role, username)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, name, username, role, is_active, created_at`,
+      [email, await authLib.hashPassword(password), name, role, username],
+      { userId: req.user.id }
+    );
+    const user = userRows[0];
+
+    let subscription = null;
+    if (plan) {
+      subscription = await grantSubscription(
+        { userId: user.id, plan, cycle, status },
+        { userId: req.user.id }
+      );
+    }
+
+    await logAudit(req, {
+      action: 'subscribers.create',
+      targetType: 'user',
+      targetId: user.id,
+      targetRef: email,
+      after: {
+        role,
+        ...(plan ? { plan: plan.key, billing_cycle: cycle, status: subscription.status } : {}),
+      },
+    });
+
+    res.status(201).json({
+      user,
+      subscription,
+      ...(generated ? { temporaryPassword: password } : {}),
+    });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'A user with that email already exists' });
+    }
+    next(err);
+  }
+});
+
+/* ------------------------------------------- Grant subscription (MANAGER+) */
+
+// POST /api/subscribers/:userId/subscriptions
+// Body: { planId, billingCycle?, status? }
+// Grants a plan to an existing user (manual comp / enterprise onboarding).
+router.post('/:userId/subscriptions', requirePortalRole('MANAGER'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    if (!isUuid(userId)) return res.status(404).json({ error: 'User not found' });
+
+    const body = req.body || {};
+    const errors = [];
+    const planId =
+      body.planId === undefined || body.planId === null ? '' : String(body.planId);
+    if (!planId) errors.push('planId is required');
+    else if (!isUuid(planId)) errors.push('planId must be a valid id');
+    if (
+      body.billingCycle !== undefined &&
+      body.billingCycle !== null &&
+      body.billingCycle !== '' &&
+      !CYCLES.includes(String(body.billingCycle).toUpperCase())
+    ) {
+      errors.push(`billingCycle must be one of ${CYCLES.join('/')}`);
+    }
+    const status =
+      body.status === undefined || body.status === null || body.status === ''
+        ? null
+        : String(body.status).toUpperCase();
+    if (status && !SUB_STATUSES.includes(status)) {
+      errors.push(`status must be one of ${SUB_STATUSES.join('/')}`);
+    }
+    if (errors.length) return res.status(400).json({ error: errors.join('; ') });
+
+    const { rows: userRows } = await query(`SELECT id FROM users WHERE id = $1`, [userId], {
+      userId: req.user.id,
+    });
+    if (!userRows[0]) return res.status(404).json({ error: 'User not found' });
+
+    const plan = await fetchPlan(planId, { userId: req.user.id });
+    if (!plan) return res.status(400).json({ error: 'Plan not found' });
+
+    const cycle = body.billingCycle
+      ? String(body.billingCycle).toUpperCase()
+      : defaultCycle(plan);
+    if (!plan.billing_cycles.includes(cycle)) {
+      return res
+        .status(400)
+        .json({ error: `Plan ${plan.key} does not support billing cycle ${cycle}` });
+    }
+
+    const existing = await query(
+      `SELECT id FROM subscriptions
+        WHERE user_id = $1 AND status IN ('TRIALING', 'ACTIVE', 'PAST_DUE')`,
+      [userId],
+      { userId: req.user.id }
+    );
+    if (existing.rows.length > 0) {
+      return res
+        .status(409)
+        .json({ error: 'User already has an active subscription — use change-plan instead' });
+    }
+
+    const subscription = await grantSubscription(
+      { userId, plan, cycle, status },
+      { userId: req.user.id }
+    );
+
+    await logAudit(req, {
+      action: 'subscriptions.grant',
+      targetType: 'subscription',
+      targetId: subscription.id,
+      targetRef: plan.key,
+      after: {
+        user_id: userId,
+        plan: plan.key,
+        billing_cycle: cycle,
+        status: subscription.status,
+      },
+    });
+
+    res.status(201).json({ ok: true, subscription });
   } catch (err) {
     next(err);
   }

@@ -106,6 +106,8 @@ export default function SubscriberDetailPage() {
   const [alert, setAlert] = useState<AlertMsg>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [changePlanFor, setChangePlanFor] = useState<string | null>(null);
+  const [assignPlanId, setAssignPlanId] = useState('');
+  const [assignCycle, setAssignCycle] = useState('MONTHLY');
 
   const canManage = can(meRole, 'MANAGER');
   const canAdmin = can(meRole, 'ADMIN');
@@ -184,6 +186,31 @@ export default function SubscriberDetailPage() {
     [load]
   );
 
+  const grantPlan = useCallback(async () => {
+    if (!assignPlanId) {
+      setAlert({ kind: 'error', text: 'Choose a plan to assign.' });
+      return;
+    }
+    setBusy('grant-plan');
+    setAlert(null);
+    try {
+      await apiFetch(`/api/subscribers/${encodeURIComponent(userId)}/subscriptions`, {
+        method: 'POST',
+        body: { planId: assignPlanId, billingCycle: assignCycle },
+      });
+      setAlert({ kind: 'ok', text: 'Plan assigned.' });
+      setAssignPlanId('');
+      await load();
+    } catch (err) {
+      setAlert({
+        kind: 'error',
+        text: err instanceof ApiError ? err.message : 'Request failed',
+      });
+    } finally {
+      setBusy(null);
+    }
+  }, [assignPlanId, assignCycle, userId, load]);
+
   if (loading && !detail) {
     return <LoadingBlock label="Loading subscriber…" />;
   }
@@ -210,6 +237,9 @@ export default function SubscriberDetailPage() {
 
   const user = detail.user;
   const changeablePlans = plans.filter((p) => p.status === 'PUBLISHED');
+  const hasActive = detail.subscriptions.some((s) =>
+    ['TRIALING', 'ACTIVE', 'PAST_DUE'].includes(s.status)
+  );
 
   return (
     <div data-testid="subscriber-detail">
@@ -346,6 +376,53 @@ export default function SubscriberDetailPage() {
             </table>
           </div>
         )}
+        {canManage && !hasActive && changeablePlans.length > 0 ? (
+          <div className="pm-inline-assign" data-testid="subscriber-assign-plan">
+            <div className="pm-field">
+              <label className="pm-label" htmlFor="assign-plan">
+                Assign a plan
+              </label>
+              <select
+                id="assign-plan"
+                className="pm-select"
+                data-testid="subscriber-assign-select"
+                value={assignPlanId}
+                onChange={(e) => setAssignPlanId(e.target.value)}
+              >
+                <option value="">Choose a plan…</option>
+                {changeablePlans.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="pm-field">
+              <label className="pm-label" htmlFor="assign-cycle">
+                Billing cycle
+              </label>
+              <select
+                id="assign-cycle"
+                className="pm-select"
+                data-testid="subscriber-assign-cycle"
+                value={assignCycle}
+                onChange={(e) => setAssignCycle(e.target.value)}
+              >
+                <option value="MONTHLY">Monthly</option>
+                <option value="YEARLY">Yearly</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              className="pm-btn pm-btn-primary"
+              data-testid="subscriber-assign-submit"
+              disabled={busy !== null || !assignPlanId}
+              onClick={grantPlan}
+            >
+              {busy === 'grant-plan' ? 'Assigning…' : 'Assign plan'}
+            </button>
+          </div>
+        ) : null}
       </Card>
 
       <Card title={`Orders (${detail.orders.length})`}>

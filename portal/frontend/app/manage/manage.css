@@ -924,3 +924,28 @@
     display: none;
   }
 }
+
+.pm-copy-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pm-copy-row .pm-input {
+  flex: 1 1 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.pm-inline-assign {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.pm-inline-assign .pm-field {
+  min-width: 180px;
+}
