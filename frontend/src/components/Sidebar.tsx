@@ -85,7 +85,7 @@ function WorkspaceChips({
   const ws = useWorkspace();
 
   const renderChip = (w: { id: string; name: string; visibility: string; role: string | null }) => (
-    <div key={w.id} className="workspace-chip-wrap">
+    <div key={w.id} className={`workspace-chip-wrap${ws.activeWorkspaceId === w.id ? ' is-active' : ''}`}>
       <button
         type="button"
         className={`workspace-chip ${ws.activeWorkspaceId === w.id ? 'active' : ''}`}
@@ -124,7 +124,7 @@ function WorkspaceChips({
             data-testid={`share-workspace-${w.name}`}
             onClick={() => onOpenShareLink({ id: w.id, name: w.name })}
           >
-            <ShareIcon size={15} />
+            <ShareIcon size={12} />
           </button>
           <button
             type="button"
@@ -146,7 +146,7 @@ function WorkspaceChips({
               }
             }}
           >
-            <TrashIcon size={15} />
+            <TrashIcon size={12} />
           </button>
         </span>
       )}

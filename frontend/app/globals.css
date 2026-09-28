@@ -1315,43 +1315,58 @@ body.is-col-dragging .sidebar {
 .workspace-chip-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   max-width: 0;
   overflow: hidden;
   opacity: 0;
   transition: max-width 0.18s var(--ease), opacity 0.14s var(--ease);
 }
 
+/* Reveal on hovering the chip, or when the action buttons themselves receive
+   keyboard focus. Deliberately NOT :focus-within on the wrap: selecting a
+   workspace leaves the chip button focused, which pinned the actions open. */
 .workspace-chip-wrap:hover .workspace-chip-actions,
-.workspace-chip-wrap:focus-within .workspace-chip-actions {
-  max-width: 72px;
+.workspace-chip-actions:focus-within {
+  max-width: 44px;
   opacity: 1;
 }
 
-/* Touch devices have no hover state, so keep the actions reachable. */
+/* Touch devices have no hover state; keep the actions reachable for the
+   selected chip only, so they are not shown against every workspace. */
 @media (hover: none) {
-  .workspace-chip-actions {
-    max-width: 72px;
+  .workspace-chip-wrap.is-active .workspace-chip-actions {
+    max-width: 44px;
     opacity: 1;
   }
 }
 
 .workspace-chip-actions .icon-button {
-  width: 27px;
-  height: 27px;
-  min-width: 27px;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
   padding: 0;
-  border-radius: 50%;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  color: var(--text-faint);
   flex: 0 0 auto;
+}
+
+.workspace-chip-actions .icon-button:hover:not(:disabled) {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+/* Keep the delete icon calm until it is actually hovered. */
+.workspace-chip-actions .icon-button.workspace-chip-delete {
+  color: var(--text-faint);
 }
 
 .workspace-chip-actions .icon-button.workspace-chip-share svg,
 .workspace-chip-actions .icon-button.workspace-chip-delete svg {
-  width: 15px;
-  height: 15px;
+  width: 12px;
+  height: 12px;
 }
 
 .vis-dot {
