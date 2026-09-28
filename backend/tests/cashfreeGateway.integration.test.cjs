@@ -35,19 +35,27 @@ function installTransport() {
     const parsed = JSON.parse(options.body || '{}');
     if ((options.method || 'GET') === 'POST' && /\/orders$/.test(url)) {
       const cf = { cf_order_id: `cf_${parsed.order_id.slice(0, 8)}`, payment_session_id: `ps_${parsed.order_id.slice(0, 8)}`, order_status: 'ACTIVE' };
+      // The provider resolves orders ONLY by the merchant order_id (the
+      // `order_id` sent to createOrder). It must NOT know the cf_order_id:
+      // fetching by cf_order_id reproduces the real 502 "Order Reference Id
+      // does not exist", so a regression that passes gateway_order_id is caught.
       remoteOrders.set(parsed.order_id, cf);
-      remoteOrders.set(cf.cf_order_id, cf);
       return { ok: true, status: 200, json: async () => cf };
     }
     const paymentsMatch = /\/orders\/([^/]+)\/payments$/.exec(url);
     if (paymentsMatch) {
       const id = decodeURIComponent(paymentsMatch[1]);
+      if (!remoteOrders.has(id)) {
+        return { ok: false, status: 404, json: async () => ({ message: 'Order Reference Id does not exist' }) };
+      }
       return { ok: true, status: 200, json: async () => remotePayments.get(id) || [] };
     }
     if (/\/orders\//.test(url)) {
       const id = decodeURIComponent(url.split('/orders/')[1]);
-      const cf = remoteOrders.get(id) || { cf_order_id: `cf_${id.slice(0, 8)}`, order_status: 'ACTIVE' };
-      return { ok: true, status: 200, json: async () => cf };
+      if (!remoteOrders.has(id)) {
+        return { ok: false, status: 404, json: async () => ({ message: 'Order Reference Id does not exist' }) };
+      }
+      return { ok: true, status: 200, json: async () => remoteOrders.get(id) };
     }
     return { ok: false, status: 404, json: async () => ({ message: 'not found' }) };
   });
@@ -125,17 +133,28 @@ test('cashfree session bootstrap returns a hosted checkout session', async () =>
   assert.equal(session.json.mode, 'sandbox');
   assert.match(session.json.payment_session_id, /^ps_/);
 
-  // The order now carries the provider ids.
+  // The create-order response must keep Cashfree's numeric cf_order_id distinct
+  // from the merchant order_id we sent, so the route stores them in the right
+  // columns (gateway_order_id vs gateway_reference).
+  assert.ok(session.json.cf_order_id, 'cf_order_id is returned');
+  assert.equal(session.json.order_id, orderId, 'merchant order id is the internal order id on the first attempt');
+  assert.notEqual(session.json.cf_order_id, session.json.order_id, 'cf_order_id differs from the merchant order_id');
+  assert.match(session.json.cf_order_id, /^cf_/);
+
+  // The order now carries the provider ids: cf_order_id on gateway_order_id,
+  // merchant order_id on gateway_reference.
   const status = await client.api('GET', `/api/public/gateway/cashfree/${orderId}/status`);
   assert.equal(status.status, 200);
   assert.equal(status.json.order.gateway.provider, 'CASHFREE');
+  assert.equal(status.json.order.gateway.reference, session.json.order_id);
 });
 
 test('a cancelled provider payment reports terminal with a reason', async () => {
   const { client, orderId } = await createUnpaidCustomer('cf-cancel@test.io');
   const session = await client.api('POST', `/api/public/gateway/cashfree/${orderId}/session`);
   assert.equal(session.status, 200, JSON.stringify(session.json));
-  remotePayments.set(session.json.cf_order_id, [
+  // Payments are keyed by the merchant order_id; a cf_order_id lookup misses.
+  remotePayments.set(orderId, [
     {
       payment_status: 'USER_DROPPED',
       payment_message: 'Payment was cancelled by the user',
@@ -155,7 +174,7 @@ test('a cancelled provider payment reports terminal with a reason', async () => 
 test('a declined provider payment is terminal but not cancelled', async () => {
   const { client, orderId } = await createUnpaidCustomer('cf-decline@test.io');
   const session = await client.api('POST', `/api/public/gateway/cashfree/${orderId}/session`);
-  remotePayments.set(session.json.cf_order_id, [
+  remotePayments.set(orderId, [
     { payment_status: 'FAILED', payment_message: 'Insufficient funds', payment_time: new Date().toISOString() },
   ]);
 
@@ -168,7 +187,9 @@ test('a declined provider payment is terminal but not cancelled', async () => {
 
 test('status poll finalizes a provider-paid order and re-opens the account', async () => {
   const { client: portalClient, orderId } = await createUnpaidCustomer('cf-poll@test.io');
-  await portalClient.api('POST', `/api/public/gateway/cashfree/${orderId}/session`);
+  const session = await portalClient.api('POST', `/api/public/gateway/cashfree/${orderId}/session`);
+  assert.equal(session.status, 200, JSON.stringify(session.json));
+  transportCalls.length = 0;
 
   // Provider reports PAID on the next poll.
   for (const cf of remoteOrders.values()) cf.order_status = 'PAID';
@@ -177,6 +198,18 @@ test('status poll finalizes a provider-paid order and re-opens the account', asy
   assert.equal(status.status, 200, JSON.stringify(status.json));
   assert.equal(status.json.order.status, 'PAID');
   assert.ok(status.json.subscription, 'an active subscription was created');
+
+  // Regression guard: the status poll must read the provider by the MERCHANT
+  // order_id (gateway_reference). Reading by cf_order_id (gateway_order_id)
+  // returns 404 against this stub and would leave the order PENDING forever.
+  assert.ok(
+    transportCalls.some((c) => c.url.endsWith(`/orders/${encodeURIComponent(orderId)}`)),
+    'the provider order was fetched by the merchant order_id'
+  );
+  assert.ok(
+    !transportCalls.some((c) => c.url.includes(encodeURIComponent(session.json.cf_order_id))),
+    'the cf_order_id was never used as a provider lookup key'
+  );
 
   const appClient = makeClient(base, portalClient.cookie);
   const login = await appClient.api('POST', '/api/auth/login', {

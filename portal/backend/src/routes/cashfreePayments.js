@@ -43,6 +43,15 @@ function internalOrderId(value) {
   return isUuid(candidate) ? candidate : null;
 }
 
+// Cashfree's GET /orders/{order_id} and /orders/{order_id}/payments expect the
+// MERCHANT order_id (stored in gateway_reference), NOT the numeric cf_order_id
+// (stored in gateway_order_id). Passing the cf_order_id makes Cashfree answer
+// 502 "Order Reference Id does not exist", which the callers swallow into a
+// perpetual PENDING poll.
+function cashfreeOrderRef(order) {
+  return order.gateway_reference || order.gateway_order_id;
+}
+
 // Resolve the local order from a webhook body: prefer cf_order_id (stored on
 // the order), then the Cashfree order_id (our uuid, possibly suffixed) which
 // may also be kept in gateway_reference on a retry.
@@ -134,7 +143,7 @@ gatewayRouter.post('/cashfree/:orderId/session', access.requireAuth, async (req,
 
     // Already have a provider order? Reconcile before creating another.
     if (order.gateway_order_id && order.gateway_provider === 'CASHFREE') {
-      const remote = await cashfree.fetchOrder(order.gateway_order_id).catch(() => null);
+      const remote = await cashfree.fetchOrder(cashfreeOrderRef(order)).catch(() => null);
       if (remote && cashfree.isPaidStatus(remote.order_status)) {
         return res.json(await settleFromProvider(order, { source: 'session_reconcile' }));
       }
@@ -210,8 +219,9 @@ gatewayRouter.get('/cashfree/:orderId/status', access.requireAuth, async (req, r
 
     let remoteStatus = order.gateway_status || null;
     let gatewayPayments = null;
-    if (order.gateway_order_id && cashfree.isConfigured()) {
-      const remote = await cashfree.fetchOrder(order.gateway_order_id).catch(() => null);
+    const providerRef = cashfreeOrderRef(order);
+    if (providerRef && cashfree.isConfigured()) {
+      const remote = await cashfree.fetchOrder(providerRef).catch(() => null);
       if (remote && cashfree.isPaidStatus(remote.order_status)) {
         return res.json(await settleFromProvider(order, { source: 'status_poll' }));
       }
@@ -220,7 +230,7 @@ gatewayRouter.get('/cashfree/:orderId/status', access.requireAuth, async (req, r
       // Surface the provider's payment attempts so the return page can tell a
       // declined/dropped payment from one that is still in flight instead of
       // polling forever.
-      const payments = await cashfree.fetchOrderPayments(order.gateway_order_id).catch(() => null);
+      const payments = await cashfree.fetchOrderPayments(providerRef).catch(() => null);
       if (payments !== null && payments !== undefined) {
         gatewayPayments = cashfree.summarizePayments(payments);
       }

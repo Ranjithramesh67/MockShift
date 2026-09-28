@@ -73,6 +73,14 @@ function returnUrl(orderId) {
   return `${portalUrl()}/pay/return?orderId=${encodeURIComponent(orderId)}`;
 }
 
+// Where Cashfree POSTs webhook events. Defaults to the portal's public webhook
+// route; CASHFREE_WEBHOOK_URL overrides it (e.g. a tunnel/ingress URL).
+function webhookUrl() {
+  const configured = String(process.env.CASHFREE_WEBHOOK_URL || '').trim();
+  if (configured) return configured;
+  return `${portalUrl()}/api/public/webhooks/cashfree`;
+}
+
 function headers() {
   return {
     'Content-Type': 'application/json',
@@ -147,7 +155,7 @@ function createOrder({ orderId, amount, currency, customer, note }) {
       // placeholder. Replace when a phone field is added to checkout.
       customer_phone: customer.phone || '9999999999',
     },
-    order_meta: { return_url: returnUrl(orderId) },
+    order_meta: { return_url: returnUrl(orderId), notify_url: webhookUrl() },
     order_note: note || undefined,
   };
   return request('POST', '/orders', body);
