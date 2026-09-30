@@ -3271,6 +3271,24 @@ body.is-col-dragging .sidebar {
   min-width: 0;
 }
 
+.share-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.share-add-row .text-input {
+  flex: 1;
+  min-width: 140px;
+}
+
+.share-add-row select.text-input {
+  flex: 0 0 auto;
+  min-width: 96px;
+}
+
 /* ==========================================================================
    Badges
    ========================================================================== */

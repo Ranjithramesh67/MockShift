@@ -379,6 +379,12 @@ export const workspaceApi = {
   unshare: (workspaceId: string, teamId: string) =>
     apiFetch(`/api/workspaces/${workspaceId}/teams/${teamId}`, { method: 'DELETE' }),
   teams: (workspaceId: string) => apiFetch<{ teams: Array<{ share_id: string; team_id: string; name: string; role: UserRole }> }>(`/api/workspaces/${workspaceId}/teams`),
+  members: (workspaceId: string) =>
+    apiFetch<{ members: Array<{ user_id: string; name: string; email: string; username: string | null; role: UserRole }> }>(`/api/workspaces/${workspaceId}/members`),
+  addMember: (workspaceId: string, input: { userId?: string; email?: string; username?: string; role?: UserRole }) =>
+    apiFetch<{ ok: true; userId: string; role: UserRole }>(`/api/workspaces/${workspaceId}/members`, { method: 'POST', body: input }),
+  removeMember: (workspaceId: string, userId: string) =>
+    apiFetch<{ ok: true }>(`/api/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' }),
   settings: (workspaceId: string) =>
     apiFetch<{ settings: { run_history_retention_days: number } }>(`/api/workspaces/${workspaceId}/settings`),
   updateSettings: (workspaceId: string, runHistoryRetentionDays: number) =>

@@ -197,6 +197,11 @@ export function TeamsModal({
 
       {!activeTeam && (
         <>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Teams are groups of people. Adding someone here only adds them to the team &mdash; to give
+            the whole team access to a workspace, use <strong>Workspace access</strong> on the
+            workspace instead.
+          </p>
           <section className="modal-section">
             <h3>Create team</h3>
             <form onSubmit={onCreateTeam} className="modal-form">
@@ -266,6 +271,7 @@ export function TeamsModal({
               </li>
             ))}
           </ul>
+          <p className="hint">Adding someone here adds them to this team. It does not share a workspace with them.</p>
           {activeTeam.myRole === 'ADMIN' && (
             <TeamInviteRow
               teamId={activeTeam.id}
