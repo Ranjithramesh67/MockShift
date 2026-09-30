@@ -6,7 +6,7 @@ const { requireAuth, getWorkspaceRole, roleAtLeast } = require('../access');
 const { requirePermissionFor, requireResourcePermission } = require('../permissions');
 const { getRetentionDays, MIN_RETENTION_DAYS } = require('../retention');
 const { logAudit } = require('../audit');
-const { checkCountGate, checkPublicSharingGate } = require('../entitlements');
+const { checkCountGate, checkPublicSharingGate, checkSeatGate, orgOfWorkspace } = require('../entitlements');
 
 const router = Router();
 router.use(requireAuth);
@@ -288,6 +288,103 @@ router.delete('/:workspaceId/teams/:teamId', requireResourcePermission('workspac
     next(err);
   }
 });
+
+// ------------------------------------------------- Individuals in workspace
+// Direct per-person grants stored in `workspace_members`. These are distinct
+// from team shares (`workspace_teams`), which grant every member of a team:
+// use these routes to share a workspace with one specific person.
+router.get('/:workspaceId/members', async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    const role = await getWorkspaceRole(req.user.id, workspaceId);
+    if (!role) return res.status(403).json({ error: 'No access to this workspace' });
+    const { rows } = await query(
+      `SELECT wm.user_id, wm.role, u.name, u.email, u.username
+         FROM workspace_members wm JOIN users u ON u.id = wm.user_id
+        WHERE wm.workspace_id = $1 ORDER BY u.name`,
+      [workspaceId]
+    );
+    res.json({ members: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post(
+  '/:workspaceId/members',
+  requireResourcePermission('workspace', 'workspace.manage_members'),
+  async (req, res, next) => {
+    try {
+      const { workspaceId } = req.params;
+      const { userId, email, username, role } = req.body || {};
+      const wsRole = await getWorkspaceRole(req.user.id, workspaceId);
+      if (!roleAtLeast(wsRole, 'ADMIN')) return res.status(403).json({ error: 'Workspace admin required' });
+
+      let targetId = userId || null;
+      const identifier = String(email || username || '').trim();
+      if (!targetId && identifier) {
+        const { rows } = await query(
+          `SELECT id FROM users
+            WHERE lower(email) = lower($1) OR lower(username) = lower($1)
+            LIMIT 1`,
+          [identifier]
+        );
+        targetId = rows[0]?.id || null;
+      }
+      if (!targetId) return res.status(404).json({ error: 'No matching user found' });
+
+      const roleValue = ['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'].includes(role) ? role : 'EDITOR';
+      const orgId = await orgOfWorkspace(workspaceId);
+      const seatGate = await checkSeatGate({ userId: req.user.id, orgId, targetUserId: targetId });
+      if (seatGate) return res.status(403).json(seatGate);
+
+      await query(
+        `INSERT INTO workspace_members (workspace_id, user_id, role)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+        [workspaceId, targetId, roleValue]
+      );
+      await logAudit({
+        actorId: req.user.id,
+        entityType: 'workspace',
+        entityId: workspaceId,
+        action: 'grant_workspace_access',
+        detail: { userId: targetId, role: roleValue },
+        ip: req.ip,
+      });
+      res.status(201).json({ ok: true, userId: targetId, role: roleValue });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.delete(
+  '/:workspaceId/members/:userId',
+  requireResourcePermission('workspace', 'workspace.manage_members'),
+  async (req, res, next) => {
+    try {
+      const { workspaceId, userId } = req.params;
+      const wsRole = await getWorkspaceRole(req.user.id, workspaceId);
+      if (!roleAtLeast(wsRole, 'ADMIN')) return res.status(403).json({ error: 'Workspace admin required' });
+      await query(`DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`, [
+        workspaceId,
+        userId,
+      ]);
+      await logAudit({
+        actorId: req.user.id,
+        entityType: 'workspace',
+        entityId: workspaceId,
+        action: 'revoke_workspace_access',
+        detail: { userId },
+        ip: req.ip,
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 module.exports = router;
 module.exports.listWorkspaces = listWorkspaces;

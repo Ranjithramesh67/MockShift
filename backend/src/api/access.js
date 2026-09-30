@@ -129,10 +129,18 @@ async function getWorkspaceRole(userId, workspaceId) {
     `WITH direct AS (
        SELECT role FROM workspace_members WHERE workspace_id = $2 AND user_id = $1
      ), via_team AS (
-       SELECT MAX(tm.role)::text AS role
+       -- The role granted by the workspace<->team SHARE (wt.role), not the
+       -- member's role inside the team. Using tm.role let a team's internal
+       -- role silently determine workspace access and made the "Shared with"
+       -- badge disagree with what was actually enforced.
+       SELECT wt.role::text AS role
          FROM workspace_teams wt
          JOIN team_members tm ON tm.team_id = wt.team_id
         WHERE wt.workspace_id = $2 AND tm.user_id = $1
+        ORDER BY CASE wt.role
+                   WHEN 'ADMIN' THEN 4 WHEN 'MANAGER' THEN 3
+                   WHEN 'EDITOR' THEN 2 WHEN 'VIEWER' THEN 1 ELSE 0 END DESC
+        LIMIT 1
      ), org_admin AS (
        SELECT w.organization_id AS org_id
          FROM workspaces w WHERE w.id = $2
