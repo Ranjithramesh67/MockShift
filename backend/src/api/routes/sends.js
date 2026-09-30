@@ -35,6 +35,7 @@
 
 const { Router } = require('express');
 const { query, pool } = require('../db');
+const { publish, roomKey } = require('../realtime');
 const { requireAuth, roleAtLeast, getWorkspaceRole, getProjectAccess } = require('../access');
 const { logAudit } = require('../audit');
 const { checkCountGate } = require('../entitlements');
@@ -867,11 +868,14 @@ async function serializeSend(row, { withSender, withRecipient } = {}) {
 
 async function notifyUser({ userId, title, body, kind, payload, link }) {
   try {
-    await query(
+    const { rows } = await query(
       `INSERT INTO notifications (user_id, title, body, kind, payload, link)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, user_id, title, body, kind, read, payload, link, created_at`,
       [userId, title, body || null, kind || 'send', JSON.stringify(payload || {}), link || null]
     );
+    // Push over SSE so the bell and inbox refresh without waiting for a poll.
+    publish(roomKey('user', userId), { type: 'notification', notification: rows[0] });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[sends] notification insert failed:', err.message);

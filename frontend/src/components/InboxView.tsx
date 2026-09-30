@@ -6,7 +6,9 @@ import { useAuth } from '@/lib/auth';
 import { sendsApi, ApiError, accessRequestApi, type Send, type SendAcceptedPath, type SendItemType, type SendStatus } from '@/lib/api';
 import { docsSharedApi } from '@/lib/docsApi';
 import { mergeMyRequests } from '@/lib/accessRequests';
+import { roomFor } from '@/lib/realtime';
 import { UserAvatar } from './UserAvatar';
+import { useRoomEvents } from './useRoomEvents';
 import {
   CheckIcon,
   ClockIcon,
@@ -488,6 +490,34 @@ export function InboxView() {
     else if (tab === 'sent') void loadOutbox();
     else void loadRequests();
   }, [tab, loadInbox, loadOutbox, loadRequests]);
+
+  // Auto-refresh so new sends / access requests appear without a manual reload:
+  // poll while visible, and refresh immediately when the tab regains focus.
+  useEffect(() => {
+    if (!user) return;
+    const refresh = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (tab === 'inbox') void loadInbox();
+      else if (tab === 'sent') void loadOutbox();
+      else void loadRequests();
+    };
+    const id = window.setInterval(refresh, 20000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [user, tab, loadInbox, loadOutbox, loadRequests]);
+
+  // Live refresh when a notification addressed to this user arrives over SSE.
+  useRoomEvents(roomFor('user', user?.id), (event) => {
+    if (String(event.type || '') !== 'notification') return;
+    if (tab === 'inbox') void loadInbox();
+    else if (tab === 'sent') void loadOutbox();
+    else void loadRequests();
+  });
 
   useEffect(() => {
     if (unauthorized) {
