@@ -19,6 +19,7 @@ import {
   type AuthProvider,
   type CollectionRunResult,
   type ContentTree,
+  type EphemeralRunInput,
   type Folder,
   type GlobalProject,
   type ProjectContentTree,
@@ -44,6 +45,7 @@ import {
   stripTransportData,
   readFileAsBase64,
 } from '@/lib/multipartParts';
+import { executeInBrowser, isLocalUrl, maybeLocal } from '@/lib/browserRunner';
 
 function contentTypeForBodyType(bt: string): RequestContentType {
   switch (bt) {
@@ -203,6 +205,8 @@ interface WorkspaceState {
   collectionRun: CollectionRunResult | null;
   collectionRunRunning: boolean;
   requestRunning: boolean;
+  runInBrowser: boolean;
+  setRunInBrowser: (value: boolean) => void;
   selectedFiles: Record<string, Record<string, File>>;
   setFileForPart: (requestId: string, partId: string, file: File | null) => void;
 
@@ -329,6 +333,24 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // True while a single request (saved, working copy or scratchpad) is being
   // executed through the run pipeline — drives the send/execution loader.
   const [requestRunning, setRequestRunning] = useState(false);
+  // Opt-in: execute requests that target the user's own machine (localhost /
+  // private hosts) from the browser, since the MockShift server cannot reach the
+  // caller's network. Persisted so the choice survives reloads.
+  const [runInBrowser, setRunInBrowserState] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('mockshift.runInBrowser') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setRunInBrowser = useCallback((value: boolean) => {
+    setRunInBrowserState(value);
+    try {
+      window.localStorage.setItem('mockshift.runInBrowser', value ? '1' : '0');
+    } catch {
+      /* ignore storage failures */
+    }
+  }, []);
   // Picked browser File objects for multipart file parts, keyed by request id
   // then part id. Files are never part of ApiRequest or the DB — they live here
   // in memory so they survive tab switches and are re-read at send time.
@@ -994,6 +1016,33 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [requestCopies, baselines]
   );
 
+  // Opt-in browser execution: when enabled and the (variable-substituted) URL
+  // targets the user's own machine (localhost / private hosts), resolve the
+  // request server-side then perform the fetch from this page so it reaches the
+  // user's network. Returns null to signal "run on the server as usual" — the
+  // feature is off, the host is clearly remote, or the body is multipart (Node
+  // FormData can't cross the wire).
+  const tryRunInBrowser = useCallback(
+    async (payload: EphemeralRunInput): Promise<RunResult | null> => {
+      if (!runInBrowser) return null;
+      if (!maybeLocal(payload.url || '')) return null;
+      const preparedRun = await contentApi.prepareRun(payload);
+      if (preparedRun.prepared.multipart || !isLocalUrl(preparedRun.prepared.url)) {
+        return null;
+      }
+      const outcome = await executeInBrowser(preparedRun.prepared);
+      return contentApi.completeRun({
+        ...payload,
+        prepared: preparedRun.prepared,
+        clientResponse: outcome.clientResponse,
+        error: outcome.error,
+        startedAt: outcome.startedAt,
+        finishedAt: outcome.finishedAt,
+      });
+    },
+    [runInBrowser]
+  );
+
   const runActiveRequest = useCallback(async () => {
     if (!activeRequest) return;
     if (requestRunningRef.current) return;
@@ -1049,7 +1098,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           persistHistory: !isDirty,
         });
       } else if (isDirty) {
-        result = await contentApi.runEphemeral({
+        const payload: EphemeralRunInput = {
           method: activeRequest.method,
           url: activeRequest.url,
           headers: activeRequest.headers,
@@ -1065,9 +1114,28 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           apiType: activeRequest.apiType,
           collectionId: activeCollectionId,
           persistHistory: false,
-        });
+        };
+        result = (await tryRunInBrowser(payload)) ?? (await contentApi.runEphemeral(payload));
       } else {
-        result = await contentApi.runRequest(activeRequest.id);
+        const payload: EphemeralRunInput = {
+          method: activeRequest.method,
+          url: activeRequest.url,
+          headers: activeRequest.headers,
+          queryParams: activeRequest.queryParams,
+          bodyType: activeRequest.bodyType,
+          bodyJson: activeRequest.bodyJson,
+          bodyParts:
+            activeRequest.bodyType === 'MULTIPART'
+              ? stripTransportData(activeRequest.bodyParts ?? [])
+              : [],
+          formula: activeRequest.formula,
+          assertions: activeRequest.assertions,
+          apiType: activeRequest.apiType,
+          collectionId: activeCollectionId,
+          id: activeRequest.id,
+          persistHistory: true,
+        };
+        result = (await tryRunInBrowser(payload)) ?? (await contentApi.runRequest(activeRequest.id));
       }
       setLastRun(result);
       // Keep the response for this request in memory so it can be restored when
@@ -1077,7 +1145,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       requestRunningRef.current = false;
       setRequestRunning(false);
     }
-  }, [activeRequest, isDirty, activeCollectionId, selectedFiles]);
+  }, [activeRequest, isDirty, activeCollectionId, selectedFiles, tryRunInBrowser]);
 
   // M8: scratchpad — execute an in-memory request shape (e.g. a pasted cURL)
   // via POST /api/runs without creating or saving a request. No history row.
@@ -1101,18 +1169,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       requestRunningRef.current = true;
       setRequestRunning(true);
       try {
-        const result = await contentApi.runEphemeral({
+        const payload: EphemeralRunInput = {
           ...input,
           collectionId: activeCollectionId,
           persistHistory: false,
-        });
+        };
+        const result = (await tryRunInBrowser(payload)) ?? (await contentApi.runEphemeral(payload));
         setLastRun(result);
       } finally {
         requestRunningRef.current = false;
         setRequestRunning(false);
       }
     },
-    [activeCollectionId]
+    [activeCollectionId, tryRunInBrowser]
   );
 
   const clearScratchpadRun = useCallback(() => {
@@ -1618,6 +1687,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       collectionRun,
       collectionRunRunning,
       requestRunning,
+      runInBrowser,
+      setRunInBrowser,
       selectedFiles,
       setFileForPart,
       openRequestIds,
@@ -1682,7 +1753,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       activeWorkspaceId, activeWorkspaceRole, activeProjectId, allProjects, tree, projectTree, projectTreeLoading,
       activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
       requestRuns,
-      collectionRun, collectionRunRunning, requestRunning, selectedFiles, setFileForPart,
+      collectionRun, collectionRunRunning, requestRunning, runInBrowser, setRunInBrowser, selectedFiles, setFileForPart,
       openRequestIds, activeRequestId, requestCopies,
       activateRequestTab, closeRequestTab, reopenLastClosedTab, isTabDirty,
       canUndoRequest, canRedoRequest, canGoBackRequest,

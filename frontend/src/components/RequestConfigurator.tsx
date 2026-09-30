@@ -42,6 +42,7 @@ import {
   CheckIcon,
   ShareIcon,
   HistoryIcon,
+  LaptopIcon,
 } from './icons';
 
 export function RequestConfigurator() {
@@ -272,6 +273,22 @@ export function RequestConfigurator() {
               {viewerSummary(viewers, user?.id).label}
             </span>
           )}
+          <button
+            type="button"
+            className={ws.runInBrowser ? 'ghost-button toggled-on' : 'ghost-button'}
+            data-testid="run-in-browser-toggle"
+            aria-pressed={ws.runInBrowser}
+            onClick={() => ws.setRunInBrowser(!ws.runInBrowser)}
+            title={
+              ws.runInBrowser
+                ? 'Local requests run in your browser: ON. Requests to localhost/private hosts execute from this page, reaching your machine.'
+                : 'Local requests run in your browser: OFF. Requests execute on the MockShift server.'
+            }
+            style={actionBtn}
+          >
+            <LaptopIcon size={14} />
+            Local
+          </button>
           <button
             type="button"
             className="primary-button"

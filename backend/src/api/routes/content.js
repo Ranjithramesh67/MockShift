@@ -4,7 +4,7 @@ const { Router } = require('express');
 const { query, pool } = require('../db');
 const { requireAuth, roleAtLeast, getProjectAccess, canReadWorkspace } = require('../access');
 const { requirePermissionFor, requireResourcePermission, orgIdForResource } = require('../permissions');
-const { runRequest, runInMemoryRequest, runTokenRequest } = require('../runner');
+const { runRequest, runInMemoryRequest, prepareInMemoryRequest, completeInMemoryRequest, runTokenRequest } = require('../runner');
 const { normalizeProvider, resolveAuthHeader } = require('../authToken');
 const { fireWorkflowEvent } = require('../workflowService');
 const { checkCountGate, checkSeatGate, checkPublicSharingGate, chargeRuns, orgOfProject, orgOfCollection } = require('../entitlements');
@@ -1014,6 +1014,69 @@ router.post('/runs', async (req, res, next) => {
     // that request and fire the usual ON_REQUEST / ON_RUN_FAILURE events so the
     // run behaves exactly like a stored-request run.
     if (id && req.body.persistHistory && result.runId) {
+      const projectId = await projectOfRequest(id);
+      if (projectId) await fireRequestRunEvents(id, projectId, result);
+    }
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------- Browser-executed runs
+// Resolve a request WITHOUT executing it, so the browser can perform the call
+// from the user's own network (localhost / private hosts the server cannot
+// reach). Same read-access gate as the ephemeral run endpoint.
+router.post('/runs/prepare', async (req, res, next) => {
+  try {
+    const { collectionId, id } = req.body || {};
+    if (collectionId) {
+      const projectId = await projectOfCollection(collectionId);
+      if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+      if (!(await canReadProjectContent(req.user.id, projectId))) {
+        return res.status(403).json({ error: 'No access to this collection' });
+      }
+    } else if (id) {
+      const projectId = await projectOfRequest(id);
+      if (!projectId || !(await canReadProjectContent(req.user.id, projectId))) {
+        return res.status(403).json({ error: 'No access to this request' });
+      }
+    }
+    const result = await prepareInMemoryRequest(req.body || {}, req.user.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Persist + evaluate a run the browser already executed (it reports the
+// response). Metered and event-fired exactly like a server-side run when the
+// run targets a stored request and persistHistory is set.
+router.post('/runs/complete', async (req, res, next) => {
+  try {
+    const { collectionId, id, persistHistory } = req.body || {};
+    let orgId = null;
+    if (collectionId) {
+      const projectId = await projectOfCollection(collectionId);
+      if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+      if (!(await canReadProjectContent(req.user.id, projectId))) {
+        return res.status(403).json({ error: 'No access to this collection' });
+      }
+      orgId = await orgOfProject(projectId);
+    }
+    if (id && persistHistory) {
+      const idProjectId = await projectOfRequest(id);
+      if (!idProjectId || !(await canReadProjectContent(req.user.id, idProjectId))) {
+        return res.status(403).json({ error: 'No access to this request' });
+      }
+      const runCharge = await chargeRuns({
+        userId: req.user.id,
+        orgId: idProjectId ? await orgOfProject(idProjectId) : orgId,
+      });
+      if (!runCharge.ok) return res.status(403).json(runCharge.body);
+    }
+    const result = await completeInMemoryRequest(req.body || {}, req.user.id);
+    if (id && persistHistory && result.runId) {
       const projectId = await projectOfRequest(id);
       if (projectId) await fireRequestRunEvents(id, projectId, result);
     }

@@ -25,7 +25,7 @@ import { AssertionsEditor } from './AssertionsEditor';
 import { SplitPane } from './SplitPane';
 import { ResponsePane } from './ResponsePane';
 import { ScratchpadSaveModal } from './ScratchpadSaveModal';
-import { SendIcon, SaveIcon, XIcon, RowsIcon, ListIcon, CodeIcon, FormulaIcon, CheckIcon } from './icons';
+import { SendIcon, SaveIcon, XIcon, RowsIcon, ListIcon, CodeIcon, FormulaIcon, CheckIcon, LaptopIcon } from './icons';
 
 type ScratchTab = 'params' | 'headers' | 'body' | 'formula' | 'tests';
 
@@ -200,6 +200,22 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
           onChange={(e) => onUrlChange(e.target.value)}
         />
         <div className="request-bar-actions" style={{ display: 'contents' }}>
+          <button
+            type="button"
+            className={ws.runInBrowser ? 'ghost-button toggled-on' : 'ghost-button'}
+            data-testid="scratchpad-run-in-browser-toggle"
+            aria-pressed={ws.runInBrowser}
+            onClick={() => ws.setRunInBrowser(!ws.runInBrowser)}
+            title={
+              ws.runInBrowser
+                ? 'Local requests run in your browser: ON. Requests to localhost/private hosts execute from this page, reaching your machine.'
+                : 'Local requests run in your browser: OFF. Requests execute on the MockShift server.'
+            }
+            style={actionBtn}
+          >
+            <LaptopIcon size={14} />
+            Local
+          </button>
           <button
             type="button"
             className="primary-button"

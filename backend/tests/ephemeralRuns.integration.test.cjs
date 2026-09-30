@@ -406,3 +406,127 @@ test('duplicate preserves body_parts', async () => {
   assert.equal(got.json.request.bodyType, 'MULTIPART');
   assert.deepEqual(got.json.request.bodyParts, MULTIPART_SAVED_PARTS, 'duplicate keeps bodyParts');
 });
+
+// ---------------------------------------------------------------------------
+// Browser-executed runs: prepare (resolve only) + complete (record a response
+// the browser already obtained). Used when a request targets localhost/private
+// hosts the MockShift server cannot reach.
+// ---------------------------------------------------------------------------
+
+test('POST /runs/prepare resolves variables and headers without executing', async () => {
+  const res = await admin.api('POST', '/api/runs/prepare', {
+    collectionId,
+    method: 'GET',
+    url: 'http://127.0.0.1:1/never-called/{{EPHEMERAL_VAR}}',
+    headers: [{ key: 'X-Test', value: '{{EPHEMERAL_VAR}}', enabled: true }],
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.json.runStatus, undefined, 'prepare never runs the request');
+  assert.equal(res.json.prepared.url, 'http://127.0.0.1:1/never-called/hello-from-env');
+  assert.equal(res.json.prepared.method, 'GET');
+  assert.equal(res.json.prepared.headers['X-Test'], 'hello-from-env');
+  assert.equal(res.json.prepared.multipart, false);
+  assert.equal(res.json.variables.EPHEMERAL_VAR, 'hello-from-env');
+  assert.equal(res.json.requestSnapshot.url, res.json.prepared.url);
+});
+
+test('POST /runs/prepare substitutes the body and flags multipart', async () => {
+  const text = await admin.api('POST', '/api/runs/prepare', {
+    collectionId,
+    method: 'POST',
+    url: `${mockBase}/vars`,
+    bodyType: 'RAW_TEXT',
+    bodyText: 'value={{EPHEMERAL_VAR}}',
+  });
+  assert.equal(text.status, 200);
+  assert.equal(text.json.prepared.body, 'value=hello-from-env', 'body is substituted');
+
+  const mp = await admin.api('POST', '/api/runs/prepare', {
+    method: 'POST',
+    url: `${mockBase}/upload-echo`,
+    bodyType: 'MULTIPART',
+    bodyParts: [{ key: 'title', enabled: true, kind: 'text', value: 'x' }],
+  });
+  assert.equal(mp.status, 200);
+  assert.equal(mp.json.prepared.multipart, true, 'multipart is flagged for the server path');
+  assert.equal(mp.json.prepared.body, null, 'multipart body cannot be transferred');
+});
+
+test('POST /runs/prepare requires read access to the collection', async () => {
+  const stranger = makeClient();
+  const signup = await stranger.api('POST', '/api/auth/signup', {
+    email: 'prepare-stranger@test.io',
+    password: 'strangerpass123',
+    name: 'Prepare Stranger',
+  });
+  assert.equal(signup.status, 201, 'stranger signup');
+
+  const res = await stranger.api('POST', '/api/runs/prepare', {
+    collectionId,
+    method: 'GET',
+    url: `${mockBase}/forbidden`,
+  });
+  assert.equal(res.status, 403);
+  assert.match(res.json.error, /No access/);
+});
+
+test('POST /runs/complete persists a browser-reported response', async () => {
+  const beforeCount = Number(psqlScalar('SELECT count(*) FROM run_history'));
+
+  const res = await admin.api('POST', '/api/runs/complete', {
+    collectionId,
+    persistHistory: true,
+    id: multipartStoredRequestId,
+    method: 'GET',
+    url: `${mockBase}/from-browser`,
+    assertions: [{ id: 'a1', type: 'status', operator: 'eq', expected: '201' }],
+    prepared: {
+      url: `${mockBase}/from-browser`,
+      method: 'GET',
+      headers: { 'X-From': 'browser' },
+      body: null,
+      multipart: false,
+    },
+    clientResponse: {
+      status: 201,
+      statusText: 'Created',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ok: true }),
+      bodyEncoding: 'text',
+      durationMs: 7,
+    },
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.json.runStatus, 'SUCCESS');
+  assert.equal(res.json.httpStatus, 201);
+  assert.equal(res.json.response.body, JSON.stringify({ ok: true }));
+  assert.equal(res.json.response.durationMs, 7);
+  assert.equal(res.json.requestSnapshot.headers['X-From'], 'browser');
+  assert.equal(res.json.assertionsPassed, true, 'assertions evaluated against the browser response');
+  assert.ok(res.json.runId, 'history persisted');
+
+  const afterCount = Number(psqlScalar('SELECT count(*) FROM run_history'));
+  assert.equal(afterCount, beforeCount + 1, 'one run_history row written');
+
+  const linked = psqlScalar(`SELECT request_id FROM run_history WHERE id = '${res.json.runId}'`);
+  assert.equal(linked, multipartStoredRequestId, 'history links the stored request');
+});
+
+test('POST /runs/complete records a browser fetch failure', async () => {
+  const res = await admin.api('POST', '/api/runs/complete', {
+    collectionId,
+    method: 'GET',
+    url: 'http://localhost:8082/nope',
+    prepared: { url: 'http://localhost:8082/nope', method: 'GET', headers: {}, body: null },
+    error: 'Failed to fetch',
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.json.runStatus, 'FAILED');
+  assert.equal(res.json.httpStatus, 0);
+  assert.equal(res.json.response, null);
+  assert.equal(res.json.error, 'Failed to fetch');
+});
+

@@ -242,19 +242,26 @@ function normalizeInMemoryRequest(input = {}) {
   };
 }
 
+function requestSnapshotOf(prepared) {
+  return {
+    url: prepared.url,
+    method: prepared.method,
+    headers: prepared.fetchHeaders,
+    body: prepared.snapshotBody ?? null,
+  };
+}
+
 /**
- * Core request execution pipeline, shared by stored requests and in-memory
- * (ephemeral) runs.
+ * Resolve a request up to (but not including) the HTTP call:
  * - resolves environment variables ({{key}})
  * - applies the pre-request sandbox formula (may mutate req / $vars)
  * - applies the folder auth provider (calls the AUTH request, extracts the
  *   token, injects the configured header)
- * - performs the HTTP call
- * - evaluates assertions
- * - records run_history / test_results only when persistHistory is true
- *   (request_id may be NULL for in-memory runs; the nullable FK allows it)
+ * - substitutes variables and builds the final headers/body
+ * The returned shape can either be fetched server-side (fetchPrepared) or
+ * handed to the browser so the call can originate from the user's own network.
  */
-async function executePipeline({ request, vars, userId, persistHistory }) {
+async function preparePipeline({ request, vars, userId }) {
   let resolvedAuth = null;
   const provider = await loadAuthProvider(request.collection_id);
 
@@ -344,17 +351,33 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
     }
   }
 
+  return {
+    url,
+    method: req.method,
+    fetchHeaders,
+    body,
+    snapshotBody,
+    multipart: multipartParts,
+    resolvedAuth,
+    variables: vars,
+  };
+}
+
+/**
+ * Perform the HTTP call for a prepared request and capture a response snapshot.
+ * Network failures are turned into an actionable message (never thrown).
+ */
+async function fetchPrepared(prepared) {
   const startedAt = new Date().toISOString();
-  let status = 'SUCCESS';
-  let responseSnapshot = null;
-  let error = null;
   const fetchStarted = Date.now();
   let httpStatus = 0;
+  let responseSnapshot = null;
+  let error = null;
   try {
-    const res = await fetch(url, {
-      method: req.method,
-      headers: fetchHeaders,
-      body: methodsWithoutBody(req.method) ? undefined : body,
+    const res = await fetch(prepared.url, {
+      method: prepared.method,
+      headers: prepared.fetchHeaders,
+      body: methodsWithoutBody(prepared.method) ? undefined : prepared.body,
       redirect: 'follow',
       signal: AbortSignal.timeout(15000),
     });
@@ -380,15 +403,30 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
       bodyEncoding,
       durationMs: Date.now() - fetchStarted,
     };
-    if (res.status >= 400) status = 'FAILED';
   } catch (err) {
-    status = 'FAILED';
-    error = describeFetchError(err) + localhostHint(url);
+    error = describeFetchError(err) + localhostHint(prepared.url);
   }
-  const finishedAt = new Date().toISOString();
+  return {
+    httpStatus,
+    responseSnapshot,
+    error,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Evaluate assertions and (optionally) persist run_history / test_results for a
+ * completed run. `fetchResult` carries the response snapshot — either captured
+ * server-side (fetchPrepared) or reported by the browser.
+ */
+async function finalizeRun({ request, prepared, fetchResult, userId, persistHistory }) {
+  const { httpStatus, responseSnapshot, error, startedAt, finishedAt } = fetchResult;
+  const status = error ? 'FAILED' : httpStatus >= 400 ? 'FAILED' : 'SUCCESS';
 
   const testResults = evaluateAssertions(request.assertions || [], responseSnapshot || {});
   const assertionsPassed = testResults.length > 0 && testResults.every((t) => t.passed);
+  const requestSnapshot = requestSnapshotOf(prepared);
 
   let runId = null;
   if (persistHistory) {
@@ -401,7 +439,7 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
         request.id,
         userId,
         status,
-        JSON.stringify({ url, method: req.method, headers: fetchHeaders, body: snapshotBody ?? null }),
+        JSON.stringify(requestSnapshot),
         responseSnapshot ? JSON.stringify(responseSnapshot) : null,
         startedAt,
         finishedAt,
@@ -425,17 +463,23 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
     httpStatus,
     error,
     response: responseSnapshot,
-    resolvedAuth,
-    requestSnapshot: {
-      url,
-      method: req.method,
-      headers: fetchHeaders,
-      body: snapshotBody ?? null,
-    },
-    variables: vars,
+    resolvedAuth: prepared.resolvedAuth ?? null,
+    requestSnapshot,
+    variables: prepared.variables ?? {},
     testResults,
     assertionsPassed,
   };
+}
+
+/**
+ * Core request execution pipeline, shared by stored requests and in-memory
+ * (ephemeral) runs. Resolves the request, performs the HTTP call server-side,
+ * then evaluates assertions and records history when persistHistory is true.
+ */
+async function executePipeline({ request, vars, userId, persistHistory }) {
+  const prepared = await preparePipeline({ request, vars, userId });
+  const fetchResult = await fetchPrepared(prepared);
+  return finalizeRun({ request, prepared, fetchResult, userId, persistHistory });
 }
 
 /**
@@ -474,15 +518,101 @@ async function runInMemoryRequest(input, userId) {
   });
 }
 
+/**
+ * Resolve an in-memory request without executing it, so the browser can
+ * perform a call that must originate from the caller's own network
+ * (localhost / private hosts the MockShift server cannot reach). Multipart
+ * bodies build a Node FormData that cannot cross the wire, so they are flagged
+ * (`multipart: true`) for the caller to keep on the server path.
+ */
+async function prepareInMemoryRequest(input, userId) {
+  const request = normalizeInMemoryRequest(input);
+  const vars = request.collection_id
+    ? await resolveVariables({ collectionId: request.collection_id }, userId)
+    : {};
+  const prepared = await preparePipeline({ request, vars, userId });
+  return {
+    prepared: {
+      url: prepared.url,
+      method: prepared.method,
+      headers: prepared.fetchHeaders,
+      body: prepared.multipart ? null : prepared.body,
+      multipart: prepared.multipart,
+    },
+    variables: prepared.variables,
+    requestSnapshot: requestSnapshotOf(prepared),
+  };
+}
+
+// Normalise a browser-reported response into the server's response-snapshot
+// shape. Returns null when nothing usable was reported (call treated as error).
+function clientResponseSnapshot(clientResponse) {
+  if (!clientResponse || clientResponse.status === undefined || clientResponse.status === null) {
+    return null;
+  }
+  return {
+    status: Number(clientResponse.status) || 0,
+    statusText: String(clientResponse.statusText || ''),
+    headers:
+      clientResponse.headers && typeof clientResponse.headers === 'object'
+        ? clientResponse.headers
+        : {},
+    body: typeof clientResponse.body === 'string' ? clientResponse.body : '',
+    bodyEncoding: clientResponse.bodyEncoding === 'base64' ? 'base64' : 'text',
+    durationMs: Number(clientResponse.durationMs) || 0,
+  };
+}
+
+/**
+ * Finalize a run whose HTTP call was executed by the browser. `prepared` is
+ * echoed back by the client (the resolved request it actually sent); assertions
+ * come from the same request definition. Evaluate + optionally persist history.
+ */
+async function completeInMemoryRequest(input, userId) {
+  const request = normalizeInMemoryRequest(input);
+  const p = input.prepared || {};
+  const variables = request.collection_id
+    ? await resolveVariables({ collectionId: request.collection_id }, userId)
+    : {};
+  const prepared = {
+    url: typeof p.url === 'string' ? p.url : '',
+    method: String(p.method || request.method || 'GET').toUpperCase(),
+    fetchHeaders: p.headers && typeof p.headers === 'object' ? p.headers : {},
+    snapshotBody: p.body ?? null,
+    multipart: Boolean(p.multipart),
+    resolvedAuth: null,
+    variables,
+  };
+  const responseSnapshot = clientResponseSnapshot(input.clientResponse);
+  const fetchResult = {
+    httpStatus: responseSnapshot ? responseSnapshot.status : 0,
+    responseSnapshot,
+    error: typeof input.error === 'string' && input.error ? input.error : null,
+    startedAt: typeof input.startedAt === 'string' && input.startedAt ? input.startedAt : new Date().toISOString(),
+    finishedAt: typeof input.finishedAt === 'string' && input.finishedAt ? input.finishedAt : new Date().toISOString(),
+  };
+  return finalizeRun({
+    request,
+    prepared,
+    fetchResult,
+    userId,
+    persistHistory: Boolean(input.persistHistory),
+  });
+}
+
 module.exports = {
   runRequest,
   runInMemoryRequest,
+  prepareInMemoryRequest,
+  completeInMemoryRequest,
   runTokenRequest,
   substitute,
   resolveVariables,
   loadRequest,
   loadAuthProvider,
   executePipeline,
+  preparePipeline,
+  finalizeRun,
   isMultipartPartsRequest,
   buildMultipartBody,
   MAX_FILE_PART_BYTES,

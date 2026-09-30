@@ -299,6 +299,13 @@ export const GlobeIcon = (p: IconProps) => (
   </svg>
 );
 
+export const LaptopIcon = (p: IconProps) => (
+  <svg {...svgProps(p)}>
+    <rect x="4" y="5" width="16" height="11" rx="1.5" />
+    <path d="M2 19h20" />
+  </svg>
+);
+
 export const LockIcon = (p: IconProps) => (
   <svg {...svgProps(p)}>
     <rect x="4" y="11" width="16" height="10" rx="2" />

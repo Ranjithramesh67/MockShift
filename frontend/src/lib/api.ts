@@ -255,6 +255,55 @@ export interface CollectionRunResult {
   };
 }
 
+// ---- Browser-executed runs (localhost/private hosts the server cannot reach)
+export interface PreparedRunRequest {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: string | null;
+  multipart: boolean;
+}
+
+export interface PreparedRun {
+  prepared: PreparedRunRequest;
+  variables: Record<string, string>;
+  requestSnapshot: { url: string; method: string; headers: Record<string, string>; body: string | null };
+}
+
+export interface ClientRunResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  bodyEncoding: 'text' | 'base64';
+  durationMs: number;
+}
+
+export interface EphemeralRunInput {
+  method: string;
+  url: string;
+  headers?: Array<{ key: string; value: string; enabled: boolean }>;
+  queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+  bodyType?: string;
+  bodyJson?: unknown;
+  bodyText?: string | null;
+  bodyParts?: BodyFormPart[];
+  id?: string;
+  formula?: string;
+  assertions?: Assertion[];
+  apiType?: ApiType;
+  collectionId?: string | null;
+  persistHistory?: boolean;
+}
+
+export interface CompleteRunInput extends EphemeralRunInput {
+  prepared: PreparedRunRequest;
+  clientResponse: ClientRunResponse | null;
+  error?: string | null;
+  startedAt?: string;
+  finishedAt?: string;
+}
+
 export interface AdminUser extends User {
   workspace_count?: number;
   request_count?: number;
@@ -431,22 +480,15 @@ export const contentApi = {
   duplicateFolder: (folderId: string) =>
     apiFetch<{ folders: Folder[]; requests: Array<{ id: string; name: string; method: string; url: string; api_type: ApiType; collection_id: string; folder_id: string | null }> }>(`/api/folders/${folderId}/duplicate`, { method: 'POST' }),
   runRequest: (requestId: string) => apiFetch<RunResult>(`/api/requests/${requestId}/run`, { method: 'POST' }),
-  runEphemeral: (input: {
-    method: string;
-    url: string;
-    headers?: Array<{ key: string; value: string; enabled: boolean }>;
-    queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
-    bodyType?: string;
-    bodyJson?: unknown;
-    bodyText?: string | null;
-    bodyParts?: BodyFormPart[];
-    id?: string;
-    formula?: string;
-    assertions?: Assertion[];
-    apiType?: ApiType;
-    collectionId?: string | null;
-    persistHistory?: boolean;
-  }) => apiFetch<RunResult>('/api/runs', { method: 'POST', body: input }),
+  runEphemeral: (input: EphemeralRunInput) =>
+    apiFetch<RunResult>('/api/runs', { method: 'POST', body: input }),
+  // Resolve a request without executing it, so the browser can perform a call
+  // that must originate from the user's own network (localhost/private hosts).
+  prepareRun: (input: EphemeralRunInput) =>
+    apiFetch<PreparedRun>('/api/runs/prepare', { method: 'POST', body: input }),
+  // Record + evaluate a run the browser already executed.
+  completeRun: (input: CompleteRunInput) =>
+    apiFetch<RunResult>('/api/runs/complete', { method: 'POST', body: input }),
   runCollection: (collectionId: string) =>
     apiFetch<CollectionRunResult>(`/api/collections/${collectionId}/run`, { method: 'POST' }),
   getAuthProvider: (collectionId: string) =>
