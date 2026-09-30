@@ -1012,11 +1012,11 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, 
             <button
               type="button"
               className="ghost-button small"
-              title="Share workspace"
+              title="Manage who can access this workspace (people and teams)"
               data-testid="share-workspace"
               onClick={onOpenSharing}
             >
-              Share
+              Workspace access
             </button>
           </>
         )}
@@ -1240,10 +1240,29 @@ function TreeSearchResults({
 }) {
   const ws = useWorkspace();
 
+  // Search the same project-first tree the sidebar actually renders. After the
+  // project-first refactor the legacy `ws.tree` diverges from what is shown, so
+  // filtering on it dropped every collection/folder/request result.
+  const tree = useMemo<ContentTree | null>(() => {
+    const projectTree = ws.projectTree;
+    if (!projectTree) return ws.tree;
+    return {
+      workspaceId: projectTree.workspaces[0]?.id ?? '',
+      projects: [],
+      collections: projectTree.collections.map((c) => ({
+        id: c.id,
+        name: c.name,
+        project_id: ws.activeProjectId ?? '',
+        has_auth: c.has_auth,
+      })),
+      folders: projectTree.folders,
+      requests: projectTree.requests,
+    };
+  }, [ws.projectTree, ws.tree, ws.activeProjectId]);
+
   const hits = useMemo<TreeSearchHit[]>(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    const tree = ws.tree;
     const out: TreeSearchHit[] = [];
     const has = (...values: Array<string | null | undefined>) =>
       values.some((v) => (v ?? '').toLowerCase().includes(q));
@@ -1288,7 +1307,7 @@ function TreeSearchResults({
       out.push({ kind: 'request', id: r.id, name: r.name, method: r.method, meta: collectionName.get(r.collection_id) ?? '' });
     }
     return out;
-  }, [query, ws.workspaces, ws.tree, ws.activeProjectId]);
+  }, [query, tree, ws.workspaces, ws.activeProjectId]);
 
   const groups: Array<{ kind: TreeSearchKind; label: string }> = [
     { kind: 'workspace', label: 'Workspaces' },
@@ -1303,7 +1322,7 @@ function TreeSearchResults({
       <div className="sidebar-search-empty" data-testid="tree-search-empty">
         <SearchIcon size={18} />
         <p>No matches for &ldquo;{query.trim()}&rdquo;.</p>
-        {!ws.tree && ws.loading ? <p className="hint">Still loading this workspace&hellip;</p> : null}
+        {!tree && ws.loading ? <p className="hint">Still loading this workspace&hellip;</p> : null}
       </div>
     );
   }

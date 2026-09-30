@@ -19,6 +19,7 @@ import {
   type AuthProvider,
   type CollectionRunResult,
   type ContentTree,
+  type Folder,
   type GlobalProject,
   type ProjectContentTree,
   type ProjectOverview,
@@ -1183,63 +1184,61 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const createRequest = useCallback(async (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => {
     if (!activeCollectionId) return;
     const { request } = await contentApi.createRequest({ collectionId: activeCollectionId, ...input });
-    if (tree) {
-      setTree({ ...tree, requests: [...tree.requests, request] });
-    }
+    setTree((prev) => (prev ? { ...prev, requests: [...prev.requests, request] } : prev));
+    setProjectTree((prev) => (prev ? { ...prev, requests: [...prev.requests, request] } : prev));
     await selectRequest(request.id);
-  }, [activeCollectionId, tree, selectRequest]);
+  }, [activeCollectionId, selectRequest]);
 
   const createFolder = useCallback(async (input: { name: string; collectionId: string; parentId?: string | null }) => {
     const { folder } = await folderApi.create(input);
-    if (tree) {
-      setTree({ ...tree, folders: [...tree.folders, folder] });
-    }
-  }, [tree]);
+    setTree((prev) => (prev ? { ...prev, folders: [...prev.folders, folder] } : prev));
+    setProjectTree((prev) => (prev ? { ...prev, folders: [...prev.folders, folder] } : prev));
+  }, []);
 
   const renameFolder = useCallback(async (folderId: string, name: string) => {
     const { folder } = await folderApi.update(folderId, { name });
-    if (tree) {
-      setTree({
-        ...tree,
-        folders: tree.folders.map((f) => (f.id === folderId ? { ...f, name: folder.name } : f)),
-      });
-    }
-  }, [tree]);
+    const apply = <T extends { folders: Array<{ id: string; name: string }> }>(prev: T): T => ({
+      ...prev,
+      folders: prev.folders.map((f) => (f.id === folderId ? { ...f, name: folder.name } : f)),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, []);
 
   const deleteFolder = useCallback(async (folderId: string) => {
     const target = tree?.folders.find((f) => f.id === folderId);
+    const collectionId = target?.collection_id ?? null;
     await folderApi.remove(folderId);
-    if (tree) {
-      // Cascade: drop the folder and every descendant; requests inside it
-      // resurface at the collection root (folder_id -> null).
-      const removed = new Set<string>([folderId]);
-      const removedIds = new Set<string>(tree.folders.map((f) => f.id));
-      const findDescendants = (parentId: string) => {
-        for (const f of tree.folders) {
-          if (f.parent_id === parentId && removedIds.has(f.id) && !removed.has(f.id)) {
-            removed.add(f.id);
-            findDescendants(f.id);
-          }
+    // Cascade: drop the folder and every descendant; requests inside it
+    // resurface at the collection root (folder_id -> null).
+    const removed = new Set<string>([folderId]);
+    const allFolders = tree?.folders ?? [];
+    const findDescendants = (parentId: string) => {
+      for (const f of allFolders) {
+        if (f.parent_id === parentId && !removed.has(f.id)) {
+          removed.add(f.id);
+          findDescendants(f.id);
         }
-      };
-      findDescendants(folderId);
-      const collectionId = target?.collection_id ?? null;
-      setTree({
-        ...tree,
-        folders: tree.folders.filter((f) => !removed.has(f.id)),
-        requests: tree.requests.map((r) =>
-          removed.has(r.folder_id as string) ? { ...r, folder_id: null } : r
-        ),
+      }
+    };
+    findDescendants(folderId);
+    const prune = <T extends { folders: Folder[]; requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      folders: prev.folders.filter((f) => !removed.has(f.id)),
+      requests: prev.requests.map((r) =>
+        r.folder_id && removed.has(r.folder_id) ? { ...r, folder_id: null } : r
+      ),
+    });
+    setTree((prev) => (prev ? prune(prev) : prev));
+    setProjectTree((prev) => (prev ? prune(prev) : prev));
+    if (collectionId) {
+      // Close tabs for requests that lived inside the deleted folder(s).
+      const affectedIds = openRequestIds.filter((id) => {
+        const r = tree?.requests.find((x) => x.id === id);
+        return r ? removed.has(r.folder_id as string) : false;
       });
-      if (collectionId) {
-        // Close tabs for requests that lived inside the deleted folder(s).
-        const affectedIds = openRequestIds.filter((id) => {
-          const r = tree.requests.find((x) => x.id === id);
-          return r ? removed.has(r.folder_id as string) : false;
-        });
-        for (const id of affectedIds) {
-          await closeRequestTab(id, false);
-        }
+      for (const id of affectedIds) {
+        await closeRequestTab(id, false);
       }
     }
   }, [tree, openRequestIds, closeRequestTab]);
@@ -1250,60 +1249,66 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     if (activeRequest?.id === requestId) {
       setActiveRequest((prev) => (prev ? { ...prev, name: resolvedName } : prev));
     }
-    if (tree) {
-      setTree({
-        ...tree,
-        requests: tree.requests.map((r) => (r.id === requestId ? { ...r, name: resolvedName } : r)),
-      });
-    }
-  }, [tree, activeRequest]);
+    const apply = <T extends { requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      requests: prev.requests.map((r) => (r.id === requestId ? { ...r, name: resolvedName } : r)),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, [activeRequest]);
 
   const moveRequest = useCallback(async (requestId: string, folderId: string | null) => {
     const { request } = await contentApi.updateRequest(requestId, { folderId });
-    if (tree) {
-      setTree({
-        ...tree,
-        requests: tree.requests.map((r) =>
-          r.id === requestId ? { ...r, folder_id: folderId, name: request.name ?? r.name } : r
-        ),
-      });
-    }
-  }, [tree]);
+    const apply = <T extends { requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      requests: prev.requests.map((r) =>
+        r.id === requestId ? { ...r, folder_id: folderId, name: request.name ?? r.name } : r
+      ),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, []);
 
   const moveFolder = useCallback(async (folderId: string, parentId: string | null) => {
     const { folder } = await folderApi.update(folderId, { parentId });
-    if (tree) {
-      setTree({
-        ...tree,
-        folders: tree.folders.map((f) =>
-          f.id === folderId ? { ...f, parent_id: parentId, name: folder.name ?? f.name } : f
-        ),
-      });
-    }
-  }, [tree]);
+    const apply = <T extends { folders: Folder[] }>(prev: T): T => ({
+      ...prev,
+      folders: prev.folders.map((f) =>
+        f.id === folderId ? { ...f, parent_id: parentId, name: folder.name ?? f.name } : f
+      ),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, []);
 
   const duplicateRequest = useCallback(async (requestId: string) => {
     const { request } = await contentApi.duplicateRequest(requestId);
-    if (tree) {
-      const exists = tree.requests.some((r) => r.id === request.id);
-      setTree({ ...tree, requests: exists ? tree.requests : [...tree.requests, request] });
-    }
+    const apply = <T extends { requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      requests: prev.requests.some((r) => r.id === request.id)
+        ? prev.requests
+        : [...prev.requests, request],
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
     return { name: request.name };
-  }, [tree]);
+  }, []);
 
   const duplicateFolder = useCallback(async (folderId: string) => {
     const { folders, requests } = await contentApi.duplicateFolder(folderId);
-    if (tree) {
-      const folderIds = new Set(tree.folders.map((f) => f.id));
-      const requestIds = new Set(tree.requests.map((r) => r.id));
-      setTree({
-        ...tree,
-        folders: [...tree.folders, ...folders.filter((f) => !folderIds.has(f.id))],
-        requests: [...tree.requests, ...requests.filter((r) => !requestIds.has(r.id))],
-      });
-    }
+    const apply = <T extends { folders: Folder[]; requests: ContentTree['requests'] }>(prev: T): T => {
+      const folderIds = new Set(prev.folders.map((f) => f.id));
+      const requestIds = new Set(prev.requests.map((r) => r.id));
+      return {
+        ...prev,
+        folders: [...prev.folders, ...folders.filter((f) => !folderIds.has(f.id))],
+        requests: [...prev.requests, ...requests.filter((r) => !requestIds.has(r.id))],
+      };
+    };
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
     return { name: folders[0]?.name ?? '' };
-  }, [tree]);
+  }, []);
 
   const deleteRequest = useCallback(async (requestId: string) => {
     selectSeqRef.current += 1; // invalidate any in-flight selection of this request
@@ -1322,10 +1327,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       delete next[requestId];
       return next;
     });
-    if (tree) {
-      setTree({ ...tree, requests: tree.requests.filter((r) => r.id !== requestId) });
-    }
-  }, [tree, closeRequestTab]);
+    const apply = <T extends { requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      requests: prev.requests.filter((r) => r.id !== requestId),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, [closeRequestTab]);
 
   const deleteCollection = useCallback(async (collectionId: string) => {
     selectSeqRef.current += 1; // invalidate any in-flight request selection
@@ -1354,14 +1362,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setNavStack([]);
       clearAllEditHistory();
     }
-    if (tree) {
-      setTree({
-        ...tree,
-        collections: tree.collections.filter((c) => c.id !== collectionId),
-        folders: tree.folders.filter((f) => f.collection_id !== collectionId),
-        requests: tree.requests.filter((r) => r.collection_id !== collectionId),
-      });
-    }
+    const apply = <
+      T extends {
+        collections: Array<{ id: string }>;
+        folders: Folder[];
+        requests: ContentTree['requests'];
+      }
+    >(prev: T): T => ({
+      ...prev,
+      collections: prev.collections.filter((c) => c.id !== collectionId),
+      folders: prev.folders.filter((f) => f.collection_id !== collectionId),
+      requests: prev.requests.filter((r) => r.collection_id !== collectionId),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
   }, [tree, activeCollectionId, openRequestIds, closeRequestTab]);
 
   const deleteWorkspace = useCallback(async (workspaceId: string) => {
@@ -1402,6 +1416,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setOverviewError(null);
     const t = await workspaceApi.content(activeWorkspaceId);
     setTree(t);
+    // The sidebar renders the project-first tree, so refresh it too — otherwise
+    // newly created/imported content stays invisible until a full page reload.
+    if (activeProjectId) {
+      const pt = await projectApi.content(activeProjectId).catch(() => null);
+      if (pt) setProjectTree(pt);
+    }
     if (!t.projects.some((p) => p.id === activeProjectId)) {
       await applyProjectContext(t, null);
     }
