@@ -23,6 +23,35 @@ function substitute(input, variables) {
   });
 }
 
+// Node's fetch wraps every network-level failure in a bare
+// `TypeError: fetch failed`; the actionable reason (ECONNREFUSED, ENOTFOUND,
+// timeout, TLS) lives in `err.cause` (possibly an AggregateError from
+// happy-eyeballs). Discarding it left users with "fetch failed" + httpStatus 0
+// and no way to tell why the call never got a response.
+function describeFetchError(err) {
+  if (!err) return 'Request failed';
+  if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+    return 'Request timed out after 15000ms';
+  }
+  const leaf = (e) => (e && Array.isArray(e.errors) && e.errors.length ? e.errors.map(leaf).find(Boolean) : e);
+  const cause = leaf(err.cause);
+  if (cause && cause.code) {
+    const target = cause.address ? ` ${cause.address}${cause.port ? `:${cause.port}` : ''}` : '';
+    return target ? `${cause.code} connecting to${target}` : String(cause.code);
+  }
+  if (cause && cause.message) return `${err.message}: ${cause.message}`;
+  return String(err.message || err);
+}
+
+// A stored request that points at localhost/127.0.0.1 works only when the
+// service runs on the machine executing the request. Runs execute on the
+// MockShift server, so "localhost" means the server — not the caller's laptop.
+function localhostHint(url) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(url)
+    ? ' — "localhost" refers to the MockShift server, not your computer'
+    : '';
+}
+
 // The workspace's ACTIVE environment (is_active=true), or NULL when none is
 // set. Keyed off a stored request or a collection (for in-memory runs).
 async function activeEnvironmentId({ requestId = null, collectionId = null }, userId) {
@@ -354,7 +383,7 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
     if (res.status >= 400) status = 'FAILED';
   } catch (err) {
     status = 'FAILED';
-    error = String(err.message || err);
+    error = describeFetchError(err) + localhostHint(url);
   }
   const finishedAt = new Date().toISOString();
 
@@ -458,4 +487,5 @@ module.exports = {
   buildMultipartBody,
   MAX_FILE_PART_BYTES,
   MAX_TOTAL_FILE_BYTES,
+  describeFetchError,
 };

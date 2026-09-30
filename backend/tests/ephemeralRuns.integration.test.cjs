@@ -243,6 +243,26 @@ test('ephemeral run validates the URL scheme', async () => {
   assert.match(res.json.error, /Unsupported URL scheme/);
 });
 
+test('ephemeral run to an unreachable port reports the connection cause', async () => {
+  // Reserve then release a port so it is deterministically closed.
+  const tmp = http.createServer();
+  await new Promise((r) => tmp.listen(0, '127.0.0.1', r));
+  const closedPort = tmp.address().port;
+  await new Promise((r) => tmp.close(r));
+
+  const res = await admin.api('POST', '/api/runs', {
+    method: 'GET',
+    url: `http://127.0.0.1:${closedPort}/nope`,
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.json.runStatus, 'FAILED');
+  assert.equal(res.json.httpStatus, 0);
+  assert.equal(res.json.response, null);
+  assert.match(res.json.error, /ECONNREFUSED/);
+  assert.match(res.json.error, /MockShift server, not your computer/);
+});
+
 test('ephemeral run requires read access when a collectionId is given', async () => {
   const stranger = makeClient();
   const signup = await stranger.api('POST', '/api/auth/signup', {
