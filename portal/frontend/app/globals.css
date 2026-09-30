@@ -66,6 +66,12 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Keep anchored sections clear of the sticky top navigation. */
+section[id],
+[id='top'] {
+  scroll-margin-top: 76px;
+}
+
 html,
 body {
   margin: 0;

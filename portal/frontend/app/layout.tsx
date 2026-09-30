@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { HashScroll } from '@/components/HashScroll';
 
 export const metadata: Metadata = {
   title: 'Mockshift — API testing & workflow platform',
@@ -19,7 +20,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <HashScroll />
+        {children}
+      </body>
     </html>
   );
 }
