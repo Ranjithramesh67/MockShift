@@ -85,11 +85,10 @@ function describeBrowserError(err: unknown): string {
   }
   if (err instanceof TypeError) {
     return (
-      'Failed to fetch from the browser. The local server may be down, may not allow ' +
-      'cross-origin requests (CORS, including the private-network preflight header ' +
-      '"Access-Control-Allow-Private-Network: true"), or the browser blocked access to ' +
-      'your local network — allow the "local network access" permission prompt. See the ' +
-      'browser console for details.'
+      'The browser could not reach the local address. Chrome now requires you to grant ' +
+      '"Local Network Access" to this site: click Allow on the permission prompt (or the ' +
+      'tune icon in the address bar), then Send again. Your local server must also send ' +
+      'CORS headers. See the browser console for details.'
     );
   }
   return err instanceof Error ? err.message : String(err);

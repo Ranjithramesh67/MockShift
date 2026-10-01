@@ -281,7 +281,7 @@ export function RequestConfigurator() {
             onClick={() => ws.setRunInBrowser(!ws.runInBrowser)}
             title={
               ws.runInBrowser
-                ? 'Local requests run in your browser: ON. Requests to localhost/private hosts execute from this page, reaching your machine.'
+                ? 'Local requests run in your browser: ON. Requests to localhost/private hosts execute from this page. Chrome will ask you to allow "Local Network Access" — click Allow.'
                 : 'Local requests run in your browser: OFF. Requests execute on the MockShift server.'
             }
             style={actionBtn}
