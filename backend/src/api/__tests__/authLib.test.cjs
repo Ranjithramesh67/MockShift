@@ -29,6 +29,16 @@ test('hashes are salted (same password, different hashes)', async () => {
   assert.notEqual(a, b);
 });
 
+test('non-string passwords never throw (login 500 guard)', async () => {
+  const hash = await hashPassword('correct horse battery staple');
+  for (const bad of [undefined, null, 12345, {}, [], true]) {
+    assert.equal(await verifyPassword(bad, hash), false);
+  }
+  // A numeric password is coerced so hashing still succeeds instead of throwing.
+  const numeric = await hashPassword(87654321);
+  assert.equal(await verifyPassword('87654321', numeric), true);
+});
+
 test('session tokens are signed and expiring', () => {
   const token = createSessionToken('user-123');
   const payload = verifySession(token);

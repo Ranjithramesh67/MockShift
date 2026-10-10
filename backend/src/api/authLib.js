@@ -27,11 +27,14 @@ function scryptAsync(password, salt) {
 
 async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const derived = (await scryptAsync(password, salt)).toString('hex');
+  // Callers may hand us a non-string (e.g. a numeric JSON password); coerce so
+  // scrypt never throws ERR_INVALID_ARG_TYPE.
+  const derived = (await scryptAsync(String(password), salt)).toString('hex');
   return `scrypt$${salt}$${derived}`;
 }
 
 async function verifyPassword(password, stored) {
+  if (typeof password !== 'string') return false;
   const parts = String(stored || '').split('$');
   if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
   const [, salt, expected] = parts;
