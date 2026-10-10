@@ -21,6 +21,22 @@ const BINARY_CONTENT_TYPE_RE =
   /application\/pdf|image\/|audio\/|video\/|application\/octet-stream|application\/zip|application\/x-(?:zip|tar|gzip|7z|rar)/i;
 const BODYLESS_METHODS = new Set(['GET', 'HEAD']);
 
+// Local requests may block for a while: on its first public-site -> loopback
+// fetch, Chrome shows a "Local Network Access" permission prompt and holds the
+// request until the user answers. The timeout must be generous enough for a
+// person to read and accept that prompt, otherwise we abort the very request
+// the user is trying to authorize.
+const BROWSER_TIMEOUT_MS = 120000;
+
+const LOCAL_ACCESS_HELP =
+  'The browser could not reach the local address. Requests to localhost/private ' +
+  'hosts run from this page and Chrome gates them behind "Local Network Access": ' +
+  'click Allow on the permission prompt, then Send again. If no prompt appears (or ' +
+  'it was denied before), open the padlock/tune icon in the address bar -> Site ' +
+  'settings -> Local Network Access and set it to Allow. Your local server must also ' +
+  'return CORS headers (and Access-Control-Allow-Private-Network: true for older ' +
+  'Chrome). See the browser console for details.';
+
 /**
  * Perform a prepared request from the browser. Never throws: network/CORS
  * failures are returned as an actionable `error` string, mirroring the
@@ -30,7 +46,7 @@ export async function executeInBrowser(prepared: PreparedRunRequest): Promise<Br
   const startedAt = new Date().toISOString();
   const fetchStarted = Date.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), BROWSER_TIMEOUT_MS);
   try {
     const method = (prepared.method || 'GET').toUpperCase();
     const res = await fetch(prepared.url, {
@@ -70,7 +86,7 @@ export async function executeInBrowser(prepared: PreparedRunRequest): Promise<Br
   } catch (err) {
     return {
       clientResponse: null,
-      error: describeBrowserError(err),
+      error: await describeBrowserError(err),
       startedAt,
       finishedAt: new Date().toISOString(),
     };
@@ -79,17 +95,26 @@ export async function executeInBrowser(prepared: PreparedRunRequest): Promise<Br
   }
 }
 
-function describeBrowserError(err: unknown): string {
+async function localNetworkPermissionState(): Promise<string> {
+  try {
+    // Not in the TS DOM lib yet; query the permission by name.
+    const status = await navigator.permissions.query({ name: 'local-network-access' as PermissionName });
+    return status.state;
+  } catch {
+    return 'unsupported';
+  }
+}
+
+async function describeBrowserError(err: unknown): Promise<string> {
   if (err instanceof DOMException && err.name === 'AbortError') {
-    return 'Request timed out after 15000ms (browser)';
+    // An abort while the permission is still pending almost always means the
+    // request was blocked on Chrome's prompt, not that the server was slow.
+    const state = await localNetworkPermissionState();
+    if (state === 'prompt' || state === 'denied') return LOCAL_ACCESS_HELP;
+    return `Request timed out after ${BROWSER_TIMEOUT_MS}ms (browser)`;
   }
   if (err instanceof TypeError) {
-    return (
-      'The browser could not reach the local address. Chrome now requires you to grant ' +
-      '"Local Network Access" to this site: click Allow on the permission prompt (or the ' +
-      'tune icon in the address bar), then Send again. Your local server must also send ' +
-      'CORS headers. See the browser console for details.'
-    );
+    return LOCAL_ACCESS_HELP;
   }
   return err instanceof Error ? err.message : String(err);
 }
