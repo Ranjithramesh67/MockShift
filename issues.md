@@ -50,7 +50,61 @@ Convention: one commit per fix, Conventional Commits, with the issue id in the s
 
 ---
 
+## Live production pass — 2026-10-10
+
+Second full pass, run live against production with a real Chromium (the earlier
+2026-09-15 pass was report-only against dev). New findings and fixes:
+
+| ID | Severity | Title | Status | Commit |
+|----|----------|-------|--------|--------|
+| B1 | High | "Run in browser" aborted at 15s while Chrome's local-network prompt was pending | VERIFIED | 57b9575 |
+| B2 | High | `POST /api/auth/login` (and change-password) 500 on non-string password | VERIFIED | 1a47814 |
+| B3 | Medium | Vault decrypt threw `Wrong key or corrupt data`; one bad secret could 500 a request | VERIFIED | 6e2fcfe |
+| B4 | Low | Monitor scheduler flooded logs on repeated DB outages | FIXED | 6e2fcfe |
+| B5 | Low | Next "Failed to find Server Action" surfaced after redeploy | WON'T FIX (redeploy-transient) | — |
+| B6 | Test | No committed, reusable live E2E suite | FIXED | see below |
+
+Live E2E result after the fixes: **56/56 checks pass** across login, routes,
+admin, functional, browser-run, api-validation and mobile suites (production).
+Backend unit tests 137/137, vault integration 3/3.
+
+---
+
 ## Details
+
+### B1 — Browser-run aborted during the LNA permission prompt
+- File: `frontend/src/lib/browserRunner.ts`.
+- Cause: a 15s `AbortController` fired while Chrome's "Local Network Access" prompt (Chrome 142+, public site → loopback) was still waiting for a user decision, so runs against `localhost` failed with a bare `Request timed out after 15000ms (browser)`.
+- Fix: raise `BROWSER_TIMEOUT_MS` to 120000; an abort while the permission is pending/denied now returns an actionable `LOCAL_ACCESS_HELP` message; `describeBrowserError` is async and permission-aware.
+- Verified: headed run against a fake `:8082` service waits the full window, then shows the LNA guidance (not a bare timeout); rebuilt bundle contains the new string.
+- Status: VERIFIED (57b9575)
+
+### B2 — Login returns 500 for a non-string password
+- File: `backend/src/api/authLib.js` (also reachable via change-password).
+- Cause: `verifyPassword(undefined, ...)` threw `ERR_INVALID_ARG_TYPE` in `scrypt`, returning 500 for `{email}` / `{password:null}` / `{password:123}`.
+- Fix: `verifyPassword` returns false for non-strings; `hashPassword` coerces `String()`. Malformed credentials now 401; valid login still 200.
+- Test: `backend/src/api/__tests__/authLib.test.cjs` (+1 test).
+- Status: VERIFIED (1a47814)
+
+### B3 — Vault decrypt threw on corrupt data / missing key
+- Files: `db/migrations/062_safe_decrypt.sql`, `backend/src/api/db.js`, `backend/src/api/routes/environments.js`.
+- Cause: `error: Wrong key or corrupt data` spam; a single undecryptable secret (or a process without `VAULT_KEY`) could fail the whole variable-resolution path.
+- Fix: `app.try_decrypt(bytea,text)` returns NULL instead of raising; `app.resolve_variables` and environments route use it; `db.js` no longer falls back to a dev key in production (fail-closed). Migration applied to prod.
+- Test: `backend/tests/variableDecryptResilience.integration.test.cjs` (3 tests).
+- Status: VERIFIED (6e2fcfe)
+
+### B4 — Monitor scheduler log flood on DB outage
+- File: `backend/src/api/monitorRunner.js`.
+- Fix: throttle repeated DB-outage errors (first, then at most once per 5 minutes).
+- Status: FIXED (6e2fcfe)
+
+### B5 — "Failed to find Server Action"
+- Assessment: the app has zero `use server` directives (no Server Actions). The error was transient from a redeploy while old bundle clients were still open and clears on reload.
+- Status: WON'T FIX (no code change warranted)
+
+### B6 — Reusable committed live E2E suite
+- Added `e2e-live/`: env-configurable Playwright + HTTP suites (login, routes, admin, functional, browser-run, api-validation, mobile) with a `run-all.cjs` runner that writes JSON/Markdown reports to `e2e-live/artifacts/`. Credentials live in a gitignored `.env.local`; see `e2e-live/README.md`.
+- Status: FIXED
 
 ### BLK-1 — Share view page crashes
 - File: `frontend/app/s/[token]/page.tsx:158,168`

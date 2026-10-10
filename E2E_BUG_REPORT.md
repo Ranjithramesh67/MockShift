@@ -171,3 +171,63 @@ Detailed per-agent reports:
 - Running `next build` while `next dev` shares the same `.next` directory corrupts the dev server
   (`Cannot find module './682.js'`, all routes 500). Run builds in an isolated copy, or clear/restart.
 - Pre-existing frontend static gates pass: `npm test` 132/132, `tsc --noEmit` clean, isolated `next build` 23/23 routes.
+
+---
+
+## RE-VERIFICATION PASS — 2026-10-10 (live production)
+
+Second pass, run live against production (`https://mockshift.keerainnovations.com`,
+portal `https://mockshift-portal.keerainnovations.com`) with a real Chromium, driving the
+UI and API. This pass found and fixed four defects (B1-B4), assessed one (B5) and added a
+reusable committed suite (B6). The 2026-09-15 fixes above were re-checked and remain green
+(notably BLK-1 share page and the MED-3 validation cluster).
+
+| ID | Severity | Title | Status | Commit |
+|----|----------|-------|--------|--------|
+| B1 | High | "Run in browser" aborted at 15s while Chrome's local-network prompt was pending | VERIFIED | 57b9575 |
+| B2 | High | `POST /api/auth/login` / change-password 500 on a non-string password | VERIFIED | 1a47814 |
+| B3 | Medium | Vault decrypt threw `Wrong key or corrupt data`; one bad secret could 500 a request | VERIFIED | 6e2fcfe |
+| B4 | Low | Monitor scheduler flooded logs on repeated DB outages | FIXED | 6e2fcfe |
+| B5 | Low | Next "Failed to find Server Action" after redeploy | WON'T FIX | — |
+| B6 | Test | No committed reusable live E2E suite | FIXED | e2e-live/ |
+
+### B1 — Browser-run timeout vs the Local Network Access prompt
+- File: `frontend/src/lib/browserRunner.ts`.
+- Cause: the 15s `AbortController` fired while Chrome's "Local Network Access" permission
+  prompt (Chrome 142+; public site → `localhost`/private IP) was still awaiting the user, so
+  the run failed with the misleading `Request timed out after 15000ms (browser)`.
+- Fix: `BROWSER_TIMEOUT_MS = 120000`; aborting while the permission is pending or denied now
+  returns actionable `LOCAL_ACCESS_HELP` guidance; `describeBrowserError` is async and
+  permission-aware.
+- Verified: headed run against a fake local service at `:8082` waits the full window, then
+  shows the guidance; the rebuilt bundle contains the new string.
+
+### B2 — Non-string password returned 500
+- File: `backend/src/api/authLib.js` (also reachable through change-password).
+- Cause: `verifyPassword(undefined, ...)` threw `ERR_INVALID_ARG_TYPE` inside `scrypt` for
+  `{email}` / `{password:null}` / `{password:12345}`.
+- Fix: `verifyPassword` returns false for non-strings; `hashPassword` coerces via `String()`.
+  Malformed credentials now return 401; valid login still 200.
+
+### B3 — Vault decryption was not failure-tolerant
+- Files: `db/migrations/062_safe_decrypt.sql`, `backend/src/api/db.js`,
+  `backend/src/api/routes/environments.js`.
+- Cause: `error: Wrong key or corrupt data` spam; a single undecryptable secret (or a process
+  without `VAULT_KEY`) could fail the variable-resolution path.
+- Fix: `app.try_decrypt(bytea,text)` returns NULL instead of raising;
+  `app.resolve_variables` and the environments route use it; `db.js` no longer falls back to a
+  development key in production (fail-closed). Migration applied to production.
+
+### B4 — Monitor scheduler log flood
+- File: `backend/src/api/monitorRunner.js`.
+- Fix: repeated DB-outage errors are throttled (first, then at most once per 5 minutes).
+
+### B5 — "Failed to find Server Action"
+- The app contains zero `use server` directives (no Server Actions); the error was transient
+  from a redeploy while old bundle clients were open and clears on reload. No code change.
+
+### B6 — Committed reusable live E2E suite
+- Added `e2e-live/` (login, routes, admin, functional, browser-run, api-validation, mobile)
+  with `run-all.cjs` and JSON/Markdown reports. See `e2e-live/README.md`.
+
+**Result:** 56/56 live checks pass; backend unit 137/137; vault integration 3/3.
