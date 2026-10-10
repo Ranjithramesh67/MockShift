@@ -140,7 +140,7 @@ router.get('/environments/:environmentId/variables', async (req, res, next) => {
     }
     const { rows } = await query(
       `SELECT id, key, is_secret,
-              CASE WHEN is_secret THEN pgp_sym_decrypt(value_encrypted, app.vault_key()) ELSE value_plain END AS value
+              CASE WHEN is_secret THEN app.try_decrypt(value_encrypted, app.vault_key()) ELSE value_plain END AS value
          FROM variables
         WHERE scope = 'ENVIRONMENT' AND environment_id = $1
         ORDER BY key`,

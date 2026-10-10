@@ -409,6 +409,11 @@ async function runDueMonitors(options = {}) {
 // `stop()`; safe to call more than once (idempotent).
 let schedulerTimer = null;
 let schedulerRunning = false;
+let schedulerFailures = 0;
+let schedulerLastFailureLogAt = 0;
+// A database outage makes every tick fail; logging the same error every 60s
+// floods the log. Log the first failure, then at most once per this window.
+const SCHEDULER_FAILURE_LOG_INTERVAL_MS = 5 * 60 * 1000;
 
 function startMonitorScheduler({ intervalMs = 60000, logger = console } = {}) {
   if (schedulerTimer) return { stop: stopMonitorScheduler };
@@ -422,9 +427,18 @@ function startMonitorScheduler({ intervalMs = 60000, logger = console } = {}) {
           `[monitors] checked ${summary.checked} monitor(s): ${summary.passed} up, ${summary.failed} down, ${summary.alerts} alert(s)`
         );
       }
+      schedulerFailures = 0;
     } catch (err) {
-      if (logger && typeof logger.error === 'function') {
-        logger.error('[monitors] scheduler run failed:', err.message);
+      schedulerFailures += 1;
+      const nowMs = Date.now();
+      const shouldLog =
+        schedulerFailures === 1 || nowMs - schedulerLastFailureLogAt >= SCHEDULER_FAILURE_LOG_INTERVAL_MS;
+      if (shouldLog && logger && typeof logger.error === 'function') {
+        schedulerLastFailureLogAt = nowMs;
+        logger.error(
+          `[monitors] scheduler run failed (${schedulerFailures} consecutive):`,
+          err.message
+        );
       }
     } finally {
       schedulerRunning = false;

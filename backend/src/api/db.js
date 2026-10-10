@@ -11,6 +11,19 @@ const { Pool } = require('pg');
 const PG_VARS = ['PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE'];
 const hasExplicitPgVars = PG_VARS.some((k) => process.env[k] !== undefined);
 
+// Vault key used for pgcrypto secret encryption/decryption. Never fall back to
+// the well-known dev key on a production deployment: that would encrypt secrets
+// under a guessable key. With an empty key app.vault_key() returns NULL, so
+// app.try_decrypt() yields NULL (secrets fail closed) instead of leaking.
+const VAULT_KEY =
+  process.env.VAULT_KEY || (process.env.NODE_ENV === 'production' ? '' : 'dev-vault-key-do-not-use-in-prod');
+if (process.env.NODE_ENV === 'production' && !process.env.VAULT_KEY) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[db] VAULT_KEY is not set in production; stored secrets will resolve to NULL and new secret writes will fail. Set VAULT_KEY to the deployment vault key.'
+  );
+}
+
 // Optional local .env (gitignored) so developers can point the backend at a
 // managed database (e.g. Aiven) without committing credentials. Loaded before
 // the pool is built; never overrides already-set process env vars.
@@ -77,7 +90,7 @@ async function query(text, params = [], options = {}) {
       await client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', options.userId]);
       await client.query('SELECT set_config($1, $2, true)', [
         'app.vault_key',
-        process.env.VAULT_KEY || 'dev-vault-key-do-not-use-in-prod',
+        VAULT_KEY,
       ]);
     }
     const result = await client.query(text, params);
