@@ -207,6 +207,11 @@ router.post('/reviews', async (req, res, next) => {
 
     res.status(201).json({ review: serializeReview(row), status: row.status });
   } catch (err) {
+    // Two concurrent "request review" calls both pass the pending pre-check;
+    // the partial unique index rejects the loser, which is a 409 not a 500.
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'A review is already pending for this collection' });
+    }
     next(err);
   }
 });
