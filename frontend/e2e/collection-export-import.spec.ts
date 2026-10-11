@@ -55,8 +55,10 @@ test('exports a collection as JSON and imports it back under a new name', async 
   }
 
   // ---- Export it as JSON via the UI ---------------------------------------
-  // The tree was loaded before the API-created collection existed, so re-select
-  // the workspace to refetch the tree and surface the new collection.
+  // The sidebar tree was loaded before the API-created collection existed;
+  // reload so the project-first tree is refetched and surfaces it.
+  await page.reload();
+  await expect(page.getByTestId('sidebar')).toBeVisible();
   await page.getByTestId('workspace-My Workspace').click();
   await expect(page.getByTestId(`collection-${sourceName}`)).toBeVisible();
   // Collapse the source collection so its requests (identical names to the

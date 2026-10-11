@@ -48,8 +48,10 @@ test('team grouping and project overview command center', async ({ page }) => {
   await page.getByTestId('workspace-My Workspace').click();
   await expect(page.getByTestId('request-configurator')).toBeVisible();
 
-  // Open the project overview by clicking the project name in the tree.
-  await page.getByRole('button', { name: 'Open Default Project overview' }).click();
+  // Open the project overview from the project switcher dropdown (the project
+  // actions moved out of the sidebar tree into the dropdown).
+  await page.getByTestId('project-switcher-button').click();
+  await page.getByTestId('project-overview').click();
   await expect(page.getByTestId('project-overview')).toBeVisible();
   await expect(page.getByTestId('project-overview')).toContainText('Default Project');
   await expect(page.getByTestId('project-tab-overview')).toContainText('Overview');

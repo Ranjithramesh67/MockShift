@@ -37,7 +37,10 @@ test('create a share link, open it publicly, and revoke it', async ({ page }) =>
     })
   ).json()) as { request: { id: string } };
 
-  // Select it and run it so the share page has a "latest response" to show.
+  // The sidebar tree predates the API-created request; reload so it is
+  // refetched, then select it and run it so the share page has a response.
+  await page.reload();
+  await expect(page.getByTestId('sidebar')).toBeVisible();
   await page.getByTestId('workspace-My Workspace').click();
   await expect(page.getByTestId('request-configurator')).toBeVisible();
   await page.getByTestId(`sidebar-request-${requestName}`).click();
@@ -53,10 +56,19 @@ test('create a share link, open it publicly, and revoke it', async ({ page }) =>
   const shareUrl = await urlInput.inputValue();
   expect(shareUrl).toMatch(/^http:\/\/127\.0\.0\.1:3000\/s\/[0-9a-f-]+$/);
 
-  // Visit the public page in a fresh context with NO session cookie.
+  // The share view is login-gated: a fresh context first sees the sign-in CTA,
+  // then the item once any account signs in.
   const anonContext = await page.context().browser()!.newContext();
   const anonPage = await anonContext.newPage();
   await anonPage.goto(shareUrl);
+  await expect(anonPage.getByTestId('share-login-required')).toBeVisible();
+  // Sign in through the context's request API (its cookie jar is shared with
+  // the pages in the context), then reload into the authenticated share view.
+  const loginRes = await anonContext.request.post('http://127.0.0.1:3000/api/auth/login', {
+    data: { email: 'boss1785867669@test.io', password: 'bosspass123' },
+  });
+  expect(loginRes.ok()).toBeTruthy();
+  await anonPage.reload();
   await expect(anonPage.locator('.share-card')).toBeVisible();
   await expect(anonPage.locator('.share-card')).toContainText(requestName);
   await expect(anonPage.locator('.share-card')).toContainText('127.0.0.1:3999/posts/1');
@@ -71,6 +83,9 @@ test('create a share link, open it publicly, and revoke it', async ({ page }) =>
   // The link is now dead.
   const anon2Context = await page.context().browser()!.newContext();
   const anon2Page = await anon2Context.newPage();
+  await anon2Context.request.post('http://127.0.0.1:3000/api/auth/login', {
+    data: { email: 'boss1785867669@test.io', password: 'bosspass123' },
+  });
   await anon2Page.goto(shareUrl);
   await expect(anon2Page.locator('.share-card')).toContainText('Link unavailable');
   await anon2Context.close();

@@ -113,6 +113,12 @@ test('scratchpad save picker saves into a nested folder', async ({ page }) => {
   await page.getByTestId(`scratchpad-save-folder-${folderId}`).click();
   await page.getByTestId('scratchpad-save-confirm').click();
 
+  // The save is async (create + patch + tree reload): wait for the picker to
+  // close and the editor to open before asserting the row exists.
+  await expect(page.getByTestId('scratchpad-save-modal')).not.toBeVisible();
+  await expect(page.getByTestId('scratchpad-workspace')).toHaveCount(0);
+  await expect(page.getByTestId('request-configurator')).toBeVisible();
+
   // The request now exists at that folder.
   const after = await (await page.request.get(`/api/workspaces/${ws.id}/content`)).json();
   const saved = after.requests.find(
@@ -120,8 +126,4 @@ test('scratchpad save picker saves into a nested folder', async ({ page }) => {
   );
   expect(saved).toBeTruthy();
   expect(saved.folder_id).toBe(folderId);
-
-  // The pane closes and the request editor opens.
-  await expect(page.getByTestId('scratchpad-workspace')).toHaveCount(0);
-  await expect(page.getByTestId('request-configurator')).toBeVisible();
 });

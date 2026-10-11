@@ -43,14 +43,16 @@ test('create a mock server, add a route, and run a request against it', async ({
   await page.getByTestId('workspace-My Workspace').click();
   await expect(page.getByTestId('request-configurator')).toBeVisible();
 
-  // Open the mock server modal for the Default Project.
+  // Open the mock server modal for the Default Project. The project actions
+  // moved from the sidebar tree into the project switcher dropdown.
+  await page.getByTestId('project-switcher-button').click();
   await page.getByTestId('mock-server-Default Project').click();
   await expect(page.getByTestId('mock-server-modal')).toBeVisible();
 
   // Create the mock server.
   await page.getByTestId('mock-server-name').fill('E2E Mock');
   await page.getByTestId('mock-server-create').click();
-  await expect(page.getByTestId('mock-base-url')).toContainText(`/mock/${project.id}`);
+  await expect(page.getByTestId('mock-server-link')).toContainText(`/mock/${project.id}`);
 
   // Add a route: GET /users/:id -> {"userId":"{{id}}"}.
   await page.getByTestId('mock-add-route').click();

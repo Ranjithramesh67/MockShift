@@ -19,6 +19,9 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [['list']],
+  // Next dev compiles a route the first time it is requested; the initial
+  // login->sidebar assertion can exceed the 5s default on a cold server.
+  expect: { timeout: 15000 },
   use: {
     baseURL: 'http://127.0.0.1:3000',
     trace: 'retain-on-failure',
