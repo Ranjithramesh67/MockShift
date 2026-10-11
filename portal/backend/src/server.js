@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { query, access, authRouter } = require('./shared');
+const { query, access, authRouter, authLib } = require('./shared');
 const { roleAtLeast } = require('./portalAccess');
 const publicCatalogRouter = require('./routes/publicCatalog');
 const publicCheckoutRouter = require('./routes/publicCheckout');
@@ -78,6 +78,12 @@ function createApp() {
   // default: with the real Cashfree gateway live, the demo routes would let a
   // customer settle an order without paying. Opt in only for local testing.
   if (process.env.ALLOW_MOCK_GATEWAY === '1') {
+    if (!String(process.env.GATEWAY_WEBHOOK_SECRET || '').trim()) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[portal-api] ALLOW_MOCK_GATEWAY=1 but GATEWAY_WEBHOOK_SECRET is unset; webhook deliveries will be rejected (fail-closed).'
+      );
+    }
     app.use('/api/public/gateway', paymentGatewayRouter);
     app.use('/api/public/webhooks', webhooksRouter);
   }
@@ -120,6 +126,8 @@ function createApp() {
 }
 
 function startServer({ port = Number(process.env.PORT || 3102), host = process.env.HOST } = {}) {
+  // Fail fast on a missing/default AUTH_SECRET in production (session forgery).
+  authLib.assertAuthSecret();
   const app = createApp();
   return new Promise((resolve) => {
     // When HOST is unset Node keeps its default (all interfaces). Deployments

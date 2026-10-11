@@ -189,6 +189,8 @@ function createApp() {
 }
 
 function startServer({ port = Number(process.env.PORT || 3001), host = process.env.HOST } = {}) {
+  // Fail fast on a missing/default AUTH_SECRET in production (session forgery).
+  require('./authLib').assertAuthSecret();
   const app = createApp();
   return new Promise((resolve) => {
     // When HOST is unset Node keeps its default (all interfaces). Deployments

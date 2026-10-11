@@ -30,11 +30,15 @@ const {
 
 const router = Router();
 
-const WEBHOOK_SECRET = () =>
-  process.env.GATEWAY_WEBHOOK_SECRET || 'whsec_apihub_sim_gateway_dev';
+// The mock gateway is opt-in dev/test tooling (mounted only when
+// ALLOW_MOCK_GATEWAY=1). Even so, never fall back to a committed secret: an
+// unset secret fails closed so a misconfigured deployment cannot have its
+// orders settled with a publicly known value.
+const WEBHOOK_SECRET = () => String(process.env.GATEWAY_WEBHOOK_SECRET || '').trim();
 
 function signatureMatches(value) {
   const expected = WEBHOOK_SECRET();
+  if (!expected) return false;
   const a = Buffer.from(String(value || ''));
   const b = Buffer.from(expected);
   if (a.length !== b.length) return false;

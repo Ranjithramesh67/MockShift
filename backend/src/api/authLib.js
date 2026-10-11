@@ -6,8 +6,21 @@ const SESSION_COOKIE = 'ah.session';
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const DEFAULT_SECRET = 'dev-only-auth-secret-change-me';
 
+// The session HMAC secret. In production a missing or built-in default secret
+// would let anyone mint a valid session cookie, so we fail closed instead of
+// silently falling back to the committed default.
 function secret() {
-  return process.env.AUTH_SECRET || DEFAULT_SECRET;
+  const value = process.env.AUTH_SECRET;
+  if (value && value.trim()) {
+    if (process.env.NODE_ENV === 'production' && value === DEFAULT_SECRET) {
+      throw new Error('AUTH_SECRET must be changed from the built-in default in production');
+    }
+    return value;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('AUTH_SECRET is required in production');
+  }
+  return DEFAULT_SECRET;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +180,10 @@ function readSessionToken(req) {
 
 module.exports = {
   SESSION_COOKIE,
+  assertAuthSecret: () => {
+    // Validate the secret at boot (throws in a misconfigured production).
+    secret();
+  },
   hashPassword,
   verifyPassword,
   signSession,
