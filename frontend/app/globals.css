@@ -5096,6 +5096,7 @@ body.is-col-dragging .sidebar {
 }
 
 .toggle-switch {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -5110,14 +5111,15 @@ body.is-col-dragging .sidebar {
 
 .toggle-switch-input {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   padding: 0;
   border: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+  opacity: 0;
+  cursor: inherit;
+  z-index: 1;
 }
 
 .toggle-switch-track {
