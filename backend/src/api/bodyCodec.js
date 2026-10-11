@@ -51,11 +51,11 @@ function serializeBody(request, { substitute = (s) => s, vars = {} } = {}) {
   if (bodyType === 'GRAPHQL') {
     const payload = graphqlPayload(request, substitute, vars);
     const body = JSON.stringify(payload);
-    return { body, contentType: 'application/json', snapshot: payload };
+    return { body, contentType: 'application/json', snapshot: body };
   }
   if (bodyType === 'JSON' && request.body_json && typeof request.body_json === 'object') {
     const body = JSON.stringify(request.body_json);
-    return { body, contentType: 'application/json', snapshot: request.body_json };
+    return { body, contentType: 'application/json', snapshot: body };
   }
   let text = request.body_text ?? (typeof request.body_json === 'string' ? request.body_json : null);
   if (text == null) return { body: null, contentType: null, snapshot: null };

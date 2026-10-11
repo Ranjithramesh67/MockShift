@@ -24,7 +24,7 @@ test('default content types', () => {
 });
 
 test('serialize GraphQL object body', () => {
-  const { body, contentType } = serializeBody(
+  const { body, contentType, snapshot } = serializeBody(
     {
       body_type: 'GRAPHQL',
       api_type: 'GRAPHQL',
@@ -35,6 +35,19 @@ test('serialize GraphQL object body', () => {
   );
   assert.equal(contentType, 'application/json');
   assert.deepEqual(JSON.parse(body), { query: '{ ping }', variables: { a: 1 } });
+  // Snapshot bodies are always strings so credential redaction (which parses
+  // JSON text) applies uniformly across run history and shares.
+  assert.equal(snapshot, body);
+});
+
+test('serialize JSON object body keeps the snapshot as text', () => {
+  const { body, contentType, snapshot } = serializeBody(
+    { body_type: 'JSON', api_type: 'REST', body_json: { amount: 19.99 }, body_text: null },
+    { substitute: (s) => s, vars: {} }
+  );
+  assert.equal(contentType, 'application/json');
+  assert.equal(typeof snapshot, 'string');
+  assert.deepEqual(JSON.parse(snapshot), { amount: 19.99 });
 });
 
 test('serialize GraphQL raw query text as {query}', () => {
