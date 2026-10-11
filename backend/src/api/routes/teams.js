@@ -1,0 +1,326 @@
+'use strict';
+
+const { Router } = require('express');
+const { query } = require('../db');
+const { requireAuth, roleAtLeast, getWorkspaceRole } = require('../access');
+const { requirePermissionFor, requireResourcePermission } = require('../permissions');
+const { listWorkspaces } = require('./workspaces');
+const { checkCountGate, checkSeatGate } = require('../entitlements');
+
+const router = Router();
+router.use(requireAuth);
+
+async function teamRole(userId, teamId) {
+  const { rows } = await query(
+    `SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2`,
+    [teamId, userId]
+  );
+  return rows[0]?.role || null;
+}
+
+async function teamWithMembers(teamId) {
+  const { rows } = await query(
+    `SELECT tm.user_id AS id, u.email, u.username, u.name, tm.role
+       FROM team_members tm JOIN users u ON u.id = tm.user_id
+      WHERE tm.team_id = $1 ORDER BY u.name`,
+    [teamId]
+  );
+  return rows;
+}
+
+// Teams the user is a member of.
+router.get('/', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT t.id, t.name, t.organization_id, o.name AS organization_name
+         FROM teams t
+         JOIN team_members tm ON tm.team_id = t.id
+         JOIN organizations o ON o.id = t.organization_id
+        WHERE tm.user_id = $1
+        ORDER BY t.name`,
+      [req.user.id]
+    );
+    const teams = [];
+    for (const t of rows) {
+      teams.push({ ...t, members: await teamWithMembers(t.id), myRole: await teamRole(req.user.id, t.id) });
+    }
+    res.json({ teams });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Team-scoped grouping for navigation: teams the user participates in (as a
+// member, or as an org admin) each with the workspaces shared to that team,
+// followed by an "other" bucket holding the user's remaining workspaces
+// (direct membership / public) that no participating team shares.
+router.get('/groups', async (req, res, next) => {
+  try {
+    const { rows: teams } = await query(
+      `SELECT DISTINCT t.id, t.name, t.organization_id, o.name AS organization_name
+         FROM teams t
+         JOIN organizations o ON o.id = t.organization_id
+        WHERE EXISTS (SELECT 1 FROM team_members tm
+                       WHERE tm.team_id = t.id AND tm.user_id = $1)
+           OR EXISTS (SELECT 1 FROM organization_members om
+                       WHERE om.org_id = t.organization_id
+                         AND om.user_id = $1 AND om.role = 'ADMIN')
+        ORDER BY t.name`,
+      [req.user.id]
+    );
+
+    const groupedIds = new Set();
+    const groups = [];
+    for (const t of teams) {
+      const myRole = await teamRole(req.user.id, t.id);
+      const { rows: wsRows } = await query(
+        `SELECT w.id, w.name, w.visibility, w.organization_id, o.name AS organization_name
+           FROM workspaces w
+           JOIN workspace_teams wt ON wt.workspace_id = w.id
+           JOIN organizations o ON o.id = w.organization_id
+          WHERE wt.team_id = $1
+          ORDER BY w.name`,
+        [t.id]
+      );
+      const workspaces = [];
+      for (const w of wsRows) {
+        groupedIds.add(w.id);
+        const role = await getWorkspaceRole(req.user.id, w.id);
+        workspaces.push({ ...w, role });
+      }
+      groups.push({ ...t, myRole, workspaces });
+    }
+
+    const all = await listWorkspaces(req.user.id);
+    const other = all.filter((w) => !groupedIds.has(w.id));
+    res.json({ groups, other });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Org a team is being created into: prefer an explicit workspaceId's org, else
+// the organizationId from the body. Unknown -> null (legacy guard rules).
+async function resolveTeamCreateOrg(req) {
+  const { workspaceId, organizationId } = req.body || {};
+  if (workspaceId) {
+    const { rows } = await query(`SELECT organization_id FROM workspaces WHERE id = $1`, [workspaceId]);
+    if (rows[0]) return rows[0].organization_id;
+  }
+  return organizationId || null;
+}
+
+router.post('/', requirePermissionFor(resolveTeamCreateOrg, 'team.manage'), async (req, res, next) => {
+  try {
+    const { organizationId, name } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
+
+    let orgId = organizationId;
+    if (!orgId) {
+      const { rows } = await query(
+        `SELECT org_id FROM organization_members WHERE user_id = $1 ORDER BY role DESC, org_id LIMIT 1`,
+        [req.user.id]
+      );
+      orgId = rows[0]?.org_id;
+    }
+    if (!orgId) return res.status(400).json({ error: 'You are not part of any organization' });
+    const inOrg = await query(
+      `SELECT 1 FROM organization_members WHERE org_id = $1 AND user_id = $2`,
+      [orgId, req.user.id]
+    );
+    if (inOrg.rows.length === 0) return res.status(403).json({ error: 'Not a member of that organization' });
+
+    const teamGate = await checkCountGate({ userId: req.user.id, orgId, key: 'teams' });
+    if (teamGate) return res.status(403).json(teamGate);
+
+    const client = await require('../db').pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `INSERT INTO teams (name, organization_id) VALUES ($1, $2) RETURNING id`,
+        [name.trim(), orgId]
+      );
+      const teamId = rows[0].id;
+      await client.query(
+        `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'ADMIN')`,
+        [teamId, req.user.id]
+      );
+      await client.query('COMMIT');
+      res.status(201).json({ team: { id: teamId, name: name.trim(), organization_id: orgId, members: await teamWithMembers(teamId), myRole: 'ADMIN' } });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:teamId', requireResourcePermission('team', 'team.manage'), async (req, res, next) => {
+  try {
+    const { teamId } = req.params;
+    const myRole = await teamRole(req.user.id, teamId);
+    if (!roleAtLeast(myRole, 'ADMIN')) return res.status(403).json({ error: 'Team admin required' });
+    await query(`DELETE FROM teams WHERE id = $1`, [teamId]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:teamId/members', async (req, res, next) => {  try {
+    const role = await teamRole(req.user.id, req.params.teamId);
+    if (!role) return res.status(403).json({ error: 'Not a member of this team' });
+    res.json({ members: await teamWithMembers(req.params.teamId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// People who can be added to the team: members of the team's organization plus
+// the caller's accepted contacts (so an invited collaborator from another
+// organization can be seated), who are not already on the team. Platform admins
+// also see every other active user (seeded accounts live in per-user orgs, so a
+// directory is needed to pick).
+router.get('/:teamId/org-users', async (req, res, next) => {
+  try {
+    const { teamId } = req.params;
+    const myRole = await teamRole(req.user.id, teamId);
+    if (!roleAtLeast(myRole, 'ADMIN')) return res.status(403).json({ error: 'Team admin required' });
+    const team = await query(`SELECT organization_id FROM teams WHERE id = $1`, [teamId]);
+    if (team.rows.length === 0) return res.status(404).json({ error: 'Team not found' });
+    const orgId = team.rows[0].organization_id;
+    const sql =
+      req.user.role === 'ADMIN'
+        ? `SELECT u.id, u.name, u.username
+             FROM users u
+            WHERE u.is_active = true
+              AND NOT EXISTS (SELECT 1 FROM team_members tm
+                               WHERE tm.team_id = $1 AND tm.user_id = u.id)
+            ORDER BY u.name`
+        : `SELECT DISTINCT u.id, u.name, u.username
+             FROM users u
+            WHERE u.is_active = true
+              AND NOT EXISTS (SELECT 1 FROM team_members tm
+                               WHERE tm.team_id = $1 AND tm.user_id = u.id)
+              AND (
+                EXISTS (SELECT 1 FROM organization_members om
+                         WHERE om.org_id = $2 AND om.user_id = u.id)
+                OR EXISTS (SELECT 1 FROM user_contacts c
+                            WHERE c.owner_id = $3 AND c.contact_id = u.id)
+              )
+            ORDER BY u.name`;
+    const { rows } = await query(
+      sql,
+      req.user.role === 'ADMIN' ? [teamId] : [teamId, orgId, req.user.id]
+    );
+    res.json({ users: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:teamId/members', requireResourcePermission('team', 'team.manage'), async (req, res, next) => {
+  try {
+    const { teamId } = req.params;
+    const { email, userId, username, role } = req.body || {};
+    const myRole = await teamRole(req.user.id, teamId);
+    if (!roleAtLeast(myRole, 'ADMIN')) return res.status(403).json({ error: 'Team admin required' });
+    if (!userId && !email && !username) return res.status(400).json({ error: 'userId, username or email is required' });
+
+    const memberRole = role === 'VIEWER' || role === 'EDITOR' ? role : 'EDITOR';
+    let targetId = userId || null;
+    if (targetId) {
+      const target = await query('SELECT id FROM users WHERE id = $1', [targetId]);
+      if (target.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    } else if (username) {
+      const target = await query('SELECT id FROM users WHERE lower(username) = lower($1)', [String(username).trim()]);
+      if (target.rows.length === 0) {
+        return res.status(404).json({ error: `No user with username ${username}` });
+      }
+      targetId = target.rows[0].id;
+    } else {
+      const target = await query('SELECT id FROM users WHERE lower(email) = lower($1)', [String(email).trim()]);
+      if (target.rows.length === 0) {
+        return res.status(404).json({ error: `No user with email ${email}` });
+      }
+      targetId = target.rows[0].id;
+    }
+    // L3 seats gate — adding a brand-new distinct person to the org pool.
+    const teamOrg = await query(`SELECT organization_id FROM teams WHERE id = $1`, [teamId]);
+    const seatGate = await checkSeatGate({
+      userId: req.user.id,
+      orgId: teamOrg.rows[0]?.organization_id,
+      targetUserId: targetId,
+    });
+    if (seatGate) return res.status(403).json(seatGate);
+    await query(
+      `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
+       ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+      [teamId, targetId, memberRole]
+    );
+    res.status(201).json({ members: await teamWithMembers(teamId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/:teamId/members/:userId', requireResourcePermission('team', 'team.manage'), async (req, res, next) => {
+  try {
+    const { teamId, userId } = req.params;
+    const { role } = req.body || {};
+    const myRole = await teamRole(req.user.id, teamId);
+    if (!roleAtLeast(myRole, 'ADMIN')) return res.status(403).json({ error: 'Team admin required' });
+    if (role !== 'ADMIN' && role !== 'EDITOR' && role !== 'VIEWER') {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+    // Prevent removing the last admin.
+    if (role !== 'ADMIN') {
+      const admins = await query(
+        `SELECT count(*)::int AS n FROM team_members WHERE team_id = $1 AND role = 'ADMIN'`,
+        [teamId]
+      );
+      const isTargetAdmin = await query(
+        `SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2 AND role = 'ADMIN'`,
+        [teamId, userId]
+      );
+      if (admins.rows[0].n <= 1 && isTargetAdmin.rows.length > 0) {
+        return res.status(400).json({ error: 'Cannot demote the last team admin' });
+      }
+    }
+    await query(
+      `UPDATE team_members SET role = $1 WHERE team_id = $2 AND user_id = $3`,
+      [role, teamId, userId]
+    );
+    res.json({ members: await teamWithMembers(teamId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:teamId/members/:userId', requireResourcePermission('team', 'team.manage'), async (req, res, next) => {
+  try {
+    const { teamId, userId } = req.params;
+    const myRole = await teamRole(req.user.id, teamId);
+    if (!roleAtLeast(myRole, 'ADMIN')) return res.status(403).json({ error: 'Team admin required' });
+    const admins = await query(
+      `SELECT count(*)::int AS n FROM team_members WHERE team_id = $1 AND role = 'ADMIN'`,
+      [teamId]
+    );
+    const isTargetAdmin = await query(
+      `SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2 AND role = 'ADMIN'`,
+      [teamId, userId]
+    );
+    if (admins.rows[0].n <= 1 && isTargetAdmin.rows.length > 0) {
+      return res.status(400).json({ error: 'Cannot remove the last team admin' });
+    }
+    await query(`DELETE FROM team_members WHERE team_id = $1 AND user_id = $2`, [teamId, userId]);
+    res.json({ members: await teamWithMembers(teamId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

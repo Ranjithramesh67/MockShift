@@ -1,0 +1,1696 @@
+'use client';
+
+import type { Assertion, BodyFormPart } from './types';
+import type { WorkspaceAccessRequest } from './docsApi';
+
+export type ApiType = 'REST' | 'SOAP' | 'GRAPHQL' | 'AUTH';
+export type WorkspaceVisibility = 'PRIVATE' | 'PUBLIC';
+export type UserRole = 'ADMIN' | 'MANAGER' | 'EDITOR' | 'VIEWER';
+export type MemberRole = 'EDITOR' | 'VIEWER';
+
+// ----------------------------------------------------------------- Team groups
+// Grouped workspace navigation: workspaces the user can access, bucketed by the
+// teams that share them. `other` holds accessible workspaces not shared by any
+// team the user belongs to.
+export interface GroupWorkspace {
+  id: string;
+  name: string;
+  visibility: WorkspaceVisibility;
+  organization_id: string;
+  organization_name: string;
+  role: UserRole | null;
+}
+
+export interface TeamGroup {
+  id: string;
+  name: string;
+  organization_id: string;
+  organization_name: string;
+  myRole: UserRole | null;
+  workspaces: GroupWorkspace[];
+}
+
+export interface TeamGroupsResponse {
+  groups: TeamGroup[];
+  other: GroupWorkspace[];
+}
+
+// ---------------------------------------------------------- Project overview
+export interface OverviewProject {
+  id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name: string;
+  workspace_visibility: WorkspaceVisibility;
+  organization_id: string;
+  organization_name: string;
+}
+
+export interface OverviewPerson {
+  id: string;
+  email: string;
+  name: string;
+  role: MemberRole | 'MANAGER';
+  granted_at: string | null;
+  grantor_name: string | null;
+}
+
+export interface ProjectOverviewCounts {
+  collections: number;
+  folders: number;
+  requests: number;
+  automations: number;
+  workflows: number;
+  has_mock_server: boolean;
+}
+
+export interface OverviewRecentRun {
+  id: string;
+  status: string;
+  trigger: string;
+  started_at: string;
+  finished_at: string | null;
+  request_name: string | null;
+  workflow_name: string | null;
+  user_name: string | null;
+}
+
+export interface ProjectOverview {
+  project: OverviewProject;
+  myAccess: { level: string; isManager: boolean };
+  canManage: boolean;
+  counts: ProjectOverviewCounts;
+  managers: OverviewPerson[];
+  members: OverviewPerson[];
+  recentRuns: OverviewRecentRun[];
+}
+
+export interface ProjectOrgUser {
+  id: string;
+  name: string;
+  username: string;
+  email?: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  name: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at?: string;
+  email_verified?: boolean;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  role: UserRole;
+}
+
+export interface Session {
+  user: User;
+  organizations: Organization[];
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  visibility: WorkspaceVisibility;
+  organization_id: string;
+  organization_name: string;
+  role: UserRole;
+}
+
+export interface TeamMember {
+  id: string;
+  email?: string;
+  username: string;
+  name: string;
+  role: UserRole;
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  organization_id: string;
+  organization_name: string;
+  members: TeamMember[];
+  myRole: UserRole;
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  collection_id: string;
+  parent_id: string | null;
+}
+
+export interface ContentTree {
+  workspaceId: string;
+  projects: Array<{
+    id: string;
+    name: string;
+    can_access: boolean;
+    access_status: 'PENDING' | 'APPROVED' | 'DENIED' | null;
+  }>;
+  collections: Array<{ id: string; name: string; project_id: string; has_auth: string | null }>;
+  folders: Folder[];
+  requests: Array<{
+    id: string;
+    name: string;
+    method: string;
+    url: string;
+    api_type: ApiType;
+    collection_id: string;
+    folder_id: string | null;
+  }>;
+}
+
+// Project-first content tree: a project owns one or more workspaces, and each
+// collection belongs to a workspace via `workspace_id`.
+export interface ProjectContentTree {
+  projectId: string;
+  workspaces: Array<{ id: string; name: string; visibility: string }>;
+  collections: Array<{ id: string; name: string; workspace_id: string; has_auth: string | null }>;
+  folders: Folder[];
+  requests: ContentTree['requests'];
+}
+
+export interface RequestDetail {
+  id: string;
+  name: string;
+  method: string;
+  url: string;
+  headers: Array<{ key: string; value: string; enabled: boolean }>;
+  queryParams: Array<{ key: string; value: string; enabled: boolean }>;
+  bodyType: string;
+  bodyJson: string | null;
+  bodyText: string | null;
+  bodyParts: BodyFormPart[];
+  apiType: ApiType;
+  formula: string;
+  collectionId: string;
+  workspaceId: string;
+  workspaceRole: UserRole;
+  authProvider: AuthProvider | null;
+  assertions?: Assertion[];
+}
+
+export type AuthType = 'NONE' | 'BASIC' | 'BEARER_TOKEN' | 'OAUTH2';
+
+export interface AuthProvider {
+  authType: AuthType;
+  tokenRequestId: string | null;
+  tokenPath: string;
+  headerKey: string;
+  headerPrefix: string;
+}
+
+export interface AssertionResult {
+  id: string;
+  passed: boolean;
+  message: string;
+}
+
+export interface RunResult {
+  runStatus: 'SUCCESS' | 'FAILED';
+  httpStatus: number;
+  error: string | null;
+  response: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: string;
+    bodyEncoding?: 'text' | 'base64';
+    durationMs: number;
+  } | null;
+  resolvedAuth: { headerKey: string; headerValue: string } | null;
+  requestSnapshot: { url: string; method: string; headers: Record<string, string>; body: string | null };
+  variables: Record<string, string>;
+  testResults?: AssertionResult[];
+  assertionsPassed?: boolean;
+}
+
+export interface CollectionRunItem {
+  requestId: string;
+  name: string;
+  runStatus: string;
+  httpStatus: number;
+  error: string | null;
+  durationMs: number | null;
+  assertions: AssertionResult[];
+  assertionsPassed: boolean;
+  /** 1-based data-row/iteration this execution belongs to (QA options). */
+  iteration?: number;
+  /** Which attempt produced this result (1 = first try). */
+  attempt?: number;
+  /** The data row applied to this execution, when a dataset was supplied. */
+  row?: Record<string, string> | null;
+}
+
+export interface CollectionRunSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  assertionsTotal: number;
+  assertionsPassed: number;
+  iterations?: number;
+  dataRows?: number;
+  stoppedEarly?: boolean;
+  checksFailed?: number;
+}
+
+export interface CollectionRunResult {
+  results: CollectionRunItem[];
+  summary: CollectionRunSummary;
+}
+
+/** QA run options for the collection runner. */
+export interface CollectionRunOptions {
+  /** Stop the run on the first failed request/assertion. */
+  stopOnError?: boolean;
+  /** Pause between executions, in milliseconds. */
+  delayMs?: number;
+  /** Retry a failed execution this many times before recording a failure. */
+  retries?: number;
+  /** Repeat the whole collection this many times (ignored when `data` is set). */
+  iterations?: number;
+  /** Restrict the run to these request ids (e.g. re-run failures only). */
+  requestIds?: string[];
+  /** One row per iteration; exposed to templates as {{data.field}} / {{field}}. */
+  data?: Record<string, string>[];
+}
+
+// ---- Browser-executed runs (localhost/private hosts the server cannot reach)
+export interface PreparedRunRequest {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: string | null;
+  multipart: boolean;
+}
+
+export interface PreparedRun {
+  prepared: PreparedRunRequest;
+  variables: Record<string, string>;
+  requestSnapshot: { url: string; method: string; headers: Record<string, string>; body: string | null };
+}
+
+export interface ClientRunResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  bodyEncoding: 'text' | 'base64';
+  durationMs: number;
+}
+
+export interface EphemeralRunInput {
+  method: string;
+  url: string;
+  headers?: Array<{ key: string; value: string; enabled: boolean }>;
+  queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+  bodyType?: string;
+  bodyJson?: unknown;
+  bodyText?: string | null;
+  bodyParts?: BodyFormPart[];
+  id?: string;
+  formula?: string;
+  assertions?: Assertion[];
+  apiType?: ApiType;
+  collectionId?: string | null;
+  persistHistory?: boolean;
+}
+
+export interface CompleteRunInput extends EphemeralRunInput {
+  prepared: PreparedRunRequest;
+  clientResponse: ClientRunResponse | null;
+  error?: string | null;
+  startedAt?: string;
+  finishedAt?: string;
+}
+
+export interface AdminUser extends User {
+  workspace_count?: number;
+  request_count?: number;
+  projects?: Array<{ id: string; name: string; kind: 'manager' | 'member'; role: string }>;
+}
+
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+  constructor(status: number, message: string, body: unknown = null) {
+    super(message);
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export async function apiFetch<T = unknown>(
+  path: string,
+  options: { method?: string; body?: unknown } = {}
+): Promise<T> {
+  const res = await fetch(path, {
+    method: options.method || 'GET',
+    headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    let data: unknown = null;
+    try {
+      data = await res.json();
+      if (data && typeof data === 'object' && 'error' in data && (data as { error?: unknown }).error) {
+        message = String((data as { error: unknown }).error);
+      }
+    } catch {
+      // non-JSON error body
+    }
+    throw new ApiError(res.status, message, data);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+export const authApi = {
+  signup: (input: { email: string; password: string; name?: string; username?: string }) =>
+    apiFetch<{ user: Session }>('/api/auth/signup', { method: 'POST', body: input }),
+  login: (input: { email: string; password: string }) =>
+    apiFetch<{ user: Session }>('/api/auth/login', { method: 'POST', body: input }),
+  logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
+  me: () => apiFetch<Session>('/api/auth/me'),
+  forgotPassword: (email: string) =>
+    apiFetch<{ ok: true }>('/api/auth/forgot-password', { method: 'POST', body: { email } }),
+  resetPassword: (token: string, new_password: string) =>
+    apiFetch<{ ok: true }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: { token, new_password },
+    }),
+  verifyEmail: (token: string) =>
+    apiFetch<{ ok: true }>('/api/auth/verify-email', { method: 'POST', body: { token } }),
+  resendVerification: () =>
+    apiFetch<{ ok: true; alreadyVerified?: boolean }>('/api/auth/resend-verification', {
+      method: 'POST',
+    }),
+};
+
+export type MenuKey =
+  | 'teams'
+  | 'automations'
+  | 'history'
+  | 'docs'
+  | 'contracts'
+  | 'monitors'
+  | 'mock-scenarios'
+  | 'copilot'
+  | 'collab'
+  | 'manage'
+  | 'json-compare'
+  | 'network';
+
+export interface MenuAccessResponse {
+  menus: Record<MenuKey, boolean>;
+  projectId: string | null;
+  orgId: string | null;
+  keys: MenuKey[];
+}
+
+export const menuApi = {
+  get: (params: { workspaceId?: string | null; projectId?: string | null } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.workspaceId) qs.set('workspaceId', params.workspaceId);
+    if (params.projectId) qs.set('projectId', params.projectId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return apiFetch<MenuAccessResponse>(`/api/menu-access${suffix}`);
+  },
+};
+
+export interface NavOrderResponse {
+  ok: true;
+  order: string[] | null;
+  keys?: string[];
+}
+
+// Per-user sidebar rail order, persisted server-side so it applies on every
+// device the user signs in on.
+export const navOrderApi = {
+  get: () => apiFetch<NavOrderResponse>('/api/profile/nav-order'),
+  save: (order: string[]) =>
+    apiFetch<{ ok: true; order: string[] | null }>('/api/profile/nav-order', {
+      method: 'PUT',
+      body: { order },
+    }),
+};
+
+export const workspaceApi = {
+  list: () => apiFetch<{ workspaces: Workspace[] }>('/api/workspaces'),
+  create: (input: { name: string; visibility?: WorkspaceVisibility; organizationId?: string }) =>
+    apiFetch<{ workspace: Workspace }>('/api/workspaces', { method: 'POST', body: input }),
+  remove: (workspaceId: string) => apiFetch(`/api/workspaces/${workspaceId}`, { method: 'DELETE' }),
+  content: (workspaceId: string) => apiFetch<ContentTree>(`/api/workspaces/${workspaceId}/content`),
+  share: (workspaceId: string, teamId: string, role: UserRole) =>
+    apiFetch(`/api/workspaces/${workspaceId}/teams`, { method: 'POST', body: { teamId, role } }),
+  unshare: (workspaceId: string, teamId: string) =>
+    apiFetch(`/api/workspaces/${workspaceId}/teams/${teamId}`, { method: 'DELETE' }),
+  teams: (workspaceId: string) => apiFetch<{ teams: Array<{ share_id: string; team_id: string; name: string; role: UserRole }> }>(`/api/workspaces/${workspaceId}/teams`),
+  members: (workspaceId: string) =>
+    apiFetch<{ members: Array<{ user_id: string; name: string; email: string; username: string | null; role: UserRole }> }>(`/api/workspaces/${workspaceId}/members`),
+  addMember: (workspaceId: string, input: { userId?: string; email?: string; username?: string; role?: UserRole }) =>
+    apiFetch<{ ok: true; userId: string; role: UserRole }>(`/api/workspaces/${workspaceId}/members`, { method: 'POST', body: input }),
+  removeMember: (workspaceId: string, userId: string) =>
+    apiFetch<{ ok: true }>(`/api/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' }),
+  settings: (workspaceId: string) =>
+    apiFetch<{ settings: { run_history_retention_days: number } }>(`/api/workspaces/${workspaceId}/settings`),
+  updateSettings: (workspaceId: string, runHistoryRetentionDays: number) =>
+    apiFetch<{ settings: { run_history_retention_days: number } }>(`/api/workspaces/${workspaceId}/settings`, {
+      method: 'PATCH',
+      body: { runHistoryRetentionDays },
+    }),
+};
+
+export const teamApi = {
+  list: () => apiFetch<{ teams: Team[] }>('/api/teams'),
+  groups: () => apiFetch<TeamGroupsResponse>('/api/teams/groups'),
+  create: (input: { name: string; organizationId?: string }) => apiFetch<{ team: Team }>('/api/teams', { method: 'POST', body: input }),
+  delete: (teamId: string) => apiFetch(`/api/teams/${teamId}`, { method: 'DELETE' }),
+  orgUsers: (teamId: string) =>
+    apiFetch<{ users: ProjectOrgUser[] }>(`/api/teams/${teamId}/org-users`),
+  invite: (teamId: string, email: string, role: UserRole) =>
+    apiFetch<{ members: TeamMember[] }>(`/api/teams/${teamId}/members`, { method: 'POST', body: { email, role } }),
+  addMember: (teamId: string, userId: string, role: UserRole) =>
+    apiFetch<{ members: TeamMember[] }>(`/api/teams/${teamId}/members`, { method: 'POST', body: { userId, role } }),
+  setRole: (teamId: string, userId: string, role: UserRole) =>
+    apiFetch<{ members: TeamMember[] }>(`/api/teams/${teamId}/members/${userId}`, { method: 'PATCH', body: { role } }),
+  remove: (teamId: string, userId: string) =>
+    apiFetch<{ members: TeamMember[] }>(`/api/teams/${teamId}/members/${userId}`, { method: 'DELETE' }),
+};
+
+export const contentApi = {
+  createCollection: (projectId: string, name: string, workspaceId?: string) =>
+    apiFetch<{ collection: { id: string; name: string; project_id: string; workspace_id: string } }>('/api/collections', {
+      method: 'POST',
+      body: workspaceId ? { workspaceId, name } : { projectId, name },
+    }),
+  deleteCollection: (collectionId: string) =>
+    apiFetch(`/api/collections/${collectionId}`, { method: 'DELETE' }),
+  createRequest: (input: { collectionId: string; name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) =>
+    apiFetch<{ request: { id: string; name: string; method: string; url: string; api_type: ApiType; collection_id: string; folder_id: string | null } }>('/api/requests', { method: 'POST', body: input }),
+  deleteRequest: (requestId: string) =>
+    apiFetch(`/api/requests/${requestId}`, { method: 'DELETE' }),
+  getRequest: (requestId: string) => apiFetch<{ request: RequestDetail }>(`/api/requests/${requestId}`),
+  updateRequest: (requestId: string, patch: Record<string, unknown>) =>
+    apiFetch<{ request: { id: string; name: string } }>(`/api/requests/${requestId}`, { method: 'PUT', body: patch }),
+  duplicateRequest: (requestId: string) =>
+    apiFetch<{ request: { id: string; name: string; method: string; url: string; api_type: ApiType; collection_id: string; folder_id: string | null } }>(`/api/requests/${requestId}/duplicate`, { method: 'POST' }),
+  duplicateFolder: (folderId: string) =>
+    apiFetch<{ folders: Folder[]; requests: Array<{ id: string; name: string; method: string; url: string; api_type: ApiType; collection_id: string; folder_id: string | null }> }>(`/api/folders/${folderId}/duplicate`, { method: 'POST' }),
+  runRequest: (requestId: string) => apiFetch<RunResult>(`/api/requests/${requestId}/run`, { method: 'POST' }),
+  runEphemeral: (input: EphemeralRunInput) =>
+    apiFetch<RunResult>('/api/runs', { method: 'POST', body: input }),
+  // Resolve a request without executing it, so the browser can perform a call
+  // that must originate from the user's own network (localhost/private hosts).
+  prepareRun: (input: EphemeralRunInput) =>
+    apiFetch<PreparedRun>('/api/runs/prepare', { method: 'POST', body: input }),
+  // Record + evaluate a run the browser already executed.
+  completeRun: (input: CompleteRunInput) =>
+    apiFetch<RunResult>('/api/runs/complete', { method: 'POST', body: input }),
+  runCollection: (collectionId: string, options?: CollectionRunOptions) =>
+    apiFetch<CollectionRunResult>(`/api/collections/${collectionId}/run`, {
+      method: 'POST',
+      body: options ?? {},
+    }),
+  getAuthProvider: (collectionId: string) =>
+    apiFetch<{ authProvider: AuthProvider | null }>(`/api/collections/${collectionId}/auth-provider`),
+  setAuthProvider: (collectionId: string, provider: AuthProvider) =>
+    apiFetch<{ authProvider: AuthProvider }>(`/api/collections/${collectionId}/auth-provider`, { method: 'PUT', body: provider }),
+  testAuthProvider: (collectionId: string) =>
+    apiFetch<{ tokenStatus: number; resolvedHeader: { headerKey: string; headerValue: string } | null; tokenResponse: string }>(
+      `/api/collections/${collectionId}/auth-provider/test`,
+      { method: 'POST' }
+    ),
+};
+
+// ---- request edit history
+export interface RequestChangedField {
+  field: string;
+  from: unknown;
+  to: unknown;
+}
+
+export interface RequestRevisionMeta {
+  id: string;
+  requestId: string;
+  revisionNumber: number;
+  changeKind: 'create' | 'update' | 'rollback';
+  changedFields: RequestChangedField[];
+  rolledBackFrom: string | null;
+  createdBy: { id: string; name: string | null };
+  createdAt: string;
+}
+
+export interface RequestRevision extends RequestRevisionMeta {
+  snapshot: Record<string, unknown> | null;
+}
+
+export const requestHistoryApi = {
+  list: (requestId: string) =>
+    apiFetch<{ revisions: RequestRevisionMeta[] }>(`/api/requests/${requestId}/revisions`),
+  detail: (requestId: string, revisionId: string) =>
+    apiFetch<{ revision: RequestRevision }>(`/api/requests/${requestId}/revisions/${revisionId}`),
+  rollback: (requestId: string, revisionId: string) =>
+    apiFetch<{ request: { id: string; name: string }; revision: RequestRevisionMeta }>(
+      `/api/requests/${requestId}/revisions/${revisionId}/rollback`,
+      { method: 'POST' }
+    ),
+};
+
+export const folderApi = {
+  create: (input: { collectionId: string; name: string; parentId?: string | null }) =>
+    apiFetch<{ folder: Folder }>('/api/folders', { method: 'POST', body: input }),
+  update: (folderId: string, patch: { name?: string; parentId?: string | null }) =>
+    apiFetch<{ folder: Folder }>(`/api/folders/${folderId}`, { method: 'PUT', body: patch }),
+  remove: (folderId: string) => apiFetch<{ ok: true }>(`/api/folders/${folderId}`, { method: 'DELETE' }),
+};
+
+// ----------------------------------------------------- Project command center
+// Project-level overview + membership management (self-service, not admin).
+export interface ProjectRef {
+  id: string;
+  name: string;
+  workspace_id: string | null;
+}
+
+// A project as seen by the global top-nav picker: every project the caller can
+// read, grouped by the organization that owns it.
+export interface GlobalProject extends ProjectRef {
+  workspace_name: string | null;
+  organization_id: string;
+  organization_name: string | null;
+  can_access: boolean;
+  access_status: 'PENDING' | 'APPROVED' | 'DENIED' | null;
+}
+
+export const projectApi = {
+  listAll: () => apiFetch<{ projects: GlobalProject[] }>('/api/projects'),
+  create: (input: { organizationId?: string; workspaceId?: string; name: string }) =>
+    apiFetch<{ project: ProjectRef }>('/api/projects', { method: 'POST', body: input }),
+  content: (projectId: string) =>
+    apiFetch<ProjectContentTree>(`/api/projects/${projectId}/content`),
+  createWorkspace: (projectId: string, input: { name: string; visibility?: string }) =>
+    apiFetch<{ workspace: { id: string; name: string; visibility: string; project_id: string; organization_id: string; role: UserRole } }>(
+      `/api/projects/${projectId}/workspaces`,
+      { method: 'POST', body: input }
+    ),
+  rename: (projectId: string, name: string) =>
+    apiFetch<{ project: ProjectRef }>(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      body: { name },
+    }),
+  remove: (projectId: string) =>
+    apiFetch<{ ok: true }>(`/api/projects/${projectId}`, { method: 'DELETE' }),
+  overview: (projectId: string) =>
+    apiFetch<ProjectOverview>(`/api/projects/${projectId}/overview`),
+  orgUsers: (projectId: string) =>
+    apiFetch<{ users: ProjectOrgUser[] }>(`/api/projects/${projectId}/org-users`),
+  addMember: (projectId: string, userId: string, role: MemberRole) =>
+    apiFetch<{ ok: true; role: MemberRole }>(`/api/projects/${projectId}/members`, {
+      method: 'POST',
+      body: { userId, role },
+    }),
+  setMemberRole: (projectId: string, userId: string, role: MemberRole) =>
+    apiFetch<{ ok: true; role: MemberRole }>(`/api/projects/${projectId}/members/${userId}`, {
+      method: 'PATCH',
+      body: { role },
+    }),
+  removeMember: (projectId: string, userId: string) =>
+    apiFetch<{ ok: true }>(`/api/projects/${projectId}/members/${userId}`, { method: 'DELETE' }),
+};
+
+// --------------------------------------------------------- Collection export
+export interface ExportedCollectionRequest {
+  sourceId?: string;
+  name: string;
+  method: string;
+  url: string;
+  headers: Array<{ key: string; value: string; enabled: boolean }>;
+  queryParams: Array<{ key: string; value: string; enabled: boolean }>;
+  bodyType: string;
+  bodyJson: unknown;
+  bodyText: string | null;
+  apiType: ApiType;
+  formula: string;
+  assertions: Assertion[];
+}
+
+export interface ExportedCollection {
+  format: string;
+  version: number;
+  name: string;
+  requests: ExportedCollectionRequest[];
+  authProvider: AuthProvider | null;
+}
+
+export interface CollectionImportResult {
+  collection: { id: string; name: string; project_id: string };
+  requests: Array<{ id: string; name: string; method: string; url: string; api_type: ApiType }>;
+}
+
+export const collectionExportApi = {
+  export: (collectionId: string) =>
+    apiFetch<{ collection: ExportedCollection }>(`/api/collections/${collectionId}/export`),
+  import: (input: { projectId: string; name: string; collection: ExportedCollection }) =>
+    apiFetch<CollectionImportResult>('/api/collections/import', { method: 'POST', body: input }),
+};
+
+export const adminApi = {
+  users: () => apiFetch<{ users: AdminUser[] }>('/api/admin/users'),
+  patchUser: (userId: string, patch: { role?: UserRole; isActive?: boolean }) =>
+    apiFetch(`/api/admin/users/${userId}`, { method: 'PATCH', body: patch }),
+  createUser: (input: { email: string; name: string; username?: string; role: UserRole; password: string }) =>
+    apiFetch<{ user: User }>('/api/admin/users', { method: 'POST', body: input }),
+  access: () => apiFetch<AdminAccessOverview>('/api/admin/access'),
+  grantProjectMember: (projectId: string, input: { userId: string; role: UserRole }) =>
+    apiFetch(`/api/admin/projects/${projectId}/members`, { method: 'POST', body: input }),
+  revokeProjectMember: (projectId: string, userId: string) =>
+    apiFetch(`/api/admin/projects/${projectId}/members/${userId}`, { method: 'DELETE' }),
+  assignManager: (projectId: string, userId: string) =>
+    apiFetch(`/api/admin/projects/${projectId}/managers`, { method: 'POST', body: { userId } }),
+  removeManager: (projectId: string, userId: string) =>
+    apiFetch(`/api/admin/projects/${projectId}/managers/${userId}`, { method: 'DELETE' }),
+  grantWorkspaceMember: (workspaceId: string, input: { userId: string; role: UserRole }) =>
+    apiFetch(`/api/admin/workspaces/${workspaceId}/members`, { method: 'POST', body: input }),
+  revokeWorkspaceMember: (workspaceId: string, userId: string) =>
+    apiFetch(`/api/admin/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' }),
+  menus: () => apiFetch<AdminMenusResponse>('/api/admin/menus'),
+  setMenu: (input: {
+    menuKey: MenuKey;
+    scope: 'org' | 'project';
+    organizationId?: string;
+    projectId?: string;
+    enabled: boolean;
+  }) => apiFetch<{ setting: AdminMenuSettingRow }>('/api/admin/menus', { method: 'PUT', body: input }),
+  deleteMenu: (id: string) => apiFetch<{ ok: true }>(`/api/admin/menus/${id}`, { method: 'DELETE' }),
+  individualLlm: () => apiFetch<{ allowed: boolean }>('/api/admin/settings/individual-llm'),
+  setIndividualLlm: (input: { allowed: boolean }) =>
+    apiFetch<{ allowed: boolean }>('/api/admin/settings/individual-llm', { method: 'PUT', body: input }),
+  companyDomains: () => apiFetch<{ domains: AdminCompanyDomain[] }>('/api/admin/company-domains'),
+  addCompanyDomain: (input: { companyName: string; domain: string }) =>
+    apiFetch<{ domain: AdminCompanyDomain }>('/api/admin/company-domains', {
+      method: 'POST',
+      body: input,
+    }),
+  removeCompanyDomain: (id: string) =>
+    apiFetch<void>(`/api/admin/company-domains/${id}`, { method: 'DELETE' }),
+};
+
+export interface AdminAccessUser {
+  id: string;
+  name: string;
+  email: string;
+  role?: UserRole;
+}
+
+export interface AdminAccessProject {
+  id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name: string;
+  managers: AdminAccessUser[];
+  members: AdminAccessUser[];
+}
+
+export interface AdminAccessWorkspace {
+  id: string;
+  name: string;
+  organization_id: string;
+  organization_name: string;
+  members: AdminAccessUser[];
+}
+
+export interface AdminAccessOverview {
+  projects: AdminAccessProject[];
+  workspaces: AdminAccessWorkspace[];
+}
+
+export interface AdminMenuSettingRow {
+  id: string;
+  menu_key: MenuKey;
+  scope: 'org' | 'project';
+  enabled: boolean;
+  updated_at: string;
+  organization_id: string | null;
+  organization_name: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  workspace_name: string | null;
+}
+
+export interface AdminMenusResponse {
+  keys: MenuKey[];
+  settings: AdminMenuSettingRow[];
+  organizations: Array<{ id: string; name: string; kind: string }>;
+  projects: Array<{ id: string; name: string; workspace_name: string }>;
+}
+
+export interface AdminCompanyDomain {
+  id: string;
+  company_name: string;
+  domain: string;
+  organization_id: string | null;
+  organization_name: string | null;
+  member_count: number;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------- IAM (RBAC)
+export interface IamPermission {
+  key: string;
+  label: string;
+}
+
+export interface IamPermissionGroup {
+  key: string;
+  label: string;
+  permissions: IamPermission[];
+}
+
+export interface IamRoleRef {
+  id: string;
+  name: string;
+  systemKey: string | null;
+  isSystem: boolean;
+}
+
+export interface IamRole extends IamRoleRef {
+  description: string | null;
+  permissions: string[];
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface IamMember {
+  userId: string;
+  name: string;
+  username: string;
+  email: string;
+  legacyRole: UserRole;
+  isOwner: boolean;
+  roles: IamRoleRef[];
+}
+
+export interface IamOrg {
+  id: string;
+  name: string;
+  role: UserRole;
+  isAdmin: boolean;
+}
+
+export interface IamRoleInput {
+  name: string;
+  description?: string;
+  permissions: string[];
+}
+
+export interface IamRolePatch {
+  name?: string;
+  description?: string;
+  permissions?: string[];
+}
+
+export const iamApi = {
+  orgs: () => apiFetch<{ organizations: IamOrg[] }>('/api/orgs'),
+  permissions: () => apiFetch<{ groups: IamPermissionGroup[] }>('/api/permissions'),
+  members: (orgId: string) => apiFetch<{ members: IamMember[] }>(`/api/orgs/${orgId}/members`),
+  roles: (orgId: string) => apiFetch<{ roles: IamRole[] }>(`/api/orgs/${orgId}/roles`),
+  createRole: (orgId: string, input: IamRoleInput) =>
+    apiFetch<{ role: IamRole }>(`/api/orgs/${orgId}/roles`, { method: 'POST', body: input }),
+  updateRole: (orgId: string, roleId: string, input: IamRolePatch) =>
+    apiFetch<{ role: IamRole }>(`/api/orgs/${orgId}/roles/${roleId}`, { method: 'PATCH', body: input }),
+  deleteRole: (orgId: string, roleId: string) =>
+    apiFetch<void>(`/api/orgs/${orgId}/roles/${roleId}`, { method: 'DELETE' }),
+  setMemberRoles: (orgId: string, userId: string, roleIds: string[]) =>
+    apiFetch<{ roles: IamRoleRef[] }>(`/api/orgs/${orgId}/members/${userId}/roles`, {
+      method: 'PUT',
+      body: { roleIds },
+    }),
+  myPermissions: (orgId: string) =>
+    apiFetch<{ permissions: string[]; roles: IamRoleRef[] }>(`/api/orgs/${orgId}/me/permissions`),
+};
+
+// ---------------------------------------------------------------- Manage API
+export interface ManageOverview {
+  scope: 'all' | 'managed';
+  counts: {
+    users: string;
+    projects: string;
+    teams: string;
+    workspaces: string;
+    runs: string;
+    pending_requests: string;
+    audit_entries: string;
+    automations: string;
+  };
+}
+
+export interface ManageProject {
+  id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name: string;
+  collections: number;
+  requests: number;
+  is_manager: boolean;
+}
+
+export interface ManageTeam {
+  id: string;
+  name: string;
+  organization_id: string | null;
+  members: number;
+}
+
+export interface AccessRequestRow {
+  id: string;
+  project_id: string;
+  user_id: string;
+  role: UserRole;
+  reason: string | null;
+  status: 'PENDING' | 'APPROVED' | 'DENIED' | 'CANCELLED';
+  requested_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  email?: string;
+  name?: string;
+  project_name?: string;
+  workspaceId?: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actor_id: string | null;
+  actor_email: string | null;
+  actor_name: string | null;
+  entity_type: string;
+  entity_id: string | null;
+  action: string;
+  detail: unknown;
+  ip: string | null;
+  created_at: string;
+}
+
+export interface RunHistoryEntry {
+  id: string;
+  trigger: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  request_id: string | null;
+  workflow_id: string | null;
+  user_email: string | null;
+  user_name: string | null;
+  name: string | null;
+  method: string | null;
+  url: string | null;
+}
+
+export interface RunTestResult {
+  test_name: string;
+  passed: boolean;
+  assertions: unknown;
+  error: string | null;
+}
+
+export interface RunHistoryDetail {
+  id: string;
+  name: string | null;
+  trigger: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  request_id: string | null;
+  workflow_id: string | null;
+  request_snapshot: { method?: string; url?: string; headers?: Record<string, string>; body?: unknown } | null;
+  response_snapshot: {
+    status?: number;
+    statusText?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    bodyEncoding?: string;
+    durationMs?: number;
+  } | null;
+  test_results: RunTestResult[];
+}
+
+// Personal run history — scoped server-side to the current user only.
+export const runHistoryApi = {
+  list: (limit = 100) => apiFetch<{ runs: RunHistoryEntry[] }>(`/api/history?limit=${limit}`),
+  detail: (runId: string) => apiFetch<{ run: RunHistoryDetail }>(`/api/history/${runId}`),
+};
+
+export interface ProjectDetail {
+  project: { id: string; name: string; workspace_id: string; workspace_name: string; organization_id: string };
+  managers: Array<{ id: string; email: string; name: string }>;
+  members: Array<{ id: string; email: string; name: string; role: UserRole }>;
+  requests: Array<{ id: string; status: string; reason: string | null; requested_at: string; role: UserRole; user_id: string; email: string; name: string }>;
+}
+
+export const manageApi = {
+  overview: () => apiFetch<ManageOverview>('/api/manage/overview'),
+  users: () => apiFetch<{ users: AdminUser[] }>('/api/manage/users'),
+  projects: () => apiFetch<{ projects: ManageProject[] }>('/api/manage/projects'),
+  project: (projectId: string) => apiFetch<ProjectDetail>(`/api/manage/projects/${projectId}`),
+  teams: () => apiFetch<{ teams: ManageTeam[] }>('/api/manage/teams'),
+  accessRequests: () => apiFetch<{ accessRequests: AccessRequestRow[] }>('/api/manage/access-requests'),
+  reviewRequest: (requestId: string, approve: boolean) =>
+    apiFetch(`/api/manage/access-requests/${requestId}/review`, { method: 'POST', body: { approve } }),
+  workspaceAccessRequests: () =>
+    apiFetch<{ requests: WorkspaceAccessRequest[] }>('/api/manage/workspace-access-requests'),
+  reviewWorkspaceRequest: (requestId: string, approve: boolean) =>
+    apiFetch<{ ok: boolean; status: string }>(
+      `/api/manage/workspace-access-requests/${requestId}/review`,
+      { method: 'POST', body: { approve } }
+    ),
+  auditLogs: (limit = 100) => apiFetch<{ logs: AuditLogEntry[] }>(`/api/manage/audit-logs?limit=${limit}`),
+  history: (limit = 100) => apiFetch<{ runs: RunHistoryEntry[] }>(`/api/manage/history?limit=${limit}`),
+  assignManager: (projectId: string, userId: string) =>
+    apiFetch(`/api/manage/projects/${projectId}/managers`, { method: 'POST', body: { userId } }),
+  removeManager: (projectId: string, userId: string) =>
+    apiFetch(`/api/manage/projects/${projectId}/managers/${userId}`, { method: 'DELETE' }),
+};
+
+// ---------------------------------------------------------- Access requests
+export const accessRequestApi = {
+  request: (projectId: string, reason?: string, role?: UserRole) =>
+    apiFetch<{ accessRequest: AccessRequestRow }>(`/api/projects/${projectId}/access-requests`, {
+      method: 'POST',
+      body: { reason, role },
+    }),
+  mine: () => apiFetch<{ accessRequests: AccessRequestRow[] }>('/api/access-requests/mine'),
+  cancel: (projectId: string, requestId: string) =>
+    apiFetch<{ ok: boolean }>(`/api/projects/${projectId}/access-requests/${requestId}/cancel`, {
+      method: 'POST',
+    }),
+  members: (projectId: string) =>
+    apiFetch<{ managers: Array<{ id: string; email: string; name: string }>; members: Array<{ id: string; email: string; name: string; role: UserRole }> }>(
+      `/api/projects/${projectId}/members`
+    ),
+};
+
+// ---------------------------------------------------------------- Workflows
+export interface StoredWorkflow {
+  id: string;
+  project_id: string;
+  name: string;
+  definition: { steps: unknown[] };
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const workflowApi = {
+  list: (projectId: string) => apiFetch<{ workflows: StoredWorkflow[] }>(`/api/workflows?projectId=${projectId}`),
+  create: (input: { projectId: string; name: string; definition: { steps: unknown[] } }) =>
+    apiFetch<{ workflow: StoredWorkflow }>('/api/workflows', { method: 'POST', body: input }),
+  update: (workflowId: string, patch: { name?: string; definition?: { steps: unknown[] } }) =>
+    apiFetch<{ workflow: StoredWorkflow }>(`/api/workflows/${workflowId}`, { method: 'PUT', body: patch }),
+  remove: (workflowId: string) => apiFetch(`/api/workflows/${workflowId}`, { method: 'DELETE' }),
+  run: (workflowId: string) => apiFetch<{ runId: string; status: string }>(`/api/workflows/${workflowId}/run`, { method: 'POST' }),
+  runs: (workflowId: string, limit = 50) => apiFetch<{ runs: RunHistoryEntry[] }>(`/api/workflows/${workflowId}/runs?limit=${limit}`),
+};
+
+// --------------------------------------------------------------- Automations
+export type AutomationTriggerType = 'SCHEDULE' | 'WEBHOOK' | 'ON_REQUEST' | 'ON_RUN_FAILURE';
+
+export interface Automation {
+  id: string;
+  name: string;
+  projectId: string;
+  workflowId: string;
+  triggerType: AutomationTriggerType;
+  scheduleCron: string | null;
+  webhookToken: string | null;
+  eventRequestId: string | null;
+  sourceWorkflowId: string | null;
+  notifyWebhookUrl: string | null;
+  inputVars: Record<string, string>;
+  notifyOnFailure: boolean;
+  enabled: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  workflowName: string;
+  projectName: string;
+  webhookUrl: string | null;
+}
+
+export type AutomationInput = {
+  name: string;
+  projectId: string;
+  workflowId: string;
+  triggerType: AutomationTriggerType;
+  scheduleCron?: string;
+  eventRequestId?: string;
+  sourceWorkflowId?: string;
+  notifyWebhookUrl?: string;
+  inputVars?: Record<string, string>;
+  notifyOnFailure?: boolean;
+  enabled?: boolean;
+};
+
+export type AutomationPatch = Partial<
+  Pick<Automation, 'name' | 'scheduleCron' | 'notifyOnFailure' | 'enabled' | 'eventRequestId' | 'sourceWorkflowId' | 'notifyWebhookUrl'>
+>;
+
+export const automationApi = {
+  list: () => apiFetch<{ automations: Automation[] }>('/api/automations'),
+  create: (input: AutomationInput) =>
+    apiFetch<{ automation: Automation }>('/api/automations', { method: 'POST', body: input }),
+  update: (automationId: string, patch: AutomationPatch) =>
+    apiFetch<{ automation: Automation }>(`/api/automations/${automationId}`, { method: 'PATCH', body: patch }),
+  remove: (automationId: string) => apiFetch(`/api/automations/${automationId}`, { method: 'DELETE' }),
+  runs: (automationId: string, limit = 50) => apiFetch<{ runs: RunHistoryEntry[] }>(`/api/automations/${automationId}/runs?limit=${limit}`),
+  trigger: (automationId: string) => apiFetch<{ runId: string; status: string }>(`/api/automations/${automationId}/trigger`, { method: 'POST' }),
+};
+
+// ------------------------------------------------------------- Notifications
+export interface Notification {
+  id: string;
+  title: string;
+  body: string | null;
+  kind: 'info' | 'success' | 'error' | 'send' | 'request';
+  read: boolean;
+  payload: Record<string, unknown> | null;
+  link: string | null;
+  created_at: string;
+}
+
+export const notificationApi = {
+  list: () => apiFetch<{ notifications: Notification[] }>('/api/notifications'),
+  markRead: (notificationId: string) => apiFetch(`/api/notifications/${notificationId}/read`, { method: 'POST' }),
+  readAll: () => apiFetch('/api/notifications/read-all', { method: 'POST' }),
+};
+
+// ------------------------------------------------------------------- Sends
+// "Send item to another user": a sender creates a send of a request / folder /
+// collection / project / workspace to a recipient; the recipient accepts (a
+// copy is cloned into their own account — the sender keeps the original) or
+// rejects. Endpoints live on backend/src/api/routes/sends.js (mounted /api).
+export type SendItemType = 'request' | 'folder' | 'collection' | 'project' | 'workspace';
+export type SendStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface SendPerson {
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+
+// Where an accepted copy landed, scoped to the recipient's account. The
+// optional key reflects the cloned item type (a workspace clone only carries
+// workspace fields, a request clone also carries project/collection/folder).
+export interface SendAcceptedPath {
+  type: SendItemType;
+  name: string;
+  workspaceId: string;
+  workspaceName: string;
+  projectId?: string;
+  projectName?: string;
+  collectionId?: string;
+  collectionName?: string;
+  folderId?: string;
+  folderName?: string;
+}
+
+export interface Send {
+  id: string;
+  itemType: SendItemType;
+  itemId: string;
+  itemName: string | null;
+  message: string | null;
+  status: SendStatus;
+  createdAt: string;
+  respondedAt: string | null;
+  acceptedPath: SendAcceptedPath | null;
+  sender: SendPerson | null;
+  recipient: SendPerson | null;
+}
+
+export interface SendRecipient {
+  id: string;
+  name: string;
+  email: string;
+  username: string;
+}
+
+export interface SendCreateInput {
+  recipientId?: string;
+  recipientEmail?: string;
+  itemType: SendItemType;
+  itemId: string;
+  message?: string;
+}
+
+export const sendsApi = {
+  inbox: (status?: SendStatus) =>
+    apiFetch<{ sends: Send[] }>(status ? `/api/sends/inbox?status=${status}` : '/api/sends/inbox'),
+  outbox: () => apiFetch<{ sends: Send[] }>('/api/sends/outbox'),
+  recipients: () => apiFetch<{ recipients: SendRecipient[] }>('/api/sends/recipients'),
+  create: (input: SendCreateInput) =>
+    apiFetch<{ send: Send }>('/api/sends', { method: 'POST', body: input }),
+  accept: (sendId: string) =>
+    apiFetch<{ send: Send }>(`/api/sends/${sendId}/accept`, { method: 'POST' }),
+  reject: (sendId: string) =>
+    apiFetch<{ send: Send }>(`/api/sends/${sendId}/reject`, { method: 'POST' }),
+};
+
+// ------------------------------------------------------------- Environments
+export interface Environment {
+  id: string;
+  name: string;
+  is_active: boolean;
+  variable_count?: number;
+}
+
+export interface EnvironmentVariable {
+  id: string;
+  key: string;
+  is_secret: boolean;
+  value?: string;
+}
+
+export interface MockServer {
+  id: string;
+  project_id: string;
+  name: string;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface MockRoute {
+  id: string;
+  mock_server_id: string;
+  method: string;
+  path: string;
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  delay_ms: number;
+  sort_order: number;
+}
+
+export interface MockRouteInput {
+  method?: string;
+  path?: string;
+  status?: number;
+  headers?: Record<string, string>;
+  body?: string;
+  delayMs?: number;
+}
+
+export const mockServerApi = {
+  get: (projectId: string) =>
+    apiFetch<{ mockServer: MockServer | null }>(`/api/projects/${projectId}/mock-server`),
+  create: (projectId: string, input: { name?: string; enabled?: boolean }) =>
+    apiFetch<{ mockServer: MockServer }>(`/api/projects/${projectId}/mock-server`, {
+      method: 'POST',
+      body: input,
+    }),
+  update: (serverId: string, patch: { name?: string; enabled?: boolean }) =>
+    apiFetch<{ mockServer: MockServer }>(`/api/mock-servers/${serverId}`, {
+      method: 'PATCH',
+      body: patch,
+    }),
+  remove: (serverId: string) => apiFetch(`/api/mock-servers/${serverId}`, { method: 'DELETE' }),
+  routes: (serverId: string) =>
+    apiFetch<{ routes: MockRoute[] }>(`/api/mock-servers/${serverId}/routes`),
+  createRoute: (serverId: string, input: MockRouteInput) =>
+    apiFetch<{ route: MockRoute }>(`/api/mock-servers/${serverId}/routes`, {
+      method: 'POST',
+      body: input,
+    }),
+  updateRoute: (routeId: string, input: MockRouteInput) =>
+    apiFetch<{ route: MockRoute }>(`/api/mock-routes/${routeId}`, {
+      method: 'PATCH',
+      body: input,
+    }),
+  deleteRoute: (routeId: string) => apiFetch(`/api/mock-routes/${routeId}`, { method: 'DELETE' }),
+};
+
+export const environmentApi = {
+  list: (workspaceId: string) =>
+    apiFetch<{ environments: Environment[] }>(`/api/workspaces/${workspaceId}/environments`),
+  create: (workspaceId: string, name: string, makeActive = false) =>
+    apiFetch<{ environment: Environment }>(`/api/workspaces/${workspaceId}/environments`, {
+      method: 'POST',
+      body: { name, makeActive },
+    }),
+  update: (environmentId: string, patch: { name?: string; isActive?: boolean }) =>
+    apiFetch<{ environment: Environment }>(`/api/environments/${environmentId}`, {
+      method: 'PATCH',
+      body: patch,
+    }),
+  remove: (environmentId: string) => apiFetch(`/api/environments/${environmentId}`, { method: 'DELETE' }),
+  variables: (environmentId: string) =>
+    apiFetch<{ variables: EnvironmentVariable[] }>(`/api/environments/${environmentId}/variables`),
+  saveVariable: (environmentId: string, input: { key: string; value: string; isSecret: boolean }) =>
+    apiFetch<{ variable: EnvironmentVariable }>(`/api/environments/${environmentId}/variables`, {
+      method: 'POST',
+      body: input,
+    }),
+  deleteVariable: (environmentId: string, variableId: string) =>
+    apiFetch(`/api/environments/${environmentId}/variables/${variableId}`, { method: 'DELETE' }),
+};
+
+// ------------------------------------------------------------- Share links
+// Login-gated: any signed-in user holding the token can view; viewing never
+// requires a paid plan. Request shares expose the request + latest run, other
+// items expose a redacted read-only tree.
+export interface SharedRequestView {
+  token: string;
+  createdAt: string;
+  itemType: 'request';
+  request: {
+    id: string;
+    name: string;
+    method: string;
+    url: string;
+    headers: Array<{ key: string; value: string; enabled: boolean }>;
+    queryParams: Array<{ key: string; value: string; enabled: boolean }>;
+    bodyType: string;
+    bodyJson: unknown;
+    bodyText: string | null;
+    apiType: string;
+  };
+  lastRun: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: string;
+    bodyEncoding: string;
+    durationMs: number;
+    startedAt: string;
+  } | null;
+}
+
+export interface SharedRequestSummary {
+  id: string;
+  name: string;
+  method: string;
+  url: string;
+  apiType: string;
+  headers: Array<{ key: string; value: string; enabled: boolean }>;
+  queryParams: Array<{ key: string; value: string; enabled: boolean }>;
+  bodyType: string;
+  bodyJson: unknown;
+  bodyText: string | null;
+  bodyParts: unknown[];
+}
+
+export interface SharedFolderNode {
+  type: 'folder';
+  id: string;
+  name: string;
+  folders: SharedFolderNode[];
+  requests: SharedRequestSummary[];
+}
+
+export interface SharedCollectionNode {
+  id: string;
+  name: string;
+  folders: SharedFolderNode[];
+  requests: SharedRequestSummary[];
+}
+
+export interface SharedProjectNode {
+  id: string;
+  name: string;
+  collections: SharedCollectionNode[];
+}
+
+export interface SharedItemView {
+  token: string;
+  createdAt: string;
+  itemType: Exclude<SendItemType, 'request'>;
+  item: {
+    type: SendItemType;
+    id: string;
+    name: string;
+    projects: SharedProjectNode[];
+  };
+}
+
+export type SharedShare = SharedRequestView | SharedItemView;
+
+export interface SharedRevision {
+  id: string;
+  requestId: string;
+  revisionNumber: number;
+  changeKind: 'create' | 'update' | 'rollback';
+  changedFields: Array<{ field: string; from: unknown; to: unknown }>;
+  rolledBackFrom: string | null;
+  createdBy: { id: string; name: string | null };
+  createdAt: string;
+}
+
+export const shareApi = {
+  create: (input: { itemType: SendItemType; itemId: string }) =>
+    apiFetch<{ share: { token: string; createdAt: string; itemType: SendItemType } }>('/api/shares', {
+      method: 'POST',
+      body: input,
+    }),
+  get: (token: string) => apiFetch<{ share: SharedShare }>(`/api/shares/${token}`),
+  revisions: (token: string) =>
+    apiFetch<{ revisions: SharedRevision[] }>(`/api/shares/${token}/revisions`),
+  revoke: (token: string) => apiFetch<{ ok: true }>(`/api/shares/${token}`, { method: 'DELETE' }),
+};
+
+// ---------------------------------------------------------------- Profile
+// PR-1 self-service profile surface (main backend :3001). The session-scoped
+// owner is always the authenticated user; subscriptions/plans are read-only.
+export interface ProfileAvatar {
+  preset_key: string | null;
+  uploaded: boolean;
+  mime: string | null;
+  updated_at: string | null;
+}
+
+export interface ProfileUser extends User {
+  avatar: ProfileAvatar;
+}
+
+export interface ProfileSubscription {
+  id: string;
+  status: string;
+  billing_cycle: string;
+  plan: { id: string; key: string; name: string; currency: string };
+  current_period_start: string | null;
+  current_period_end: string | null;
+  trial_ends_at: string | null;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
+  created_at: string;
+}
+
+// Restrictions programme (L1/L4/L5): additive entitlement snapshot resolved by
+// the main backend for the user's org pool. `usage` counts rows in the pool;
+// `limits` values are numbers or null (= unlimited); `enforced` reflects the
+// global switch + per-plan override. Optional so older backends stay valid.
+export interface PlanEntitlement {
+  key: string;
+  name: string;
+  enforced: boolean;
+  reason: string;
+  poolOrgId: string | null;
+  limits: Record<string, number | null>;
+  usage: Record<string, number>;
+}
+
+export interface Profile {
+  user: ProfileUser;
+  organizations: Organization[];
+  subscription: ProfileSubscription | null;
+  plan_limits: Record<string, unknown> | null;
+  // Restrictions programme: present once the backend resolver is live; drives
+  // the plan usage bars on /profile.
+  plan?: PlanEntitlement;
+}
+
+export const profileApi = {
+  get: () => apiFetch<Profile>('/api/profile'),
+  update: (input: { name?: string; username?: string }) =>
+    apiFetch<Profile>('/api/profile', { method: 'PATCH', body: input }),
+  setPreset: (preset: string) =>
+    apiFetch<{ ok: true; avatar: ProfileAvatar }>('/api/profile/avatar', { method: 'POST', body: { preset } }),
+  upload: (data: string, mime: string) =>
+    apiFetch<{ ok: true; avatar: ProfileAvatar }>('/api/profile/avatar', { method: 'POST', body: { data, mime } }),
+  removeAvatar: () =>
+    apiFetch<{ ok: true; avatar: ProfileAvatar }>('/api/profile/avatar', { method: 'POST', body: { remove: true } }),
+  changePassword: (input: { current_password: string; new_password: string }) =>
+    apiFetch<{ ok: true }>('/api/profile/password', { method: 'POST', body: input }),
+};
+
+export interface UserLlmConfig {
+  allowed: boolean;
+  configured: boolean;
+  source: 'user' | 'env' | 'none';
+  provider: string | null;
+  model: string | null;
+  baseUrl: string | null;
+}
+
+export const llmConfigApi = {
+  get: () => apiFetch<UserLlmConfig>('/api/profile/llm'),
+  put: (input: { apiKey: string; baseUrl: string; model: string }) =>
+    apiFetch<UserLlmConfig>('/api/profile/llm', { method: 'PUT', body: input }),
+  remove: () => apiFetch<{ ok: true }>('/api/profile/llm', { method: 'DELETE' }),
+};
+
+export interface SearchResult {
+  id: string;
+  name: string;
+  type: string;
+  rank: number;
+  projectId?: string | null;
+  workspaceId?: string | null;
+  collectionId?: string | null;
+  collectionName?: string | null;
+  method?: string | null;
+  url?: string | null;
+  subtitle?: string | null;
+}
+
+export const searchApi = {
+  query: (q: string, limit = 20) =>
+    apiFetch<{ query: string; groups: Record<string, SearchResult[]>; results: SearchResult[] }>(
+      `/api/search?q=${encodeURIComponent(q)}&limit=${limit}`
+    ),
+};
+
+export type JsonCompareKeyMode = 'alpha' | 'alphanum' | 'original';
+export type JsonCompareArrayMode = 'none' | 'alpha' | 'alphanum' | 'numeric' | 'length' | 'type' | 'json';
+export type JsonCompareDirection = 'asc' | 'desc';
+
+export interface JsonComparison {
+  id: string;
+  name: string;
+  leftText: string;
+  rightText: string;
+  keyMode: JsonCompareKeyMode;
+  keyDirection: JsonCompareDirection;
+  arrayMode: JsonCompareArrayMode;
+  arrayDirection: JsonCompareDirection;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JsonComparisonInput {
+  name: string;
+  leftText: string;
+  rightText: string;
+  keyMode: JsonCompareKeyMode;
+  keyDirection: JsonCompareDirection;
+  arrayMode: JsonCompareArrayMode;
+  arrayDirection: JsonCompareDirection;
+}
+
+export const jsonCompareApi = {
+  list: () => apiFetch<{ comparisons: JsonComparison[] }>('/api/json-comparisons'),
+  create: (input: JsonComparisonInput) =>
+    apiFetch<{ comparison: JsonComparison }>('/api/json-comparisons', { method: 'POST', body: input }),
+  update: (id: string, input: JsonComparisonInput) =>
+    apiFetch<{ comparison: JsonComparison }>(`/api/json-comparisons/${id}`, { method: 'PUT', body: input }),
+  remove: (id: string) => apiFetch<void>(`/api/json-comparisons/${id}`, { method: 'DELETE' }),
+};
+
+// ---------------------------------------------------------------- People API
+export interface NetworkPerson {
+  id: string;
+  name: string;
+  username?: string | null;
+  email: string;
+  role?: string | null;
+  is_active?: boolean;
+  is_contact?: boolean;
+  invite_pending?: boolean;
+  connected_at?: string;
+  joined_at?: string;
+}
+
+export interface NetworkInvitation {
+  id: string;
+  email: string;
+  message: string | null;
+  kind: 'FRIEND' | 'ORG';
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED';
+  organizationId: string | null;
+  createdAt: string;
+  respondedAt: string | null;
+  inviter: { id: string; name: string; username?: string | null; email: string };
+  invitee: { id: string; name: string; username?: string | null; email: string } | null;
+}
+
+export interface NetworkDirectory {
+  scope: 'company' | 'personal';
+  organization: { id: string; name: string; domain: string | null } | null;
+  people: NetworkPerson[];
+}
+
+export const networkApi = {
+  directory: () => apiFetch<NetworkDirectory>('/api/network/directory'),
+  search: (q: string) =>
+    apiFetch<NetworkDirectory>(`/api/network/directory/search?q=${encodeURIComponent(q)}`),
+  invitations: (box: 'incoming' | 'outgoing') =>
+    apiFetch<{ box: string; invitations: NetworkInvitation[] }>(`/api/network/invitations?box=${box}`),
+  invite: (email: string, message?: string) =>
+    apiFetch<{ invitation: NetworkInvitation }>('/api/network/invitations', {
+      method: 'POST',
+      body: { email, message },
+    }),
+  accept: (id: string) =>
+    apiFetch<{ ok: boolean; status: string }>(`/api/network/invitations/${id}/accept`, { method: 'POST' }),
+  decline: (id: string) =>
+    apiFetch<{ ok: boolean; status: string }>(`/api/network/invitations/${id}/decline`, { method: 'POST' }),
+  cancel: (id: string) => apiFetch<void>(`/api/network/invitations/${id}`, { method: 'DELETE' }),
+  contacts: () => apiFetch<{ contacts: NetworkPerson[] }>('/api/network/contacts'),
+  removeContact: (userId: string) => apiFetch<void>(`/api/network/contacts/${userId}`, { method: 'DELETE' }),
+};
+
+// --------------------------------------------------------- Platform superadmin
+export interface PlatformOverviewCounts {
+  organizations: number;
+  users: number;
+  workspaces: number;
+  projects: number;
+  collections: number;
+  folders: number;
+  requests: number;
+  mock_servers: number;
+  active_mock_servers: number;
+  runs: number;
+  audit_entries: number;
+  organizations_30d: number;
+  users_30d: number;
+  projects_unattributed: number;
+  mock_servers_unattributed: number;
+}
+
+export interface PlatformOrganization {
+  id: string;
+  name: string;
+  kind: 'PERSONAL' | 'COMPANY';
+  domain: string | null;
+  created_at: string;
+  owner_id: string;
+  owner_name: string | null;
+  owner_email: string | null;
+  members: number;
+  workspaces: number;
+  projects: number;
+  collections: number;
+  folders: number;
+  requests: number;
+  mock_servers: number;
+  active_mock_servers: number;
+  runs: number;
+}
+
+export interface PlatformMockServer {
+  id: string;
+  name: string;
+  enabled: boolean;
+  created_at: string;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_by_email: string | null;
+  project_id: string;
+  project_name: string;
+  workspace_id: string | null;
+  workspace_name: string | null;
+  organization_id: string | null;
+  organization_name: string | null;
+  route_count: number;
+}
+
+export const platformApi = {
+  overview: () => apiFetch<{ scope: string; counts: PlatformOverviewCounts }>('/api/platform/overview'),
+  organizations: (search?: string) =>
+    apiFetch<{ organizations: PlatformOrganization[] }>(
+      `/api/platform/organizations${search ? `?search=${encodeURIComponent(search)}` : ''}`
+    ),
+  mockServers: (opts?: { active?: boolean; search?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.active) params.set('active', 'true');
+    if (opts?.search) params.set('search', opts.search);
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return apiFetch<{ mockServers: PlatformMockServer[] }>(
+      `/api/platform/mock-servers${qs ? `?${qs}` : ''}`
+    );
+  },
+};
+
+// ------------------------------------------------------------ Org analytics
+export interface OrgAnalyticsSummary {
+  members: number;
+  workspaces: number;
+  projects: number;
+  collections: number;
+  folders: number;
+  requests: number;
+  mock_servers: number;
+  active_mock_servers: number;
+  request_revisions: number;
+  runs: number;
+  runs_this_month: number;
+}
+
+export interface OrgMostTriggered {
+  request_id: string;
+  name: string;
+  method: string;
+  url: string | null;
+  collection_name: string | null;
+  project_name: string | null;
+  runs: number;
+  last_run_at: string | null;
+}
+
+export interface OrgRunTrendPoint {
+  day: string;
+  runs: number;
+}
+
+export interface OrgAnalytics {
+  orgId: string;
+  summary: OrgAnalyticsSummary;
+  mostTriggered: OrgMostTriggered[];
+  runTrend: OrgRunTrendPoint[];
+}
+
+export interface OrgAnalyticsMember {
+  user_id: string;
+  name: string;
+  username: string;
+  email: string;
+  role: UserRole;
+  projects_created: number;
+  workspaces_created: number;
+  collections_created: number;
+  folders_created: number;
+  requests_created: number;
+  mock_servers_created: number;
+  revisions_created: number;
+  runs: number;
+}
+
+export const orgAnalyticsApi = {
+  summary: (orgId: string) => apiFetch<OrgAnalytics>(`/api/orgs/${orgId}/analytics`),
+  members: (orgId: string) =>
+    apiFetch<{ orgId: string; members: OrgAnalyticsMember[] }>(
+      `/api/orgs/${orgId}/analytics/members`
+    ),
+};

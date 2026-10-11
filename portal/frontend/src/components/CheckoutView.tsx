@@ -1,0 +1,550 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  fetchMe,
+  fetchPlans,
+  checkout,
+  quoteCheckout,
+  signIn,
+  signOut,
+  formatMoney,
+  type CatalogPlan,
+  type Cycle,
+  type PromoQuote,
+  type Subscription,
+} from '@/lib/checkoutApi';
+import { ApiError } from '@/lib/portalApi';
+
+const VALID_CYCLES: Cycle[] = ['MONTHLY', 'YEARLY'];
+
+type MeState = 'loading' | 'guest' | 'signedin';
+type View =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready' }
+  | { kind: 'busy' }
+  | { kind: 'free-done'; subscription: Subscription };
+
+export default function CheckoutView() {
+  const params = useSearchParams();
+  const router = useRouter();
+
+  const planKey = (params.get('plan') || '').toLowerCase();
+  const requestedCycle = String(params.get('cycle') || 'MONTHLY').toUpperCase() as Cycle;
+
+  const [plans, setPlans] = useState<CatalogPlan[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [meState, setMeState] = useState<MeState>('loading');
+  const [meEmail, setMeEmail] = useState('');
+  const [meName, setMeName] = useState('');
+
+  const [mode, setMode] = useState<'create' | 'signin'>('create');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [sEmail, setSEmail] = useState('');
+  const [sPassword, setSPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [view, setView] = useState<View>({ kind: 'loading' });
+  const [reloadKey, setReloadKey] = useState(0);
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<PromoQuote | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
+
+  // Load catalog + session identity.
+  useEffect(() => {
+    let alive = true;
+    setView({ kind: 'loading' });
+    setLoadError(null);
+    setError(null);
+    setErrorCode(null);
+    setPromoError(null);
+    setAppliedPromo(null);
+    setMeState('loading');
+    Promise.all([fetchPlans(), fetchMe()])
+      .then(([planRows, me]) => {
+        if (!alive) return;
+        setPlans(planRows);
+        if (me) {
+          setMeState('signedin');
+          setMeEmail(me.user.email);
+          setMeName(me.user.name);
+        } else {
+          setMeState('guest');
+        }
+        setView({ kind: 'ready' });
+      })
+      .catch((err: unknown) => {
+        if (!alive) return;
+        setLoadError(err instanceof Error ? err.message : 'Failed to load');
+        setView({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to load' });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [reloadKey]);
+
+  const plan = useMemo(() => (plans ? plans.find((p) => p.key === planKey) ?? null : null), [plans, planKey]);
+  const cycle: Cycle = VALID_CYCLES.includes(requestedCycle) ? requestedCycle : 'MONTHLY';
+
+  const custom = plan && plan.price_monthly === null && plan.price_yearly === null;
+  const isFree = plan && !custom && Number(plan.price_monthly ?? 0) === 0;
+  const price = useMemo(() => {
+    if (!plan) return null;
+    return cycle === 'YEARLY' ? plan.price_yearly : plan.price_monthly;
+  }, [plan, cycle]);
+  const amount = price === null ? null : Number(price);
+  const bonusDays = plan && amount !== null && amount > 0 ? plan.trial_days : 0;
+
+  // The applied promo overrides the displayed total; `amount` stays the catalog
+  // figure used for gating copy.
+  const displayTotal = appliedPromo ? appliedPromo.total : amount;
+  const isDiscounted = Boolean(appliedPromo && appliedPromo.discount > 0);
+
+  // A promo is tied to a specific plan/cycle — drop it when those change.
+  useEffect(() => {
+    setAppliedPromo(null);
+    setPromoError(null);
+  }, [planKey, cycle]);
+
+  const applyPromo = useCallback(async () => {
+    const code = promoInput.trim();
+    if (!plan || !code) {
+      setAppliedPromo(null);
+      setPromoError(null);
+      return;
+    }
+    setPromoBusy(true);
+    setPromoError(null);
+    try {
+      const quoted = await quoteCheckout(plan.key, cycle, code);
+      setAppliedPromo(quoted);
+      if (!quoted.promo) setPromoError('That promo code is not valid.');
+    } catch (err) {
+      setAppliedPromo(null);
+      setPromoError(err instanceof Error ? err.message : 'Could not apply that code.');
+    } finally {
+      setPromoBusy(false);
+    }
+  }, [plan, cycle, promoInput]);
+
+  const doCheckout = useCallback(
+    async (account?: { name: string; email: string; password: string }) => {
+      if (!plan) return;
+      setError(null);
+      setErrorCode(null);
+      setView({ kind: 'busy' });
+      try {
+        const result = await checkout(plan.key, cycle, account, promoInput.trim() || undefined);
+        if (!result.requiresPayment) {
+          setView({ kind: 'free-done', subscription: result.subscription });
+        } else {
+          router.push(`/pay?orderId=${encodeURIComponent(result.order.id)}`);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Checkout failed. Please try again.';
+        setError(message);
+        setErrorCode(err instanceof ApiError ? err.code ?? null : null);
+        setView({ kind: 'ready' });
+      }
+    },
+    [plan, cycle, router, promoInput]
+  );
+
+  const submitAccount = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await doCheckout({ name, email, password });
+  };
+
+  const submitSignedInOrder = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await doCheckout();
+  };
+
+  const submitSignIn = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setErrorCode(null);
+    setView({ kind: 'busy' });
+    try {
+      await signIn(sEmail, sPassword);
+      setMode('create');
+      setPassword('');
+      setView({ kind: 'ready' });
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign in failed');
+      setErrorCode(err instanceof ApiError ? err.code ?? null : null);
+      setView({ kind: 'ready' });
+    }
+  };
+
+  const handleSignOut = async () => {
+    setError(null);
+    setErrorCode(null);
+    try {
+      await signOut();
+    } finally {
+      window.location.reload();
+    }
+  };
+
+  if (view.kind === 'free-done') {
+    return (
+      <div className="ck-panel" data-testid="checkout-success">
+        <div className="ck-result-icon" aria-hidden="true">
+          ✓
+        </div>
+        <h1 className="ck-title">You&rsquo;re on the {view.subscription.plan.name} plan</h1>
+        <p className="ck-lede">
+          Your subscription is active — no payment was needed. Your account is ready and you are
+          signed in.
+        </p>
+        <dl className="ck-detail">
+          <div>
+            <dt>Plan</dt>
+            <dd data-testid="checkout-success-plan">{view.subscription.plan.name}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>
+              <span className="ck-badge ck-badge-ok">Active</span>
+            </dd>
+          </div>
+          <div>
+            <dt>Billing</dt>
+            <dd>Free — no card required</dd>
+          </div>
+        </dl>
+        <div className="ck-actions">
+          <a className="btn btn-primary" href="/#pricing">
+            Back to pricing
+          </a>
+          <a className="btn btn-ghost" href="/#product">
+            Explore features
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  if (view.kind === 'error' && !plan) {
+    return (
+      <div className="ck-panel" role="alert" data-testid="checkout-load-error">
+        <h1 className="ck-title">Checkout unavailable</h1>
+        <p className="ck-lede">{view.message}</p>
+        <div className="ck-actions">
+          <a className="btn btn-primary" href="/#pricing">
+            Back to pricing
+          </a>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => setReloadKey((k) => k + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // A plan was requested but the catalog has no such PUBLISHED plan, or the
+  // selected cycle isn't offered (Enterprise is custom pricing → contact sales).
+  if (view.kind === 'ready' && plans && (!plan || !plan.billing_cycles.includes(cycle))) {
+    return (
+      <div className="ck-panel" role="alert" data-testid="checkout-no-plan">
+        <h1 className="ck-title">Checkout unavailable</h1>
+        <p className="ck-lede">
+          {!plan
+            ? `We could not find a plan matching “${planKey}”. It may have been unpublished.`
+            : `${plan.name} uses custom pricing — contact our sales team for a quote.`}
+        </p>
+        <div className="ck-actions">
+          <a className="btn btn-primary" href="/#pricing">
+            Back to pricing
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const summary = plan ? (
+    <aside className="ck-summary" aria-label="Order summary">
+      <div className="ck-summary-plan">
+        <span className="ck-summary-name" data-testid="checkout-summary-plan">
+          {plan.name}
+        </span>
+        <span className="ck-summary-cycle">
+          {cycle === 'YEARLY' ? 'Yearly billing' : 'Monthly billing'}
+        </span>
+      </div>
+      {isDiscounted ? (
+        <>
+          <div className="ck-summary-price-row">
+            <span>Subtotal</span>
+            <span data-testid="checkout-summary-subtotal">{formatMoney(appliedPromo!.base)}</span>
+          </div>
+          <div className="ck-summary-price-row ck-summary-discount">
+            <span>Promo{appliedPromo!.promo ? ` (${appliedPromo!.promo.code})` : ''}</span>
+            <span data-testid="checkout-summary-discount">
+              −{formatMoney(appliedPromo!.discount)}
+            </span>
+          </div>
+          <div className="ck-summary-price-row ck-summary-total">
+            <span>Due now</span>
+            <strong data-testid="checkout-summary-price">{formatMoney(appliedPromo!.total)}</strong>
+          </div>
+        </>
+      ) : (
+        <div className="ck-summary-price-row">
+          <span>Due now</span>
+          <strong data-testid="checkout-summary-price">
+            {custom ? 'Contact sales' : displayTotal === null ? '—' : formatMoney(displayTotal)}
+          </strong>
+        </div>
+      )}
+      {!custom && !isFree && (
+        <div className="ck-promo">
+          <label className="ck-field ck-promo-field">
+            <span>Promo code</span>
+            <div className="ck-promo-row">
+              <input
+                type="text"
+                value={promoInput}
+                onChange={(e) => {
+                  setPromoInput(e.target.value.toUpperCase());
+                  setAppliedPromo(null);
+                  setPromoError(null);
+                }}
+                placeholder="e.g. LAUNCH20"
+                autoComplete="off"
+                data-testid="checkout-promo-input"
+              />
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={applyPromo}
+                disabled={promoBusy || !promoInput.trim()}
+                data-testid="checkout-promo-apply"
+              >
+                {promoBusy ? 'Checking…' : 'Apply'}
+              </button>
+            </div>
+          </label>
+          {promoError && (
+            <p className="ck-promo-error" role="alert" data-testid="checkout-promo-error">
+              {promoError}
+            </p>
+          )}
+          {appliedPromo?.promo && (
+            <p className="ck-promo-ok" data-testid="checkout-promo-applied">
+              Code {appliedPromo.promo.code} applied
+              {appliedPromo.discount > 0 ? ` — you save ${formatMoney(appliedPromo.discount)}` : ''}
+            </p>
+          )}
+        </div>
+      )}
+      {!custom && !isFree && bonusDays > 0 && (
+        <p className="ck-summary-bonus" data-testid="checkout-summary-bonus">
+          +{bonusDays} extra days of validity included with your first recharge
+        </p>
+      )}
+      {custom && (
+        <p className="ck-summary-bonus">
+          Enterprise uses custom pricing — our sales team will reach out after you continue.
+        </p>
+      )}
+    </aside>
+  ) : null;
+
+  // A plan change that needs action (cancel the current plan first) links to the
+  // account page rather than leaving the customer on a dead-end form.
+  const needsAccountAction =
+    errorCode === 'cancel_required' ||
+    errorCode === 'change_already_scheduled' ||
+    errorCode === 'already_active';
+
+  const errorNotice = error ? (
+    <div className="ck-error" role="alert" data-testid="checkout-error">
+      <span>{error}</span>
+      {needsAccountAction && (
+        <a className="ck-link" href="/account" data-testid="checkout-manage-subscription">
+          Go to My subscription
+        </a>
+      )}
+      {/already exists/.test(error) && (
+        <button
+          type="button"
+          className="ck-link"
+          onClick={() => setMode('signin')}
+          data-testid="checkout-signin-toggle"
+        >
+          Sign in instead
+        </button>
+      )}
+    </div>
+  ) : null;
+
+  return (
+    <div className="ck-shell" data-testid="checkout-view">
+      <div className="ck-head">
+        <a className="ck-back" href="/#pricing">
+          ← Back to pricing
+        </a>
+        <h1 className="ck-title">Complete your {plan ? plan.name : 'plan'} sign-up</h1>
+        <p className="ck-lede">
+          {plan
+            ? amount === null || amount === 0
+              ? 'A quick account step and you are in.'
+                : 'Create your account and confirm the order — you’ll pay securely by card, UPI or net banking.'
+            : ''}
+        </p>
+      </div>
+
+      <div className="ck-grid">
+        {summary}
+
+        <section className="ck-panel" aria-label="Checkout form">
+          {meState === 'loading' ? (
+            <div className="ck-loading" role="status">
+              Checking your session…
+            </div>
+          ) : meState === 'signedin' ? (
+            <div className="ck-form" data-testid="checkout-signedin">
+              <div className="ck-notice ck-notice-ok">
+                <strong>Signed in as {meName}</strong>
+                <span>{meEmail}</span>
+              </div>
+              <p className="ck-hint">This purchase will be attached to the account above.</p>
+              <button type="button" className="ck-link" onClick={handleSignOut} data-testid="checkout-signout">
+                Not you? Sign out
+              </button>
+              {errorNotice}
+              <form onSubmit={submitSignedInOrder} className="ck-stack">
+                <button type="submit" className="btn btn-primary btn-lg" data-testid="checkout-submit" disabled={view.kind === 'busy'}>
+                  {view.kind === 'busy'
+                    ? 'Placing order…'
+                    : displayTotal === null || displayTotal === 0
+                      ? `Start ${plan?.name}`
+                      : `Place order — ${displayTotal === null ? '' : formatMoney(displayTotal)}`}
+                </button>
+                {displayTotal !== null && displayTotal > 0 && (
+                  <p className="ck-fine">You&rsquo;ll confirm payment on the next screen.</p>
+                )}
+              </form>
+            </div>
+          ) : mode === 'signin' ? (
+            <div className="ck-form" data-testid="checkout-signin-form">
+              <h2 className="ck-sub">Sign in to your account</h2>
+              <p className="ck-hint">
+                This email already has an account, or you prefer to sign in first.
+              </p>
+              <form onSubmit={submitSignIn} className="ck-stack">
+                <label className="ck-field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={sEmail}
+                    onChange={(e) => setSEmail(e.target.value)}
+                    required
+                    data-testid="checkout-signin-email"
+                  />
+                </label>
+                <label className="ck-field">
+                  <span>Password</span>
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={sPassword}
+                    onChange={(e) => setSPassword(e.target.value)}
+                    required
+                    data-testid="checkout-signin-password"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-lg"
+                  disabled={view.kind === 'busy'}
+                  data-testid="checkout-signin-submit"
+                >
+                  {view.kind === 'busy' ? 'Signing in…' : 'Sign in'}
+                </button>
+              </form>
+              <button type="button" className="ck-link" onClick={() => setMode('create')} data-testid="checkout-back-create">
+                ← Create a new account instead
+              </button>
+            </div>
+          ) : (
+            <div className="ck-form" data-testid="checkout-account-form">
+              <h2 className="ck-sub">Your account</h2>
+              <p className="ck-hint">
+                Used to manage your subscription and sign back in later.
+              </p>
+              <form onSubmit={submitAccount} className="ck-stack">
+                <label className="ck-field">
+                  <span>Full name</span>
+                  <input
+                    type="text"
+                    autoComplete="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    data-testid="checkout-name"
+                  />
+                </label>
+                <label className="ck-field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    data-testid="checkout-email"
+                  />
+                </label>
+                <label className="ck-field">
+                  <span>Password</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="At least 8 characters"
+                    data-testid="checkout-password"
+                  />
+                </label>
+                {errorNotice}
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-lg"
+                  disabled={view.kind === 'busy'}
+                  data-testid="checkout-submit"
+                >
+                  {view.kind === 'busy'
+                    ? displayTotal === 0
+                      ? 'Setting you up…'
+                      : 'Placing order…'
+                    : displayTotal === null || displayTotal === 0
+                      ? `Start ${plan?.name} — free`
+                      : `Place order — ${formatMoney(displayTotal)}`}
+                </button>
+                {displayTotal !== null && displayTotal > 0 && (
+                  <p className="ck-fine">You&rsquo;ll pay on the secure Cashfree checkout on the next screen.</p>
+                )}
+              </form>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

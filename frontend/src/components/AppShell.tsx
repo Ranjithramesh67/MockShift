@@ -1,0 +1,295 @@
+'use client';
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth';
+import { useApp } from '@/store/AppStore';
+import { useNav } from '@/store/NavStore';
+import { useWorkspace } from '@/store/WorkspaceStore';
+import { useMenuAccess } from '@/store/MenuAccessStore';
+import type { MenuKey } from '@/lib/api';
+import { authApi } from '@/lib/api';
+import { TopBar } from './TopBar';
+import { Sidebar } from './Sidebar';
+import { SplitPane } from './SplitPane';
+import { RequestConfigurator } from './RequestConfigurator';
+import { RequestTabs } from './RequestTabs';
+import { ResponsePane } from './ResponsePane';
+import { ProjectOverview } from './ProjectOverview';
+import { ToastHost } from './ToastHost';
+import { useCloseRequestTabShortcut } from './useCloseRequestTabShortcut';
+import { useGlobalSearchShortcut } from './useGlobalSearchShortcut';
+import { CommandPalette } from './CommandPalette';
+
+const WorkflowBuilder = dynamic(() => import('./WorkflowBuilder').then((m) => m.WorkflowBuilder));
+const CurlModal = dynamic(() => import('./CurlModal').then((m) => m.CurlModal));
+const ScratchpadWorkspace = dynamic(() => import('./ScratchpadWorkspace').then((m) => m.ScratchpadWorkspace));
+const AutomationsView = dynamic(() => import('./views/AutomationsView').then((m) => m.AutomationsView));
+const ManageView = dynamic(() => import('./views/ManageView').then((m) => m.ManageView));
+const AdminView = dynamic(() => import('./views/AdminView').then((m) => m.AdminView));
+const IamView = dynamic(() => import('./views/IamView').then((m) => m.IamView));
+const HistoryView = dynamic(() => import('./views/HistoryView').then((m) => m.HistoryView));
+const DocsView = dynamic(() => import('./views/DocsView').then((m) => m.default));
+const InboxView = dynamic(() => import('./InboxView').then((m) => m.InboxView));
+const ApiTokensView = dynamic(() => import('./ApiTokensView').then((m) => m.ApiTokensView));
+const ContractPanel = dynamic(() => import('./contracts/ContractPanel').then((m) => m.ContractPanel));
+const MonitorsPanel = dynamic(() => import('./monitors/MonitorsPanel').then((m) => m.MonitorsPanel));
+const MockScenariosPanel = dynamic(() => import('./mocks/MockScenariosPanel').then((m) => m.MockScenariosPanel));
+const CopilotPanel = dynamic(() => import('./copilot/CopilotPanel').then((m) => m.CopilotPanel));
+const CollabView = dynamic(() => import('./collab/CollabPanel').then((m) => m.CollabView));
+const JsonCompareView = dynamic(() => import('./views/JsonCompareView').then((m) => m.JsonCompareView));
+const NetworkView = dynamic(() => import('./views/NetworkView').then((m) => m.NetworkView));
+const SuperadminView = dynamic(() => import('./views/SuperadminView').then((m) => m.SuperadminView));
+const OrgAnalyticsView = dynamic(() =>
+  import('./views/OrgAnalyticsView').then((m) => m.OrgAnalyticsView)
+);
+
+const VIEW_MENU_KEY: Partial<Record<string, MenuKey>> = {
+  automations: 'automations',
+  manage: 'manage',
+  history: 'history',
+  docs: 'docs',
+  contracts: 'contracts',
+  monitors: 'monitors',
+  'mock-scenarios': 'mock-scenarios',
+  copilot: 'copilot',
+  collab: 'collab',
+  'json-compare': 'json-compare',
+  network: 'network',
+};
+
+function FeatureDisabled({ menuKey }: { menuKey: string }) {
+  return (
+    <div className="auth-screen" data-testid="feature-disabled">
+      <div className="auth-card">
+        <h1 className="auth-title">Feature unavailable</h1>
+        <p>An administrator has disabled the &quot;{menuKey}&quot; feature for this organization.</p>
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceArea({
+  scratchpadOpen,
+  onCloseScratchpad,
+}: {
+  scratchpadOpen: boolean;
+  onCloseScratchpad: () => void;
+}) {
+  const { state } = useApp();
+  const ws = useWorkspace();
+  if (scratchpadOpen) {
+    return <ScratchpadWorkspace onClose={onCloseScratchpad} />;
+  }
+  // The project overview replaces the request editor whenever it is open (or
+  // still loading) and no request tab is being edited. Requests opened from the
+  // tree / tab strip take priority and close the overview.
+  const projectOverviewActive =
+    (ws.overview !== null || ws.overviewLoading || ws.overviewError !== null) &&
+    ws.activeRequestId === null &&
+    ws.openRequestIds.length === 0;
+  return (
+    <>
+      {state.activeTab === 'request' ? (
+        projectOverviewActive ? (
+          <ProjectOverview />
+        ) : (
+          <>
+            <RequestTabs />
+            {state.viewMode === 'request' ? (
+              <RequestConfigurator />
+            ) : state.viewMode === 'response' ? (
+              <ResponsePane />
+            ) : state.viewMode === 'side' ? (
+              <SplitPane
+                orientation="horizontal"
+                top={<RequestConfigurator />}
+                bottom={<ResponsePane />}
+              />
+            ) : (
+              <SplitPane
+                orientation="vertical"
+                top={<RequestConfigurator />}
+                bottom={<ResponsePane />}
+              />
+            )}
+          </>
+        )
+      ) : (
+        <div className="workflow-area">
+          <WorkflowBuilder />
+        </div>
+      )}
+    </>
+  );
+}
+
+export function AppShell() {
+  const { loading, user } = useAuth();
+  const { dispatch } = useApp();
+  const { view } = useNav();
+  const menu = useMenuAccess();
+  const ws = useWorkspace();
+  const router = useRouter();
+  const [curlOpen, setCurlOpen] = useState(false);
+  const [scratchpadOpen, setScratchpadOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const prevRequestId = useRef<string | null>(null);
+  const mockProjectId = ws.overview?.project?.id ?? ws.tree?.projects?.[0]?.id ?? '';
+
+  useCloseRequestTabShortcut();
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  useGlobalSearchShortcut(openSearch);
+
+  useEffect(() => {
+    if (!loading && !user) router.replace('/login');
+  }, [loading, user, router]);
+
+  useEffect(() => {
+    if (ws.activeRequestId && ws.activeRequestId !== prevRequestId.current)
+      setScratchpadOpen(false);
+    prevRequestId.current = ws.activeRequestId;
+  }, [ws.activeRequestId]);
+
+  // Close the mobile drawer when the user presses Escape.
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNavOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen]);
+
+  // Lock page scroll while the mobile drawer is open (CSS scoped to <=900px).
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-drawer-open', navOpen);
+    return () => document.body.classList.remove('sidebar-drawer-open');
+  }, [navOpen]);
+
+  if (loading) {
+    return (
+      <div className="loading-screen" data-testid="loading-splash">
+        <span className="spinner" />
+        Loading workspace…
+      </div>
+    );
+  }
+  if (!user) return null;
+
+  return (
+    <div className={`app${navOpen ? ' sidebar-drawer-open' : ''}`}>
+      <TopBar
+        onOpenCurl={() => setCurlOpen(true)}
+        onOpenScratchpad={() => setScratchpadOpen(true)}
+        onOpenSearch={openSearch}
+        drawerOpen={navOpen}
+        onToggleDrawer={() => setNavOpen((v) => !v)}
+      />
+      {user && user.email_verified === false && (
+        <div className="verify-banner" data-testid="verify-banner">
+          <span>Please verify your email address.</span>
+          <button
+            type="button"
+            className="ghost-button small"
+            data-testid="verify-resend"
+            onClick={async () => {
+              // Surface the outcome: a server with no SMTP used to answer 200
+              // and silently skip, so a failed resend looked like a success and
+              // the user just kept waiting for mail that was never sent.
+              try {
+                const res = await authApi.resendVerification();
+                dispatch({
+                  type: 'SHOW_TOAST',
+                  kind: 'success',
+                  message: res.alreadyVerified
+                    ? 'Your email is already verified.'
+                    : 'Verification email sent — check your inbox.',
+                });
+              } catch (err) {
+                dispatch({
+                  type: 'SHOW_TOAST',
+                  kind: 'error',
+                  message:
+                    err instanceof Error && err.message
+                      ? err.message
+                      : 'Could not send the verification email.',
+                });
+              }
+            }}
+          >
+            Resend email
+          </button>
+        </div>
+      )}
+      <div className="app-body">
+        <Sidebar panelHidden={view !== 'workspace'} onRequestClose={() => setNavOpen(false)} />
+        <main className="main-area">
+          {view === 'workspace' ? (
+            <WorkspaceArea
+              scratchpadOpen={scratchpadOpen}
+              onCloseScratchpad={() => setScratchpadOpen(false)}
+            />
+          ) : (() => {
+            const menuKey = VIEW_MENU_KEY[view];
+            if (menuKey && !menu.isEnabled(menuKey)) return <FeatureDisabled menuKey={menuKey} />;
+            return (
+              <div className="admin-view">
+                {view === 'automations' ? (
+                  <AutomationsView />
+                ) : view === 'manage' ? (
+                  <ManageView />
+                ) : view === 'history' ? (
+                  <HistoryView />
+                ) : view === 'docs' ? (
+                  <DocsView />
+                ) : view === 'inbox' ? (
+                  <InboxView />
+                ) : view === 'settings' ? (
+                  <ApiTokensView />
+                ) : view === 'contracts' ? (
+                  <ContractPanel />
+                ) : view === 'monitors' ? (
+                  <MonitorsPanel />
+                ) : view === 'mock-scenarios' ? (
+                  <MockScenariosPanel projectId={mockProjectId} />
+                ) : view === 'copilot' ? (
+                  <CopilotPanel />
+                ) : view === 'collab' ? (
+                  <CollabView />
+                ) : view === 'json-compare' ? (
+                  <JsonCompareView />
+                ) : view === 'network' ? (
+                  <NetworkView />
+                ) : view === 'superadmin' ? (
+                  <SuperadminView />
+                ) : view === 'org-analytics' ? (
+                  <OrgAnalyticsView />
+                ) : view === 'admin' ? (
+                  <AdminView />
+                ) : view === 'access' ? (
+                  <IamView />
+                ) : (
+                  <AdminView />
+                )}
+              </div>
+            );
+          })()}
+        </main>
+      </div>
+      {navOpen && (
+        <div
+          className="sidebar-backdrop"
+          data-testid="sidebar-backdrop"
+          aria-hidden="true"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
+      <CurlModal open={curlOpen} onClose={() => setCurlOpen(false)} />
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <ToastHost />
+    </div>
+  );
+}

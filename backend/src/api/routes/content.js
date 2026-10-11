@@ -1,0 +1,1281 @@
+'use strict';
+
+const { Router } = require('express');
+const { query, pool } = require('../db');
+const { requireAuth, roleAtLeast, getProjectAccess, canReadWorkspace } = require('../access');
+const { requirePermissionFor, requireResourcePermission, orgIdForResource } = require('../permissions');
+const { runRequest, runInMemoryRequest, prepareInMemoryRequest, completeInMemoryRequest, runTokenRequest } = require('../runner');
+const { normalizeProvider, resolveAuthHeader } = require('../authToken');
+const { fireWorkflowEvent } = require('../workflowService');
+const { checkCountGate, checkSeatGate, checkPublicSharingGate, chargeRuns, orgOfProject, orgOfCollection } = require('../entitlements');
+const { publish, roomKey } = require('../realtime');
+const { REQUEST_SELECT, serializeRequest } = require('../requestSnapshot');
+const { changedFields } = require('../collabDiff');
+const { normalizeRunOptions, buildRunPlan, runItemFailed, summarizeRun } = require('../collectionRun');
+
+const router = Router();
+router.use(requireAuth);
+
+const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'QUERY'];
+const BODY_TYPES = ['NONE', 'JSON', 'FORM_URLENCODED', 'MULTIPART', 'RAW_TEXT', 'GRAPHQL', 'XML'];
+const API_TYPES = ['REST', 'SOAP', 'GRAPHQL', 'AUTH'];
+
+// ---- Sibling-unique names -------------------------------------------------
+// Requests are unique among their siblings inside a folder (folder_id NULL =
+// collection root); folders are unique among the folders sharing the same
+// parent (parent_id NULL = collection root). When a desired name collides we
+// auto-rename by appending " (copy)", then " (copy) 2", " (copy) 3", ...
+// Comparison is case-insensitive so "Login" and "login" collide.
+function pickUniqueName(desired, usedNames) {
+  const base = String(desired || '').trim();
+  const taken = new Set(usedNames.map((n) => String(n).toLowerCase()));
+  if (!taken.has(base.toLowerCase())) return base;
+  const copy = `${base} (copy)`;
+  if (!taken.has(copy.toLowerCase())) return copy;
+  for (let i = 2; i < 10000; i++) {
+    const candidate = `${copy} ${i}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${copy} ${Date.now()}`;
+}
+
+async function siblingRequestNames(collectionId, folderId, excludeRequestId, exec = query) {
+  const { rows } = await exec(
+    `SELECT name FROM api_requests
+      WHERE collection_id = $1 AND folder_id IS NOT DISTINCT FROM $2
+        AND ($3::uuid IS NULL OR id <> $3::uuid)`,
+    [collectionId, folderId, excludeRequestId || null]
+  );
+  return rows.map((r) => r.name);
+}
+
+async function siblingFolderNames(collectionId, parentId, excludeFolderId, exec = query) {
+  const { rows } = await exec(
+    `SELECT name FROM folders
+      WHERE collection_id = $1 AND parent_id IS NOT DISTINCT FROM $2
+        AND ($3::uuid IS NULL OR id <> $3::uuid)`,
+    [collectionId, parentId, excludeFolderId || null]
+  );
+  return rows.map((r) => r.name);
+}
+
+async function uniqueRequestName(collectionId, folderId, desired, excludeRequestId, exec) {
+  return pickUniqueName(desired, await siblingRequestNames(collectionId, folderId, excludeRequestId, exec));
+}
+
+async function uniqueFolderName(collectionId, parentId, desired, excludeFolderId, exec) {
+  return pickUniqueName(desired, await siblingFolderNames(collectionId, parentId, excludeFolderId, exec));
+}
+
+async function workspaceOfCollection(collectionId) {
+  const { rows } = await query(
+    `SELECT p.workspace_id FROM collections c JOIN projects p ON p.id = c.project_id WHERE c.id = $1`,
+    [collectionId]
+  );
+  return rows[0]?.workspace_id || null;
+}
+
+// Append a revision row. Callers inside a transaction pass `exec = client.query`
+// so the row lock on api_requests serializes revision_number.
+async function insertRevision(exec, { requestId, scope, kind, snapshot, diff, rolledBackFrom, userId }) {
+  const run = exec || query;
+  await run(
+    `INSERT INTO request_revisions
+       (request_id, collection_id, workspace_id, project_id, revision_number,
+        change_kind, snapshot, changed_fields, rolled_back_from, created_by)
+     SELECT $1, $2, $3, $4, COALESCE(MAX(revision_number), 0) + 1,
+            $5, $6::jsonb, $7::jsonb, $8, $9
+       FROM request_revisions
+      WHERE request_id = $1`,
+    [
+      requestId,
+      scope.collection_id,
+      scope.workspace_id,
+      scope.project_id,
+      kind,
+      JSON.stringify(snapshot),
+      JSON.stringify(diff || []),
+      rolledBackFrom || null,
+      userId,
+    ]
+  );
+}
+
+async function projectOfCollection(collectionId) {
+  const { rows } = await query(
+    `SELECT project_id FROM collections WHERE id = $1`,
+    [collectionId]
+  );
+  return rows[0]?.project_id || null;
+}
+
+async function projectOfRequest(requestId) {
+  const { rows } = await query(
+    `SELECT c.project_id FROM api_requests ar
+       JOIN collections c ON c.id = ar.collection_id
+      WHERE ar.id = $1`,
+    [requestId]
+  );
+  return rows[0]?.project_id || null;
+}
+
+async function collectionOfFolder(folderId) {
+  const { rows } = await query(`SELECT collection_id FROM folders WHERE id = $1`, [folderId]);
+  return rows[0]?.collection_id || null;
+}
+
+async function projectOfFolder(folderId) {
+  const { rows } = await query(
+    `SELECT c.project_id FROM folders f
+       JOIN collections c ON c.id = f.collection_id
+      WHERE f.id = $1`,
+    [folderId]
+  );
+  return rows[0]?.project_id || null;
+}
+
+// Fire event-driven automations after a request run: ON_REQUEST on any run,
+// ON_RUN_FAILURE when the run itself failed. Best-effort, never throws.
+async function fireRequestRunEvents(requestId, projectId, result) {
+  if (!projectId || !result) return;
+  try {
+    const context = {
+      runId: result.runId,
+      httpStatus: result.httpStatus,
+      method: result.requestSnapshot?.method,
+      url: result.requestSnapshot?.url,
+    };
+    await fireWorkflowEvent({
+      type: 'ON_REQUEST',
+      projectId,
+      requestId,
+      runId: result.runId,
+      status: result.runStatus,
+      context,
+    });
+    if (result.runStatus === 'FAILED') {
+      await fireWorkflowEvent({
+        type: 'ON_RUN_FAILURE',
+        projectId,
+        requestId,
+        runId: result.runId,
+        status: result.runStatus,
+        context,
+      });
+    }
+  } catch (err) {
+    // Best-effort; never break the run response.
+    // eslint-disable-next-line no-console
+    console.error('[content] fireRequestRunEvents failed:', err.message);
+  }
+}
+
+// True when the user can edit content inside a project: workspace editors
+// and above, plus project managers and approved project members with
+// EDITOR+ roles.
+async function canWriteProjectContent(userId, projectId) {
+  const access = await getProjectAccess(userId, projectId);
+  return Boolean(access && roleAtLeast(access.level, 'EDITOR'));
+}
+
+// True when the user can read content inside a project.
+async function canReadProjectContent(userId, projectId) {
+  return Boolean(await getProjectAccess(userId, projectId));
+}
+
+async function requireCollectionWrite(req, res, next) {
+  try {
+    const collectionId = req.params.collectionId || req.body.collectionId;
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    const ws = await workspaceOfCollection(collectionId);
+    if (ws) req.workspaceId = ws;
+    req.projectId = projectId;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Read-level twin of requireCollectionWrite: any access to the owning project
+// (or none at all) does not leak the collection's auth configuration.
+async function requireCollectionRead(req, res, next) {
+  try {
+    const collectionId = req.params.collectionId || req.body.collectionId;
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canReadProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'No access to this collection' });
+    }
+    const ws = await workspaceOfCollection(collectionId);
+    if (ws) req.workspaceId = ws;
+    req.projectId = projectId;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------------------------------------------------------------- Tree
+router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    if (!(await canReadWorkspace(req.user.id, workspaceId))) {
+      return res.status(403).json({ error: 'No access to this workspace' });
+    }
+    const { rows: projects } = await query(
+      `SELECT id, name FROM projects WHERE workspace_id = $1 ORDER BY name`,
+      [workspaceId]
+    );
+    const accessByProject = new Map();
+    await Promise.all(
+      projects.map(async (p) => {
+        const [access, requests] = await Promise.all([
+          getProjectAccess(req.user.id, p.id),
+          query(
+            `SELECT status FROM access_requests WHERE project_id = $1 AND user_id = $2`,
+            [p.id, req.user.id]
+          ),
+        ]);
+        accessByProject.set(p.id, {
+          can_access: !!access,
+          access_status: requests.rows[0]?.status ?? null,
+        });
+      })
+    );
+    const projectsWithAccess = projects.map((p) => ({
+      ...p,
+      can_access: accessByProject.get(p.id)?.can_access ?? false,
+      access_status: accessByProject.get(p.id)?.access_status ?? null,
+    }));
+    const accessibleProjectIds = projectsWithAccess
+      .filter((p) => p.can_access)
+      .map((p) => p.id);
+    let collections = [];
+    let folders = [];
+    let requests = [];
+    if (accessibleProjectIds.length) {
+      collections = (await query(
+        `SELECT c.id, c.name, c.project_id,
+                (SELECT ap.auth_type FROM auth_providers ap WHERE ap.collection_id = c.id) AS has_auth
+           FROM collections c WHERE c.project_id = ANY($1::uuid[]) ORDER BY c.name`,
+        [accessibleProjectIds]
+      )).rows;
+      const collectionIds = collections.map((c) => c.id);
+      if (collectionIds.length) {
+        folders = (await query(
+          `SELECT id, name, collection_id, parent_id
+             FROM folders WHERE collection_id = ANY($1::uuid[])
+            ORDER BY name`,
+          [collectionIds]
+        )).rows;
+        requests = (await query(
+          `SELECT id, name, method, url, api_type, collection_id, folder_id
+             FROM api_requests WHERE collection_id = ANY($1::uuid[]) ORDER BY name`,
+          [collectionIds]
+        )).rows;
+      }
+    }
+    res.json({ workspaceId, projects: projectsWithAccess, collections, folders, requests });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Org a collection is being created into, from the create body. Prefer the
+// workspace, then the explicit project id. Unknown -> null (legacy guard rules).
+async function resolveCollectionCreateOrg(req) {
+  const { workspaceId, projectId } = req.body || {};
+  if (workspaceId) {
+    const { rows } = await query(`SELECT organization_id FROM workspaces WHERE id = $1`, [workspaceId]);
+    if (rows[0]) return rows[0].organization_id;
+  }
+  if (projectId) {
+    const { rows } = await query(`SELECT organization_id FROM projects WHERE id = $1`, [projectId]);
+    if (rows[0]) return rows[0].organization_id;
+  }
+  return null;
+}
+
+// Org of the collection referenced by a create body (body.collectionId).
+function resolveBodyCollectionOrg(req) {
+  return orgIdForResource('collection', req.body && req.body.collectionId);
+}
+
+router.post('/collections', requirePermissionFor(resolveCollectionCreateOrg, 'workspace.write'), async (req, res, next) => {
+  try {
+    const { projectId: bodyProjectId, workspaceId, name } = req.body || {};
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!trimmedName) return res.status(400).json({ error: 'name is required' });
+    let projectId = bodyProjectId;
+    if (!projectId && workspaceId) {
+      const { rows: ws } = await query(`SELECT project_id FROM workspaces WHERE id = $1`, [workspaceId]);
+      if (ws.length === 0) return res.status(404).json({ error: 'Workspace not found' });
+      projectId = ws[0].project_id;
+    }
+    if (!projectId) return res.status(400).json({ error: 'projectId or workspaceId is required' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    // L2 gate — collections are counted against the org pool plan.
+    const orgId = await orgOfProject(projectId);
+    const gate = await checkCountGate({ userId: req.user.id, orgId, key: 'collections' });
+    if (gate) return res.status(403).json(gate);
+    const { rows } = await query(
+      `INSERT INTO collections (project_id, workspace_id, name, created_by)
+       VALUES ($1, $2, $3, $4) RETURNING id, name, project_id, workspace_id`,
+      [projectId, workspaceId || null, trimmedName, req.user.id]
+    );
+    res.status(201).json({ collection: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------- Folders
+router.post('/folders', requirePermissionFor(resolveBodyCollectionOrg, 'workspace.write'), async (req, res, next) => {
+  try {
+    const { collectionId, name, parentId } = req.body || {};
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!collectionId || !trimmedName) return res.status(400).json({ error: 'collectionId and name are required' });
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    if (parentId) {
+      const parentCollection = await collectionOfFolder(parentId);
+      if (parentCollection !== collectionId) {
+        return res.status(400).json({ error: 'Parent folder must belong to the same collection' });
+      }
+    }
+    const folderName = await uniqueFolderName(collectionId, parentId || null, trimmedName, null);
+    const { rows } = await query(
+      `INSERT INTO folders (collection_id, name, parent_id, created_by)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, collection_id, parent_id`,
+      [collectionId, folderName, parentId || null, req.user.id]
+    );
+    res.status(201).json({ folder: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/folders/:folderId', requireResourcePermission('folder', 'workspace.write'), async (req, res, next) => {
+  try {
+    const { folderId } = req.params;
+    const existing = await query(
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE id = $1`,
+      [folderId]
+    );
+    const current = existing.rows[0];
+    if (!current) return res.status(404).json({ error: 'Folder not found' });
+    const projectId = await projectOfFolder(folderId);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+
+    const b = req.body || {};
+    let nextParentId = current.parent_id;
+    if (b.parentId !== undefined) {
+      nextParentId = b.parentId || null;
+      if (nextParentId === folderId) {
+        return res.status(400).json({ error: 'A folder cannot be its own parent' });
+      }
+      if (nextParentId) {
+        const parentCollection = await collectionOfFolder(nextParentId);
+        if (parentCollection !== current.collection_id) {
+          return res.status(400).json({ error: 'Parent folder must belong to the same collection' });
+        }
+        // Cycle guard: walk ancestors of the new parent.
+        let cursor = nextParentId;
+        let guard = 0;
+        while (cursor && guard < 1000) {
+          if (cursor === folderId) {
+            return res.status(400).json({ error: 'Cannot move a folder inside itself or its descendants' });
+          }
+          const parent = await query(`SELECT parent_id FROM folders WHERE id = $1`, [cursor]);
+          cursor = parent.rows[0]?.parent_id || null;
+          guard += 1;
+        }
+      }
+    }
+
+    let nextName = current.name;
+    if (b.name !== undefined) {
+      if (typeof b.name !== 'string' || b.name.trim() === '') {
+        return res.status(400).json({ error: 'name cannot be blank' });
+      }
+      nextName = b.name.trim();
+    }
+
+    const sets = [];
+    const params = [folderId];
+    const parentChanged = b.parentId !== undefined && nextParentId !== current.parent_id;
+    const nameChanged = nextName !== current.name;
+    if (nameChanged || parentChanged) {
+      const resolved = await uniqueFolderName(current.collection_id, nextParentId, nextName, folderId);
+      params.push(resolved);
+      sets.push(`name = $${params.length}`);
+    }
+    if (parentChanged) {
+      params.push(nextParentId);
+      sets.push(`parent_id = $${params.length}`);
+    }
+    if (sets.length) {
+      await query(`UPDATE folders SET ${sets.join(', ')} WHERE id = $1`, params);
+    }
+    const fresh = await query(
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE id = $1`,
+      [folderId]
+    );
+    res.json({ folder: fresh.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/folders/:folderId', requireResourcePermission('folder', 'workspace.write'), async (req, res, next) => {
+  try {
+    const { folderId } = req.params;
+    const existing = await query(`SELECT id FROM folders WHERE id = $1`, [folderId]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
+    const projectId = await projectOfFolder(folderId);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    // ON DELETE CASCADE removes nested sub-folders; requests in the folder
+    // are un-folder'd (folder_id SET NULL) so nothing is lost.
+    await query(`DELETE FROM folders WHERE id = $1`, [folderId]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Deep-copy a folder and its whole subtree (nested folders + requests),
+// re-parenting the copies to the NEW copied folder ids.
+router.post('/folders/:folderId/duplicate', async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const { folderId } = req.params;
+    const { rows: sourceRows } = await query(
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE id = $1`,
+      [folderId]
+    );
+    const source = sourceRows[0];
+    if (!source) return res.status(404).json({ error: 'Folder not found' });
+    const projectId = await projectOfFolder(folderId);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+
+    // Collect the whole subtree from the folders table (self-reference).
+    const { rows: allFolders } = await query(
+      `SELECT id, name, collection_id, parent_id FROM folders WHERE collection_id = $1`,
+      [source.collection_id]
+    );
+    const byParent = new Map();
+    for (const f of allFolders) {
+      const key = f.parent_id || null;
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(f);
+    }
+    const subtree = [];
+    const seen = new Set([source.id]);
+    const queue = [source];
+    while (queue.length) {
+      const current = queue.shift();
+      subtree.push(current);
+      for (const child of byParent.get(current.id) || []) {
+        if (seen.has(child.id)) continue;
+        seen.add(child.id);
+        queue.push(child);
+      }
+    }
+
+    // Folder duplication clones every request in the subtree — count them
+    // against the org pool before inserting (R4: creation-only gate).
+    const { rows: toCloneRows } = await query(
+      `SELECT count(*)::int AS n FROM api_requests WHERE folder_id = ANY($1::uuid[])`,
+      [[...seen]]
+    );
+    const folderDupGate = await checkCountGate({
+      userId: req.user.id,
+      orgId: projectId ? await orgOfProject(projectId) : null,
+      key: 'api_requests',
+      extra: toCloneRows[0]?.n ?? 0,
+    });
+    if (folderDupGate) return res.status(403).json(folderDupGate);
+
+    await client.query('BEGIN');
+    const rootCopyName = await uniqueFolderName(
+      source.collection_id,
+      source.parent_id,
+      source.name,
+      null,
+      client.query.bind(client)
+    );
+    const idMap = new Map();
+    const createdFolders = [];
+    for (const folder of subtree) {
+      const newParentId = folder.id === source.id ? source.parent_id : idMap.get(folder.parent_id) || null;
+      const copyFolderName = folder.id === source.id ? rootCopyName : folder.name;
+      const { rows } = await client.query(
+        `INSERT INTO folders (collection_id, name, parent_id, created_by)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, name, collection_id, parent_id`,
+        [folder.collection_id, copyFolderName, newParentId, req.user.id]
+      );
+      idMap.set(folder.id, rows[0].id);
+      createdFolders.push(rows[0]);
+    }
+
+    const { rows: folderRequests } = await client.query(
+      `SELECT id, collection_id, name, method, url, headers, query_params, body_type, body_json,
+              body_text, body_parts, api_type, formula, assertions, folder_id
+         FROM api_requests WHERE folder_id = ANY($1::uuid[])`,
+      [[...seen]]
+    );
+    const createdRequests = [];
+    for (const r of folderRequests) {
+      const { rows } = await client.query(
+        `INSERT INTO api_requests
+           (collection_id, name, method, url, api_type, headers, query_params, body_type,
+            body_json, body_text, body_parts, formula, assertions, folder_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         RETURNING id, name, method, url, api_type, collection_id, folder_id`,
+        [
+          r.collection_id,
+          r.name,
+          r.method,
+          r.url,
+          r.api_type,
+          JSON.stringify(r.headers || []),
+          JSON.stringify(r.query_params || []),
+          r.body_type,
+          r.body_json,
+          r.body_text,
+          r.body_parts ? JSON.stringify(r.body_parts) : null,
+          r.formula,
+          JSON.stringify(r.assertions || []),
+          idMap.get(r.folder_id) || null,
+        ]
+      );
+      createdRequests.push(rows[0]);
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ folders: createdFolders, requests: createdRequests });
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------------- Requests
+router.post('/requests', requirePermissionFor(resolveBodyCollectionOrg, 'workspace.write'), async (req, res, next) => {
+  try {
+    const { collectionId, name, method, url, apiType, folderId } = req.body || {};
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!collectionId || !trimmedName) return res.status(400).json({ error: 'collectionId and name are required' });
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    if (folderId && (await collectionOfFolder(folderId)) !== collectionId) {
+      return res.status(400).json({ error: 'Folder must belong to the same collection as the request' });
+    }
+    // L2 gate — stored requests are counted against the org pool plan (only
+    // request CREATION is gated, never edits/deletes — R4).
+    const reqGate = await checkCountGate({
+      userId: req.user.id,
+      orgId: await orgOfProject(projectId),
+      key: 'api_requests',
+    });
+    if (reqGate) return res.status(403).json(reqGate);
+
+    const requestName = await uniqueRequestName(collectionId, folderId || null, trimmedName, null);
+    const workspaceId = await workspaceOfCollection(collectionId);
+    let created;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `INSERT INTO api_requests
+           (collection_id, name, method, url, api_type, headers, query_params, body_type, assertions, folder_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, name, method, url, api_type, collection_id, folder_id`,
+        [
+          collectionId,
+          requestName,
+          HTTP_METHODS.includes(method) ? method : 'GET',
+          url || '',
+          API_TYPES.includes(apiType) ? apiType : 'REST',
+          JSON.stringify([]),
+          JSON.stringify([]),
+          'NONE',
+          JSON.stringify([]),
+          folderId || null,
+        ]
+      );
+      created = rows[0];
+      const { rows: fullRows } = await client.query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [created.id]);
+      await insertRevision((sql, p) => client.query(sql, p), {
+        requestId: created.id,
+        scope: { collection_id: collectionId, workspace_id: workspaceId, project_id: projectId },
+        kind: 'create',
+        snapshot: serializeRequest(fullRows[0]),
+        diff: [],
+        userId: req.user.id,
+      });
+      await client.query('COMMIT');
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+    res.status(201).json({ request: created });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/requests/:requestId', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT id, name, method, url, headers, query_params, body_type, body_json, body_text,
+              body_parts, api_type, collection_id, folder_id, formula, assertions,
+              request_schema, response_schema
+         FROM api_requests WHERE id = $1`,
+      [req.params.requestId]
+    );
+    const request = rows[0];
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+    const projectId = await projectOfCollection(request.collection_id);
+    if (!projectId || !(await canReadProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'No access to this request' });
+    }
+    const ws = await workspaceOfCollection(request.collection_id);
+    const access = await getProjectAccess(req.user.id, projectId);
+
+    const provider = await query(
+      `SELECT auth_type, token_request_id, token_path, header_key, header_prefix
+         FROM auth_providers WHERE collection_id = $1`,
+      [request.collection_id]
+    );
+    res.json({
+      request: {
+        id: request.id,
+        name: request.name,
+        method: request.method,
+        url: request.url,
+        headers: request.headers || [],
+        queryParams: request.query_params || [],
+        bodyType: request.body_type,
+        bodyJson: request.body_json,
+        bodyText: request.body_text,
+        bodyParts: request.body_parts || [],
+        apiType: request.api_type,
+        collectionId: request.collection_id,
+        folderId: request.folder_id ?? null,
+        formula: request.formula || '',
+        assertions: request.assertions || [],
+        requestSchema: request.request_schema ?? null,
+        responseSchema: request.response_schema ?? null,
+        workspaceId: ws,
+        workspaceRole: access ? access.level : null,
+        authProvider: normalizeProvider(provider.rows[0]),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/requests/:requestId', requireResourcePermission('request', 'workspace.write'), async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const existing = await query(
+      `SELECT id, name, collection_id, folder_id FROM api_requests WHERE id = $1`,
+      [requestId]
+    );
+    const current = existing.rows[0];
+    if (!current) return res.status(404).json({ error: 'Request not found' });
+    const projectId = await projectOfCollection(current.collection_id);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+
+    const b = req.body || {};
+    if (b.name !== undefined && (typeof b.name !== 'string' || b.name.trim() === '')) {
+      return res.status(400).json({ error: 'name cannot be blank' });
+    }
+    if (b.folderId !== undefined) {
+      const folderId = b.folderId || null;
+      if (folderId && (await collectionOfFolder(folderId)) !== current.collection_id) {
+        return res.status(400).json({ error: 'Folder must belong to the same collection as the request' });
+      }
+    }
+    // Renames and moves must keep the request unique among its new siblings.
+    let patch = b;
+    if (b.name !== undefined || b.folderId !== undefined) {
+      const targetFolderId = b.folderId === undefined ? current.folder_id : b.folderId || null;
+      const desiredName = b.name !== undefined ? String(b.name).trim() : current.name;
+      patch = { ...b, name: await uniqueRequestName(current.collection_id, targetFolderId, desiredName, requestId) };
+    }
+    const fields = {
+      name: patch.name,
+      method: b.method,
+      url: b.url,
+      api_type: b.apiType,
+      headers: b.headers,
+      query_params: b.queryParams,
+      body_type: b.bodyType,
+      body_json: b.bodyJson,
+      body_text: b.bodyText,
+      body_parts: b.bodyParts,
+      formula: b.formula,
+      assertions: b.assertions,
+      folder_id: b.folderId === undefined ? undefined : b.folderId || null,
+    };
+    const sets = [];
+    const params = [requestId];
+    for (const [col, value] of Object.entries(fields)) {
+      if (value === undefined) continue;
+      if (col === 'method' && !HTTP_METHODS.includes(value)) continue;
+      if (col === 'api_type' && !API_TYPES.includes(value)) continue;
+      if (col === 'body_type' && !BODY_TYPES.includes(value)) continue;
+      if (col === 'headers' || col === 'query_params' || col === 'assertions' || col === 'body_parts') {
+        params.push(value === null ? null : JSON.stringify(value));
+      } else {
+        params.push(value);
+      }
+      sets.push(`${col} = $${params.length}`);
+    }
+    let fresh;
+    let changed = [];
+    if (sets.length) {
+      const projectWorkspaceId = await workspaceOfCollection(current.collection_id);
+      const sc = { collection_id: current.collection_id, workspace_id: projectWorkspaceId, project_id: projectId };
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: preRows } = await client.query(
+          `SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1 FOR UPDATE`,
+          [requestId]
+        );
+        if (!preRows[0]) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Request not found' });
+        }
+        const before = serializeRequest(preRows[0]);
+        await client.query(`UPDATE api_requests SET ${sets.join(', ')} WHERE id = $1`, params);
+        const { rows: postRows } = await client.query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [requestId]);
+        const after = serializeRequest(postRows[0]);
+        changed = changedFields(before, after);
+        if (changed.length) {
+          await insertRevision((sql, p) => client.query(sql, p), {
+            requestId,
+            scope: sc,
+            kind: 'update',
+            snapshot: after,
+            diff: changed,
+            userId: req.user.id,
+          });
+        }
+        fresh = postRows[0];
+        await client.query('COMMIT');
+      } catch (err) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          /* ignore */
+        }
+        throw err;
+      } finally {
+        client.release();
+      }
+    } else {
+      const { rows } = await query(
+        `SELECT id, name, method, url, api_type, collection_id, folder_id FROM api_requests WHERE id = $1`,
+        [requestId]
+      );
+      fresh = rows[0];
+    }
+    if (changed.length) {
+      publish(roomKey('request', requestId), {
+        type: 'entity:updated',
+        entityType: 'request',
+        entityId: requestId,
+        by: { id: req.user.id, name: req.user.name || null },
+      });
+    }
+    res.json({
+      request: {
+        id: fresh.id,
+        name: fresh.name,
+        method: fresh.method,
+        url: fresh.url,
+        api_type: fresh.api_type,
+        collection_id: current.collection_id,
+        folder_id: fresh.folder_id,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/requests/:requestId', requireResourcePermission('request', 'workspace.write'), async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const existing = await query(
+      `SELECT collection_id FROM api_requests WHERE id = $1`,
+      [requestId]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
+    const projectId = await projectOfCollection(existing.rows[0].collection_id);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    await query(`DELETE FROM api_requests WHERE id = $1`, [requestId]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Duplicate a request inside the same collection/folder, preserving all
+// editor state verbatim. The copy gets a sibling-unique name: "X (copy)",
+// then "X (copy) 2", "X (copy) 3", ...
+router.post('/requests/:requestId/duplicate', async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const { rows } = await query(
+      `SELECT id, collection_id, name, method, url, headers, query_params, body_type, body_json,
+              body_text, body_parts, api_type, formula, assertions, folder_id
+         FROM api_requests WHERE id = $1`,
+      [requestId]
+    );
+    const source = rows[0];
+    if (!source) return res.status(404).json({ error: 'Request not found' });
+    const projectId = await projectOfCollection(source.collection_id);
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    // Request duplication creates one more stored request (counted, R4).
+    const dupGate = await checkCountGate({
+      userId: req.user.id,
+      orgId: await orgOfProject(projectId),
+      key: 'api_requests',
+    });
+    if (dupGate) return res.status(403).json(dupGate);
+    const copyName = await uniqueRequestName(source.collection_id, source.folder_id, source.name, null);
+    const dupWorkspaceId = await workspaceOfCollection(source.collection_id);
+    let created;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: inserted } = await client.query(
+        `INSERT INTO api_requests
+           (collection_id, name, method, url, api_type, headers, query_params, body_type,
+            body_json, body_text, body_parts, formula, assertions, folder_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         RETURNING id, name, method, url, api_type, collection_id, folder_id`,
+        [
+          source.collection_id,
+          copyName,
+          source.method,
+          source.url,
+          source.api_type,
+          JSON.stringify(source.headers || []),
+          JSON.stringify(source.query_params || []),
+          source.body_type,
+          source.body_json,
+          source.body_text,
+          source.body_parts ? JSON.stringify(source.body_parts) : null,
+          source.formula,
+          JSON.stringify(source.assertions || []),
+          source.folder_id,
+        ]
+      );
+      created = inserted[0];
+      const { rows: dupFull } = await client.query(`SELECT ${REQUEST_SELECT} FROM api_requests WHERE id = $1`, [created.id]);
+      await insertRevision((sql, p) => client.query(sql, p), {
+        requestId: created.id,
+        scope: { collection_id: source.collection_id, workspace_id: dupWorkspaceId, project_id: projectId },
+        kind: 'create',
+        snapshot: serializeRequest(dupFull[0]),
+        diff: [],
+        userId: req.user.id,
+      });
+      await client.query('COMMIT');
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+    res.status(201).json({ request: created });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/collections/:collectionId', async (req, res, next) => {
+  try {
+    const { collectionId } = req.params;
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    await query(`DELETE FROM collections WHERE id = $1`, [collectionId]);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/requests/:requestId/run', requireResourcePermission('request', 'request.send'), async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const existing = await query(
+      `SELECT id FROM api_requests WHERE id = $1`,
+      [requestId]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
+    const projectId = await projectOfRequest(requestId);
+    // Running a stored request resolves and returns its environment variables,
+    // auth token and substituted snapshot, so it requires the same project read
+    // access as GET /requests/:requestId (prevents cross-tenant execution).
+    if (!projectId || !(await canReadProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'No access to this request' });
+    }
+    const runCharge = await chargeRuns({
+      userId: req.user.id,
+      orgId: await orgOfProject(projectId),
+    });
+    if (!runCharge.ok) return res.status(403).json(runCharge.body);
+    const result = await runRequest(requestId, req.user.id);
+    await fireRequestRunEvents(requestId, projectId, result);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------ Ephemeral runs
+router.post('/runs', async (req, res, next) => {
+  try {
+    const { collectionId, id } = req.body || {};
+    let orgId = null;
+    if (collectionId) {
+      const projectId = await projectOfCollection(collectionId);
+      if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+      if (!(await canReadProjectContent(req.user.id, projectId))) {
+        return res.status(403).json({ error: 'No access to this collection' });
+      }
+      orgId = await orgOfProject(projectId);
+    }
+    // Ephemeral runs that persist run_history are metered like stored-request
+    // runs (multipart file sends). Pure scratchpad sends (no history) are not.
+    if (id && req.body.persistHistory) {
+      const idProjectId = await projectOfRequest(id);
+      const runCharge = await chargeRuns({
+        userId: req.user.id,
+        orgId: idProjectId ? await orgOfProject(idProjectId) : orgId,
+      });
+      if (!runCharge.ok) return res.status(403).json(runCharge.body);
+    }
+    const result = await runInMemoryRequest(req.body || {}, req.user.id);
+    // When the ephemeral run targets an existing request (multipart file sends
+    // carry file bytes the stored-run endpoint cannot), persist history against
+    // that request and fire the usual ON_REQUEST / ON_RUN_FAILURE events so the
+    // run behaves exactly like a stored-request run.
+    if (id && req.body.persistHistory && result.runId) {
+      const projectId = await projectOfRequest(id);
+      if (projectId) await fireRequestRunEvents(id, projectId, result);
+    }
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------- Browser-executed runs
+// Resolve a request WITHOUT executing it, so the browser can perform the call
+// from the user's own network (localhost / private hosts the server cannot
+// reach). Same read-access gate as the ephemeral run endpoint.
+router.post('/runs/prepare', async (req, res, next) => {
+  try {
+    const { collectionId, id } = req.body || {};
+    if (collectionId) {
+      const projectId = await projectOfCollection(collectionId);
+      if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+      if (!(await canReadProjectContent(req.user.id, projectId))) {
+        return res.status(403).json({ error: 'No access to this collection' });
+      }
+    } else if (id) {
+      const projectId = await projectOfRequest(id);
+      if (!projectId || !(await canReadProjectContent(req.user.id, projectId))) {
+        return res.status(403).json({ error: 'No access to this request' });
+      }
+    }
+    const result = await prepareInMemoryRequest(req.body || {}, req.user.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Persist + evaluate a run the browser already executed (it reports the
+// response). Metered and event-fired exactly like a server-side run when the
+// run targets a stored request and persistHistory is set.
+router.post('/runs/complete', async (req, res, next) => {
+  try {
+    const { collectionId, id, persistHistory } = req.body || {};
+    let orgId = null;
+    if (collectionId) {
+      const projectId = await projectOfCollection(collectionId);
+      if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+      if (!(await canReadProjectContent(req.user.id, projectId))) {
+        return res.status(403).json({ error: 'No access to this collection' });
+      }
+      orgId = await orgOfProject(projectId);
+    }
+    if (id && persistHistory) {
+      const idProjectId = await projectOfRequest(id);
+      if (!idProjectId || !(await canReadProjectContent(req.user.id, idProjectId))) {
+        return res.status(403).json({ error: 'No access to this request' });
+      }
+      const runCharge = await chargeRuns({
+        userId: req.user.id,
+        orgId: idProjectId ? await orgOfProject(idProjectId) : orgId,
+      });
+      if (!runCharge.ok) return res.status(403).json(runCharge.body);
+    }
+    const result = await completeInMemoryRequest(req.body || {}, req.user.id);
+    if (id && persistHistory && result.runId) {
+      const projectId = await projectOfRequest(id);
+      if (projectId) await fireRequestRunEvents(id, projectId, result);
+    }
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ----------------------------------------------------------- Collection runner
+// QA options (all optional): stopOnError, delayMs, retries, iterations,
+// requestIds (re-run a subset, e.g. the failures) and data (one row per
+// iteration; each row is exposed to templates as {{data.<field>}} / {{<field>}}).
+router.post('/collections/:collectionId/run', requireResourcePermission('collection', 'request.send'), async (req, res, next) => {
+  try {
+    const { collectionId } = req.params;
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canReadProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'No access to this collection' });
+    }
+    const options = normalizeRunOptions(req.body);
+    let { rows } = await query(
+      `SELECT id, name FROM api_requests WHERE collection_id = $1 ORDER BY name`,
+      [collectionId]
+    );
+    if (options.requestIds.length) {
+      const wanted = new Set(options.requestIds);
+      rows = rows.filter((r) => wanted.has(r.id));
+    }
+    // one entry per HTTP call (row x request, or iterations x request)
+    const plan = buildRunPlan(rows, options);
+    // L4 — a collection run executes every call; charge the whole batch
+    // up-front so an over-budget org is blocked before any HTTP call.
+    if (plan.length > 0) {
+      const runCharge = await chargeRuns({
+        userId: req.user.id,
+        orgId: await orgOfProject(projectId),
+        n: plan.length,
+      });
+      if (!runCharge.ok) return res.status(403).json(runCharge.body);
+    }
+    const results = [];
+    let stoppedEarly = false;
+    for (let idx = 0; idx < plan.length; idx++) {
+      const { request, iteration, row, extraVars } = plan[idx];
+      let item = null;
+      let attempts = 0;
+      let lastResult = null;
+      for (let attempt = 0; attempt <= options.retries; attempt++) {
+        attempts = attempt + 1;
+        try {
+          const result = await runRequest(request.id, req.user.id, extraVars);
+          lastResult = result;
+          item = {
+            requestId: request.id,
+            name: request.name,
+            iteration,
+            attempt: attempts,
+            row: row || null,
+            runStatus: result.runStatus,
+            httpStatus: result.httpStatus,
+            error: result.error,
+            durationMs: result.response ? result.response.durationMs : null,
+            assertions: result.testResults || [],
+            assertionsPassed: result.assertionsPassed,
+          };
+          if (!runItemFailed(item)) break;
+        } catch (err) {
+          // Never surface internal error text to the client; log it instead.
+          console.error(`collection run failed for request ${request.id}:`, err && err.message);
+        }
+      }
+      // Fire workflow/notification events once per execution (not per retry).
+      if (lastResult) await fireRequestRunEvents(request.id, projectId, lastResult);
+      if (!item) {
+        item = {
+          requestId: request.id,
+          name: request.name,
+          iteration,
+          attempt: attempts,
+          row: row || null,
+          runStatus: 'FAILED',
+          httpStatus: 0,
+          error: 'Request failed',
+          durationMs: null,
+          assertions: [],
+          assertionsPassed: false,
+        };
+      }
+      results.push(item);
+      if (options.stopOnError && runItemFailed(item)) {
+        stoppedEarly = true;
+        break;
+      }
+      if (options.delayMs > 0 && idx < plan.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+      }
+    }
+    res.json({
+      results,
+      summary: summarizeRun(results, {
+        iterations: options.data.length || options.iterations,
+        dataRows: options.data.length,
+        stoppedEarly,
+      }),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------ Auth provider
+router.get('/collections/:collectionId/auth-provider', requireCollectionRead, async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT auth_type, token_request_id, token_path, header_key, header_prefix
+         FROM auth_providers WHERE collection_id = $1`,
+      [req.params.collectionId]
+    );
+    res.json({ authProvider: normalizeProvider(rows[0]) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/collections/:collectionId/auth-provider', requireCollectionWrite, async (req, res, next) => {
+  try {
+    const { collectionId } = req.params;
+    const b = req.body || {};
+    const authType = ['NONE', 'BASIC', 'BEARER_TOKEN', 'OAUTH2'].includes(b.authType) ? b.authType : 'NONE';
+
+    // The token request must exist and be flagged AUTH.
+    let tokenRequestId = b.tokenRequestId || null;
+    if (tokenRequestId && authType !== 'NONE') {
+      const tr = await query(
+        `SELECT api_type FROM api_requests WHERE id = $1 AND api_type = 'AUTH'`,
+        [tokenRequestId]
+      );
+      if (tr.rows.length === 0) {
+        return res.status(400).json({ error: 'tokenRequestId must reference an AUTH-type request' });
+      }
+    } else {
+      tokenRequestId = null;
+    }
+
+    const { rows } = await query(
+      `INSERT INTO auth_providers
+         (collection_id, auth_type, token_request_id, token_path, header_key, header_prefix)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (collection_id) DO UPDATE SET
+         auth_type = EXCLUDED.auth_type,
+         token_request_id = EXCLUDED.token_request_id,
+         token_path = EXCLUDED.token_path,
+         header_key = EXCLUDED.header_key,
+         header_prefix = EXCLUDED.header_prefix,
+         updated_at = now()
+       RETURNING auth_type, token_request_id, token_path, header_key, header_prefix`,
+      [
+        collectionId,
+        authType,
+        tokenRequestId,
+        b.tokenPath || '',
+        b.headerKey || 'Authorization',
+        b.headerPrefix || 'Bearer',
+      ]
+    );
+    res.json({ authProvider: normalizeProvider(rows[0]) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/collections/:collectionId/auth-provider/test', requireCollectionWrite, async (req, res, next) => {
+  try {
+    const { collectionId } = req.params;
+    const provider = await query(
+      `SELECT auth_type, token_request_id, token_path, header_key, header_prefix
+         FROM auth_providers WHERE collection_id = $1`,
+      [collectionId]
+    );
+    const p = normalizeProvider(provider.rows[0]);
+    if (!p || p.authType === 'NONE' || !p.tokenRequestId) {
+      return res.status(400).json({ error: 'No token provider configured for this collection' });
+    }
+    const tokenRun = await runTokenRequest(p.tokenRequestId, req.user.id);
+    if (tokenRun.status >= 400) {
+      return res.status(502).json({ error: `Token request failed: HTTP ${tokenRun.status} ${tokenRun.body}` });
+    }
+    const resolved = resolveAuthHeader(p, tokenRun.parsed);
+    res.json({
+      tokenStatus: tokenRun.status,
+      resolvedHeader: resolved,
+      tokenResponse: tokenRun.body,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

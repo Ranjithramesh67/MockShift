@@ -1,0 +1,599 @@
+/* ==========================================================================
+   Mobile responsive overrides — Agent 3: Admin / Manage / History / Automations
+   views + WorkflowBuilder (src/components/views/* + WorkflowBuilder.tsx).
+
+   Only append responsive rules here. NEVER edit app/globals.css.
+   Breakpoints: <= 900px tablet, <= 640px phone.
+   Wrap every override in a media query. Keep desktop (>900px) untouched.
+   Do NOT redefine selectors that live outside your namespace (e.g. .modal-*,
+   .sidebar, .split-pane, .request-*). Your namespace: .admin-view, .admin-*,
+   .manage-*, .history-*, .automations-*, .workflow-*, .stat-*, .table-wrap,
+   .page-head, .filters-*, .role-chip, .member-*, .runner-*.
+   ========================================================================== */
+
+/* ==========================================================================
+   <= 900px (small tablets / portrait) — spacing, wrappable headers, scroll
+   ========================================================================== */
+@media (max-width: 900px) {
+  /* Dense admin pages breathe a bit less on tablet widths. */
+  .admin-main {
+    padding: 22px 18px;
+  }
+
+  /* Page header rows: let actions wrap under the title instead of squeezing. */
+  .admin-title-row {
+    flex-wrap: wrap;
+    gap: 12px 16px;
+  }
+
+  .admin-header-actions {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  /* --- Data tables ----------------------------------------------------
+     Every admin/history/manage table lives in a .table-wrap scroll box so a
+     wide table can never push the page wider than the viewport. Thin styled
+     scrollbar for the horizontal case. */
+  .table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+  }
+
+  .table-wrap::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .table-wrap::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.4);
+    border-radius: 8px;
+  }
+
+  .table-wrap::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Between 641-900px the dense tables stay real tables but are given a
+     comfortable minimum width so columns do not collapse into unreadable
+     slivers; the wrapper scrolls instead. */
+  .table-wrap.table-stack .admin-table {
+    min-width: 600px;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 10px 12px;
+  }
+
+  .admin-table .mono-cell,
+  .admin-table .admin-user-email,
+  .admin-table .admin-user-name {
+    max-width: 200px;
+  }
+
+  /* --- Buttons / controls --------------------------------------------- */
+  .admin-main .ghost-button,
+  .admin-main .primary-button {
+    min-height: 36px;
+  }
+
+  .admin-main .ghost-button.small {
+    min-height: 34px;
+    padding: 6px 12px;
+  }
+
+  .manage-tab {
+    min-height: 38px;
+    padding: 8px 14px;
+  }
+
+  /* --- Manage / automations shared ------------------------------------ */
+  .manage-section-title {
+    margin-top: 18px;
+  }
+
+  /* Automation meta lines should wrap and never widen the card. */
+  .automation-card-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .automation-card-title {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+
+  .automation-meta {
+    flex-wrap: wrap;
+    min-width: 0;
+    align-items: baseline;
+    row-gap: 4px;
+  }
+
+  .automation-meta code {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  /* --- Workflow builder ------------------------------------------------ */
+  .workflow-builder {
+    padding: 14px;
+  }
+
+  .workflow-toolbar {
+    row-gap: 8px;
+  }
+
+  .workflow-toolbar .text-input {
+    flex: 1 1 200px;
+    min-width: 160px;
+  }
+
+  .workflow-toolbar .primary-button,
+  .workflow-toolbar .ghost-button {
+    min-height: 38px;
+  }
+
+  .step-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .step-grid select.compact-select,
+  .step-grid .text-input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .step-card-header {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .step-card-header .text-input {
+    flex: 1 1 140px;
+    min-width: 120px;
+  }
+
+  .step-actions {
+    margin-left: auto;
+  }
+
+  .step-card .icon-button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .pass-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pass-form .icon-button {
+    width: 100%;
+    min-height: 38px;
+  }
+}
+
+/* ==========================================================================
+   <= 640px (phones) — stacked tables, one/two-col grids, big touch targets
+   ========================================================================== */
+@media (max-width: 640px) {
+  .admin-main {
+    padding: 14px 12px;
+  }
+
+  .admin-main h1 {
+    font-size: 19px;
+  }
+
+  .admin-main .ghost-button,
+  .admin-main .primary-button,
+  .manage-tab {
+    min-height: 40px;
+  }
+
+  .admin-main .ghost-button.small {
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  .admin-main .text-input,
+  .admin-main .compact-select {
+    font-size: 16px; /* avoids iOS zoom-on-focus */
+  }
+
+  /* --- Stacked table cards ----------------------------------------------
+     At phone width, the labelled columns become cards: header hidden, each
+     row rendered as [LABEL value] rows with the trailing action button as a
+     full-width tappable strip. Labels come from data-label attributes added
+     to the <td>s in the views; cells without data-label (the action cell /
+     empty-state row) render as plain content. */
+  .table-wrap.table-stack {
+    overflow: visible;
+  }
+
+  .table-wrap.table-stack .admin-table {
+    display: block;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    overflow: visible;
+    border-radius: 0;
+  }
+
+  .table-wrap.table-stack thead {
+    display: none;
+  }
+
+  .table-wrap.table-stack tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .table-wrap.table-stack tbody tr {
+    display: block;
+    margin: 0;
+    padding: 4px 12px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  .table-wrap.table-stack tbody tr:hover {
+    background: var(--bg-panel);
+  }
+
+  .table-wrap.table-stack td {
+    min-width: 0;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-soft);
+    text-align: left;
+  }
+
+  .table-wrap.table-stack td[data-label] {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .table-wrap.table-stack tr td:last-child {
+    border-bottom: none;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .table-wrap.table-stack td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 72px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    line-height: 1.35;
+  }
+
+  .table-wrap.table-stack td[data-label] > * {
+    min-width: 0;
+  }
+
+  .table-wrap.table-stack .admin-user-cell {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .table-wrap.table-stack .admin-user-cell > div {
+    min-width: 0;
+  }
+
+  .table-wrap.table-stack .admin-user-name,
+  .table-wrap.table-stack .admin-user-email,
+  .table-wrap.table-stack .hint {
+    overflow-wrap: anywhere;
+  }
+
+  .table-wrap.table-stack .mono-cell {
+    white-space: normal;
+    max-width: none;
+    overflow: visible;
+  }
+
+  .table-wrap.table-stack select.compact-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+  }
+
+  .table-wrap.table-stack .admin-project-chips {
+    flex: 1;
+    max-width: none;
+  }
+
+  .table-wrap.table-stack .admin-project-chip {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .table-wrap.table-stack .admin-project-role {
+    white-space: nowrap;
+  }
+
+  /* Full-width tappable action strip (last cell has no data-label). */
+  .table-wrap.table-stack tr td:last-child .ghost-button {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 38px;
+    margin: 0;
+    justify-content: center;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Empty / loading state rows (colspan cells without data-label). */
+  .table-wrap.table-stack tbody tr td:only-child {
+    display: block;
+    padding: 12px 4px;
+    border: none;
+    text-align: center;
+  }
+
+  /* --- Overview stat grid ----------------------------------------------- */
+  .overview-grid {
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: 10px;
+  }
+
+  .stat-card {
+    padding: 12px 14px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    overflow-wrap: anywhere;
+  }
+
+  /* --- Manage: access-request rows ------------------------------------- */
+  .request-row {
+    padding: 12px;
+  }
+
+  .request-row-main {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .request-row-meta {
+    width: 100%;
+    margin-left: 38px;
+  }
+
+  .request-reason {
+    padding-left: 38px;
+  }
+
+  .request-row-actions {
+    gap: 8px;
+  }
+
+  .request-row-actions .ghost-button,
+  .request-row-actions .primary-button {
+    flex: 1 1 0;
+    justify-content: center;
+    min-height: 42px;
+  }
+
+  /* --- Member rows (admin access / project detail / history assertions) - */
+  .admin-main .manage-member-row {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 9px 10px;
+  }
+
+  .admin-main .manage-member-row .admin-avatar {
+    width: 26px;
+    height: 26px;
+  }
+
+  .admin-main .manage-member-row .admin-user-name {
+    order: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-main .manage-member-row .role-badge,
+  .admin-main .manage-member-row .vis-badge {
+    order: 2;
+  }
+
+  .admin-main .manage-member-row .ghost-button {
+    order: 2;
+    margin-left: auto;
+  }
+
+  /* Email / date detail moves to its own indented line under the name. */
+  .admin-main .manage-member-row .hint {
+    order: 9;
+    flex: 1 1 100%;
+    margin: 0 0 0 36px;
+  }
+
+  /* --- Admin access: add-user controls ---------------------------------- */
+  .admin-access-add {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-access-add .compact-select {
+    max-width: none;
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .admin-access-add .primary-button {
+    justify-content: center;
+  }
+
+  .admin-access-card {
+    padding: 12px;
+  }
+
+  /* --- Automations ------------------------------------------------------- */
+  .automation-card {
+    padding: 12px;
+  }
+
+  .automation-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .automation-card-title .admin-user-name,
+  .automation-card-title .hint {
+    overflow-wrap: anywhere;
+  }
+
+  .automation-meta {
+    font-size: 12px;
+  }
+
+  .automation-card-actions {
+    gap: 8px;
+  }
+
+  .automation-card-actions .ghost-button {
+    flex: 1 1 auto;
+    min-height: 40px;
+    justify-content: center;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .automation-list .hint {
+    line-height: 1.5;
+  }
+
+  /* --- History detail snapshots ------------------------------------------ */
+  .history-snapshots {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .history-snapshot p {
+    overflow-wrap: anywhere;
+  }
+
+  /* --- Workflow builder --------------------------------------------------- */
+  .workflow-builder {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .workflow-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .workflow-toolbar .text-input {
+    flex: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .workflow-toolbar .primary-button,
+  .workflow-toolbar .ghost-button {
+    justify-content: center;
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .step-card {
+    padding: 12px;
+    min-width: 0;
+  }
+
+  .step-card-header {
+    flex-wrap: wrap;
+  }
+
+  .step-card-header .text-input {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .step-actions {
+    margin-left: auto;
+  }
+
+  .step-actions .icon-button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .drag-handle {
+    padding: 6px 4px; /* generous grab zone, arrows remain as alternate */
+  }
+
+  .step-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .step-condition {
+    min-width: 0;
+  }
+
+  /* Pass-through data form stacks into two tidy columns. */
+  .pass-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .pass-form .compact-select,
+  .pass-form .text-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pass-form .icon-button {
+    min-height: 40px;
+  }
+
+  /* Reference chips scroll inside their strip rather than widen the card. */
+  .pass-refs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pass-ref {
+    flex: 0 0 auto;
+  }
+
+  .pass-ref code {
+    overflow-wrap: anywhere;
+  }
+
+  .pass-list-item {
+    align-items: flex-start;
+  }
+
+  .pass-list-item span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .pass-list-item .icon-button {
+    flex: none;
+  }
+}

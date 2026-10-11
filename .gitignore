@@ -1,0 +1,28 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Local environment / secrets
+.env
+.env.local
+*.pem
+
+# Build output
+frontend/.next/
+frontend/.next-prod/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
+backend/coverage/
+backend/coverage.html
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+
+# Runtime artifacts
+dump.rdb
+*.log
+
+# OS / editor
+.DS_Store

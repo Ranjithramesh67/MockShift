@@ -1,0 +1,1822 @@
+'use client';
+
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  contentApi,
+  folderApi,
+  projectApi,
+  teamApi,
+  workspaceApi,
+  type ApiType,
+  type AuthProvider,
+  type CollectionRunOptions,
+  type CollectionRunResult,
+  type ContentTree,
+  type EphemeralRunInput,
+  type Folder,
+  type GlobalProject,
+  type ProjectContentTree,
+  type ProjectOverview,
+  type RunResult,
+  type Team,
+  type TeamGroupsResponse,
+  type TeamMember,
+  type UserRole,
+  type Workspace,
+} from '@/lib/api';
+import type { ApiRequest, Assertion, BodyFormPart, BodyType, RequestContentType } from '@/lib/types';
+import { useAuth } from '@/lib/auth';
+import { openTab, closeTab, insertTab } from '@/lib/tabs';
+import {
+  persistActiveProject,
+  readPersistedProject,
+  resolveActiveProject,
+} from '@/lib/activeProject';
+import {
+  normalizeParts,
+  seedPartsFromLegacy,
+  stripTransportData,
+  readFileAsBase64,
+} from '@/lib/multipartParts';
+import { executeInBrowser, isLocalUrl, maybeLocal } from '@/lib/browserRunner';
+
+function contentTypeForBodyType(bt: string): RequestContentType {
+  switch (bt) {
+    case 'JSON':
+      return 'application/json';
+    case 'FORM_URLENCODED':
+      return 'application/x-www-form-urlencoded';
+    case 'MULTIPART':
+      return 'multipart/form-data';
+    case 'GRAPHQL':
+      return 'application/json';
+    case 'XML':
+      return 'application/xml';
+    default:
+      return 'text/plain';
+  }
+}
+
+export function toEditorRequest(d: {
+  id: string;
+  name: string;
+  method: string;
+  url: string;
+  headers?: Array<{ key: string; value: string; enabled: boolean }>;
+  queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+  bodyType?: string;
+  bodyJson?: unknown;
+  bodyText?: string | null;
+  bodyParts?: BodyFormPart[];
+  apiType?: ApiType;
+  formula?: string;
+  assertions?: Assertion[];
+}): ApiRequest {
+  const isMultipart = (d.bodyType || 'NONE') === 'MULTIPART';
+  let bodyJson: string | null = null;
+  if (!isMultipart) {
+    if (d.bodyJson !== undefined && d.bodyJson !== null) {
+      bodyJson = typeof d.bodyJson === 'string' ? d.bodyJson : JSON.stringify(d.bodyJson, null, 2);
+    } else if (d.bodyText) {
+      bodyJson = d.bodyText;
+    }
+  }
+  let bodyParts = normalizeParts(d.bodyParts);
+  if (isMultipart && bodyParts.length === 0 && typeof d.bodyText === 'string' && d.bodyText.length > 0) {
+    bodyParts = seedPartsFromLegacy(d.bodyText);
+  }
+  return {
+    id: d.id,
+    name: d.name,
+    method: (d.method || 'GET') as ApiRequest['method'],
+    url: d.url || '',
+    headers: d.headers ?? [],
+    queryParams: d.queryParams ?? [],
+    bodyType: (d.bodyType || 'NONE') as BodyType,
+    bodyJson,
+    bodyParts,
+    contentType: contentTypeForBodyType(d.bodyType || 'NONE'),
+    formula: d.formula ?? '',
+    apiType: (d.apiType || 'REST') as ApiType,
+    assertions: Array.isArray(d.assertions) ? d.assertions : [],
+  };
+}
+
+export function toServerPatch(r: ApiRequest): Record<string, unknown> {
+  const patch: Record<string, unknown> = {
+    name: r.name,
+    method: r.method,
+    url: r.url,
+    apiType: r.apiType,
+    headers: r.headers,
+    queryParams: r.queryParams,
+    bodyType: r.bodyType,
+    formula: r.formula || '',
+    assertions: r.assertions ?? [],
+  };
+  if (r.bodyType === 'JSON' || r.bodyType === 'GRAPHQL') {
+    if (r.bodyJson) {
+      try {
+        patch.bodyJson = JSON.parse(r.bodyJson);
+      } catch {
+        patch.bodyJson = null;
+        patch.bodyText = r.bodyJson;
+      }
+    } else {
+      patch.bodyJson = null;
+      patch.bodyText = null;
+    }
+  } else if (r.bodyType === 'XML') {
+    patch.bodyText = r.bodyJson ?? null;
+    patch.bodyJson = null;
+  } else if (r.bodyType === 'MULTIPART') {
+    patch.bodyParts = stripTransportData(r.bodyParts ?? []);
+    patch.bodyJson = null;
+    patch.bodyText = null;
+  } else {
+    patch.bodyText = r.bodyJson ?? null;
+    patch.bodyJson = null;
+  }
+  return patch;
+}
+
+const DIRTY_FIELDS = [
+  'method',
+  'url',
+  'headers',
+  'queryParams',
+  'bodyType',
+  'bodyJson',
+  'bodyParts',
+  'formula',
+  'assertions',
+  'apiType',
+] as const;
+
+function dirtySnapshot(r: ApiRequest): unknown[] {
+  return DIRTY_FIELDS.map((k) => r[k]);
+}
+
+function dirtySnapshotsEqual(a: unknown[] | null, b: unknown[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.length !== b.length) return false;
+  return a.every((v, i) => JSON.stringify(v) === JSON.stringify(b[i]));
+}
+
+// Request-level Undo/Redo (working copy only). Edit snapshots are whole
+// ApiRequest objects (already immutable per change, so storing references is
+// cheap). Consecutive edits that land within EDIT_BURST_MS of each other are
+// coalesced into a single undo step so a typing burst in the URL / body editor
+// is reverted in one go. History is kept per open request and dropped when the
+// tab closes or the workspace/collection changes.
+const EDIT_HISTORY_LIMIT = 100;
+const EDIT_BURST_MS = 800;
+
+interface WorkspaceState {
+  loading: boolean;
+  error: string | null;
+  workspaces: Workspace[];
+  teams: Team[];
+  groups: TeamGroupsResponse | null;
+  overview: ProjectOverview | null;
+  overviewLoading: boolean;
+  overviewError: string | null;
+  activeWorkspaceId: string | null;
+  activeWorkspaceRole: UserRole | null;
+  activeProjectId: string | null;
+  allProjects: GlobalProject[];
+  tree: ContentTree | null;
+  projectTree: ProjectContentTree | null;
+  projectTreeLoading: boolean;
+  activeCollectionId: string | null;
+  activeCollectionName: string;
+  authProvider: AuthProvider | null;
+  activeRequest: ApiRequest | null;
+  isDirty: boolean;
+  lastRun: RunResult | null;
+  requestRuns: Record<string, RunResult | null>;
+  collectionRun: CollectionRunResult | null;
+  collectionRunRunning: boolean;
+  requestRunning: boolean;
+  runInBrowser: boolean;
+  setRunInBrowser: (value: boolean) => void;
+  selectedFiles: Record<string, Record<string, File>>;
+  setFileForPart: (requestId: string, partId: string, file: File | null) => void;
+
+  openRequestIds: string[];
+  activeRequestId: string | null;
+  requestCopies: Record<string, ApiRequest>;
+  activateRequestTab: (requestId: string) => Promise<void>;
+  closeRequestTab: (requestId: string) => Promise<void>;
+  reopenLastClosedTab: () => Promise<void>;
+  isTabDirty: (requestId: string) => boolean;
+
+  // Request-level Undo/Redo (working copy edits only) and Back navigation
+  // (returns to the previously active request in activation order).
+  canUndoRequest: boolean;
+  canRedoRequest: boolean;
+  canGoBackRequest: boolean;
+  undoActiveRequest: () => void;
+  redoActiveRequest: () => void;
+  goBackRequest: () => Promise<void>;
+
+  refresh: () => Promise<void>;
+  selectWorkspace: (workspaceId: string) => Promise<void>;
+  selectProject: (projectId: string) => Promise<void>;
+  selectProjectById: (projectId: string) => Promise<void>;
+  loadProjectTree: (projectId: string) => Promise<void>;
+  selectRequest: (requestId: string) => Promise<void>;
+  reloadActiveRequest: () => Promise<void>;
+  selectCollection: (collectionId: string, collectionName: string) => Promise<void>;
+  updateActiveRequest: (patch: Partial<ApiRequest>) => void;
+  saveActiveRequest: () => Promise<void>;
+  runActiveRequest: () => Promise<void>;
+  runScratchpad: (input: {
+    method: string;
+    url: string;
+    headers?: Array<{ key: string; value: string; enabled: boolean }>;
+    queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+    bodyType?: string;
+    bodyJson?: unknown;
+    bodyText?: string | null;
+    bodyParts?: BodyFormPart[];
+    formula?: string;
+    assertions?: Assertion[];
+    apiType?: ApiType;
+  }) => Promise<void>;
+  runCollection: (collectionId: string, options?: CollectionRunOptions) => Promise<CollectionRunResult>;
+  clearCollectionRun: () => void;
+  clearScratchpadRun: () => void;
+
+  createWorkspace: (name: string, visibility?: Workspace['visibility']) => Promise<void>;
+  createWorkspaceInProject: (name: string) => Promise<void>;
+  createProject: (name: string, organizationId?: string) => Promise<void>;
+  renameProject: (projectId: string, name: string) => Promise<void>;
+  deleteProject: (projectId: string) => Promise<void>;
+  createCollection: (name: string, workspaceId?: string) => Promise<void>;
+  createRequest: (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => Promise<void>;
+  createFolder: (input: { name: string; collectionId: string; parentId?: string | null }) => Promise<void>;
+  renameFolder: (folderId: string, name: string) => Promise<void>;
+  deleteFolder: (folderId: string) => Promise<void>;
+  renameRequest: (requestId: string, name: string) => Promise<void>;
+  moveRequest: (requestId: string, folderId: string | null) => Promise<void>;
+  moveFolder: (folderId: string, parentId: string | null) => Promise<void>;
+  duplicateRequest: (requestId: string) => Promise<{ name: string }>;
+  duplicateFolder: (folderId: string) => Promise<{ name: string }>;
+
+  deleteRequest: (requestId: string) => Promise<void>;
+  deleteCollection: (collectionId: string) => Promise<void>;
+  deleteWorkspace: (workspaceId: string) => Promise<void>;
+  deleteTeam: (teamId: string) => Promise<void>;
+
+  loadAuthProvider: (collectionId: string) => Promise<void>;
+  saveAuthProvider: (provider: AuthProvider) => Promise<void>;
+  testAuthProvider: () => Promise<{ resolvedHeader: { headerKey: string; headerValue: string } | null; tokenResponse: string } | null>;
+  reloadTree: () => Promise<void>;
+  selectProjectOverview: (project: { id: string; name: string }) => Promise<void>;
+  closeProjectOverview: () => void;
+
+  inviteToTeam: (teamId: string, email: string, role: UserRole) => Promise<TeamMember[]>;
+  shareWorkspace: (workspaceId: string, teamId: string, role: UserRole) => Promise<void>;
+  unshareWorkspace: (workspaceId: string, teamId: string) => Promise<void>;
+}
+
+const WorkspaceContext = createContext<WorkspaceState | null>(null);
+
+export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [groups, setGroups] = useState<TeamGroupsResponse | null>(null);
+  const [overview, setOverview] = useState<ProjectOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [activeWorkspaceRole, setActiveWorkspaceRole] = useState<UserRole | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [allProjects, setAllProjects] = useState<GlobalProject[]>([]);
+  const [tree, setTree] = useState<ContentTree | null>(null);
+  const [projectTree, setProjectTree] = useState<ProjectContentTree | null>(null);
+  const [projectTreeLoading, setProjectTreeLoading] = useState(false);
+  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
+  const [activeCollectionName, setActiveCollectionName] = useState('');
+  const [authProvider, setAuthProvider] = useState<AuthProvider | null>(null);
+  const [activeRequest, setActiveRequest] = useState<ApiRequest | null>(null);
+  const [openRequestIds, setOpenRequestIds] = useState<string[]>([]);
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const [requestCopies, setRequestCopies] = useState<Record<string, ApiRequest>>({});
+  const [baselines, setBaselines] = useState<Record<string, unknown[]>>({});
+  const [closedTabs, setClosedTabs] = useState<
+    Array<{ requestId: string; index: number; request: ApiRequest; baseline: unknown[] | null }>
+  >([]);
+  // Activation history for the Back button: ids of previously active requests,
+  // most recent last. Pushed on every real activation transition (A -> B
+  // pushes A) and reset when no request is active. Back pops the most recent
+  // entry and re-activates it.
+  const [navStack, setNavStack] = useState<string[]>([]);
+  const [lastRun, setLastRun] = useState<RunResult | null>(null);
+  // Last executed response per request id, kept in memory for the lifetime of
+  // the page so closing a tab (Ctrl+Q) and reopening it (Ctrl+Shift+Q) or
+  // switching back to it restores the previous response instead of dropping it.
+  const [requestRuns, setRequestRuns] = useState<Record<string, RunResult | null>>({});
+  const [collectionRun, setCollectionRun] = useState<CollectionRunResult | null>(null);
+  const [collectionRunRunning, setCollectionRunRunning] = useState(false);
+  // True while a single request (saved, working copy or scratchpad) is being
+  // executed through the run pipeline — drives the send/execution loader.
+  const [requestRunning, setRequestRunning] = useState(false);
+  // Opt-in: execute requests that target the user's own machine (localhost /
+  // private hosts) from the browser, since the MockShift server cannot reach the
+  // caller's network. Persisted so the choice survives reloads.
+  const [runInBrowser, setRunInBrowserState] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('mockshift.runInBrowser') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setRunInBrowser = useCallback((value: boolean) => {
+    setRunInBrowserState(value);
+    try {
+      window.localStorage.setItem('mockshift.runInBrowser', value ? '1' : '0');
+    } catch {
+      /* ignore storage failures */
+    }
+  }, []);
+  // Picked browser File objects for multipart file parts, keyed by request id
+  // then part id. Files are never part of ApiRequest or the DB — they live here
+  // in memory so they survive tab switches and are re-read at send time.
+  const [selectedFiles, setSelectedFiles] = useState<Record<string, Record<string, File>>>({});
+  const requestRunningRef = useRef(false);
+  // Guards selectRequest against out-of-order responses: each selection bumps
+  // the sequence and records the target id; a fetch that resolves after a newer
+  // click (or a workspace/collection switch) is dropped instead of overwriting
+  // the active request with a stale one.
+  const selectSeqRef = useRef(0);
+  const selectTargetRef = useRef<string | null>(null);
+  // Last committed active request. Kept in sync with `activeRequest` (effect
+  // below) and updated synchronously by updateActiveRequest so undo snapshots
+  // always capture the request as it was before the edit that is being applied.
+  const activeRequestRef = useRef<ApiRequest | null>(null);
+  // Mirror of activeRequestId, read synchronously when an async run resolves so
+  // a response for a request the user has since navigated away from is not
+  // painted against the now-active request.
+  const activeRequestIdRef = useRef<string | null>(null);
+  // Per-request Undo/Redo edit stacks. Undo entries are snapshots of the
+  // working copy *before* each edit burst; Redo entries are snapshots produced
+  // by Undo. Held in refs (mutated inside update/undo/redo handlers) and read
+  // during render — every mutation coincides with a setActiveRequest, so the
+  // provider always re-renders with fresh canUndo/canRedo values.
+  const editUndoRef = useRef<Record<string, ApiRequest[]>>({});
+  const editRedoRef = useRef<Record<string, ApiRequest[]>>({});
+  const editBurstRef = useRef<Record<string, number>>({});
+  // Back-navigation mirror (read synchronously in goBackRequest so two rapid
+  // clicks cannot double-pop the same history entry).
+  const navStackRef = useRef<string[]>([]);
+  const autoSelectRef = useRef(false);
+  const prevActiveNavRef = useRef<string | null>(null);
+  const suppressNavPushRef = useRef(false);
+
+  const clearEditHistory = useCallback((requestId: string) => {
+    delete editUndoRef.current[requestId];
+    delete editRedoRef.current[requestId];
+    delete editBurstRef.current[requestId];
+  }, []);
+
+  const clearAllEditHistory = useCallback(() => {
+    editUndoRef.current = {};
+    editRedoRef.current = {};
+    editBurstRef.current = {};
+  }, []);
+
+  // Grouped workspace nav is auxiliary: a failure here degrades to the flat
+  // workspace list rather than failing whatever orchestration called it.
+  const loadGroups = useCallback(async () => {
+    try {
+      const grp = await teamApi.groups();
+      setGroups(grp);
+    } catch {
+      setGroups(null);
+    }
+  }, []);
+
+  // Global project list backing the top-nav picker. Failure degrades to an
+  // empty list rather than failing workspace loading.
+  const loadAllProjects = useCallback(async () => {
+    try {
+      const { projects } = await projectApi.listAll();
+      setAllProjects(projects);
+    } catch {
+      setAllProjects([]);
+    }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (!user) {
+      setWorkspaces([]);
+      setTeams([]);
+      setGroups(null);
+      setAllProjects([]);
+      // Sign-out must not leak the previous account's data into the next
+      // session: clear every selection and per-request cache, not just the
+      // workspace lists. In-flight selections are invalidated so a late
+      // response cannot repopulate the tree after logout.
+      setOverview(null);
+      setOverviewError(null);
+      setActiveWorkspaceId(null);
+      setActiveWorkspaceRole(null);
+      setActiveProjectId(null);
+      setTree(null);
+      setProjectTree(null);
+      setActiveCollectionId(null);
+      setActiveCollectionName('');
+      setAuthProvider(null);
+      setActiveRequest(null);
+      setActiveRequestId(null);
+      setOpenRequestIds([]);
+      setRequestCopies({});
+      setBaselines({});
+      setClosedTabs([]);
+      setNavStack([]);
+      setLastRun(null);
+      setRequestRuns({});
+      setCollectionRun(null);
+      setSelectedFiles({});
+      selectSeqRef.current += 1;
+      selectTargetRef.current = null;
+      autoSelectRef.current = false;
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const [ws, tm] = await Promise.all([workspaceApi.list(), teamApi.list()]);
+      setWorkspaces(ws.workspaces);
+      setTeams(tm.teams);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load workspaces');
+    }
+    await Promise.all([loadGroups(), loadAllProjects()]);
+    setLoading(false);
+  }, [user, loadGroups, loadAllProjects]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Keep the last-seen working copy of every open request so unsaved edits
+  // survive tab switches. Runs on every activeRequest change.
+  useEffect(() => {
+    if (!activeRequest) return;
+    setRequestCopies((copies) => ({ ...copies, [activeRequest.id]: activeRequest }));
+  }, [activeRequest]);
+
+  // Mirror for undo/redo snapshot capture (see activeRequestRef declaration).
+  useEffect(() => {
+    activeRequestRef.current = activeRequest;
+  }, [activeRequest]);
+
+  useEffect(() => {
+    activeRequestIdRef.current = activeRequestId;
+  }, [activeRequestId]);
+
+  // Back-navigation bookkeeping. Every real activation transition (A -> B)
+  // records A as the most recent history entry so Back can return to it. A
+  // transition to null (all tabs closed / overview opened) resets the history,
+  // and transitions caused by Back itself are suppressed (the popped entry is
+  // not re-recorded as the new "previous" of the request we land on).
+  useEffect(() => {
+    const prev = prevActiveNavRef.current;
+    prevActiveNavRef.current = activeRequestId;
+    const suppressed = suppressNavPushRef.current;
+    suppressNavPushRef.current = false;
+    if (activeRequestId !== null && activeRequestId !== prev) {
+      // A fresh activation is an edit-burst boundary: continuing to type in the
+      // newly activated request must start a new undo step even if the switch
+      // happened within EDIT_BURST_MS of the last edit to that request.
+      editBurstRef.current[activeRequestId] = 0;
+    }
+    if (suppressed) return;
+    if (activeRequestId === null) {
+      setNavStack([]);
+      return;
+    }
+    if (prev && prev !== activeRequestId) {
+      setNavStack((s) => (s[s.length - 1] === prev ? s : [...s, prev]));
+    }
+  }, [activeRequestId]);
+
+  useEffect(() => {
+    navStackRef.current = navStack;
+  }, [navStack]);
+
+  const persistProject = (workspaceId: string | null, projectId: string | null) => {
+    if (typeof window === 'undefined' || !workspaceId || !projectId) return;
+    persistActiveProject(window.localStorage, workspaceId, projectId);
+  };
+
+  const applyProjectContext = useCallback(async (t: ContentTree, preferredId: string | null) => {
+    const nextId = resolveActiveProject(t, preferredId);
+    setActiveProjectId(nextId);
+    persistProject(t.workspaceId, nextId);
+    const first = nextId
+      ? t.collections.find((c) => c.project_id === nextId)
+      : t.collections[0];
+    setActiveCollectionId(first?.id ?? null);
+    setActiveCollectionName(first?.name ?? '');
+    setAuthProvider(null);
+    if (first) {
+      try {
+        const { authProvider: p } = await contentApi.getAuthProvider(first.id);
+        setAuthProvider(p);
+      } catch {
+        setAuthProvider(null);
+      }
+    }
+  }, []);
+
+  const selectWorkspace = useCallback(async (workspaceId: string) => {
+    setError(null);
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
+    // Keep the project-first tree when the chosen workspace belongs to the
+    // active project, so the sidebar stays scoped to that project's workspaces.
+    setProjectTree((prev) =>
+      prev && prev.workspaces.some((w) => w.id === workspaceId) ? prev : null
+    );
+    setOverview(null);
+    setOverviewError(null);
+    setActiveWorkspaceId(workspaceId);
+    setActiveRequest(null);
+    setActiveRequestId(null);
+    setOpenRequestIds([]);
+    setRequestCopies({});
+    setBaselines({});
+    setClosedTabs([]);
+    setNavStack([]);
+    clearAllEditHistory();
+    setLastRun(null);
+    setRequestRuns({});
+    const ws = workspaces.find((w) => w.id === workspaceId);
+    setActiveWorkspaceRole(ws?.role ?? null);
+    try {
+      const t = await workspaceApi.content(workspaceId);
+      setTree(t);
+      const preferred =
+        typeof window !== 'undefined' ? readPersistedProject(window.localStorage, workspaceId) : null;
+      await applyProjectContext(t, preferred);
+    } catch (err) {
+      setTree(null);
+      setActiveProjectId(null);
+      setError(err instanceof Error ? err.message : 'Failed to load workspace');
+    }
+  }, [workspaces, applyProjectContext]);
+
+  // Loads the project-first tree (project -> workspaces -> collections) and
+  // makes it the working context. The legacy workspace `tree` is refreshed for
+  // the project's first workspace so consumers still on that path keep working.
+  const loadProjectTree = useCallback(async (projectId: string) => {
+    setError(null);
+    setProjectTreeLoading(true);
+    const seq = ++selectSeqRef.current; // invalidate any in-flight request selection
+    setOverview(null);
+    setOverviewError(null);
+    setActiveRequest(null);
+    setActiveRequestId(null);
+    setOpenRequestIds([]);
+    setRequestCopies({});
+    setBaselines({});
+    setClosedTabs([]);
+    setNavStack([]);
+    clearAllEditHistory();
+    setLastRun(null);
+    setRequestRuns({});
+    try {
+      const pt = await projectApi.content(projectId);
+      if (selectSeqRef.current !== seq) return;
+      setProjectTree(pt);
+      setActiveProjectId(projectId);
+      const firstWorkspaceId = pt.workspaces[0]?.id ?? null;
+      setActiveWorkspaceId(firstWorkspaceId);
+      setActiveWorkspaceRole(workspaces.find((w) => w.id === firstWorkspaceId)?.role ?? null);
+      persistProject(firstWorkspaceId, projectId);
+      const first = pt.collections[0];
+      setActiveCollectionId(first?.id ?? null);
+      setActiveCollectionName(first?.name ?? '');
+      setAuthProvider(null);
+      if (first) {
+        const { authProvider: p } = await contentApi.getAuthProvider(first.id).catch(() => ({ authProvider: null }));
+        if (selectSeqRef.current === seq) setAuthProvider(p);
+      }
+      if (firstWorkspaceId) {
+        const t = await workspaceApi.content(firstWorkspaceId).catch(() => null);
+        if (selectSeqRef.current === seq) setTree(t);
+      } else {
+        setTree(null);
+      }
+    } catch (err) {
+      if (selectSeqRef.current === seq) {
+        setProjectTree(null);
+        setTree(null);
+        setActiveProjectId(null);
+        setError(err instanceof Error ? err.message : 'Failed to load project');
+      }
+    } finally {
+      if (selectSeqRef.current === seq) setProjectTreeLoading(false);
+    }
+  }, [workspaces]);
+
+  const selectProject = useCallback(
+    async (projectId: string) => {
+      await loadProjectTree(projectId);
+    },
+    [loadProjectTree]
+  );
+
+  // Top-nav entry point: load the project-first tree for any project, no matter
+  // which workspace owns it.
+  const selectProjectById = useCallback(
+    async (projectId: string) => {
+      await loadProjectTree(projectId);
+    },
+    [loadProjectTree]
+  );
+
+  useEffect(() => {
+    if (!user) {
+      autoSelectRef.current = false;
+      return;
+    }
+    if (loading || autoSelectRef.current) return;
+    if (activeWorkspaceId || activeProjectId) {
+      autoSelectRef.current = true;
+      return;
+    }
+    // Project-first boot: pick a project so the sidebar renders
+    // project -> workspace -> collections instead of workspace-first.
+    if (allProjects.length > 0) {
+      autoSelectRef.current = true;
+      const preferred =
+        allProjects.find((p) => p.name === 'Default Project') ?? allProjects[0];
+      loadProjectTree(preferred.id).catch(() => undefined);
+      return;
+    }
+    if (workspaces.length === 0) return;
+    autoSelectRef.current = true;
+    const preferred = workspaces.find((w) => w.name === 'My Workspace') ?? workspaces[0];
+    selectWorkspace(preferred.id).catch(() => undefined);
+  }, [
+    user,
+    loading,
+    activeWorkspaceId,
+    activeProjectId,
+    allProjects,
+    workspaces,
+    loadProjectTree,
+    selectWorkspace,
+  ]);
+
+  const selectCollection = useCallback(async (collectionId: string, collectionName: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
+    setOverview(null);
+    setOverviewError(null);
+    const collectionProjectId = tree?.collections.find((c) => c.id === collectionId)?.project_id;
+    if (collectionProjectId && collectionProjectId !== activeProjectId) {
+      setActiveProjectId(collectionProjectId);
+      persistProject(tree?.workspaceId ?? activeWorkspaceId, collectionProjectId);
+    }
+    // When the sidebar navigates the project-first tree, a collection may live
+    // in a workspace other than the one currently backing the legacy `tree`.
+    // Follow it so environments/docs/other legacy consumers stay in sync.
+    const collectionWorkspaceId = projectTree?.collections.find(
+      (c) => c.id === collectionId
+    )?.workspace_id;
+    if (collectionWorkspaceId && collectionWorkspaceId !== activeWorkspaceId) {
+      setActiveWorkspaceId(collectionWorkspaceId);
+      setActiveWorkspaceRole(workspaces.find((w) => w.id === collectionWorkspaceId)?.role ?? null);
+      workspaceApi
+        .content(collectionWorkspaceId)
+        .then((t) => setTree(t))
+        .catch(() => setTree(null));
+    }
+    setActiveCollectionId(collectionId);
+    setActiveCollectionName(collectionName);
+    setActiveRequest(null);
+    setActiveRequestId(null);
+    setOpenRequestIds([]);
+    setRequestCopies({});
+    setBaselines({});
+    setClosedTabs([]);
+    setNavStack([]);
+    clearAllEditHistory();
+    setLastRun(null);
+    setRequestRuns({});
+    try {
+      const { authProvider: p } = await contentApi.getAuthProvider(collectionId);
+      setAuthProvider(p);
+    } catch {
+      setAuthProvider(null);
+    }
+  }, [tree, projectTree, workspaces, activeProjectId, activeWorkspaceId]);
+
+  const selectRequest = useCallback(async (requestId: string) => {
+    setError(null);
+    // Record this selection as the latest intent; any earlier in-flight fetch
+    // that resolves afterwards will be discarded below.
+    const seq = ++selectSeqRef.current;
+    selectTargetRef.current = requestId;
+    // Opening a request always leaves the project overview.
+    setOverview(null);
+    setOverviewError(null);
+    // Restore the last stored response for this request if one exists.
+    setLastRun(requestRuns[requestId] ?? null);
+    const syncProjectFromCollection = (collectionId: string | undefined) => {
+      if (!collectionId || !tree) return;
+      const pid = tree.collections.find((c) => c.id === collectionId)?.project_id;
+      if (pid && pid !== activeProjectId) {
+        setActiveProjectId(pid);
+        persistProject(tree.workspaceId, pid);
+      }
+    };
+    if (openRequestIds.includes(requestId)) {
+      // Already open: switch to it without refetching so the working copy
+      // (with any unsaved edits) is restored.
+      setActiveRequestId(requestId);
+      const copy = requestCopies[requestId];
+      if (copy) {
+        syncProjectFromCollection(tree?.requests.find((r) => r.id === requestId)?.collection_id);
+        setActiveRequest(copy);
+        return;
+      }
+      // Fallback: open tab without a cached copy (should not happen normally).
+    }
+    const { request } = await contentApi.getRequest(requestId);
+    if (selectSeqRef.current !== seq || selectTargetRef.current !== requestId) {
+      // A newer sidebar/tab click (or workspace/collection switch) superseded
+      // this selection — drop the stale response rather than clobbering the
+      // request the user actually clicked last.
+      return;
+    }
+    syncProjectFromCollection(request.collectionId);
+    const editorRequest = toEditorRequest(request);
+    setActiveRequest(editorRequest);
+    setRequestCopies((c) => ({ ...c, [requestId]: editorRequest }));
+    setBaselines((b) => ({ ...b, [requestId]: dirtySnapshot(editorRequest) }));
+    setOpenRequestIds((ids) => openTab(ids, requestId));
+    setActiveRequestId(requestId);
+  }, [openRequestIds, requestCopies, requestRuns, tree, activeProjectId]);
+
+  const reloadActiveRequest = useCallback(async () => {
+    const id = activeRequestId;
+    if (!id) return;
+    setError(null);
+    const seq = ++selectSeqRef.current;
+    selectTargetRef.current = id;
+    try {
+      const { request } = await contentApi.getRequest(id);
+      if (selectSeqRef.current !== seq || selectTargetRef.current !== id) return;
+      const editorRequest = toEditorRequest(request);
+      setRequestCopies((c) => ({ ...c, [id]: editorRequest }));
+      setBaselines((b) => ({ ...b, [id]: dirtySnapshot(editorRequest) }));
+      setActiveRequest(editorRequest);
+      clearEditHistory(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reload request');
+    }
+  }, [activeRequestId, clearEditHistory]);
+
+  const updateActiveRequest = useCallback((patch: Partial<ApiRequest>) => {
+    const prev = activeRequestRef.current;
+    if (!prev) return;
+    // Record an undo step for the request as it is right now (before this
+    // patch). Consecutive edits inside EDIT_BURST_MS are coalesced so a typing
+    // burst produces a single undo step; a new burst (idle gap or an explicit
+    // activation) pushes a fresh snapshot.
+    const now = Date.now();
+    if (now - (editBurstRef.current[prev.id] ?? 0) > EDIT_BURST_MS) {
+      const stack = editUndoRef.current[prev.id] ?? [];
+      editUndoRef.current[prev.id] = [...stack, prev].slice(-EDIT_HISTORY_LIMIT);
+    }
+    editBurstRef.current[prev.id] = now;
+    // Any new edit invalidates the redo stack for this request.
+    editRedoRef.current[prev.id] = [];
+    const next = { ...prev, ...patch };
+    activeRequestRef.current = next;
+    setActiveRequest(next);
+  }, []);
+
+  const undoActiveRequest = useCallback(() => {
+    if (!activeRequest || !activeRequestId) return;
+    const id = activeRequestId;
+    const stack = editUndoRef.current[id] ?? [];
+    const snapshot = stack[stack.length - 1];
+    if (!snapshot) return;
+    editUndoRef.current[id] = stack.slice(0, -1);
+    const redo = editRedoRef.current[id] ?? [];
+    editRedoRef.current[id] = [...redo, activeRequest].slice(-EDIT_HISTORY_LIMIT);
+    editBurstRef.current[id] = 0;
+    activeRequestRef.current = snapshot;
+    setActiveRequest(snapshot);
+  }, [activeRequest, activeRequestId]);
+
+  const redoActiveRequest = useCallback(() => {
+    if (!activeRequest || !activeRequestId) return;
+    const id = activeRequestId;
+    const stack = editRedoRef.current[id] ?? [];
+    const snapshot = stack[stack.length - 1];
+    if (!snapshot) return;
+    editRedoRef.current[id] = stack.slice(0, -1);
+    const undo = editUndoRef.current[id] ?? [];
+    editUndoRef.current[id] = [...undo, activeRequest].slice(-EDIT_HISTORY_LIMIT);
+    editBurstRef.current[id] = 0;
+    activeRequestRef.current = snapshot;
+    setActiveRequest(snapshot);
+  }, [activeRequest, activeRequestId]);
+
+  const setFileForPart = useCallback((requestId: string, partId: string, file: File | null) => {
+    setSelectedFiles((prev) => {
+      if (!file) {
+        const requestMap = prev[requestId];
+        if (!requestMap) return prev;
+        const nextRequestMap = { ...requestMap };
+        delete nextRequestMap[partId];
+        const next = { ...prev, [requestId]: nextRequestMap };
+        if (Object.keys(nextRequestMap).length === 0) delete next[requestId];
+        return next;
+      }
+      return { ...prev, [requestId]: { ...(prev[requestId] ?? {}), [partId]: file } };
+    });
+  }, []);
+
+  const saveActiveRequest = useCallback(async () => {
+    if (!activeRequest) return;
+    await contentApi.updateRequest(activeRequest.id, toServerPatch(activeRequest));
+    setBaselines((b) => ({ ...b, [activeRequest.id]: dirtySnapshot(activeRequest) }));
+    if (tree) {
+      const t = { ...tree, requests: tree.requests.map((r) => (r.id === activeRequest.id ? { ...r, name: activeRequest.name, method: activeRequest.method, url: activeRequest.url, api_type: activeRequest.apiType } : r)) };
+      setTree(t);
+    }
+  }, [activeRequest, tree]);
+
+  const isDirty = useMemo(
+    () =>
+      activeRequest
+        ? !dirtySnapshotsEqual(dirtySnapshot(activeRequest), baselines[activeRequest.id] ?? null)
+        : false,
+    [activeRequest, baselines]
+  );
+
+  // Read the per-request history refs during render. Every write to them is
+  // paired with a setActiveRequest / activeRequestId change below, so the
+  // provider re-renders (and subscribers recompute) right after a push/pop.
+  const canUndoRequest = activeRequestId ? (editUndoRef.current[activeRequestId]?.length ?? 0) > 0 : false;
+  const canRedoRequest = activeRequestId ? (editRedoRef.current[activeRequestId]?.length ?? 0) > 0 : false;
+  const canGoBackRequest = navStack.length > 0;
+
+  const activateRequestTab = useCallback(
+    async (requestId: string) => {
+      if (requestId === activeRequestId) return;
+      setLastRun(requestRuns[requestId] ?? null);
+      const copy = requestCopies[requestId];
+      if (copy) {
+        setActiveRequestId(requestId);
+        setActiveRequest(copy);
+        return;
+      }
+      await selectRequest(requestId);
+    },
+    [activeRequestId, requestCopies, requestRuns, selectRequest]
+  );
+
+  // Back button: pop the most recent history entry and re-activate that
+  // request. If its tab is still open we just switch to it (restoring its
+  // unsaved working copy); if it was closed since, we reopen it from the
+  // closed-tab stack at its original position — same as Ctrl+Shift+Q does —
+  // restoring its working copy and baseline. Entries that can no longer be
+  // restored (e.g. the request was deleted) are skipped in favour of older
+  // entries.
+  const goBackRequest = useCallback(async () => {
+    const stack = navStackRef.current;
+    if (stack.length === 0) return;
+    const candidates = [...stack].reverse();
+    for (let i = 0; i < candidates.length; i++) {
+      const target = candidates[i];
+      const finalStack = candidates.slice(i + 1).reverse();
+      if (target === activeRequestId) continue;
+      if (openRequestIds.includes(target)) {
+        navStackRef.current = finalStack;
+        setNavStack(finalStack);
+        suppressNavPushRef.current = true;
+        try {
+          await activateRequestTab(target);
+          return;
+        } catch {
+          // Could not switch (e.g. the cached copy is gone and the refetch
+          // failed): undo the suppression flag so the next real activation is
+          // still recorded, and fall through to an older entry.
+          suppressNavPushRef.current = false;
+          continue;
+        }
+      }
+      const closedIdx = closedTabs.findIndex((c) => c.requestId === target);
+      if (closedIdx >= 0) {
+        const entry = closedTabs[closedIdx];
+        navStackRef.current = finalStack;
+        setNavStack(finalStack);
+        setClosedTabs((s) => s.filter((c) => c.requestId !== target));
+        setOpenRequestIds((ids) => insertTab(ids, entry.requestId, entry.index));
+        setRequestCopies((c) => ({ ...c, [entry.requestId]: entry.request }));
+        setBaselines((b) => {
+          if (entry.baseline === null) {
+            const next = { ...b };
+            delete next[entry.requestId];
+            return next;
+          }
+          return { ...b, [entry.requestId]: entry.baseline };
+        });
+        suppressNavPushRef.current = true;
+        setActiveRequestId(entry.requestId);
+        setActiveRequest(entry.request);
+        setLastRun(requestRuns[entry.requestId] ?? null);
+        return;
+      }
+      // Not open anywhere locally — try the server (e.g. it was open before a
+      // workspace/collection switch that closed it without recording an undo
+      // entry). If the request no longer exists, fall through to an older one.
+      try {
+        navStackRef.current = finalStack;
+        setNavStack(finalStack);
+        suppressNavPushRef.current = true;
+        await selectRequest(target);
+        return;
+      } catch {
+        suppressNavPushRef.current = false;
+        continue;
+      }
+    }
+  }, [activeRequestId, openRequestIds, closedTabs, requestRuns, activateRequestTab, selectRequest]);
+
+  const closeRequestTab = useCallback(
+    async (requestId: string, recordUndo = true) => {
+      const idx = openRequestIds.indexOf(requestId);
+      const { ids, nextActiveId } = closeTab(openRequestIds, activeRequestId, requestId);
+      if (recordUndo) {
+        const copy = requestCopies[requestId];
+        if (copy) {
+          setClosedTabs((stack) => [
+            { requestId, index: idx, request: copy, baseline: baselines[requestId] ?? null },
+            ...stack,
+          ]);
+        }
+      }
+      setOpenRequestIds(ids);
+      setRequestCopies((c) => {
+        const next = { ...c };
+        delete next[requestId];
+        return next;
+      });
+      // Undo/redo history is scoped to an open tab: dropping it when the tab
+      // closes prevents a re-opened request (fresh server copy) from inheriting
+      // a previous session's edit history.
+      clearEditHistory(requestId);
+      setBaselines((b) => {
+        const next = { ...b };
+        delete next[requestId];
+        return next;
+      });
+      // Drop any in-memory picked multipart files for this request so they are
+      // not resurrected if the tab is re-opened for a different request.
+      setSelectedFiles((prev) => {
+        if (!(requestId in prev)) return prev;
+        const next = { ...prev };
+        delete next[requestId];
+        return next;
+      });
+      if (nextActiveId === activeRequestId) return;
+      if (nextActiveId === null) {
+        setActiveRequestId(null);
+        setActiveRequest(null);
+        setLastRun(null);
+        return;
+      }
+      const neighbourCopy = requestCopies[nextActiveId];
+      if (neighbourCopy) {
+        setActiveRequestId(nextActiveId);
+        setActiveRequest(neighbourCopy);
+        setLastRun(requestRuns[nextActiveId] ?? null);
+        return;
+      }
+      setActiveRequestId(nextActiveId);
+      await selectRequest(nextActiveId);
+    },
+    [openRequestIds, activeRequestId, requestCopies, requestRuns, baselines, selectRequest]
+  );
+
+  // Ctrl+Shift+Q: undo the last tab close — restore its working copy (including
+  // any unsaved edits) at its original position in the strip.
+  const reopenLastClosedTab = useCallback(async () => {
+    const top = closedTabs[0];
+    if (!top) return;
+    setClosedTabs((stack) => stack.slice(1));
+    setOpenRequestIds((ids) => insertTab(ids, top.requestId, top.index));
+    setRequestCopies((c) => ({ ...c, [top.requestId]: top.request }));
+    setBaselines((b) => {
+      if (top.baseline === null) {
+        const next = { ...b };
+        delete next[top.requestId];
+        return next;
+      }
+      return { ...b, [top.requestId]: top.baseline };
+    });
+    setActiveRequestId(top.requestId);
+    setActiveRequest(top.request);
+    // Restore the response that was shown when the tab was closed (kept in
+    // requestRuns for the lifetime of the page).
+    setLastRun(requestRuns[top.requestId] ?? null);
+  }, [closedTabs, requestRuns]);
+
+  const isTabDirty = useCallback(
+    (requestId: string) => {
+      const copy = requestCopies[requestId];
+      if (!copy) return false;
+      return !dirtySnapshotsEqual(dirtySnapshot(copy), baselines[requestId] ?? null);
+    },
+    [requestCopies, baselines]
+  );
+
+  // Opt-in browser execution: when enabled and the (variable-substituted) URL
+  // targets the user's own machine (localhost / private hosts), resolve the
+  // request server-side then perform the fetch from this page so it reaches the
+  // user's network. Returns null to signal "run on the server as usual" — the
+  // feature is off, the host is clearly remote, or the body is multipart (Node
+  // FormData can't cross the wire).
+  const tryRunInBrowser = useCallback(
+    async (payload: EphemeralRunInput): Promise<RunResult | null> => {
+      if (!runInBrowser) return null;
+      if (!maybeLocal(payload.url || '')) return null;
+      const preparedRun = await contentApi.prepareRun(payload);
+      if (preparedRun.prepared.multipart || !isLocalUrl(preparedRun.prepared.url)) {
+        return null;
+      }
+      const outcome = await executeInBrowser(preparedRun.prepared);
+      return contentApi.completeRun({
+        ...payload,
+        prepared: preparedRun.prepared,
+        clientResponse: outcome.clientResponse,
+        error: outcome.error,
+        startedAt: outcome.startedAt,
+        finishedAt: outcome.finishedAt,
+      });
+    },
+    [runInBrowser]
+  );
+
+  const runActiveRequest = useCallback(async () => {
+    if (!activeRequest) return;
+    if (requestRunningRef.current) return;
+    requestRunningRef.current = true;
+    setRequestRunning(true);
+    try {
+      const req = activeRequest;
+      const parts = req.bodyParts ?? [];
+      const enabledFileParts = parts.filter((p) => p.enabled !== false && p.key && p.kind === 'file');
+      let result: RunResult;
+      if (req.bodyType === 'MULTIPART' && enabledFileParts.length > 0) {
+        // Multipart with file parts: pick the in-memory File per part and embed
+        // the bytes (base64) into the run payload only — never persisted.
+        const files = selectedFiles[req.id] ?? {};
+        for (const p of enabledFileParts) {
+          if (!files[p.id]) {
+            throw new Error(`Select a file for multipart part "${p.key}" before sending.`);
+          }
+        }
+        const transportParts: BodyFormPart[] = [];
+        for (const p of parts) {
+          if (p.enabled === false) {
+            transportParts.push({ ...p });
+            continue;
+          }
+          if (p.kind === 'file') {
+            const file = files[p.id]!;
+            const data = await readFileAsBase64(file);
+            transportParts.push({
+              ...p,
+              fileName: file.name,
+              fileType: file.type || 'application/octet-stream',
+              fileSize: file.size,
+              data,
+            });
+          } else {
+            transportParts.push({ ...p });
+          }
+        }
+        result = await contentApi.runEphemeral({
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+          queryParams: req.queryParams,
+          bodyType: 'MULTIPART',
+          bodyJson: null,
+          bodyParts: transportParts,
+          formula: req.formula,
+          assertions: req.assertions,
+          apiType: req.apiType,
+          collectionId: activeCollectionId,
+          id: req.id,
+          persistHistory: !isDirty,
+        });
+      } else if (isDirty) {
+        const payload: EphemeralRunInput = {
+          method: activeRequest.method,
+          url: activeRequest.url,
+          headers: activeRequest.headers,
+          queryParams: activeRequest.queryParams,
+          bodyType: activeRequest.bodyType,
+          bodyJson: activeRequest.bodyJson,
+          bodyParts:
+            activeRequest.bodyType === 'MULTIPART'
+              ? stripTransportData(activeRequest.bodyParts ?? [])
+              : [],
+          formula: activeRequest.formula,
+          assertions: activeRequest.assertions,
+          apiType: activeRequest.apiType,
+          collectionId: activeCollectionId,
+          persistHistory: false,
+        };
+        result = (await tryRunInBrowser(payload)) ?? (await contentApi.runEphemeral(payload));
+      } else {
+        const payload: EphemeralRunInput = {
+          method: activeRequest.method,
+          url: activeRequest.url,
+          headers: activeRequest.headers,
+          queryParams: activeRequest.queryParams,
+          bodyType: activeRequest.bodyType,
+          bodyJson: activeRequest.bodyJson,
+          bodyParts:
+            activeRequest.bodyType === 'MULTIPART'
+              ? stripTransportData(activeRequest.bodyParts ?? [])
+              : [],
+          formula: activeRequest.formula,
+          assertions: activeRequest.assertions,
+          apiType: activeRequest.apiType,
+          collectionId: activeCollectionId,
+          id: activeRequest.id,
+          persistHistory: true,
+        };
+        result = (await tryRunInBrowser(payload)) ?? (await contentApi.runRequest(activeRequest.id));
+      }
+      // Keep the response for the request that initiated the run, so it can be
+      // restored when the tab is closed and reopened (Ctrl+Q / Ctrl+Shift+Q) or
+      // switched to. The initiating id is captured at call time — not read from
+      // the live `activeRequest`, which may have changed mid-flight.
+      const runRequestId = req.id;
+      setRequestRuns((runs) => ({ ...runs, [runRequestId]: result }));
+      // Only paint the response when the initiating request is still active;
+      // otherwise the user switched away and the result belongs to a now-
+      // background tab (it reappears via requestRuns when they switch back).
+      if (activeRequestIdRef.current === runRequestId) setLastRun(result);
+    } finally {
+      requestRunningRef.current = false;
+      setRequestRunning(false);
+    }
+  }, [activeRequest, isDirty, activeCollectionId, selectedFiles, tryRunInBrowser]);
+
+  // M8: scratchpad — execute an in-memory request shape (e.g. a pasted cURL)
+  // via POST /api/runs without creating or saving a request. No history row.
+  const runScratchpad = useCallback(
+    async (input: {
+      method: string;
+      url: string;
+      headers?: Array<{ key: string; value: string; enabled: boolean }>;
+      queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
+      bodyType?: string;
+      bodyJson?: unknown;
+      bodyText?: string | null;
+      bodyParts?: BodyFormPart[];
+      formula?: string;
+      assertions?: Assertion[];
+      apiType?: ApiType;
+    }) => {
+      setError(null);
+      setLastRun(null);
+      if (requestRunningRef.current) return;
+      requestRunningRef.current = true;
+      setRequestRunning(true);
+      try {
+        const payload: EphemeralRunInput = {
+          ...input,
+          collectionId: activeCollectionId,
+          persistHistory: false,
+        };
+        const result = (await tryRunInBrowser(payload)) ?? (await contentApi.runEphemeral(payload));
+        setLastRun(result);
+      } finally {
+        requestRunningRef.current = false;
+        setRequestRunning(false);
+      }
+    },
+    [activeCollectionId, tryRunInBrowser]
+  );
+
+  const clearScratchpadRun = useCallback(() => {
+    setLastRun(null);
+  }, []);
+
+  const runCollection = useCallback(async (collectionId: string, options?: CollectionRunOptions) => {
+    setCollectionRunRunning(true);
+    setCollectionRun(null);
+    try {
+      const result = await contentApi.runCollection(collectionId, options);
+      setCollectionRun(result);
+      return result;
+    } finally {
+      setCollectionRunRunning(false);
+    }
+  }, []);
+
+  const clearCollectionRun = useCallback(() => {
+    setCollectionRun(null);
+  }, []);
+
+  const createWorkspace = useCallback(async (name: string, visibility?: Workspace['visibility']) => {
+    setOverview(null);
+    setOverviewError(null);
+    const { workspace } = await workspaceApi.create({ name, visibility });
+    const updated = await workspaceApi.list();
+    setWorkspaces(updated.workspaces);
+    await Promise.all([loadGroups(), loadAllProjects()]);
+    await selectWorkspace(workspace.id);
+  }, [selectWorkspace, loadGroups, loadAllProjects]);
+
+  const createWorkspaceInProject = useCallback(async (name: string) => {
+    if (!activeProjectId) return;
+    setOverview(null);
+    setOverviewError(null);
+    await projectApi.createWorkspace(activeProjectId, { name });
+    await Promise.all([loadAllProjects(), loadProjectTree(activeProjectId)]);
+  }, [activeProjectId, loadAllProjects, loadProjectTree]);
+
+  const createCollection = useCallback(async (name: string, workspaceIdArg?: string) => {
+    // Collections belong to a workspace; fall back to the legacy project path
+    // only when no workspace is resolvable.
+    const workspaceId = workspaceIdArg ?? activeWorkspaceId ?? projectTree?.workspaces[0]?.id ?? null;
+    const projectId = activeProjectId ?? tree?.projects?.[0]?.id ?? null;
+    if (!projectId && !workspaceId) return;
+    const { collection } = await contentApi.createCollection(projectId ?? '', name, workspaceId ?? undefined);
+    if (projectTree) {
+      setProjectTree({
+        ...projectTree,
+        collections: [
+          ...projectTree.collections,
+          {
+            id: collection.id,
+            name: collection.name,
+            workspace_id: collection.workspace_id ?? workspaceId ?? '',
+            has_auth: null,
+          },
+        ],
+      });
+    }
+    if (tree) {
+      const t = await workspaceApi.content(tree.workspaceId);
+      setTree(t);
+    }
+    await selectCollection(collection.id, collection.name);
+  }, [activeProjectId, activeWorkspaceId, projectTree, tree, selectCollection]);
+
+  const createRequest = useCallback(async (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => {
+    if (!activeCollectionId) return;
+    const { request } = await contentApi.createRequest({ collectionId: activeCollectionId, ...input });
+    setTree((prev) => (prev ? { ...prev, requests: [...prev.requests, request] } : prev));
+    setProjectTree((prev) => (prev ? { ...prev, requests: [...prev.requests, request] } : prev));
+    await selectRequest(request.id);
+  }, [activeCollectionId, selectRequest]);
+
+  const createFolder = useCallback(async (input: { name: string; collectionId: string; parentId?: string | null }) => {
+    const { folder } = await folderApi.create(input);
+    setTree((prev) => (prev ? { ...prev, folders: [...prev.folders, folder] } : prev));
+    setProjectTree((prev) => (prev ? { ...prev, folders: [...prev.folders, folder] } : prev));
+  }, []);
+
+  const renameFolder = useCallback(async (folderId: string, name: string) => {
+    const { folder } = await folderApi.update(folderId, { name });
+    const apply = <T extends { folders: Array<{ id: string; name: string }> }>(prev: T): T => ({
+      ...prev,
+      folders: prev.folders.map((f) => (f.id === folderId ? { ...f, name: folder.name } : f)),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, []);
+
+  const deleteFolder = useCallback(async (folderId: string) => {
+    const target = tree?.folders.find((f) => f.id === folderId);
+    const collectionId = target?.collection_id ?? null;
+    await folderApi.remove(folderId);
+    // Cascade: drop the folder and every descendant; requests inside it
+    // resurface at the collection root (folder_id -> null).
+    const removed = new Set<string>([folderId]);
+    const allFolders = tree?.folders ?? [];
+    const findDescendants = (parentId: string) => {
+      for (const f of allFolders) {
+        if (f.parent_id === parentId && !removed.has(f.id)) {
+          removed.add(f.id);
+          findDescendants(f.id);
+        }
+      }
+    };
+    findDescendants(folderId);
+    const prune = <T extends { folders: Folder[]; requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      folders: prev.folders.filter((f) => !removed.has(f.id)),
+      requests: prev.requests.map((r) =>
+        r.folder_id && removed.has(r.folder_id) ? { ...r, folder_id: null } : r
+      ),
+    });
+    setTree((prev) => (prev ? prune(prev) : prev));
+    setProjectTree((prev) => (prev ? prune(prev) : prev));
+    if (collectionId) {
+      // Close tabs for requests that lived inside the deleted folder(s).
+      const affectedIds = openRequestIds.filter((id) => {
+        const r = tree?.requests.find((x) => x.id === id);
+        return r ? removed.has(r.folder_id as string) : false;
+      });
+      for (const id of affectedIds) {
+        await closeRequestTab(id, false);
+      }
+    }
+  }, [tree, openRequestIds, closeRequestTab]);
+
+  const renameRequest = useCallback(async (requestId: string, name: string) => {
+    const { request } = await contentApi.updateRequest(requestId, { name });
+    const resolvedName = request.name ?? name;
+    if (activeRequest?.id === requestId) {
+      setActiveRequest((prev) => (prev ? { ...prev, name: resolvedName } : prev));
+    }
+    const apply = <T extends { requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      requests: prev.requests.map((r) => (r.id === requestId ? { ...r, name: resolvedName } : r)),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, [activeRequest]);
+
+  const moveRequest = useCallback(async (requestId: string, folderId: string | null) => {
+    const { request } = await contentApi.updateRequest(requestId, { folderId });
+    const apply = <T extends { requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      requests: prev.requests.map((r) =>
+        r.id === requestId ? { ...r, folder_id: folderId, name: request.name ?? r.name } : r
+      ),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, []);
+
+  const moveFolder = useCallback(async (folderId: string, parentId: string | null) => {
+    const { folder } = await folderApi.update(folderId, { parentId });
+    const apply = <T extends { folders: Folder[] }>(prev: T): T => ({
+      ...prev,
+      folders: prev.folders.map((f) =>
+        f.id === folderId ? { ...f, parent_id: parentId, name: folder.name ?? f.name } : f
+      ),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, []);
+
+  const duplicateRequest = useCallback(async (requestId: string) => {
+    const { request } = await contentApi.duplicateRequest(requestId);
+    const apply = <T extends { requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      requests: prev.requests.some((r) => r.id === request.id)
+        ? prev.requests
+        : [...prev.requests, request],
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+    return { name: request.name };
+  }, []);
+
+  const duplicateFolder = useCallback(async (folderId: string) => {
+    const { folders, requests } = await contentApi.duplicateFolder(folderId);
+    const apply = <T extends { folders: Folder[]; requests: ContentTree['requests'] }>(prev: T): T => {
+      const folderIds = new Set(prev.folders.map((f) => f.id));
+      const requestIds = new Set(prev.requests.map((r) => r.id));
+      return {
+        ...prev,
+        folders: [...prev.folders, ...folders.filter((f) => !folderIds.has(f.id))],
+        requests: [...prev.requests, ...requests.filter((r) => !requestIds.has(r.id))],
+      };
+    };
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+    return { name: folders[0]?.name ?? '' };
+  }, []);
+
+  const deleteRequest = useCallback(async (requestId: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight selection of this request
+    await contentApi.deleteRequest(requestId);
+    await closeRequestTab(requestId, false);
+    // A deleted request can no longer be Back-navigated to.
+    setNavStack((s) => s.filter((x) => x !== requestId));
+    setRequestRuns((runs) => {
+      const next = { ...runs };
+      delete next[requestId];
+      return next;
+    });
+    setSelectedFiles((prev) => {
+      if (!(requestId in prev)) return prev;
+      const next = { ...prev };
+      delete next[requestId];
+      return next;
+    });
+    const apply = <T extends { requests: ContentTree['requests'] }>(prev: T): T => ({
+      ...prev,
+      requests: prev.requests.filter((r) => r.id !== requestId),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, [closeRequestTab]);
+
+  const deleteCollection = useCallback(async (collectionId: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
+    await contentApi.deleteCollection(collectionId);
+    // Close tabs for requests that belonged to the deleted collection.
+    const affectedIds = openRequestIds.filter((id) => {
+      const r = tree?.requests.find((x) => x.id === id);
+      return r ? r.collection_id === collectionId : false;
+    });
+    for (const id of affectedIds) {
+      await closeRequestTab(id, false);
+    }
+    setRequestRuns((runs) => {
+      const next = { ...runs };
+      for (const r of tree?.requests ?? []) {
+        if (r.collection_id === collectionId) delete next[r.id];
+      }
+      return next;
+    });
+    if (activeCollectionId === collectionId) {
+      setActiveCollectionId(null);
+      setActiveCollectionName('');
+      setAuthProvider(null);
+      setActiveRequest(null);
+      setLastRun(null);
+      setNavStack([]);
+      clearAllEditHistory();
+    }
+    const apply = <
+      T extends {
+        collections: Array<{ id: string }>;
+        folders: Folder[];
+        requests: ContentTree['requests'];
+      }
+    >(prev: T): T => ({
+      ...prev,
+      collections: prev.collections.filter((c) => c.id !== collectionId),
+      folders: prev.folders.filter((f) => f.collection_id !== collectionId),
+      requests: prev.requests.filter((r) => r.collection_id !== collectionId),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+  }, [tree, activeCollectionId, openRequestIds, closeRequestTab]);
+
+  const deleteWorkspace = useCallback(async (workspaceId: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
+    setOverview(null);
+    setOverviewError(null);
+    await workspaceApi.remove(workspaceId);
+    if (activeWorkspaceId === workspaceId) {
+      setActiveWorkspaceId(null);
+      setActiveWorkspaceRole(null);
+      setActiveProjectId(null);
+      setTree(null);
+      setActiveCollectionId(null);
+      setActiveCollectionName('');
+      setAuthProvider(null);
+      setActiveRequest(null);
+      setActiveRequestId(null);
+      setOpenRequestIds([]);
+      setRequestCopies({});
+      setBaselines({});
+      setClosedTabs([]);
+      setNavStack([]);
+      clearAllEditHistory();
+      setLastRun(null);
+      setRequestRuns({});
+    }
+    const updated = await workspaceApi.list();
+    setWorkspaces(updated.workspaces);
+    await Promise.all([loadGroups(), loadAllProjects()]);
+    if (activeWorkspaceId === workspaceId && updated.workspaces.length > 0) {
+      await selectWorkspace(updated.workspaces[0].id);
+    }
+  }, [activeWorkspaceId, selectWorkspace, loadGroups, loadAllProjects]);
+
+  const reloadTree = useCallback(async () => {
+    if (!activeWorkspaceId) return;
+    setOverview(null);
+    setOverviewError(null);
+    const t = await workspaceApi.content(activeWorkspaceId);
+    setTree(t);
+    // The sidebar renders the project-first tree, so refresh it too — otherwise
+    // newly created/imported content stays invisible until a full page reload.
+    if (activeProjectId) {
+      const pt = await projectApi.content(activeProjectId).catch(() => null);
+      if (pt) setProjectTree(pt);
+    }
+    if (!t.projects.some((p) => p.id === activeProjectId)) {
+      await applyProjectContext(t, null);
+    }
+  }, [activeWorkspaceId, activeProjectId, applyProjectContext]);
+
+  const createProject = useCallback(async (name: string, organizationId?: string) => {
+    const orgId =
+      organizationId ??
+      allProjects.find((p) => p.id === activeProjectId)?.organization_id ??
+      workspaces.find((w) => w.id === activeWorkspaceId)?.organization_id ??
+      null;
+    const wsId = activeWorkspaceId ?? workspaces[0]?.id ?? null;
+    if (!orgId && !wsId) {
+      throw new Error('No organization or workspace available to create a project.');
+    }
+    setOverview(null);
+    setOverviewError(null);
+    const { project } = orgId
+      ? await projectApi.create({ organizationId: orgId, name })
+      : await projectApi.create({ workspaceId: wsId as string, name });
+    await loadAllProjects();
+    await loadProjectTree(project.id);
+  }, [allProjects, activeProjectId, activeWorkspaceId, workspaces, loadAllProjects, loadProjectTree]);
+
+  const renameProject = useCallback(async (projectId: string, name: string) => {
+    const { project } = await projectApi.rename(projectId, name);
+    setTree((t) =>
+      t
+        ? { ...t, projects: t.projects.map((p) => (p.id === projectId ? { ...p, name: project.name } : p)) }
+        : t
+    );
+    // Keep an open project overview in sync without closing it.
+    setOverview((o) =>
+      o && o.project.id === projectId ? { ...o, project: { ...o.project, name: project.name } } : o
+    );
+    await loadAllProjects();
+  }, [loadAllProjects]);
+
+  const deleteProject = useCallback(async (projectId: string) => {
+    selectSeqRef.current += 1; // invalidate any in-flight request selection
+    await projectApi.remove(projectId);
+    const affectedCollections = new Set(
+      (tree?.collections ?? []).filter((c) => c.project_id === projectId).map((c) => c.id)
+    );
+    // Close tabs for requests that belonged to the deleted project.
+    const affectedRequestIds = openRequestIds.filter((id) => {
+      const r = tree?.requests.find((x) => x.id === id);
+      return r ? affectedCollections.has(r.collection_id) : false;
+    });
+    for (const id of affectedRequestIds) {
+      await closeRequestTab(id, false);
+    }
+    setRequestRuns((runs) => {
+      const next = { ...runs };
+      for (const r of tree?.requests ?? []) {
+        if (affectedCollections.has(r.collection_id)) delete next[r.id];
+      }
+      return next;
+    });
+    if (activeCollectionId && affectedCollections.has(activeCollectionId)) {
+      setActiveCollectionId(null);
+      setActiveCollectionName('');
+      setAuthProvider(null);
+      setActiveRequest(null);
+      setActiveRequestId(null);
+      setLastRun(null);
+      setNavStack([]);
+      clearAllEditHistory();
+    }
+    setOverview((o) => (o && o.project.id === projectId ? null : o));
+    if (activeProjectId === projectId) setActiveProjectId(null);
+    await reloadTree();
+    await loadAllProjects();
+  }, [tree, openRequestIds, activeCollectionId, activeProjectId, closeRequestTab, reloadTree, loadAllProjects]);
+
+  const deleteTeam = useCallback(async (teamId: string) => {
+    await teamApi.delete(teamId);
+    const updated = await teamApi.list();
+    setTeams(updated.teams);
+  }, []);
+
+  const loadAuthProvider = useCallback(async (collectionId: string) => {
+    const { authProvider: p } = await contentApi.getAuthProvider(collectionId);
+    setAuthProvider(p);
+  }, []);
+
+  const saveAuthProvider = useCallback(async (provider: AuthProvider) => {
+    if (!activeCollectionId) return;
+    const { authProvider: p } = await contentApi.setAuthProvider(activeCollectionId, provider);
+    setAuthProvider(p);
+    if (tree) {
+      setTree({
+        ...tree,
+        collections: tree.collections.map((c) =>
+          c.id === activeCollectionId ? { ...c, has_auth: p.authType === 'NONE' ? null : p.authType } : c
+        ),
+      });
+    }
+  }, [activeCollectionId, tree]);
+
+  const testAuthProvider = useCallback(async () => {
+    if (!activeCollectionId) return null;
+    const res = await contentApi.testAuthProvider(activeCollectionId);
+    return res;
+  }, [activeCollectionId]);
+
+  // Project overview (command center). Clears any open request/collection
+  // selection so the main area can show the overview, but never reloads
+  // workspace content. Refreshing an already-open overview skips the clearing
+  // and loading reset so the members/activity UI can re-render in place.
+  const selectProjectOverview = useCallback(
+    async (project: { id: string; name: string }) => {
+      const seq = ++selectSeqRef.current;
+      setError(null);
+      if (project.id !== activeProjectId) {
+        setActiveProjectId(project.id);
+        persistProject(tree?.workspaceId ?? activeWorkspaceId, project.id);
+      }
+      if (!(overview && overview.project.id === project.id)) {
+        setOverviewLoading(true);
+        setOverview(null);
+        setOverviewError(null);
+        setActiveRequest(null);
+        setActiveRequestId(null);
+        setOpenRequestIds([]);
+        setRequestCopies({});
+        setBaselines({});
+        setClosedTabs([]);
+        setNavStack([]);
+        clearAllEditHistory();
+        setLastRun(null);
+        setRequestRuns({});
+      }
+      setOverviewError(null);
+      try {
+        const data = await projectApi.overview(project.id);
+        if (selectSeqRef.current !== seq) return;
+        setOverview(data);
+      } catch (err) {
+        if (selectSeqRef.current !== seq) return;
+        setOverviewError(err instanceof Error ? err.message : 'Failed to load project overview');
+      } finally {
+        if (selectSeqRef.current === seq) setOverviewLoading(false);
+      }
+    },
+    [overview, activeProjectId, tree, activeWorkspaceId]
+  );
+
+  const closeProjectOverview = useCallback(() => {
+    setOverview(null);
+    setOverviewError(null);
+    setOverviewLoading(false);
+  }, []);
+
+  const inviteToTeam = useCallback(async (teamId: string, email: string, role: UserRole) => {
+    const { members } = await teamApi.invite(teamId, email, role);
+    const updated = await teamApi.list();
+    setTeams(updated.teams);
+    return members;
+  }, []);
+
+  const shareWorkspace = useCallback(async (workspaceId: string, teamId: string, role: UserRole) => {
+    await workspaceApi.share(workspaceId, teamId, role);
+  }, []);
+
+  const unshareWorkspace = useCallback(async (workspaceId: string, teamId: string) => {
+    await workspaceApi.unshare(workspaceId, teamId);
+  }, []);
+
+  const value = useMemo<WorkspaceState>(
+    () => ({
+      loading,
+      error,
+      workspaces,
+      teams,
+      groups,
+      overview,
+      overviewLoading,
+      overviewError,
+      activeWorkspaceId,
+      activeWorkspaceRole,
+      activeProjectId,
+      allProjects,
+      tree,
+      projectTree,
+      projectTreeLoading,
+      activeCollectionId,
+      activeCollectionName,
+      authProvider,
+      activeRequest,
+      isDirty,
+      lastRun,
+      requestRuns,
+      collectionRun,
+      collectionRunRunning,
+      requestRunning,
+      runInBrowser,
+      setRunInBrowser,
+      selectedFiles,
+      setFileForPart,
+      openRequestIds,
+      activeRequestId,
+      requestCopies,
+      activateRequestTab,
+      closeRequestTab,
+      reopenLastClosedTab,
+      isTabDirty,
+      canUndoRequest,
+      canRedoRequest,
+      canGoBackRequest,
+      undoActiveRequest,
+      redoActiveRequest,
+      goBackRequest,
+      refresh,
+      selectWorkspace,
+      selectProject,
+      selectProjectById,
+      loadProjectTree,
+      selectRequest,
+      reloadActiveRequest,
+      selectCollection,
+      updateActiveRequest,
+      saveActiveRequest,
+      runActiveRequest,
+      runScratchpad,
+      runCollection,
+      clearCollectionRun,
+      clearScratchpadRun,
+      createWorkspace,
+      createWorkspaceInProject,
+      createProject,
+      renameProject,
+      deleteProject,
+      createCollection,
+      createRequest,
+      createFolder,
+      renameFolder,
+      deleteFolder,
+      renameRequest,
+      moveRequest,
+      moveFolder,
+      duplicateRequest,
+      duplicateFolder,
+      deleteRequest,
+      deleteCollection,
+      deleteWorkspace,
+      deleteTeam,
+      loadAuthProvider,
+      saveAuthProvider,
+      testAuthProvider,
+      reloadTree,
+      selectProjectOverview,
+      closeProjectOverview,
+      inviteToTeam,
+      shareWorkspace,
+      unshareWorkspace,
+    }),
+    [
+      loading, error, workspaces, teams, groups, overview, overviewLoading, overviewError,
+      activeWorkspaceId, activeWorkspaceRole, activeProjectId, allProjects, tree, projectTree, projectTreeLoading,
+      activeCollectionId, activeCollectionName, authProvider, activeRequest, isDirty, lastRun,
+      requestRuns,
+      collectionRun, collectionRunRunning, requestRunning, runInBrowser, setRunInBrowser, selectedFiles, setFileForPart,
+      openRequestIds, activeRequestId, requestCopies,
+      activateRequestTab, closeRequestTab, reopenLastClosedTab, isTabDirty,
+      canUndoRequest, canRedoRequest, canGoBackRequest,
+      undoActiveRequest, redoActiveRequest, goBackRequest,
+      refresh, selectWorkspace, selectProject, selectProjectById, loadProjectTree, selectRequest, reloadActiveRequest, selectCollection, updateActiveRequest,
+      saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun, clearScratchpadRun,
+      createWorkspace, createWorkspaceInProject, createProject, renameProject, deleteProject, createCollection, createRequest,
+      createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, moveFolder, duplicateRequest, duplicateFolder,
+      deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
+      loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree,
+      selectProjectOverview, closeProjectOverview,
+      inviteToTeam, shareWorkspace, unshareWorkspace,
+    ]
+  );
+
+  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
+}
+
+export function useWorkspace(): WorkspaceState {
+  const ctx = useContext(WorkspaceContext);
+  if (!ctx) throw new Error('useWorkspace must be used inside <WorkspaceProvider>');
+  return ctx;
+}

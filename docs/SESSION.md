@@ -1,0 +1,3046 @@
+# Session History & Handoff
+
+This document is the chat-history / handoff log for the MockShift (API Hub)
+project. A fresh AI agent should read this file first to learn the current
+state, what has already been done, and how to continue without redoing work.
+
+## 1. Project at a glance
+
+- Stack: Express 5 (backend, port 3001) + Next.js 14 (frontend, port 3000) +
+  PostgreSQL 15 (`apihub` DB) + Redis (BullMQ). Sandboxed formula execution via
+  `isolated-vm`.
+- Layout:
+  - `backend/` — execution engine + REST API (`src/api/server.js`, port 3001).
+  - `frontend/` — Next.js app, `/api/*` proxied to 127.0.0.1:3001
+    (`next.config.mjs`).
+  - `db/` — SQL migrations (`migrations/`), tests (`tests/`), `seed.sql`.
+  - `prisma/` — present but the backend uses raw SQL (pg), not Prisma.
+
+## 2. Environment / services
+
+| Service        | Port   | How to start                                                        |
+|----------------|--------|---------------------------------------------------------------------|
+| PostgreSQL     | 5432   | `pg_ctlcluster 15 main start` (root)                                |
+| Redis          | 6379   | `redis-server --daemonize yes`                                      |
+| Backend API    | 3001   | `cd backend && PORT=3001 node src/api/server.js`                    |
+| Frontend (dev/prod) | 3000   | dev: `cd frontend && npm run dev` (HMR); prod: `next build` then `npx next start -p 3000` (no HMR) — see §5.25 |
+| Mock upstream  | 3999   | `cd backend && node scripts/mock-upstream.js`                       |
+| Preview        | tunnel | https://3000-d996ae6ab8ef93e4.monkeycode-ai.live (from port 3000)   |
+
+Backend env required for the dev server / tests:
+
+```
+AUTH_SECRET=dev-secret
+VAULT_KEY=test-vault-key-do-not-use-in-prod
+PGHOST=127.0.0.1 PGPORT=5432 PGUSER=postgres PGPASSWORD=postgres PGDATABASE=apihub
+```
+
+- The frontend rewrites `/api/*` to `127.0.0.1:3001`; the mock upstream is only
+  reachable from the backend process (same host).
+- `allowedDevOrigins` in `frontend/next.config.mjs` already includes
+  `.monkeycode-ai.live` for preview-domain access.
+
+## 3. Seeded dev accounts (login via preview or API)
+
+| Email                     | Password     | Role    |
+|---------------------------|--------------|---------|
+| boss1785867669@test.io    | bosspass123  | ADMIN   |
+| pm1785867669@test.io      | pmpass1234   | MANAGER |
+| dev1785867669@test.io     | devpass123   | EDITOR  |
+
+Each has an org, a private "My Workspace" and a "Default Project" (mirrors the
+signup bootstrap). Recreate any time with `cd backend && npm run seed:dev`.
+
+## 4. Sample data & seed (retained)
+
+The sample data survives DB resets because it is defined in code, not just in
+the live DB:
+
+- **App data seed**: `backend/scripts/seed-dev.js` (`npm run seed:dev`) is an
+  idempotent script that (re)creates the three accounts above and, under the
+  ADMIN's Default Project, a **"Mock API Demo"** collection with 6 requests:
+  `GET all posts`, `GET post 1`, `POST create post`, `PUT replace post 1`,
+  `PATCH post 1`, `DELETE post 2` — all pointed at the local mock upstream
+  (http://127.0.0.1:3999). Rerunning is safe (users upserted, orgs/workspaces/
+  projects/collections created only if missing, requests created-or-updated by
+  name).
+- **Mock data**: `backend/scripts/mock-data.json` holds the jsonplaceholder
+  style seed records (posts/comments/users/todos). `backend/scripts/
+  mock-upstream.js` loads this file at startup, so sample records are retained
+  in the repo. NOTE: mutations (POST/PUT/DELETE) live in memory and reset on
+  restart; `mock-data.json` is only the initial store.
+- DB migrations are in `db/migrations/*.sql`. Migration `004_request_formula`
+  adds `api_requests.formula text NOT NULL DEFAULT ''`.
+
+## 5. What was done in this session (chronological)
+
+### 5.37 Portal B management app B2–B6 (pushed `685eea6`, 2026-09-06)
+
+Built the full subscription-management console on the portal stack
+(`portal/` Express 5 on :3102 + Next 14 on :3002, RBAC via `portalAccess.js`,
+shared DB). Seven parallel agents implemented disjoint slices after the
+coordinator laid a shared foundation.
+
+- **Foundation**: migration `015_portal_audit_promo.sql` (`audit_log` +
+  `promo_codes`, RLS mirroring 013); `portal/backend/src/auditLog.js` (single
+  audit write-point); `portal/backend/CONTRACT.md` (authoritative API
+  contract); coordinator-owned FE chrome — `manage.css`, `ui.tsx`,
+  `ManageShell.tsx`, `portalApi.ts`; router stubs + mounts in `server.js`;
+  self-contained `portal/db/seed-demo.sql` (5 plans, 6 demo customers,
+  subscriptions/orders/invoices/promos/audit). Applied to dev DB.
+- **B2 dashboard** (`routes/dashboard.js`, `app/manage/dashboard/page.tsx`):
+  KPI summary + MRR/revenue30d (SQL numeric→string), per-plan counts,
+  recent subs/orders. VIEWER+.
+- **B3 subscribers** (`routes/subscribers.js`, list + `[id]` detail pages):
+  searchable list w/ status/plan filters (VIEWER list masks emails; SUPPORT+
+  sees them); detail w/ subscriptions/orders/invoices; MANAGER lifecycle
+  (activate/suspend/cancel/change-plan), ADMIN refund/void — all audited.
+  Mounted under `/api/subscribers/subscriptions|orders|invoices/…`.
+- **B4a plans** (`plans.js` audit wiring + `app/manage/plans/page.tsx`):
+  existing CRUD now logs `plans.create|update|delete`; full admin UI w/
+  create/edit modal + status transitions; dev EDITOR still 403.
+- **B4b promo codes** (`routes/promoCodes.js`, `app/manage/promo-codes/page.tsx`):
+  CRUD (VIEWER read, MANAGER write, ADMIN delete, 409 on used codes), audited.
+- **B5 audit** (`routes/audit.js`, `app/manage/audit/page.tsx`): filterable
+  list (SUPPORT+) + ADMIN CSV export w/ proper escaping + attachment headers.
+- **B6 shell** (`app/manage/layout.tsx`, `page.tsx`, `login/page.tsx`):
+  client route guard (MeResponse → ManageShell / denied card for non-portal
+  EDITOR / redirect to login), safe `next` param, portal sign-in.
+- **DB test** `db/tests/15_portal_b.sql`: schema/RLS/constraint assertions for
+  audit_log + promo_codes (ADMIN/MANAGER/SUPPORT/VIEWER matrix); full
+  `db/tests/run.sh` green.
+
+**Verification**: every BE agent self-tested on ephemeral ports; coordinator
+restarted :3102 and smoke-verified all endpoints — dashboard 200 w/ correct
+KPIs (MRR `1063.83`, revenue30d `897.00`), plans/subscribers/promo-codes/audit
+200, dev EDITOR 403 everywhere, VIEWER list emails `null`, VIEWER detail 403,
+pm CSV export 403 / boss 200 `text/csv` w/ correct headers; lifecycle
+suspend→activate + promo create/delete 200 and each wrote audit rows
+(`actor_role=ADMIN`, right `target_ref`). Frontend `tsc --noEmit` clean; every
+`/manage/*` route compiles and serves 200 on :3002. Removed `ptest` test
+residue from dev DB.
+- **Demo-data follow-up**: `portal/db/seed-demo.sql` now re-enforces the
+  per-plan first-recharge bonus on every run (`trial_days` upserted — Free ₹0
+  = 0, Starter = 5, Pro = 10, Team = 15 extra validity days on the first paid
+  recharge, Enterprise = 0/custom) and adds three
+  expiry-edge demo accounts without touching the original six customers:
+  c7 Meera (starter, period ended 10d ago), c8 Kabir (pro ACTIVE, renews
+  today 23:59), c9 Zoya (team ACTIVE, renews tomorrow). Applied to dev DB;
+  re-running the seed is safe. Dashboard KPIs now read expiringSoon = 3
+  (Aarav +6d, Kabir today, Zoya tomorrow), trialsEndingSoon = 1 (Rohan),
+  active 4 / trialing 1 / past_due 1 / suspended 1 / cancelled 1.
+- **Catalog copy follow-up**: the free-“trial” framing was dropped from
+  customer/admin-visible catalog copy — plan cards, pricing lede, FAQ and
+  final CTA now say Starter/Pro/Team add +5/+10/+15 extra validity days on
+  the customer's first recharge (B4a plan editor relabelled to “First-recharge
+  bonus days”). Schema column `plans.trial_days`, the TRIALING status and the
+  dashboard trial metrics were left untouched.
+
+### 5.38 Batch push + Import-cURL unification (pushed `3450823..01bd49a`)
+
+Pushed the whole accumulated uncommitted batch to `origin/master` as four
+commits (this also clears the “uncommitted” labels on §5.34–§5.37):
+
+- `11e7bb8` feat(workspace): unique username (M23) + org-user team invite (M22)
+  + scanable workspaces sidebar (M24) — the §5.34–§5.36 work.
+- `4557873` feat(modal): Import cURL now opens the same New API request dialog
+  (`CreateModal initialMode="curl"`; `CurlModal` is a thin delegate to it), so
+  name/API-type/parse-preview all match new-request creation. `curl-import` e2e
+  rewritten to drive the shared modal; `curl-import` + `create-request-form`
+  pass 3/3, main-frontend `tsc --noEmit` clean.
+- `685eea6` feat(portal): Portal B B2–B6 (the §5.37 work).
+- `01bd49a` docs: milestone/turn records in docs/SESSION.md, session.md,
+  instructions.md.
+
+### 5.39 Portal A A4 — public purchase/checkout with first-recharge bonus enforcement (pushed `a1e02d4`, 2026-09-06)
+
+Built the customer-facing purchase flow on the portal stack
+(`portal/` Express 5 :3102 + Next 14 :3002, shared DB/session): pick plan →
+account/billing step → PENDING order + DRAFT invoice → confirmation page whose
+"Simulate successful payment" activates the subscription. The catalog's
+first-recharge bonus (Starter +5 / Pro +10 / Team +15 extra validity days) is
+now actually granted — by extending the new subscription's initial
+`current_period_end` by `trial_days` when it is the customer's **first paid
+order ever** (no TRIALING status involved; free ₹0 activations create no order
+and do not consume the bonus).
+
+- **Backend** — `portal/backend/src/routes/publicCheckout.js` (mounted under
+  `/api/public` in `server.js`):
+  - `POST /api/public/checkout` (no auth required): a guest supplies
+    name/email/password in the account step → the user is auto-created (role
+    EDITOR per the A3 decision, username via the shared `username.js`
+    allocator) and signed in with a session cookie on the checkout response.
+    Free plan → subscription is created directly ACTIVE (no order/invoice).
+    Paid plans → PENDING order + DRAFT invoice (`INV-YYYY-####`,
+    `nextInvoiceNumber`). 400 for Enterprise custom plans ("contact sales");
+    409 for a duplicate active plan of the same key, and for an
+    existing-email checkout without a session ("an account with that email
+    already exists — sign in to continue"; a signed-in user whose account
+    email differs is told to sign out rather than silently purchasing under a
+    stranger's identity). Custom-price / quarterly / short-password shapes
+    validated.
+  - `POST /api/public/checkout/:orderId/confirm` (auth, owner-only,
+    idempotent): marks the order PAID and invoice ISSUED→PAID and inserts the
+    ACTIVE subscription with
+    `now() + interval '1 month' | '1 year' + make_interval(days => bonusDays)`
+    where `bonusDays = trial_days` only when `firstRechargeEligible`
+    (no earlier paid order on the account); later orders get +0 days.
+    Links `orders.subscription_id`. A concurrent duplicate active plan is
+    rejected with 409. Re-running on an already-confirmed order returns
+    `alreadyProcessed: true` without side effects.
+  - `GET /api/public/orders/:orderId` (auth, owner-only): order + invoice +
+    linked subscription, plus the bonus-eligibility preview while the order is
+    PENDING (drives the confirmation page's "+10 bonus days" note).
+  - Uses the B3 `query({ userId })` option pattern (`app.current_user_id`) for
+    per-request RLS identity and `fetchSubscriptionShapeTx` to read inside the
+    caller's transaction.
+- **Migration** `db/migrations/016_portal_checkout_rls.sql`: adds
+  `orders_insert` and `invoices_insert` RLS INSERT policies mirroring the
+  subscriptions policy (own user, or global ADMIN/MANAGER acting on behalf),
+  so checkout/confirm can write orders + invoices. Applied to the local dev
+  DB; `psql` verification showed the expected policy rows.
+- **CONTRACT.md**: new authoritative "Portal A — public purchase (checkout /
+  confirm / order read)" section — request/response shapes for
+  `order`/`invoice`/`subscription`/`account`, first-recharge bonus semantics,
+  the 404/400/403/409 rules and the idempotent-confirm contract.
+- **Frontend** (`portal/frontend`):
+  - `src/lib/checkoutApi.ts` — typed fetch helpers (`fetchPlans`, `checkout`,
+    `confirmOrder`, `fetchOrder`, `fetchMe`, `signIn`, `signOut`) + shared TS
+    types (`CatalogPlan`, `Order`, `Invoice`, `Subscription`,
+    `CheckoutResult`, `OrderStatusResult`, `Me`) + `formatMoney`/`formatDate`.
+  - `app/checkout/` — `layout.tsx` (brand + step nav), `page.tsx` +
+    `CheckoutView.tsx` (reads `?plan`/`?cycle`, loads plans + `/api/me`;
+    account step inside checkout with create vs sign-in mode; signed-in
+    sessions skip the account form; a 409 offers "Sign in instead"; free →
+    inline success, paid → redirect to `/checkout/confirm?order=…`);
+    `confirm/page.tsx` + `CheckoutConfirmView.tsx` (pending state shows the
+    bonus preview and a "Simulate successful payment" button; success shows
+    plan / valid-through / invoice date + Paid badge; reload is idempotent);
+    `checkout.css` dark design-token theme. Testids: `checkout-*`,
+    `confirm-*`.
+  - `src/components/CatalogPreview.tsx`: landing pricing plan CTAs now push
+    `/checkout?plan=…&cycle=…` (Enterprise keeps "Contact sales").
+- **Verification**:
+  - Backend matrix `/tmp/a4-checkout-matrix.cjs` (throwaway emails, 10 test
+    groups) all green: Starter MONTHLY first-order bonus +5 (period end ≈ 1
+    calendar month + 5 days) vs Team YEARLY second order +0; idempotent
+    re-confirm; cross-user order read/confirm 403; unauth confirm 401;
+    duplicate-plan 409; free-then-Pro bonus still +10; existing-email 409;
+    Enterprise 400.
+  - Frontend: `tsc --noEmit` clean; Playwright smoke over the live :3002 dev
+    server 16/16 (Pro CTA from the landing, summary ₹299 + "+10" badge, guest
+    checkout → confirm bonus preview + `INV-…`, simulate payment → success,
+    reload stays on success, free activation at ₹0, existing-email 409 surfaces
+    the sign-in toggle, no horizontal overflow at 375px).
+  - After the smoke/matrix runs the dev DB was reset and reseeded
+    (`reset:db` + `seed:dev` + `portal/db/seed-demo.sql`) back to the canonical
+    demo baseline — dashboard KPIs again read expiringSoon 3, trialsEndingSoon
+    1, active 4 / trialing 1 / past_due 1 / suspended 1 / cancelled 1.
+  - Portal backend :3102 restarted after the router landed
+    (`term_1788724214363_69`).
+
+### 5.40 Portal A A5 — subscriber self-service ("My subscription") (pushed, 2026-09-06)
+
+Built the signed-in subscriber self-service area on the portal stack
+(`portal/` Express 5 :3102 + Next 14 :3002, shared DB/session) so a customer
+who bought via A4 can view their current plan + invoice history and cancel /
+reactivate / change plan without contacting support. Because checkout
+accounts are global EDITOR (the A3/B1 decision — deliberately not portal
+roles), every endpoint is **session-based** (`requireAuth` + owner guards),
+never `requirePortalRole`.
+
+- **Design decisions** (confirmed with the user, 2026-09-06): cancel =
+  scheduled **at period end** (`cancel_at_period_end=true`, `cancelled_at=now()`;
+  undoing re-activates — Stripe-style); plan change = a normal A4 checkout of
+  the target plan whose confirmed order **supersedes** the old
+  ACTIVE/TRIALING subscription immediately; the page lives at
+  `app/account/` on the portal frontend behind a signed-in "My subscription"
+  header link.
+- **Migration** `db/migrations/017_portal_self_service.sql` (applied):
+  three SECURITY DEFINER functions owned by the migration role, all pinned to
+  `search_path = public, app, pg_temp` and `GRANT EXECUTE TO app_user`:
+  - `app.self_service_cancel_subscription(_subscription_id uuid)` — resolves
+    the caller via `app.current_user_id()` (42501 when absent), 42501/404 for
+    a sub that isn't the caller's (404 on missing/foreign), P0001 on a sub
+    that isn't ACTIVE/TRIALING (incl. free — never cancellable), else sets
+    `cancel_at_period_end = true, cancelled_at = now()`; writes audit
+    `subscriptions.self_cancel`.
+  - `app.self_service_reactivate_subscription(_subscription_id uuid)` — same
+    guards; 42501 unless `cancel_at_period_end` is already true; sets both
+    flags back (`cancel_at_period_end=false, cancelled_at=null`); audit
+    `subscriptions.self_reactivate`.
+  - `app.supersede_subscriptions(_except_sub_id uuid)` — for the caller,
+    marks CANCELLED (`cancelled_at = now()`) every other ACTIVE/TRIALING
+    subscription; audit `subscriptions.self_superseded` per sub.
+  Rationale (recorded in the file): the existing `subscriptions_update` RLS
+  policy is portal-roles-only and must not be widened to EDITOR customers
+  (they must never rewrite `plan_id`/`status`/amount columns), so the valid
+  owner + state transitions live inside pinned-identity functions that also
+  write the audit rows.
+- **Backend** — `portal/backend/src/routes/customerAccount.js` (mounted at
+  `/api/public/account` in `server.js`; reuses A4 shapes `SUB_COLUMNS`,
+  `toSubscriptionShape`, `toInvoiceShape`):
+  - `GET /api/public/account/overview` (session; the account's own row):
+    `{ account, current, invoices, hasPaidOrders }`. `current` is the newest
+    non-terminal subscription — ACTIVE/TRIALING preferred, else
+    PAST_DUE/SUSPENDED; `null` when none. `invoices` newest-first joined to
+    orders/plans for `order_id`, `billing_cycle`, `plan_key`, `plan_name`.
+  - `POST /api/public/account/cancel` `{ subscriptionId }` and
+    `POST /api/public/account/reactivate` `{ subscriptionId }` — an
+    `ownSubscription` guard resolves the row inside the caller's session
+    (404 unknown, 403 not yours) and rejects wrong-state via the SQL
+    functions' ERRCODEs → 409, then returns `{ subscription }` in the same
+    shape the overview uses.
+- **publicCheckout.js** supersede integration (the plan-change path): the
+  free-activation branch and the paid-order confirm transaction each now call
+  `app.supersede_subscriptions($1)` right after inserting the new sub, so a
+  Free downgrade or a different-plan confirmation cancels the prior current
+  sub inside the same client transaction (single-plan rule preserved —
+  duplicate-active 409s unchanged).
+- **CONTRACT.md**: new "Portal A — subscriber self-service (A5…)" section
+  (overview/cancel/reactivate request+response shapes, session+owner rules,
+  ERRCODE→HTTP mapping) and the A4 confirm section updated with the supersede
+  wording.
+- **Frontend** (`portal/frontend`):
+  - `src/lib/checkoutApi.ts`: `AccountOverview`, `AccountInvoice`,
+    `AccountActionResult` types + `fetchAccountOverview`, `cancelSubscription`,
+    `reactivateSubscription` (relative `/api/public/account/…`).
+  - `app/account/` — `layout.tsx`/`page.tsx` + `account.css` (scoped `.ac-`
+    dark design-token theme with `.ac-chip-*` status chips, plan card,
+    invoice list, media queries). `src/components/AccountView.tsx` (client):
+    loading/error/signed-out/ready; account + plan card (status chip, billing
+    cycle, renews-on, cancel-note when scheduled), cancel (confirm dialog) /
+    reactivate buttons, plan-switch accordion (fetches the catalog, filters
+    out the current plan, keeps both cycles, links into `/checkout?plan=…`),
+    invoice history with per-status chips, sign-out. Testids `account-*`.
+  - `app/login/` — `layout.tsx`/`page.tsx` + `src/components/LoginView.tsx`
+    (redirect param, default `/account`; testids `login-*`). Layout imports
+    the shared `../account/account.css` — the initial `./account.css` copy
+    bug 500'd `/login` and was fixed during verification.
+  - `src/components/AccountLink.tsx` — fetchMe-gated signed-in "My
+    subscription" header link; renders nothing without a session. Wired into
+    the landing `nav-actions` (`app/page.tsx`) and the checkout layout
+    (`app/checkout/layout.tsx` + `.ck-nav-signin` in `checkout.css`).
+  - A4's success-page CTA now reads "Go to My subscription" → `/account`.
+- **Verification**:
+  - Migration 017 applied; portal backend restarted
+    (`term_1788730661493_70`, PID 25431): `/api/health` OK, unauth
+    `/api/public/account/overview` → 401.
+  - Backend matrix `/tmp/a5-account-matrix.cjs` 27/27: guest Starter MONTHLY
+    checkout → confirm (+5 bonus, ≈33–38 d end); overview returns current
+    Starter ACTIVE + 1 PAID invoice + account email/role; reactivate on an
+    unscheduled sub → 409; cancel → flag true + cancel-note; double-cancel →
+    409; reactivate undoes; same-user Pro MONTHLY change → supersedes Starter,
+    no bonus (≈28–31 d); Free downgrade immediate; duplicate free → 409;
+    cross-user cancel → 403; a non-subscriber (seeded dev) → `current:null` +
+    empty invoices; reactivate on a cancelled sub → 409; duplicate-active
+    Starter → 409; malformed uuid → 400. Audit rows verified:
+    `subscriptions.self_cancel` ×2, `self_reactivate` ×2,
+    `self_superseded` ×4.
+  - A4 regression matrix `/tmp/a4-checkout-matrix.cjs` re-run ALL PASS after
+    the supersede-semantics change — its old T3 "duplicate Starter 409" was
+    out of date: that Starter had been superseded by Team in T2, so re-picking
+    it is now a valid plan change (201). T3 asserts the switch is allowed; the
+    duplicate-active-409 case is covered by the A5 matrix (S8/S12).
+  - Frontend `npx tsc --noEmit` clean. Playwright smoke
+    `/tmp/a5-account-smoke.cjs` 23/23 over the live :3002 dev server: signed-out
+    `/account` shows the sign-in empty state; a seeded Starter subscriber's
+    plan card (Starter / Active / renews-on / cancel button) + one invoice
+    row; cancel → cancel-note + success msg + reactivate button; reactivate →
+    note gone, still Active; switch accordion excludes Starter and offers
+    free + pro; invoice row shows `INV-…` + amount; checkout page shows the
+    signed-in AccountLink that navigates to `/account`; sign-out returns to
+    the landing; `/login` shows a wrong-password error then a successful
+    sign-in landing back on the account page.
+  - DB restored to the canonical demo baseline afterwards (`reset:db` +
+    `seed:dev` + `portal/db/seed-demo.sql`): throwaway `a5_*`/`pwacct_*`/
+    `buyer1_*` users gone, 9 demo subscriptions, the three 017 functions
+    verified intact.
+
+### 5.41 Provisioning fix — checkout buyers get their own workspace (pushed, 2026-09-06)
+
+Follow-up to a product question: "if an individual user created an account
+and paid, how can they create a workspace, and how do we detect individual vs
+group users?" The code review found a real gap — normal main-app signups
+(`backend/src/api/routes/auth.js`) are bootstrapped with their own org +
+`"My Workspace"` + `Default Project`, but Portal A checkout
+(`publicCheckout.js`) inserted **only** the `users` row, and `POST /api/
+workspaces` requires an existing org membership where the caller holds org
+role ADMIN — so a paying individual could never create a workspace.
+
+- **Chosen model** (user picked auto-provision): a guest checkout now mirrors
+  the register bootstrap inside the same transaction that creates the user —
+  `organizations` `"<Name>'s Org"` (owner = the buyer) + `organization_members`
+  ADMIN, a PRIVATE `workspaces` `"My Workspace"` + `workspace_members` ADMIN,
+  and a `projects` `"Default Project"`. Account shape / 409s / bonus /
+  supersede semantics unchanged; no schema change (no name-uniqueness
+  constraints to worry about).
+- **Individual vs group** (design answer, no schema change): with every
+  self-provisioned account, an *individual* is simply the org ADMIN/owner of a
+  personal org — detectable as `organizations.owner_id = user_id` with no
+  other `organization_members` rows (or none on their org beyond them). A
+  *group user* is anyone who appears as a member of an org/workspace owned or
+  provisioned by someone else (added via the team/org invite flows). Global
+  `role` stays orthogonal (buyers are EDITOR; org role ADMIN comes from their
+  personal org). If a future A6 seat model needs an explicit discriminator, a
+  `users.account_kind` or subscription seat-type column would be the extension
+  point — not needed today.
+- **Verified**: syntax check clean; portal backend restarted
+  (`term_1788731418612_71`, PID 26534, health OK); live probe
+  `/tmp/a5-provision-probe.cjs` ALL PASS — guest Starter checkout + confirm
+  then, with the same session against the **main** backend :3001:
+  `/api/auth/me` → role EDITOR, `GET /api/workspaces` lists `My Workspace`
+  with role ADMIN, and `POST /api/workspaces` returns 201 (new workspace,
+  role ADMIN). A4 + A5 backend matrices re-run ALL PASS. CONTRACT.md documents
+  the provisioning. DB reseeded to the canonical demo baseline afterwards.
+
+### 5.42 Self-service signup gated to Portal A (pushed, 2026-09-06)
+
+Product bug/decision: "signup in API Hub creates an account without a payment
+page" — the main app's `POST /api/auth/signup` (+ `/signup` UI, "Create one"
+on the login page) let anyone mint a free-for-life EDITOR account with a
+workspace and never hit pricing. The accepted fix (user-confirmed scope:
+"Closed by default + test flag"): self-service account creation happens only
+through the Portal A plans/checkout flow, which selects a plan (Free or paid)
+and provisions the buyer's org + workspace.
+
+- **Backend** `backend/src/api/routes/auth.js`: new `selfServiceOpen()` — true
+  when `ALLOW_SELF_SIGNUP === '1'` (explicit test/dev opt-in) or the users
+  table is empty (very first account ever becomes platform ADMIN, preserving
+  fresh-install bootstrap). `POST /api/auth/signup` returns **403**
+  `"Self-service signup is closed — choose a plan on the API Hub plans page to
+  create your account"` when closed. New `GET /api/auth/signup-status` →
+  `{ open }` so the frontend can choose its UI. `backend/package.json`
+  `test:api` now runs under `ALLOW_SELF_SIGNUP=1`, so the 11 integration
+  suites + the e2e `signupFreshUser` helper keep working untouched.
+- **Frontend** `frontend/app/signup/page.tsx`: conditional client page — on
+  mount it checks `/api/auth/signup-status`; when signup is open (bootstrap /
+  flag env) it renders the original create-account form verbatim (all
+  `signup-*` testids and behaviour preserved); when closed it renders a
+  gateway card "Choose a plan to get started" with a CTA to the Portal A plans
+  page and keeps the sign-in link. New `frontend/src/lib/portalUrl.ts` exports
+  `PORTAL_PLANS_URL` = `NEXT_PUBLIC_PORTAL_URL` or `http://localhost:3002/#pricing`.
+  Login's "Create one" still targets `/signup`, which resolves to the gateway.
+- **Verified**: with the default (closed) backend, `/api/auth/signup-status` →
+  `{open:false}` and signup → 403; with `ALLOW_SELF_SIGNUP=1`, status →
+  `{open:true}`, signup 201 (EDITOR + `"Flag User's Org"` org ADMIN),
+  duplicate email → 409; e2e `create-request-form.spec.ts` 2/2 under the flag
+  (fresh-user API signup + workspace flows intact); UI smoke
+  `/tmp/gate-ui-smoke.cjs` 4/4 under the closed backend (gateway shown, no
+  form, plans CTA href points at the portal, sign-in link kept). DB reseeded to
+  the canonical demo baseline afterwards; the main backend is left running
+  CLOSED (`term_1788732243308_74`) — real/preview deployments must never set
+  `ALLOW_SELF_SIGNUP`.
+
+### 5.46 Profile page (PR-2/PR-3) + per-plan usage restrictions (L1–L6) — parallel agents + seam fix (pushed `16e7a98`, 2026-09-06)
+
+Ranjith approved two programmes back to back: finish the Profile & plan
+visibility programme (PR-2 profile page, PR-3 cross-app manage + usage bars) and
+run the whole per-plan usage restrictions programme (Portal B limits enforced
+product-wide with an admin off switch). Both were dispatched to two parallel
+agents with disjoint file ownership (Agent A = `frontend/` only; Agent B =
+`backend/`, `db/migrations/019|020`, `portal/**`), then reconciled by the
+coordinator and shipped as a single commit `16e7a98`.
+
+**Agent A — profile page (PR-2 surface + PR-3 deep links):**
+
+- `frontend/app/profile/page.tsx` + `frontend/app/profile.css` (main-app theme,
+  responsive ≤900/≤640), client `frontend/src/components/ProfilePage.tsx`
+  (personal details form, avatar preset grid + upload/remove, password change,
+  subscription card with plan chip + status + cycle + cancel-note + upsell card
+  for plan-less users, plan usage bars) plus `AvatarPresets.tsx`,
+  `UserAvatar.tsx`, `frontend/src/lib/profile.ts` (`useProfile`), Profile types
+  + `profileApi` in `src/lib/api.ts`, cross-app link helpers in `portalUrl.ts`.
+- `frontend/src/components/TopBar.tsx` gained a "Profile" menu entry + avatar
+  chip; `frontend/app/layout.tsx` imports `profile.css`.
+- Deep links "Manage subscription" / "Change plan" → Portal A `/account` /
+  checkout via the sibling-host resolution (`portalPlansUrl()`), matching the
+  PR-1 cross-app URL fix.
+- Agent A verification: `tsc` clean, 89/89 unit, Playwright `/tmp/pr2-profile-smoke.cjs`
+  27 PASS ×3 incl. a 375 px responsive pass. Left `pr2smoke_1788808562609@test.io`.
+
+**Agent B — restrictions engine (L1–L6):**
+
+- `backend/src/api/entitlements.js` — org-pool resolver. Canonical keys
+  (nullable = unlimited): `workspaces, projects, collections, teams, seats,
+  storage_mb (reserved, not enforced), runs_per_month, public_sharing`.
+  Semantics: usage counts against an ORG pool whose covering plan = newest
+  non-terminal subscription of any member (R1); plan-less accounts fall back to
+  Free on their own personal-org pool (R2); `enforced` = global
+  `portal_settings.restrictions_enforced` AND not exempt (per-plan
+  `enforce:false` override, and Enterprise/custom never limited — R7/R8);
+  gates return uniform 403 `plan_limit { code, key, limit, usage, upgrade }`
+  bodies (R3); only NEW creates are blocked, never edits/deletes/upserts of
+  already-seated members (R4).
+- Migrations `db/migrations/019_plan_restrictions_settings.sql`
+  (`portal_settings.restrictions_enforced bool default true` + RLS) and
+  `020_plan_usage_counter.sql` (`plan_usage` calendar-month buckets per org)
+  — both applied. Runs are calendar-month (R5), charged atomically through
+  `chargeRuns()` (FOR UPDATE on the bucket; rollback → 403 when enforced and
+  over; always counted so bars stay honest).
+- Gates wired into `backend/src/api/routes/{workspaces,projects,content,
+  teams,shares,workflows,exports,manage,admin}.js`; `GET /api/profile/usage`
+  resolver endpoint added and `GET /api/profile` (`routes/profile.js
+  loadProfile`) now carries the additive `plan` entitlement snapshot.
+- Portal B: `portal/backend/src/routes/settings.js` (mounted
+  `/api/portal/settings`, VIEWER+ GET / MANAGER+ PUT) for the global switch;
+  `portal/frontend/app/manage/plans/page.tsx` gains a structured Limits editor
+  + per-plan "Enforce" override + the dashboard global toggle; Portal A
+  `AccountView.tsx` + `checkoutApi.ts` show usage bars on `/account`.
+- `portal/db/seed-demo.sql` now inserts canonical `limits` jsonb per plan and
+  merges on conflict (`limits = plans.limits || EXCLUDED.limits`), fixing the
+  demo-reseed gap found in the PR-1 turn. Live DB backfilled to the same
+  numbers with `restrictions_enforced = true`.
+- Agent B verification: live matrix `/tmp/l2-gates-live.cjs` 18/18 (Free blocks
+  workspace/project/seats/public-share creates with 403 `plan_limit`; Starter/
+  Pro upgrades unblock; R4 upsert at capacity allowed; Enterprise exempt; run
+  cap blocks the 2nd run; settings GET/PUT verified). Left throwaways
+  `liveg_owner/_extra/_extra2_1788809651037@test.io` + a LiveG Org. Restarted
+  the main backend with the new code (`term_1788809673936_78`, health OK,
+  running CLOSED).
+
+**Coordinator seam fix** — Agent A's `PlanUsage` had been written against a
+`profile.usage` ARRAY placeholder, while Agent B's profile route returns
+`plan: { key, name, enforced, reason, poolOrgId, limits: {8 keys}, usage:
+{workspaces, projects, collections, teams, seats, runs} }`. The main page now
+consumes the backend shape directly: `ProfilePage.tsx` `PlanUsage` renders rows
+for the counted keys, draws a meter only for numeric limits (`null` = unlimited
+→ used-count), shows an amber "over limit" badge when `used > limit` at an
+enforced limit, and stays hidden when `plan` is absent (defensive for older
+backends). `frontend/src/lib/api.ts` replaced `usage?: unknown` with the typed
+`plan?: PlanEntitlement`; the stub `hasUsage` helper in `src/lib/profile.ts`
+was removed (inline presence check); `profile.css` gained the
+`.profile-usage-over` badge + `.over` row styles.
+
+**Verification (coordinator):** `tsc --noEmit` clean in main + portal
+frontends; `node --check` clean across every touched backend route; main
+frontend unit tests 89/89; Playwright `/tmp/pr3-usage-smoke.cjs` 6/6 ×2 against
+the live :3000 preview — plan-less dev renders Free-fallback bars (workspaces
+1/1, projects 1/1, seats 1/1), boss (ACTIVE Free sub) shows the Subscription
+block plus the usage section. Smoke run confirmed the earlier intermittent
+failures were a Playwright login-page hydration race, not an app defect
+(resilient submit-retry loginFlow fixed it). Backend payload spot-checks match
+the `plan` shape described above (`reason: fallback_free`, `enforced: true`).
+
+**Follow-ups:** the agent throwaway accounts were deleted after explicit user
+approval (transactional, dependency-ordered psql cleanup — 6 users, 4 orgs incl.
+the three "PR2 Starter's Org"s + LiveG Org, 7 workspaces, 7 projects, 3
+subscriptions; verified 0 leftovers and the single `portal_settings` row intact
+with `restrictions_enforced = true`). Docs: this record + session.md `## Current`
+refresh.
+
+Two broken cross-app links surfaced once the apps were reached through the
+`.monkeycode-ai.live` preview hosts:
+
+1. **Portal A landing → main app**: `portal/frontend/app/page.tsx` had a module
+   constant `APP_URL = 'https://3000-a7f640d9151cb340.monkeycode-ai.live'` — a
+   stale, session-scoped preview host from an earlier turn. Every "Open app" /
+   "Open API Hub" / "Sign in" CTA pointed at a dead host.
+2. **Main app → Portal A**: the signup gateway's "See plans & pricing" CTA used
+   `PORTAL_PLANS_URL`, which defaults to `http://localhost:3002/#pricing` — in
+   the preview a click landed on the viewer's own machine.
+
+Fix — each app resolves the sibling app's origin from the current request host,
+with an env override first and a localhost dev fallback last:
+
+- New `portal/frontend/src/lib/appUrl.ts` — `apiHubAppUrl()` reads the `Host`
+  header via `next/headers` (the portal landing is a server component) and, when
+  the host matches `<port>-<session>.monkeycode-ai.live`, returns the sibling at
+  `<3000>-<session>.monkeycode-ai.live`; `NEXT_PUBLIC_APP_URL` overrides;
+  otherwise `http://localhost:3000`. `app/page.tsx` now computes
+  `const appUrl = apiHubAppUrl()` per request instead of the hardcoded constant.
+- `frontend/src/lib/portalUrl.ts` — kept `PORTAL_PLANS_URL` (env override +
+  localhost default) and added `portalPlansUrl()`, which returns the sibling
+  `3002-<session>.monkeycode-ai.live/#pricing` when `window.location.host` is a
+  `.monkeycode-ai.live` preview host. The main-app signup page is a client
+  component, so it initialises state to the constant (identical on SSR and
+  hydration — no hydration mismatch) and swaps to `portalPlansUrl()` in a mount
+  `useEffect`.
+- Verified: `npx tsc --noEmit` clean in both apps; curl Host-header simulation
+  against `:3002` (preview host → `https://3000-<session>…`, `localhost:3002` →
+  `http://localhost:3000`); Playwright `/tmp/pr1-crossapp-url-check.cjs` against
+  the LIVE preview hosts ALL PASS (portal landing cross-app anchors all target
+  the live main-app preview, no stale host, no localhost; signup gateway
+  `goto-plans` href resolves to `https://3002-<session>.monkeycode-ai.live/#pricing`
+  after hydration).
+
+### 5.47 Backlog completion — A6 payments, send-item, S4+S5 tokens/runs, S6–S8 CLI (pushed 2026-09-08)
+
+User asked to finish every pending backlog item with parallel agents and then
+start the Confluence-style "Docs" documentation feature. Plan was recorded in
+`session.md` and four super-agents dispatched on disjoint file trees (no agent
+commits). Three delivered full code; SEND (send-item) and CLI results arrived
+empty/truncated, so both were re-dispatched and completed. The coordinator then
+wired every shared seam (agents were forbidden from touching them).
+
+- **A6 payment gateway + webhooks + receipts** (`5424add`, portal only).
+  Migration `021_payment_gateway.sql` adds `orders` gateway state columns
+  (`gateway_status/provider/reference/paid_at`) + append-only
+  `payment_gateway_events` log. New `portal/backend/src/routes/paymentGateway.js`
+  (`POST /api/public/gateway/:orderId/pay` owner-only, simulates the PSP charge)
+  and `routes/webhooks.js` (`POST /api/public/webhooks/payment`, secret from
+  `x-webhook-secret`, const-time compare); both settle through one idempotent
+  `portal/backend/src/paymentFinalize.js` (PAID order + DRAFT→PAID invoice +
+  ACTIVE subscription applying the first-recharge bonus + `app.supersede_
+  subscriptions()` for plan changes). Failed charges → 422 and stay PENDING;
+  replays → logged DUPLICATE no-ops. Coordinator mounted both routers and
+  pointed the paid checkout flow at a new `/gateway` page
+  (`portal/frontend/src/components/GatewayView.tsx` + `app/gateway/*`) with a
+  `/receipt/:orderId` view; free plans still activate instantly.
+- **Send item to another user** (accept/reject; part of `7f8226f`). Migration
+  `022_send_item.sql` (sends table, status lifecycle + accepted_path).
+  `backend/src/api/routes/sends.js`: create/inbox/outbox/recipients + accept
+  (clones the item into the recipient's own account with "(copy)" sibling-unique
+  naming) / reject; notifications both ways; 404 for neither-sender-nor-
+  recipient. Frontend `/inbox` page (Received/Sent tabs) + `SendItemDialog`
+  mounted in the request/folder/collection menus + user-menu entry. SEND agent's
+  scratch live matrix on :3006 was ALL PASS (incl. self-send 400, non-owner 403,
+  double-accept 409, clone-landing check).
+- **S4 personal API tokens + S5 server-side runs** (part of `7f8226f`).
+  Migrations `023_api_tokens.sql` (sha256 digests, prefix, scopes
+  read/write/runs, revoke/expiry) + `024_run_trigger_api.sql` (adds `api`
+  trigger). `tokens.js` CRUD returns the raw `tkh_` secret once;
+  `serverRuns.js` POST `/api/runs` (session or Bearer auth, `runs`/`write`
+  scope gate) loads the stored request, resolves env/vars, charges the run
+  pool, executes via `runner.executePipeline`, persists history + test rows and
+  fires ON_REQUEST / ON_RUN_FAILURE automations; ephemeral UI runs (no
+  `requestId`) fall through to the content router. Coordinator mounted the
+  routers in `backend/src/api/server.js` (serverRuns must precede the content
+  router and mounts at `/api` because the router itself defines `/runs`) and
+  added a Bearer fallback to `requireAuth` (lazy `require('./tokenAuth')` avoids
+  a tokenAuth↔access cycle) so tokens authenticate anywhere. UI:
+  `/settings/api-tokens` (`ApiTokensView`) + user-menu entry.
+- **S6–S8 CLI** (`2c93bd4`, isolated `/workspace/cli`). Zero-dependency Node ≥18
+  package (`bin: apihub`): login (token at `~/.config/apihub/config.json` 0600),
+  logout, whoami, workspace/project/collection/request list+show, project
+  create, `run <requestId>` (exit 0 PASS / 1 FAIL), `report junit|markdown`,
+  `ci run`, flags > env > config; 58/58 `node --test` unit tests; GitHub
+  Actions + GitLab CI recipes in `cli/ci/README.md`.
+- **Verification**: main integration matrix 34/34 live against :3001/:3102
+  (tokens CRUD + bearer profile + scope gate + revoked; runs 400/404/401/403 +
+  ephemeral fall-through not hijacked; sends mounts; A6 gateway pay + bonus +
+  replay, webhook wrong-secret 401, FAILED 422, success, replay idempotence);
+  `tsc --noEmit` clean in both frontends; main `npm test` 89/89; Playwright main
+  FE 8/8 (send dialog, /inbox, /settings/api-tokens) and Portal A UI 7/7
+  (checkout → /gateway → pay → /receipt).
+- Scratch rows created by the agents/matrices (restriction `res_l1_*` users from
+  the earlier L1 phase, `a6_*`/`a6matrix*`/`a6ui*` buyers, revoked `matrix-*`
+  api_tokens) were removed in a single user-approved transaction on 2026-09-08:
+  21 scratch users + 17 scratch orgs/workspaces + 5 stray memberships + buyers'
+  6 orders / 6 invoices / 7 subscriptions / 10 gateway events + their
+  `audit_log`/`audit_logs` rows; demo/seed data untouched (verified counts 0 vs 3).
+
+### 5.48 Docs feature — Confluence-style API documentation (pushed, 2026-09-08)
+
+Phase-2 agents D2a (backend), D2b (docs UI) and D2c (access request flow) ran in
+parallel on a frozen REST contract; the coordinator wired every seam afterwards.
+
+- **D2a backend** — `db/migrations/025_docs.sql` (`doc_pages`, `doc_blocks`,
+  `doc_mentions`, `workspace_access_requests`; `ALTER workspace_members ADD
+  granted_by`) applied to the live DB, plus a single self-contained router
+  `backend/src/api/routes/docs.js` (`router.use(requireAuth)`, reusing
+  `roleAtLeast`/`getWorkspaceRole`/`getProjectAccess`/`canReadWorkspace`).
+  Isolated live matrix 92/92 on :3007.
+  - Docs CRUD: list pages by workspace/project/q; create (auto heading block);
+    get detail (page + blocks + mentions, `canEdit`); rename; delete (author /
+    role≥ADMIN); wholesale block replace PUT (positions reassigned, invalid ids
+    pruned). Read gate = workspace membership; edit gate = role ≥ EDITOR.
+  - Mentions: user refs must be workspace members; api refs must belong to the
+    page's workspace (via collection); dup 409; `access.read` computed with
+    `getProjectAccess` so the UI can deep-link or offer request access.
+  - Workspace access requests: POST (409 if member/pending), GET mine=1 or
+    workspace PENDING list (role≥ADMIN/MANAGER-ADMIN), review approve → inserts
+    `workspace_members` VIEWER (conflict DO NOTHING) + notification + audit;
+    deny notifies; cancel by creator.
+- **D2b/D2c frontend** — new `frontend/src/lib/docsApi.ts` (typed client) +
+  `frontend/src/components/docs/**` (`DocsHome` list/search/filters + New-page
+  modal; `DocsPageView` viewer/editor with dirty-guard and per-block add/edit/
+  reorder/remove; `BlockEditor`; `Mentions` block viewer + user/@ chips with
+  email popover + API chips that deep-link when `access.read` else inline
+  project access-request via the existing projects endpoint; `Pickers`
+  user/API pickers; `RequestsPanel` admin review + my-requests/cancel) exported
+  from `frontend/src/components/views/DocsView.tsx`.
+- **Coordinator integration** — mounted `app.use('/api/docs', docsRoutes)` in
+  `backend/src/api/server.js` (before the /api 404); `AppView` union gains
+  `'docs'` (NavStore), RouteViewSync maps `/docs`, AppShell renders DocsView in
+  the admin-view area, Sidebar gained a Docs rail button (FileIcon) and a
+  `frontend/app/docs/page.tsx` route; DocsView's API-chip deep-link now
+  `router.push('/')` so the workspace switch is refresh-stable.
+- **Verification (live)** — docs API matrix 21/21 vs :3001 (create/list/get/
+  blocks order/mentions user+api incl. 404/409/delete, rename, delete page 204,
+  deleted 404, ws-request own-ws 409, mine=1); Playwright UI smoke 10/10 on
+  :3000 (rail → /docs → new page modal → viewer → Edit → Tag API picker → chip →
+  deep-link opens the request at '/'); `tsc --noEmit` clean, `npm test` 89/89.
+  Scratch `UI smoke` pages deleted; demo data untouched.
+
+### 5.49 Docs export / share links / image blocks + free-plan limits (pushed 2026-09-08)
+
+User asked for: docs export "in a different format", back-to-the-originating-doc
+after opening a linked API (it was redirecting to the docs list instead), a
+number-of-docs limit, images in docs, plus API-request and mock-server limits
+for the free plan. Two more parallel agents ran against a frozen contract; the
+coordinator fixed one real-assembly bug and re-verified everything live.
+
+- **Limits (backend)** — `db/migrations/027_plan_limit_extensions.sql`
+  (plans.limits gains `api_requests`/`mock_servers`/`doc_pages`: free
+  `20/50/1`, starter `100/250/3`, pro `500/1000/10`, team/enterprise explicit
+  nulls = unlimited) and `026_docs_image_share.sql` (`doc_shares`, image in the
+  `doc_blocks.block_type` CHECK). `entitlements.js` new keys fall back to
+  free `50/1/20`, `countPoolUsage` counts api_requests / mock_servers /
+  doc_pages, and creation choke points enforce gates: content.js POST /requests
+  (+ folder duplicate, + import gate in exports.js), mockServers.js create,
+  docs.js POST /. Enterprise/custom and enforce-off plans stay exempt; 403
+  body is the uniform `plan_limit { code, key, limit, usage, upgrade }`.
+- **Docs (backend)** — image blocks (data: URL ≤5 MB or URL, alt/caption, 400
+  on bad source); `GET /docs/:id/export?format=markdown|html|json` (blob/text
+  download shapes); POST + DELETE `/docs/:id/share` (create-once then reuses the
+  token; free-plan `public_sharing` gate → 403 plan_limit); GET
+  `/docs/public/:token` returns a sanitized snapshot (title/updatedBy name only,
+  workspace name, blocks, mentions stripped to name/method — never ids/emails).
+- **Docs (frontend)** — Export menu (md/html/json download + "Print or save as
+  PDF" over the HTML export), Share button/modal with copy + revoke, image block
+  editor (file→data URL or URL, alt/caption, thumbnail, remove), per-workspace
+  usage pill and New-page disabled at the doc limit, and `?p=` deep-links.
+- **Back-to-doc fix** — DocsView keeps the open doc in the URL (`/docs?p=` +
+  `router.push('/docs?p=…')`), the linked-API chip still `router.push('/')`, so
+  browser Back restores the exact originating doc instead of the list. New
+  public route `frontend/app/s/doc/[token]/page.tsx` renders the sanitized
+  snapshot to anyone holding the link.
+- **Coordinator seam fix** — docs.js already mounted `/public` before its own
+  `requireAuth`, but on the real server earlier `/api`-mounted routers
+  (content/environments/etc.) run router-level `requireAuth` for every `/api/*`
+  request, so an anonymous `/api/docs/public/:token` 401'd before docs.js was
+  reached. Fixed by exporting `docsRoutes.publicRouter` and mounting
+  `app.use('/api/docs/public', …)` in the pre-auth section of server.js (same
+  pattern as `/api/webhooks`). Anonymous unknown token → 404; bogus token UI →
+  "Link unavailable".
+- **Verification (live :3001)** — docs-extension API probes 13/13 (anonymous
+  public 404-not-401, image block accept + 400 on bad source, md/html/json
+  exports, free-plan share 403 plan_limit, usage counts after create), paid-plan
+  share proof 10/10 (pro org share 201 → anonymous snapshot 200 sanitized with
+  no emails/ids, repeat share returns same token, unshare → 404); `tsc --noEmit`
+  clean, `npm test` 89/89; Playwright UI smoke 26/26 (limit pill x/20, image
+  block add + viewer roundtrip, export md download, free-share upgrade toast,
+  tag-API chip → request at '/' → Back restores `/docs?p=` same page, real-token
+  public page anonymous shows title + content, bogus token "Link unavailable").
+  All probe scratch rows (users/orgs/subs + demo "Milestone smoke" page) were
+  purged with user approval; demo data verified intact (`Test` page only).
+
+### 5.52 Planning only: Docs round 3 — structured documentation programme (2026-09-09, docs only)
+
+No code this turn. Ranjith requested the next docs round be recorded as pending
+(after all currently pending segments) to work on later: (1) **share scoping** —
+share a doc to a specific email/username, an organisation, or public (anyone),
+plus **share to a team**; (2) **private vs public docs** arranged in home tabs;
+(3) **Confluence-style document tree** per team — main doc with sub-docs and
+nested sub-docs; (4) **export to Confluence** — copy-to-clipboard that pastes
+cleanly; (5) **table blocks** in the editor; (6) **product API documentation**
+(we issue personal tokens but expose no API reference).
+
+Recorded in `session.md` as a new `## Pending — Docs round 3 …` section
+(D1–D7-style micro-turns DR1–DR7, open decisions O1–O8, recommended order
+DR1 → DR2 → DR3 → DR4 → DR6 → DR5 → DR7). Nothing started; each segment ships
+separately with approval, reusing the existing docs seams (`doc_pages`/
+`doc_blocks`/`doc_shares`/`doc_mentions`, `docs.module.css`, DocsHome/PageActions,
+`/docs?p=` deep-link, `docsRoutes` incl. the anonymous `/api/docs/public`
+  mount) and the S4 token-auth API surface the new reference will document.
+
+### 5.53 Docs round 3 DR1 — targeted doc sharing audiences (pushed `7a6cce7`, 2026-09-09)
+
+Ranjith picked "Start DR1 (share audiences)" from the Docs round-3 programme
+(§5.52). At segment start O1 and O2 were resolved with the user: **O1 per-target
+rows** and **O2 public stays a secret token link**. Shipped the backend model
+only — the share *UI* is DR2.
+
+- **Migration `028_docs_share_audiences.sql` (applied)** — `doc_shares`
+  becomes a per-target grant table: `token` drops NOT NULL (public only),
+  `kind text NOT NULL DEFAULT 'public'`, nullable `target_user_id`/`team_id`/
+  `target_org_id` (all cascade-delete FKs). CHECK constraints: token required
+  iff `kind='public'`; the target column must match the audience kind and the
+  three target columns never mix. Partial unique indexes cap one public link,
+  one grant per user, per team and per org per page. The legacy UNIQUE token
+  constraint is retained (NULLs are distinct).
+- **Read resolution** — new `canReadPage(user, page)` = workspace read
+  (`workspaceAccessFor`) OR platform MANAGER/ADMIN OR a matching `doc_shares`
+  audience (`pageShareGranted`): `user` → caller is the target, `team` → caller
+  is a member of that team, `org` → caller is a member of that org.
+  `kind='public'` deliberately never satisfies an authenticated session.
+  `GET /docs/:pageId` and `GET /docs/:pageId/export` now gate through it.
+  Editing is untouched (author / workspace ≥ EDITOR / platform high), so every
+  audience is read-only — the page GET reports `canEdit:false` for them.
+- **Share-management routes** (all `canEdit` gated):
+  - `GET /docs/:pageId/shares` → joined list of every grant (kind + human
+    target) for the management surface DR2 will build on.
+  - `POST /docs/:pageId/shares` — idempotent per target: `kind:user` resolves
+    `targetUser` by `id`/`email`/`username` (case-insensitive) and 400s on an
+    unknown person; `kind:team` requires the team to sit in the doc's owning
+    org; `kind:org` defaults to the owning org and rejects any other org;
+    `kind:public` reuses the plan-gated token-link flow. Unique-race fallback
+    re-reads the existing row (200) instead of erroring.
+  - `DELETE /docs/:pageId/shares/:shareId` → revokes exactly one grant (404
+    for a share not on the page).
+  - Legacy `POST/DELETE /docs/:pageId/share` kept as the public-link alias;
+    the DELETE now removes only the public grant so targeted audiences survive
+    link revoke (previously it deleted every share row).
+- **Audit** — `share_doc` / `unshare_doc` detail now carries the row
+  `shareId` (uuid id, not token) plus `kind`.
+- **Verification** — new `backend/tests/docsShares.integration.test.cjs`
+  **5/5 pass** (each run resets the schema and re-applies all migrations incl.
+  028): user share by email (mixed case) then duplicate-by-email 200 same id,
+  same user via username, unknown email 400, unknown kind 400, recipient
+  read-after-share with `canEdit:false`, unrelated user stays 404, grant
+  visible in GET /shares, per-grant revoke returns 404; org-team share (member
+  reads, non-member 404, foreign-team 400); org-wide share (plain org VIEWER
+  cannot read a private-workspace doc until shared, `orgId` defaults to owning
+  org, cross-org 400); public link token-only (anonymous reads snapshot,
+  authenticated non-holder 404) with idempotent create + legacy revoke +
+  recreate; and scoped legacy revoke leaving the user grant intact. The
+  request-share suite (`shares.integration.test.cjs`) still trips the L3
+  `public_sharing` gate on a fresh free org (enforcement default TRUE) — a
+  pre-existing condition unrelated to this change.
+
+### 5.55 Docs DR4 frontend — collapsible doc-tree home + sub-page/move/visibility UI (2026-09-09)
+
+DR4 approved as the next full FE segment on top of §5.54's backend (tree
+read/write + per-page visibility). Everything here compiles but is **not yet
+committed** (split `feat(docs)` + this `docs(session)` record planned once e2e
+or a commit checkpoint is agreed).
+
+- **`DocsHome` rewritten to a Confluence-style tree** — the default (non-search)
+  listing now renders pages depth-first: a "root" is any page whose `parentId`
+  is null or whose parent fell outside the current workspace scope (roots +
+  collapsed-branch filtering happen client-side; backend already scopes reads
+  per workspace). Each row indents by depth (22 px/level), and rows with
+  children get a chevron toggle (rotate + cache of collapsed ids in component
+  state so the user's fold state survives re-fetch). Searching flattens the
+  tree to a plain filtered list (result rows show a "parent/…" breadcrumb).
+- **Per-row actions** — PUBLIC/PRIVATE pill (`docs-vis-<id>`), clickable to
+  toggle visibility when the caller can manage the page (pill disabled
+  otherwise); sub-page + (Add) and move buttons (`docs-page-sub-<id>`,
+  `docs-page-move-<id>`) shown only to managers; sub-page button disabled at the
+  plan's doc limit. Page row still navigates to the editor on click.
+- **`MovePageModal.tsx`** — new component (shared depth/children `usePageIndex`
+  + `useDescendants`, both exported for reuse) that lists every page with
+  alphabetical tree labels as reparent targets, forbids self/descendant
+  targets client-side, calls the §5.54 `PUT /docs/:pageId` `parentId` patch
+  (null = root) and reloads; backend cycle/depth/workspace guards are the final
+  word.
+- **`NewPageModal` extended** — optional `parent` select (only pages of the
+  current workspace/project scope; label shows the parent breadcrumb) + a
+  `visibility` radio (default PRIVATE); doc-limit error surfaced on create.
+- **Row/UX CSS** — new classes in `docs.module.css`: `.chevBtn/.chevOpen/
+  .chevSpacer`, `.pageName`, `.visPill/.visPrivate/.visPublic`,
+  `.rowActions/.rowActionBtn`, `.actionsHead`, `.treeHint` (uses existing
+  `--accent`, `--border`, `--bg-panel-2`, `--text-faint` vars; keeps prior
+  pill/header styles untouched).
+- **Verification** — FE `tsc --noEmit` clean, 89/89 unit tests, `next build`
+  green (all routes incl. `/docs`). No docs Playwright spec exists yet (docs FE
+  is verified via backend integration + build so far); e2e + commit optional and
+  pending user go-ahead.
+
+### 5.63 apihub-sdk + route sync (round 5) (pushed `4771cdb`, 2026-09-10)
+
+Round 5 answers Ranjith's ask to publish a JS library that a service can install,
+point at an API key and have its Express routes pushed into a MockShift project
+as testable requests. Seven tasks landed the schema, backend router, bound
+tokens, tokens UI and the `sdk/` package; this turn ran the full verification set
+and recorded the milestone.
+
+- **Migration `037_sdk_sync.sql`**: `api_tokens.project_id` / `workspace_id`
+  (mutually exclusive binding, FK `ON DELETE CASCADE`), a `sdk` value added to
+  the token scope CHECK, `external_key` + `source` / `source_file` / `synced_at`
+  on `api_requests`, `external_key` + `source` on `folders`, `source` on
+  `collections`, and the `sdk_sync_runs` audit table (RLS + GRANTs). Partial
+  unique indexes on `(collection_id, external_key)` make folder and request
+  upserts idempotent.
+- **`POST /api/sdk/sync`** (`backend/src/api/routes/sdk.js`, token auth requiring
+  the `sdk` or `write` scope): `normalizeManifest` validates the payload, then in
+  a single transaction resolves the target project (project-bound key → its
+  project; workspace-bound key → find/create a project named `manifest.project`;
+  unbound legacy key → explicit `projectId`), upserts the collection, folders
+  (parent-first nesting) and requests by `external_key`, writes one
+  `sdk_sync_runs` row and returns per-entity created/updated/pruned counts.
+  Entitlement gates run inside the transaction (`51a6d8a`).
+- **Project/workspace-bound tokens + `sdk` scope**: `POST /api/tokens` accepts
+  `projectId` xor `workspaceId` (unknown/blank/both rejected) and the new `sdk`
+  scope; the API-tokens UI gained the binding selector (`f468edc`).
+- **`sdk/` package (`apihub-sdk` 0.1.0, zero runtime deps)**: `createHub()` /
+  `attach(app, …)` public API, an Express adapter that captures `app.get/post/…`
+  routes, a manifest builder with stable `METHOD /path` keys and
+  `foldersFromPaths` nesting, a fetch client, an assertions helper and the
+  `apihub-sdk sync --config <file.cjs>` CLI. `express` is an optional peer dep;
+  `npm publish --dry-run` packages 14 files / 7.2 kB cleanly (no publish).
+- **Verification (this turn)**: backend API unit `62/62`; SDK suite `22/22`;
+  `sdkSync.integration.test.cjs` on the scratch cluster `7/7` (create → update
+  idempotency, nested folders, assertions + target URL persisted, binding wins,
+  scope gate); frontend `tsc --noEmit` clean + unit `91/91`. Live smoke through
+  the real `POST /api/sdk/sync`: the first sync created 1 request + 1 folder, the
+  re-run updated 1 / created 0, and the content API showed collection
+  `SDK Smoke` → folder `Smoke` → `GET /smoke/ping` at
+  `http://localhost:4000/smoke/ping` (assertions `[]`); the smoke collection was
+  then removed via `DELETE /api/collections/:id`.
+
+### 5.64 Mock call-log payload capture, route-response layout fix, scenario clarity (2026-09-10)
+
+Mock-server polish answering a review pass on the E3 scenarios panel.
+
+- **Layout bug fixed** — the "Route responses" add-response form, its Conditions
+  block and the responses list were each wrapped in `styles.divider`, a 1px
+  horizontal rule, so their contents overflowed and overlapped. Replaced with
+  proper stack containers `.responseForm` / `.subForm` / `.responseList` in
+  `mocks.module.css` (the same class of bug already fixed for the route form).
+- **Full call-log payloads** — migration `038_mock_call_log_response.sql` adds
+  `response_headers` / `response_body` to `mock_call_logs`; the dispatch hook in
+  `routes/mockScenarios.js` now persists the response it observes on `res.end`
+  (headers from `res.getHeaders()`), alongside the already-stored request
+  query/headers/body. Each log row gained an expandable **Details** view showing
+  the trigger timestamp (ms precision), duration, status/source/route, and
+  pretty-printed request query/headers/body + response headers/body.
+- **Scenario semantics clarified in the UI** — the Scenarios header and the
+  response form's Scenario field now explain that a named scenario is an override
+  set activated per request via `X-Mock-Scenario: <name>` or
+  `?__scenario=<name>`, and that Default responses are served for every call.
+- **Verification** — backend API unit `62/62`; `mockScenarios.integration.test.cjs`
+  `13/13` on the scratch cluster (added response-capture assertions); frontend
+  `tsc --noEmit` clean + unit `91/91`; live curl + Playwright smoke confirmed the
+  full exchange is captured and the new layout renders correctly.
+
+### 5.65 QUERY method — safe requests with a body (2026-09-11)
+
+- **What it is** — `QUERY` is an IANA-registered HTTP method (Safe + Idempotent,
+  [RFC 10008 §2](https://www.rfc-editor.org/rfc/rfc10008.html), formerly
+  `draft-ietf-httpbis-safe-method-w-body`). It is GET-like (safe/cacheable) but
+  carries a request body that describes the query, instead of cramming the
+  filters into the URL. The mock server now supports it alongside the classic
+  methods.
+- **Backend allowlists** — `QUERY` added to `routes/mockServers.js`,
+  `routes/content.js`, `routes/exports.js`, `openapi.js` and `sdkManifest.js`.
+  The request runner already sends the body for any method that is not GET/HEAD,
+  so QUERY bodies flow through unchanged.
+- **Frontend** — `HttpMethod` union, `METHODS` + `METHOD_COLORS`
+  (`requestForm.ts`), `CreateModal` (`HTTP_METHODS`, and `BODY_METHODS` so the
+  Body tab shows for QUERY), `MockServersModal`, `MockScenariosPanel` and the
+  docs `ApiReference` method map.
+- **Mock dispatch + call log** — the global `express.json()` parses a QUERY body
+  like any other, so mock body conditions and the call-log request/response
+  capture work without special-casing. Verified end-to-end.
+- **Verification** — backend API unit `62/62`; `mockServer.integration.test.cjs`
+  `4/4` (new QUERY test: route accepted, dispatched with a body, logged with
+  query + request body + response body); `mockScenarios.integration.test.cjs`
+  `13/13`; frontend `tsc --noEmit` clean + unit `91/91`. Live curl through the
+  running API: `POST /api/mock-servers/:id/routes` accepted a QUERY route (201),
+  `curl -X QUERY` with a JSON body returned the mock response, and the call log
+  showed the full exchange.
+
+### 5.66 Scenario to route linkage in the mock-scenarios panel (2026-09-11)
+
+- **Problem** — a scenario is a named override set, but the UI only listed
+  scenarios and, separately, each route's responses. There was no way to see
+  which scenario overrides which routes without opening every route.
+- **Backend** — new `GET /api/mock-scenarios/links?mockServerId=<uuid>` in
+  `backend/src/api/routes/mockScenarios.js` returns `{ links }`: every
+  `mock_route_responses` row joined with its route (`method`, `path`) and its
+  optional `scenario_id`, ordered by route then response priority. Same auth as
+  the rest of the mock surface (`loadMockServer` + `getProjectAccess`, 400 on a
+  bad uuid, 404/403 as appropriate).
+- **Frontend** — `MockScenarioLink` type + `mockScenariosApi.listScenarioLinks`
+  (`frontend/src/lib/mockScenariosApi.ts`). `MockScenariosPanel.tsx` now renders
+  each scenario as an expandable row: the header shows a
+  `N routes · M responses` badge, and expanding lists every linked route
+  (`METHOD /path`, click to select it in the Routes section) with its responses
+  (name, status, condition count, sequence). A collapsible "Default responses"
+  group lists overrides with `scenario_id IS NULL`. Links refresh on load and
+  after adding/deleting a response; new styles in `mocks.module.css`
+  (`.scenarioRow`, `.scenarioToggle`, `.scenarioRoutes`, `.scenarioRoute*`,
+  `.scenarioResponse`).
+- **Verification** — backend API unit `62/62`; `mockScenarios.integration.test.cjs`
+  `14/14` (new test: links join scoped/default responses to the route, and 400
+  on a malformed uuid); frontend `tsc --noEmit` clean + unit `91/91`. Live curl:
+  created a scenario + route + scoped response, `GET /api/mock-scenarios/links`
+  returned the joined row, then cleaned up the smoke route/scenario.
+
+### 5.67 Narrated tutorial video (2026-09-11)
+
+DONE — a full, voice-over product tour built with Playwright, committed as
+script/config only (the media is gitignored and reproducible):
+
+- **Pipeline** (all under `docs/tutorial/`) — four idempotent stages writing
+  into `.work/`: `fixtures.mjs` (logs in as each seeded user over the real API
+  and creates the demo collection / requests / environments / mock server +
+  scenario), `synth.mjs` (Piper neural TTS → one WAV per scene +
+  `narration.json`), `record.mjs` (Playwright chromium 1920x1080, one browser
+  context and `.webm` per segment, `timings.json` maps every scene to its
+  narration offset), `assemble.mjs` (places each narration WAV at its offset,
+  burns subtitles, concatenates the segments and adds chapter markers).
+  `script.mjs` is the single source of content (LOGIN accounts + per-scene
+  narration and actions); `lib/harness.mjs` injects a visible cursor, click
+  ripples, focus rings and captions. `build-video.sh` runs all four stages.
+- **Tour** — five chapters by access level: Introduction, Editor (requests,
+  responses, environments, mock server, plan limits), Manager (management
+  console: overview, projects, teams, run history), Administrator (users,
+  create user, access requests, platform settings), Recap.
+- **Output** — `docs/tutorial/out/mockshift-tutorial.mp4` (1920x1080 H.264 +
+  AAC, chapter markers) ≈ 5.3 min, plus one `out/<segment>.srt` per chapter.
+- **Gotcha** — Playwright `recordVideo` only emits frames on visual change, so
+  static screens truncate; `assemble.mjs` pads each segment with cloned frames
+  (`tpad=stop_mode=clone`) up to its target length before muxing.
+- **Tracked vs generated** — `docs/tutorial/.gitignore` excludes `.work/`,
+  `.voices/` and `out/`; only the scripts, `README.md` and `build-video.sh`
+  are committed.
+
+### 5.68 Tutorial video v2 — full coverage, better voice, music (2026-09-11)
+
+DONE — a marketing-grade rework of the tutorial (media still gitignored):
+
+- **Every page, not just the highlights** — `fixtures.mjs` now seeds the whole
+  product idempotently per seeded user: docs pages with real blocks, an imported
+  OpenAPI contract, a monitor, a workflow + automation, collaboration
+  comments/review/version, a team, an API token, an incoming send and a pending
+  access request. `script.mjs` deep-links to the seeded docs page, collection
+  collaboration view and request runs, and the Editor chapter visits contracts,
+  monitors, automations, docs, collaboration, history, copilot and teams; the
+  Admin chapter adds platform settings, API tokens and the inbox.
+- **Human-sounding, brisk narration** — switched the Piper voice to
+  `en_US-ryan-high` and added a production chain (`highpass`, head/tail
+  silence trim, `acompressor`, subtle room `aecho`, `loudnorm` to -16 LUFS) in
+  `synth.mjs`; speaking rate is nudged up (`--length_scale 0.96`) and the
+  recorder holds each scene only ~180 ms past the narration so there is no dead
+  air between lines.
+- **Original music bed** — new `music.mjs` synthesizes a royalty-free ambient
+  track from scratch (additive sines + pulse + reverb, deterministic), sized to
+  the recording; `assemble.mjs` ducks it under the voice with
+  `sidechaincompress`.
+- **Polish** — `assemble.mjs` adds colour grade + vignette, chapter banners,
+  animated intro/outro cards and per-chapter SRT subtitles.
+- **CPU-constrained recording** — capture runs at 1600x900 and is scaled to
+  1920x1080 (lanczos) at assembly; `record.mjs` warms every route first so
+  `next dev` compiles pages before recording. Static focus rings and fewer
+  cursor steps keep the software encoder fast.
+- **Bug found + fixed** — the admin create-user form is a custom overlay with no
+  Escape handler, so the earlier recording left it open and its overlay blocked
+  every later admin click; the scene now closes it with the Cancel button.
+- **Output** — `docs/tutorial/out/mockshift-tutorial.mp4` 1920x1080 H.264 + AAC,
+  6.2 min (373.5 s), 5 chapter markers, integrated loudness -16.4 LUFS / true
+  peak -4.2 dBFS, plus `out/<segment>.srt`.
+
+### 5.62 Enhancement round 4 — five features shipped in parallel (2026-09-09)
+
+After the capability audit, Ranjith asked to build the whole prioritized list
+(E1–E5) at once. Approach: five general agents ran concurrently with disjoint
+file ownership; to avoid the known shared-schema conflict each agent got its own
+throwaway Postgres cluster (ports 5441–5445), so every suite could migrate and
+run independently. The coordinator then wired the shared seams
+(`server.js`, `AppShell.tsx`, `RouteViewSync.tsx`, `Sidebar.tsx`, `NavStore.tsx`)
+and committed each feature separately.
+
+- **E1 — OpenAPI import + contract validation** (`d8d53e6`, migration 032):
+  `backend/src/api/openapi.js` parses/diffs specs and evaluates
+  response-schema contracts; `routes/contracts.js` imports a spec into a
+  collection and attaches/validates contracts. Suite 8/8. UI `ContractPanel`
+  (`/contracts`).
+- **E2 — API monitoring & alerting** (`88eccc8`, migration 033):
+  `monitorRunner.js` + `routes/monitors.js` run cron checks, record results,
+  compute uptime/p95/streaks and fire webhook + in-app alerts (with recovery);
+  `startMonitorScheduler()` starts on boot. Suite 5/5. UI `MonitorsPanel`
+  (`/monitors`).
+- **E3 — Mock scenarios & call logs** (`203aeea`, migration 034):
+  `mockMatcher.js` + `routes/mockScenarios.js` add conditional responses,
+  named scenarios, stateful sequences and a redacted call log with replay; the
+  scenario middleware is mounted before `mockDispatch`. Suite 13/13. UI
+  `MockScenariosPanel` (`/mock-scenarios`).
+- **E4 — AI copilot** (`10235a0`, migration 035): `llm.js` reads only
+  `USER_LLM_*` (503 when unconfigured; redaction first), `routes/copilot.js`
+  generates assertions/docs and explains runs; suite 5/5 with a stubbed model;
+  UI `CopilotPanel` (`/copilot`).
+- **E5 — Collaboration** (`7ebc666`, migration 036): comment threads, a
+  collection review flow and version snapshots/diff via
+  `routes/comments|reviews|versions.js` + `collabDiff.js`; suite 7/7; UI
+  `CollabView` (`/collab`).
+- **Wiring** (`52e76da`): all routers mounted, sidebar rail links added, view
+  union + route sync extended.
+
+Verification and deploy: backend unit 47/47, frontend unit 89/89, `tsc --noEmit`
+and `next build` green (5 new static routes); migrations 032–036 applied to the
+dev DB; backend and frontend dev servers restarted (`term_…94` / `term_…95`);
+`/api/{contracts,monitors,copilot,mock-scenarios,collab}` all serve `401`
+(unauthenticated) through the frontend proxy, confirming end-to-end reachability.
+
+### 5.61 Docs round 3 DR7 — product API reference (2026-09-09)
+
+Contract-first API reference for the machine API. O7 resolved: a hand-authored
+OpenAPI 3.0.3 document versioned in the repo; samples use placeholder
+credentials and the runtime origin. O8 resolved: any signed-in user may read it
+(it holds no secrets).
+
+- **`api/openapi.json`** (new, repo root) — documents `POST /api/runs` (API token
+  with `runs`/`write` scope or session; `requestId`, optional `environmentId`,
+  `variables`) plus token CRUD, send/inbox accept-reject and `profile/usage`.
+  Includes schemas, redacted run examples, and both `bearerAuth` and `cookieAuth`
+  security schemes.
+- **Backend `docs.js`** — `GET /api/docs/api-reference` (after `requireAuth`)
+  serves the spec; it is declared before the single-segment `GET /:pageId`, so
+  "api-reference" can never resolve as a page id.
+- **Frontend** — `fetchApiReference()` + OpenAPI types in `docsApi.ts`; new
+  `ApiReference` component (`/docs/api-reference`) groups operations by tag and
+  renders method/path, parameters, request examples and a **copy-ready curl
+  snippet** built from the runtime origin with `$API_TOKEN`/`$SESSION`
+  placeholders; new route `app/docs/api-reference/page.tsx`. Linked from the
+  Docs home header (`docs-api-reference`) and the API-tokens page
+  (`api-tokens-api-reference`).
+- **New suite `backend/tests/docsApiReference.integration.test.cjs`** — 3 tests
+  green on scratch 5433: auth required (401 anonymous), valid OpenAPI document
+  with the key operations and bearer security, and placeholder-only credentials.
+  Frontend unit 89/89, `tsc --noEmit` and `next build` clean (new static route).
+
+### 5.60 Docs round 3 DR5 — Copy for Confluence (2026-09-09)
+
+Paste-friendly export so a doc can be dropped into Confluence (or any rich-text
+editor) without reformatting. O5 resolved: emit neutral HTML on the clipboard as
+`text/html`, not a themed document download.
+
+- **Backend `src/api/routes/docs.js`** — `GET /:pageId/export?format=confluence`
+  (same read gate as every other export) returns an un-themed HTML fragment:
+  `<h1>` title plus `blockToHtml` output (headings, lists, code, images, tables —
+  everything already escaped), no `<html>`/`<head>`, no brand chrome or app theme.
+  Served as `text/html; charset=utf-8`. Format validation now advertises
+  `markdown | html | word | confluence | json`.
+- **Frontend `PageActions.tsx`** — new "Copy for Confluence" export-menu action
+  (`docs-export-confluence`). Fetches the `confluence` fragment and writes it to
+  the clipboard as `text/html` with a plain-text fallback via `ClipboardItem`
+  (`htmlToPlain` renders the fallback through `DOMParser`); older/locked-down
+  browsers degrade to a plain text copy. Success toast: "Copied for Confluence".
+- **New suite `backend/tests/docsConfluence.integration.test.cjs`** — 2 tests green
+  on scratch 5433: fragment shape (escaped title/text, heading/list/code/table,
+  no doctype/theme/brand) and format validation listing `confluence`. DR6 table
+  suite (3) stays green. Backend unit 47/47, frontend unit 89/89, `tsc --noEmit`
+  and `next build` clean.
+
+### 5.59 Docs round 3 DR6 — table blocks (2026-09-09)
+
+Adds a `table` block type end-to-end. O6 resolved: max 50 rows × 12 columns,
+2000 characters per cell, empty cells allowed, first row is the header row.
+
+- **Migration `031_docs_table_blocks.sql`** (applied to the dev DB and scratch
+  cluster) — widens `doc_blocks_type_check` to admit `table`.
+- **Backend `src/api/routes/docs.js`** — `BLOCK_TYPES` gains `table`; content is
+  `{ rows: string[][], caption? }` with server-side guardrails in
+  `blockContentError` (`TABLE_MAX_ROWS` 50, `TABLE_MAX_COLS` 12,
+  `TABLE_MAX_CELL` 2000; non-empty rows array, rectangular-safe). Markdown
+  export renders a pipe table (separator + escaped `|`, optional caption);
+  HTML export (used by print and Word/.doc) renders `<table><thead><tbody>` with
+  escaped cells and an optional `<caption>`; json export already dumps blocks.
+- **New suite `backend/tests/docsTables.integration.test.cjs`** — 3 tests green
+  on scratch 5433: save/read round-trip; guardrail rejections (rows, cols,
+  non-string cells, empty rows/cells, oversized cell); markdown/html/json export
+  content. Docs regression suites (tree 7, shares 5, audiences 6, spaces 5) stay
+  green; backend api unit 53/53.
+- **Frontend** — `docsApi` adds the `table` type, `TABLE_MAX_*` constants,
+  `tableRows()` accessor, a default 2×2 grid, and a Table label; `BlockEditor`
+  gains `TableBlockFields` (editable grid, header row styling, add/remove row +
+  column, caption); the viewer (`Mentions.tsx`) renders a scrollable `<table>`
+  with header/caption. New `docs.module.css` classes cover the grid editor and
+  the viewer table. Verified: `tsc --noEmit` clean, unit tests green, `next
+  build` green.
+
+### 5.58 Docs round 3 DR4 remainder — team spaces + sibling ordering (2026-09-09)
+
+Completes DR4 on top of §5.54 (visibility/tree backend) and §5.55 (tree home).
+O4 resolved: a Confluence "space" is a workspace and the existing Teams are
+reused for the per-team grouping.
+
+- **Migration `030_docs_spaces_ordering.sql`** (applied to the dev DB and the
+  scratch cluster) — `doc_pages.team_id uuid NULL REFERENCES teams(id) ON DELETE
+  SET NULL` (optional space binding) and `doc_pages.position integer NOT NULL
+  DEFAULT 0` (sibling order within `(workspace_id, parent_id)`); indexes
+  `doc_pages_sibling_order_idx` + `doc_pages_team_idx`.
+- **Backend `src/api/routes/docs.js`** — page rows/summaries carry
+  `teamId`/`teamName`/`position` (list, detail, `/docs/shared`); `POST /docs`
+  accepts `teamId` (validated against the workspace's owning organization, and
+  inherited from the parent for sub-pages) and appends at the next sibling
+  position; `PUT /docs/:pageId` accepts `teamId` (null clears), `position`
+  (non-negative integer), and appends to the new sibling set when reparented
+  without an explicit position. New helpers `teamInOrg` + `nextSiblingPosition`.
+- **New suite `backend/tests/docsSpaces.integration.test.cjs`** — 5 tests green
+  on scratch 5433: team binding + append order round-trip through create/list,
+  foreign-org/ malformed team rejection, child inheritance + sibling append,
+  PUT reorder/clear/negative guard/foreign-team guard, reparent-append. Docs
+  regression suites (`docsTreeVisibility` 7, `docsShares` 5,
+  `docsShareAudiences` 6) stay green.
+- **Frontend** — `docsApi` types gain `teamId`/`teamName`/`position` and the
+  create/update inputs accept them; `NewPageModal` offers an optional
+  "Team space" select for root pages (teams of the workspace); `DocsHome` loads
+  workspace teams, adds an "All teams" filter, shows a team chip on bound rows,
+  sorts siblings by `position` then title, and adds move-up/move-down buttons
+  that rewrite sibling positions.
+- **Verification** — FE `tsc --noEmit` clean, unit tests green, `next build`
+  green; backend api unit green.
+
+### 5.57 Docs round 3 DR3 — Private / Public / Shared-with-me tabs (2026-09-09)
+
+DR3 built on the §5.54 visibility backend (`doc_pages.visibility`,
+`GET /docs?visibility=`), no schema or route changes needed.
+
+- **`DocsHome` tabs reworked** — the old `Pages` + `Access requests` tab set
+  becomes `Private` / `Public` / `Shared with me (n)` / `Access requests`
+  (`docs-tab-private` / `docs-tab-public` / `docs-tab-shared` /
+  `docs-tab-requests`). Private and Public fetch the workspace list with
+  `visibility=PRIVATE|PUBLIC` respectively and keep the existing collapsible
+  tree, search, visibility pill and sub-page/move affordances; collapse state
+  resets on tab change. Public tab empty state points at the visibility control.
+- **Shared with me is now its own tab** — renders the `GET /docs/shared` feed
+  grouped by the audience that exposed each page (direct / team / org / public),
+  with loading + empty states; it refreshes each time the tab is opened. The
+  inline section previously appended under the pages tree was removed.
+- **Verification** — FE `tsc --noEmit` clean, unit tests green, `next build`
+  green. No backend change (existing integration suites cover the visibility
+  filter).
+
+### 5.56 Docs round 3 DR2 — share audiences UI + team/org sharing, notify recipients, "Shared with me" (2026-09-09)
+
+DR2 shipped as the full frontend segment on top of the DR1 backend (migration
+028 `doc_shares`, token-only public links) and the DR3/DR4 groundwork. Committed
+`feat(docs)` + `docs(session)` split (not pushed).
+
+- **Test-infra isolation (all 13 `backend/tests/*.integration.test.cjs`)** —
+  every suite now honours `INTEGRATION_PGDATABASE` / `INTEGRATION_PGPORT`
+  overrides (both the psql helper calls and runtime `process.env.PGDATABASE`
+  writes) so integration runs never touch the dev DB. A scratch Postgres 15
+  cluster `dr2scratch` (port 5433, DB `apihub`, password `postgres`) is used
+  for docs integration runs; the dev DB on 5432 stays intact.
+- **Backend `src/api/routes/docs.js`** —
+  - `GET /docs/:pageId/shares` response extended with
+    `{ shares, context: { organizationId, teams:[{id,name}] } }` (owning org +
+    its teams, so the UI can offer team/org-wide targets).
+  - `POST /docs/:pageId/shares` targeted audience creates notify recipients via
+    `notifyShareAudience` — kind `user` notifies that user, `team` notifies all
+    team members, `org` notifies all org members (batched insert); the sharing
+    actor is skipped; an idempotent re-share (existing grant → 200) stays
+    silent. `notifyUser` gained a `link` column (`/docs?p=<pageId>` deep link).
+  - `GET /docs/shared` page objects now carry `via:
+    [{kind:'user'} | {kind:'team',id,name} | {kind:'org',id,name} |
+    {kind:'public',id,name}]` describing which audience exposed the page to the
+    caller (public kind = PUBLIC-org readable page labelled by org name).
+    `serializePageSummary` extended to pass through the untouched row.
+  - New suite `backend/tests/docsShareAudiences.integration.test.cjs` — 6 tests
+    green on scratch 5433 (context org+teams, direct-user notify target, team
+    notify excluding sharer, org notify + via name, sub-tree share surfaces
+    `via team` on root and child, PUBLIC page surfaces `via public`). Regression
+    `docsTreeVisibility` 7/7 and `docsShares` 5/5 green on scratch.
+- **Frontend `docsApi.ts`** — typed `DocsShareTarget`, `DocsShareGrant`
+  (discriminated by kind), `DocsShareContext`, `DocsSharedVia`,
+  `DocsPageSummary.via?`; added `listShares`, `createShare` (kinds
+  user/team/org only — intentionally no public kind; public links go through the
+  existing public-link endpoints), `revokeShare`, and `shared()` now returns
+  the full summaries carrying `via`.
+- **`DocShareButton` (`PageActions.tsx`)** rewritten from the minimal DR1
+  public-link modal into the full audience share modal (`testId
+  "docs-share-modal"`):
+  - Public-link section (`docs-share-public-on` / `-url` / `-copy` /
+    `-off`) — plan-gated, 403 toasts show the upgrade hint.
+  - Audience section — add a person by email or username
+    (`docs-share-add-user` + `docs-share-person-input`), grant by team
+    (`docs-share-team` select + `docs-share-add-team`), grant to the whole org
+    (`docs-share-add-org`, disabled while an org grant already exists), current
+    grant list (`docs-share-list`, `docs-share-grant-<kind>-<id>`) with per-grant
+    revoke (`docs-share-revoke-<kind>-<id>`); read-only grants never show a
+    public toggle. Errors surface inline (`docs-share-person-error`,
+    `docs-share-error`); buttons disable while busy.
+  - `DocsPageView.tsx` gates the Share button on `canEdit` (read-only viewers
+    see no Share affordance).
+- **`DocsHome.tsx` "Shared with me"** — pages tab fetches `GET /docs/shared`
+  (`docs-shared-section`, count badge, loading + empty states) and groups pages
+  by the first audience that exposed each one (direct → team → org → public);
+  each row opens the page (`docs-shared-page-<id>`) and shows workspace · last
+  updated.
+- **CSS** — new `docs.module.css` classes for the share modal
+  (`.sharePanel/.shareSection/.shareSectionHead/.shareHint/.shareRows/.shareRow*/
+  .shareRevoke/.shareAddRow`) and the shared-with-me section
+  (`.sharedWrap/.sharedHead/.sharedCount/.sharedGroup/.sharedGroupTitle/
+  .sharedList/.sharedItem*`) using existing design vars.
+- **Verification** — FE `tsc --noEmit` clean, 89/89 unit tests, `next build`
+  green; backend api unit 53/53; integration suites on scratch 5433.
+
+### 5.54 Docs round 3 DR3+DR4 groundwork — per-doc visibility + document tree backend (2026-09-09)
+
+Ranjith scoped the next slice to the DR3/DR4 **backend** (visibility + tree
+foundations and their read/enforcement paths); the DR3 tabs UI and the DR4
+tree/space UI stay later segments. One migration covers both, so the slice
+ships together.
+
+- **Migration `029_docs_visibility_tree.sql` (applied to the dev DB)** —
+  `doc_pages.visibility text NOT NULL DEFAULT 'PRIVATE'` (CHECK in
+  `PRIVATE|PUBLIC`) and `doc_pages.parent_id uuid REFERENCES doc_pages(id) ON
+  DELETE CASCADE` (NULL = root) + `doc_pages_parent_idx`. A PUBLIC page is
+  readable by every member of the owning organization; anonymous access is
+  unchanged (public share token only). Deleting a page cascades to its whole
+  sub-tree. RLS enforcement stays in the route layer (privileged app role).
+- **Read resolution (`canReadPage`)** — workspace read OR platform
+  MANAGER/ADMIN OR **a matching share audience anywhere on the page's ancestor
+  chain** (`pageShareGranted` now walks `parent_id` up with a recursive CTE, so
+  sharing a page grants its whole sub-tree) OR `visibility='PUBLIC'` with the
+  caller a member of the owning organization (`isOrgMember` via
+  `orgOfWorkspace`). Edit is untouched (author / workspace ≥ EDITOR / platform
+  high), so PUBLIC readers get `canEdit:false`. Shared/export GETs both gate
+  through it, so PUBLIC-org reads and ancestor-share reads work everywhere the
+  old private gate did.
+- **New/updated surface** — page rows/summaries/list now carry `visibility` +
+  `parentId`; `GET /docs` gains a `visibility=` filter; `POST /docs` accepts
+  `parentId` (child must share the parent's workspace, inherits the parent's
+  project scope, rejects a differing `projectId`, depth-capped) and
+  `visibility`; `PUT /docs/:pageId` accepts optional `title`/`visibility`/
+  `parentId` where `parentId` absent = unchanged, `null` = move to root, and a
+  page id = reparent under that page — validated for same-workspace, self /
+  descendant cycles (`wouldCreateCycle`) and the resulting deepest node staying
+  within `MAX_TREE_DEPTH` (24). New `GET /docs/shared` lists pages the caller
+  can read without owning-workspace membership (targeted audiences on the page
+  or any ancestor → the whole exposed sub-tree, plus PUBLIC pages of orgs the
+  caller belongs to) — the feed the DR3 "Shared with me" tab will render.
+- **Verification** — new `backend/tests/docsTreeVisibility.integration.test.cjs`
+  **7/7 pass** (schema dropped + all migrations re-applied each run): default
+  PRIVATE + visibility round-trip + list filter; PUBLIC readable by an org
+  VIEWER without a workspace row (`canEdit:false`), PRIVATE 404, cross-org 404,
+  PUBLIC page surfaced via `/shared`; ancestor share exposing the whole sub-tree
+  through `/shared`; create under a parent (cross-workspace 400, unknown parent
+  404, malformed uuid 400, depth 24 allowed / depth 25 rejected); PUT reparent
+  (move/root, self-parent 400, cross-workspace 400, descendant-cycle 400 with
+  the tree left unchanged); per-page visibility (PRIVATE child under a PUBLIC
+  parent stays closed, PUBLIC child under a PRIVATE parent opens to the org);
+  root delete cascading to descendants. DR1 regression
+  (`docsShares.integration.test.cjs`) 5/5 and the jest unit suite 47/47 stay
+  green; `node --check` clean; backend restarted on :3001. Uncommitted —
+  recorded here and in `session.md`; commit split into `feat(docs)` + this
+  `docs(session)` record.
+
+
+### 5.51 Fold Inbox + API tokens into the shared AppShell (pushed `9cf9d3a`, 2026-09-08)
+
+Asked "why do /inbox and /settings/api-tokens not look like the rest of the
+app?" — they were standalone chrome-less routes with their own minimal top bar
+(brand link `href="/"`, avatar + Sign out) while everything else (Docs, Manage,
+History, …) lives inside the AppShell with the rail sidebar + one top bar.
+Decision: fold both into the shell as in-app views, mirroring the established
+route-shell pattern (`page.tsx` renders only `<AppShell />`). Approved by user;
+"also add all access to boss account" resolved separately (below).
+
+- **New views** — `NavStore` `AppView` union grows `'inbox' | 'settings'`;
+  `RouteViewSync` maps `/inbox` → `inbox` and `/settings*` → `settings`.
+  `AppShell` dynamically imports and renders `InboxView` / `ApiTokensView` in
+  the `.admin-view` main area, so they share the shell top bar + rail.
+- **Thin route shells** — `app/inbox/page.tsx` and
+  `app/settings/api-tokens/page.tsx` now just render `<AppShell />` (they no
+  longer need page-level CSS imports).
+- **Standalone chrome removed** — `InboxView` drops its `InboxTopBar` (brand
+  back-link, name, Sign out) and `ApiTokensView` drops its `profile-topbar`
+  header; sign-out/profile/back now come from the shared top-bar user menu and
+  the rail (`rail-apis`/`rail-teams` return to the workspace). Content columns
+  (`.inbox-main`, `.profile-main`) are preserved and self-center inside
+  `.admin-view`.
+- **CSS globalised** — `app/inbox/inbox.css` and
+  `app/settings/api-tokens/api-tokens.css` moved from page scope to
+  `app/layout.tsx` imports (same as `profile.css`), which also makes the shared
+  `.send-dialog-*` rules apply wherever `SendItemDialog` mounts (workspace
+  sidebar at `/`, not only after visiting `/inbox`).
+- **Boss "all access" — no change needed** (user confirmed): boss
+  `boss1785867669@test.io` is already `users.role = ADMIN`, which unlocks every
+  platform-gated surface — `requireAdmin`, `requireManagerOrAdmin`
+  (`/api/admin`, all-scope `/api/manage`), and `getProjectAccess` returns
+  `level: 'ADMIN'` for any project. `listWorkspaces` stays membership-scoped by
+  design, so the boss still only *lists* workspaces it has a row for.
+- **Verification** — FE `tsc` clean, 89/89 unit tests, Playwright fold-in smoke
+  **15/15**: Inbox & tokens open under the shell (single `top-bar`, rail
+  visible, no `inbox-topbar`/`.profile-topbar` duplicates), tab switch works,
+  rail-apis returns to `/`, token list loads, and the docs `/docs?p=` deep link
+  + browser Back still behaves. Demo scratch cleaned (`Test` page only).
+
+### 5.50 Docs image sizing + Word export + themed PDF/Word (pushed 2026-09-08)
+
+User feedback after §5.49: images render oversized, docs need a "Word"
+download, and PDF/Word output should carry the app theme.
+
+- **Image size presets** — image blocks accept an optional `content.size`
+  (`small` 34% / `medium` 55% / `large` 80% / `full` 100% of the content
+  column; server rejects anything else with 400). Sizing is shared: the
+  editor's Size segmented control (`docs-image-size-*`) → stored in the block
+  → applied by the viewer/shared-page `<img data-size …>` and by the HTML/Word
+  export via an inline `max-width` %. Existing blocks without a size default to
+  `full`, so nothing regresses.
+- **Word (.doc) export** — `GET /docs/:id/export?format=word` returns the same
+  themed markup as HTML served as `application/msword` with a `.doc` filename
+  and Word interoperability headers (`xmlns:w`, `WordSection1` page setup) so
+  Office opens it as a document. Export menu gains a Word entry (`.doc file`).
+- **Themed documents** — the HTML export now embeds `EXPORT_THEME_CSS`
+  (backend docs.js): dark brand canvas, mint `#7cf29c` headings with accent
+  rule, `API Hub · Docs` brand header, Inter/JetBrains Mono, rounded code
+  blocks, `print-color-adjust: exact`. The in-app "Print or save as PDF" flow
+  prints this themed HTML, so PDFs match the brand too.
+- **Verification (live :3001)** — size/export probe 12/12 (image size set,
+  viewer data-size roundtrip, invalid size 400, themed HTML w/ brand CSS,
+  HTML size widths, Word `.doc` content-type + WordSection1/xmlns:w, markdown
+  unaffected, unknown format 400). FE `tsc` clean + 89/89 tests; Playwright UI
+  smoke 10/10 (size=small preset active → viewer `<img data-size=small>` with
+  `max-width:34%`, Word `.doc` download, print popup contains themed
+  `doc-card`/brand). Demo scratch cleaned (`Test` page only).
+
+### 5.44 Profile & plan visibility PR-1 — backend profile surface + avatar storage (pushed `0c171f4`, 2026-09-06)
+
+Ranjith approved starting the Profile & plan visibility programme with segment
+**PR-1** (the others stay planned — see `session.md`). Shipped the backend
+surface only; the `/profile` page is PR-2.
+
+- Migration `db/migrations/018_profile_avatar.sql` (applied manually — migrations
+  aren't auto-applied): `users.avatar_key text` (predefined preset, e.g.
+  `preset-3`), `avatar_data bytea` (uploaded image), `avatar_type text`, and
+  `avatar_updated_at timestamptz`. Preset key and upload are mutually exclusive
+  (setting one clears the other).
+- New `backend/src/api/routes/profile.js`, mounted at `/api/profile` in
+  `server.js`, behind `requireAuth`, owner = the authenticated user only (no
+  portal RBAC — checkout customers are global EDITOR). Endpoints:
+  - `GET /api/profile` → `{ ok, user(+avatar), organizations, subscription,
+    plan_limits }`. The subscription is the newest non-terminal row
+    (ACTIVE/TRIALING preferred, then PAST_DUE/SUSPENDED) joined to `plans`,
+    mirroring Portal A `/account/overview` resolution; `plan_limits` is that
+    plan row's `limits` snapshot (`null` when no subscription) — the future L5
+    usage-bar hook.
+  - `PATCH /api/profile` — name (trim ≤120) and/or username (validated via
+    `username.js` rules; 409 on another user's duplicate). Email is read-only
+    → 400 (decision D2 resolved). Unknown fields / empty body → 400.
+  - `POST /api/profile/avatar` — `{ preset }` (charset-validated key),
+    `{ data: base64, mime }` upload (png/jpeg/gif/webp only, ≤ 2 MB,
+    invalid/oversized → 400), or `{ remove: true }`.
+  - `GET /api/profile/avatar` — serves the uploaded image with its
+    Content-Type and a private cache header; 404 when only a preset is set.
+  - `POST /api/profile/password` — `{ current_password, new_password }`;
+    verifies current (wrong → 400 "Current password is incorrect"), new ≥ 8
+    chars (same rule as signup).
+- Verified with `/tmp/pr1-profile-matrix.cjs` — **28/28 ALL PASS** against the
+  live stack: a fresh guest checkout + `/confirm` on Portal A (:3102) creates an
+  ACTIVE Starter subscription, and the SAME account on the main backend (:3001)
+  then returns it via `GET /api/profile` with the Starter `plan_limits`
+  snapshot + the provisioned org; PATCH persists name+username; duplicate
+  username 409; email/unknown/empty/invalid 400; avatar preset → upload
+  round-trip (serve route returns the PNG magic bytes), 2 MB oversize 400,
+  remove clears + serve 404; password wrong-current/short 400, change OK,
+  old password rejected on re-login, new one works; unauthenticated 401.
+  `node --check` clean. Main backend restarted CLOSED
+  (`term_1788732959373_75`).
+- Findings for later segments: (a) the dev demo baseline's `plans.limits` are
+  `{}` because `portal/db/seed-demo.sql` inserts plans WITHOUT the `limits`
+  column and its `ON CONFLICT (key) DO UPDATE` only refreshes `trial_days` — so
+  the migration-013 limits never appear in a fresh demo reseed. The restrictions
+  programme L1 must decide whether to bake canonical limits into the demo seed.
+  (b) Throwaway `pr1_*@test.io` checkout accounts from the matrix (one holding
+  an ACTIVE Starter sub) remained in the dev DB; removed afterwards with
+  user-confirmed transactional psql DELETEs (dependency order) — demo baseline
+  restored to 12 users / 9 subs / 5 plans.
+
+### 5.43 Planning: Profile & plan visibility + per-plan usage restrictions (2026-09-06, docs only)
+
+No code this turn. Ranjith asked two forward-looking product questions and
+explicitly requested **planning + splitting only** (recorded in `session.md`
+under two new `## Pending — …` sections; work proceeds one-by-one later with
+approval):
+
+1. **Profile & plan visibility** — "after login, where do I see which plan I'm
+   on?" The main API Hub app currently has no profile/plan surface (top-bar
+   user menu = initial + name + Sign out); plans/billing only exist on Portal
+   A `/account` (A5). Planned split **PR-1** backend profile surface + avatar
+   storage (`users.avatar_*`, `GET/PATCH /api/profile`,
+   `/api/profile/avatar|password`) → **PR-2** main-app `/profile` page
+   (details, predefined + uploaded avatar, subscription card, manage/change-
+   plan deep-links to the portal) → **PR-3** cross-app manage flow + top-bar
+   chip + usage bars later. Open decisions D1–D5 recorded (plan-less users'
+   entitlement, email read-only, avatar storage in DB bytea vs object store,
+   change-plan stays on Portal A checkout, badge/status surfacing).
+2. **Per-plan usage restrictions (Portal B)** — enforce per-subscription
+   limits (workspaces/projects/collections/teams/seats/storage/runs/…,
+   `null` = unlimited) across the product with an admin toggle to turn
+   restrictions OFF. The seed catalog already ships a few unused
+   `plans.limits` keys; nothing enforces them today. Planned split **L1**
+   limits model + Portal B config & master toggle + `entitlements.js`
+   resolver → **L2** workspace/project/collection creation gates (403
+   `plan_limit`) → **L3** teams/seats/public_sharing → **L4** runs budget
+   counter (+ storage placeholder, deferred since file bytes aren't
+   persisted) → **L5** usage bars/upsell on profile + Portal A `/account` →
+   **L6** toggle-off verification, tests, docs. Open decisions R1–R8 recorded
+   (counting scope = plan-owner's org pool, plan-less fallback to Free,
+   blocking UX, downgrade over-limit = block new only, runs window, storage
+   meaning, toggle + per-plan override semantics, Enterprise unlimited).
+   Suggested order: PR-1 → PR-2 → L1 → L2 → L3 → L4 → L5 → L6 → PR-3.
+- Also refreshed `session.md` stale lines while recording: Live-process
+  terminal ids corrected to current (`term_1788731418612_71` portal backend,
+  `term_1788732243308_74` main backend CLOSED), A5 marked DONE in the
+  two-portals pending matrix, and the top PENDING list now names both new
+  programmes.
+
+### 5.36 Workspaces sidebar scanability (this turn)
+
+Requested: WORKSPACES was hard to scan — the empty state still said
+“Select a workspace…” while `My Workspace` was already highlighted, and
+team names (`E2E Picker Team`, `E2E Team`) looked like extra workspaces.
+
+- **Auto-select**: after login, `WorkspaceStore` opens `My Workspace` if
+  present, otherwise the first workspace. `selectWorkspace` now catches
+  load failures so the UI does not sit on “Loading collections…”.
+- **Empty teams hidden**: `WorkspaceChips` skips groups with no matching
+  workspaces. Grouped layout is used only when at least one team has a
+  workspace (empty teams no longer force an Ungrouped header).
+- **Team vs workspace chrome**: headers show a Team icon + “Team” label +
+  name (muted, not chip-like). Leftover chips sit under
+  “Workspaces / Ungrouped”.
+- **Honest empty state**: no workspaces → create CTA; workspaces exist
+  but none selected → “Open a workspace above…”; selected + tree loading
+  → “Loading collections…”.
+- **Tests**: `nav-normal` asserts `empty-state` is gone after login;
+  `project-overview` still uses `team-group-<name>` once a workspace is
+  shared. Testids unchanged.
+
+### 5.35 Unique username for search / invite / add-to-team
+
+Requested: add a unique username so people can be searched, invited, and
+added to a team without exposing email.
+
+- **Migration** `014_user_username.sql`: `users.username` NOT NULL, format
+  `^[A-Za-z][A-Za-z0-9_]{2,29}$`, unique on `lower(username)`. Backfills
+  existing rows from the email local-part.
+- **Create paths**: signup and admin create accept `username`; if omitted
+  the API derives one (`backend/src/api/username.js`) and uniquifies.
+  Seed accounts: boss / pmuser / dev. Session `/me` includes username.
+- **Teams**: `GET /api/teams/:id/org-users` returns `{ id, name, username }`
+  (no email). `POST .../members` accepts `userId`, `username`, or `email`.
+  TeamsModal searches/displays name + `@username`; members show
+  `Name (@username)`. `invite-email` testid kept.
+- **Tests**: `backend/src/api/__tests__/username.test.cjs`;
+  `db/tests/14_user_username.sql`; picker API + e2e updated to username.
+- **Pending (docs only)**: send request / sub-folder / folder / collection
+  / project / workspace to any user with accept/reject; accept copies into
+  the recipient's account. Recorded in `session.md`.
+
+### 5.34 Team invite searchable org-user list
+
+Requested: replace the team-invite email field with a searchable list of
+org users so members can be picked and added to a team.
+
+- **Backend** (`backend/src/api/routes/teams.js`): `GET /api/teams/:teamId/org-users`
+  (team admin). Non-admins see org members not already on the team;
+  platform ADMIN also sees every other active user because seeded accounts
+  each own a separate org. `POST /api/teams/:teamId/members` accepts
+  `userId` or `email` (`userId or email is required`).
+- **Frontend**: `TeamsModal.tsx` search-by-name/email list + role + Add
+  (`invite-email` kept on the search box). `teamApi.orgUsers` /
+  `teamApi.addMember`. Modal calls `ws.refresh()` on open so API-created
+  teams appear. Styles in `app/globals.css` (`.invite-picker`,
+  `.invite-user-list`) + mobile.modals.css.
+- **Tests**: `apiAuth.integration.test.cjs` (picker list, add-by-userId,
+  email fallback, 403 for non-members). E2E
+  `frontend/e2e/team-invite-picker.spec.ts` (boss searches Dev, adds as
+  VIEWER, candidate drops off the list).
+- **Verification**: `tsc --noEmit` clean, `npm test` 89/89, `next build`
+  green. Isolated picker API test 1/1; e2e picker 1/1; regression
+  `nav-normal` + `project-overview` 2/2. Isolated API test drops schema —
+  reseeded; frontend restarted after stale `.next`.
+
+### 5.33 Duplicate auto "(copy)" naming + sibling-unique names (this turn)
+
+Requested: duplicating must not keep the source name — the copy gets " (copy)"
+appended, and names must be unique among siblings: requests inside the same
+folder (or collection root) and folders inside the same parent folder can
+never share a name — case-insensitively. Every write path now auto-uniquifies
+instead of erroring.
+
+- **Backend** (`backend/src/api/routes/content.js`): a `pickUniqueName` helper
+  (base name, then " (copy)", then " (copy) 2", " (copy) 3", …) plus
+  `uniqueRequestName` / `uniqueFolderName` sibling-scope lookups. Wired into
+  `POST /requests`, `POST /folders`, `PUT /requests/:id` (rename + move),
+  `PUT /folders/:id` (rename + move), and both duplicate endpoints. A
+  duplicated request keeps the source's editor state but is named
+  "X (copy)"/"X (copy) 2"; a duplicated folder names only its root copy
+  "X (copy)"/… (interior folders and their requests keep names under the fresh
+  copied parents, whose scopes are unique). Moving/renaming onto a taken
+  sibling name transparently renames ("Target" → "Target (copy)").
+- **Frontend**: `WorkspaceStore.duplicateRequest/duplicateFolder` return the
+  copy's name so `Sidebar` toasts show it (`Duplicated "X (copy)"`);
+  `renameRequest` and `moveRequest`/`moveFolder` apply the server-resolved
+  name back to the tree (and to the active request) so a collision-triggered
+  rename is reflected immediately.
+- **Tests**: `backend/tests/duplicate.integration.test.cjs` updated for the
+  suffix behavior + new coverage (case-insensitive folder collisions, sub-
+  folder sibling scope vs other parents, request sibling scope, rename/move
+  onto taken names, numbered request/folder copy suffixes). E2E
+  `frontend/e2e/request-duplicate.spec.ts` rewritten for the copy naming
+  (asserts " (copy)" and " (copy) 2" rows + toasts, folder copies carry the
+  inner request).
+- **Verification**: backend API suite 64/64, `tsc --noEmit` clean, `npm test`
+  89/89, `next build` green. E2E: `request-duplicate` 2/2 plus regression
+  batch 10/10 (`create-request-form` ×2, `curl-import`, `request-tabs` ×4,
+  `dirty-dot`, `folder-drag-move`, `nav-normal`).
+
+### 5.32 New API request dialog — Form | cURL (this turn)
+
+Rework of the "New API request" modal to match the requested shape: the dialog
+is now either a full form (Name + Type + Method + URL, plus the fields that
+belong to the chosen method shown as horizontal tabs) or a cURL paste. The
+modal is opened from a collection's `new-request-<name>` button.
+
+- **Form | cURL switch.** A segmented `modal-tabs` control at the top of the
+  request dialog (`data-testid=create-mode-form` / `create-mode-curl`), Form
+  active by default.
+- **Form mode** (`frontend/src/components/CreateModal.tsx`): shared Name
+  (optional — auto-derived `METHOD host`) and Type (REST/SOAP/GraphQL/Auth)
+  fields, then Method + URL, then a `create-request-tabs` panel with the app's
+  standard `TabBar` (testids `create-tab-params` / `create-tab-headers` /
+  `create-tab-body`). Params and Headers always appear; Body only appears for
+  body-carrying methods (POST/PUT/PATCH). Selecting a non-REST type
+  (SOAP/GraphQL/Auth) auto-switches a body-less method to POST so the Body tab
+  is available; GraphQL saves `bodyType: GRAPHQL`. Params/Headers reuse the
+  shared `KeyValueRows` (`create-params-*`/`create-headers-*`); Body uses a
+  JSON/XML/Raw type selector (`create-body-type`) + a mono textarea
+  (`create-body-input`).
+- **cURL mode**: a `create-curl-input` textarea with a live `create-curl-
+  preview` (METHOD + URL) and Create-time `parseCurl`, so the saved request is
+  pre-filled with method/url/query params/headers/body. The URL field no
+  longer sniffs curl (that moved to the cURL tab); the pre-existing top-bar
+  "Import cURL" flow is untouched.
+- **Create path**: both modes go through `contentApi.createRequest` +
+  `updateRequest` (persisting headers/queryParams/bodyType/bodyJson/
+  contentType) then `reloadTree` + `selectRequest`, replacing the old
+  "curl in URL field" special case in `onSubmit`. Styling in `app/globals.css`
+  (`.create-mode-tabs`, `.create-method-url`, `.create-request-tabs`,
+  `.create-body-input`, `.create-curl-hint`/`.create-curl-preview`, ≤640px
+  method/URL stack). New e2e `frontend/e2e/create-request-form.spec.ts`
+  (2 tests).
+- **Verification**: `npx tsc --noEmit` clean; `npm test` 89/89; `next build`
+  green; new spec 2/2; regression batch 12/12 — `curl-import`, `request-tabs`
+  (×4), `dirty-dot`, `request-duplicate` (×2), `folder-drag-move`,
+  `nav-normal`, plus the 2 new tests.
+
+### 5.31 Pending plan: two subscription portals (recorded, docs only)
+
+No code — Ranjith asked to record a segmented pending plan for two new portals
+in `session.md`, then work once it is pushed. Decisions Q1–Q6 were answered
+2026-09-04 and recorded: **generic standalone SaaS catalog** (not API Hub
+seats); **separate portal codebase** (X1 — not extending the current Next
+app); **mock/manual invoicing first**; **reuse existing `users`**
+(auto-create on checkout); Portal B roles **ADMIN / MANAGER / SUPPORT / VIEWER**
+on the existing `role` enum infra (SUPPORT added via migration `012`); first
+milestone = **A1+B1+X1 foundation** (catalog data model + API, Portal B RBAC,
+separate `portal/` scaffold). Open remaining inputs: portal stack/ports and
+initial plan seed rows. Push `2ed93be` recorded the plan; this docs entry was
+updated after the decision follow-up. No source changes, no tests.
+
+Status update (2026-09-06): foundation X1+A1+B1 and Portal B management
+segments B2–B6 are DONE (see §5.37); portal stack = Express 5 `:3102` +
+Next 14 `:3002`, plans seeded via `portal/db/seed-demo.sql`. Remaining portal
+segments: A2 checkout UX + A3 (Portal A purchase flow), A-side work and the
+X2 purchase patterns recorded in `session.md`.
+
+
+### 5.30 Per-request undo/redo + back to previous request (this turn)
+
+User scope: per-request Undo/Redo toolbar buttons with global Ctrl+Z /
+Ctrl+Y / Ctrl+Shift+Z shortcuts, plus a "Back to previous request" button.
+Scope was confirmed up front: undo/redo covers **working-copy edits only** —
+the DB is never touched, and Save moves the saved baseline, so undoing past a
+save simply re-dirties the tab. Back follows chronological activation order,
+and a previously-active request that was closed since is reopened at its
+original tab position with its unsaved working copy + baseline restored.
+
+- **Store (`frontend/src/store/WorkspaceStore.tsx`)** — all history state is
+  centralized here because edits already flow through the per-request working
+  copies and `RequestTabs` is a store consumer:
+  - Per-request undo/redo lives in refs keyed by requestId
+    (`editUndoRef`/`editRedoRef`), each entry a full `ApiRequest` snapshot
+    (already immutable per edit action). Consecutive edits coalesce into one
+    step via an 800ms burst timer (`EDIT_BURST_MS`, `EDIT_HISTORY_LIMIT=100`)
+    that also resets on tab switch/reactivation; any new edit clears that
+    request's redo stack. `updateActiveRequest` now writes straight to
+    `activeRequest`/`activeRequestRef` and owns the burst/step logic.
+  - Back state is a `navStackRef: string[]` maintained by an effect on
+    `activeRequestId`: it records real A→B transitions only (deduped against
+    the last entry, never on A→null, and never re-pushed because activating an
+    already-active tab early-returns). `goBackRequest` walks the stack
+    newest→oldest and switches to an open tab via `activateRequestTab`, else
+    reopens a `closedTabs` entry at its original index (restoring request
+    copy + baseline + run), else refetches via `selectRequest`; a request that
+    no longer exists is skipped permanently.
+  - Scoping: undo history and the back stack are cleared when that tab is
+    closed (reopened requests start fresh), on workspace/collection switches,
+    and on workspace/team deletion. New context API: `canUndoRequest`,
+    `canRedoRequest`, `canGoBackRequest`, `undoActiveRequest`,
+    `redoActiveRequest`, `goBackRequest`.
+- **UI (`frontend/src/components/RequestTabs.tsx`, `icons.tsx`)**
+  — the existing tab strip is wrapped in `.request-tabs-bar`
+  (`data-testid="request-tabs-bar"`) with a leading `.request-nav-controls`
+  group hosting `request-back` / `request-undo` / `request-redo` ghost
+  buttons (Back = arrow-left, Undo/Redo = corner arrows; each disabled at the
+  end of its history). Every pre-existing testid/behavior — `request-tabs`,
+  `request-tab-switch-*`, `request-tab-close-*`, `unsaved-dot`,
+  `save-request-button`, `aria-selected`, close-dirty confirmation,
+  Ctrl+Q/Ctrl+Shift+Q reopen — is unchanged. Keyboard support lives in a new
+  hook `useRequestHistoryShortcuts.ts` (capture-phase `window` keydown,
+  mirroring `useCloseRequestTabShortcut`), firing Ctrl+Z (undo) and Ctrl+Y /
+  Ctrl+Shift+Z (redo) only when focus is NOT in an editable element
+  (input/textarea/select/contentEditable/CodeMirror), so native editor undo is
+  untouched while typing. Responsive sizing in `globals.css` +
+  `mobile.chrome.css` (30px touch targets ≤640px).
+- **e2e (`frontend/e2e/request-undo-redo-back.spec.ts`, 4 tests)** — back
+  order over 3 requests; undo/redo working-copy semantics with the dirty dot
+  and redo-stack clearing on a new edit; back reopening a closed dirty tab and
+  restoring its unsaved working copy; Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y behavior
+  with the focus guard. The spec is hermetic: it uses `/echo/...` mock URLs and
+  never asserts `posts/N` content (the shared mock store is mutated by earlier
+  specs). Regression-critical specs re-verified green: `request-tabs`,
+  `dirty-dot`, `send-working-copy`.
+- **Verification:** `npx tsc --noEmit` clean; `npm test` 89/89; `next build`
+  green. Full desktop Playwright suite (26 specs / 43 tests) on a freshly
+  reset + `seed:dev` DB with a fresh `mock-upstream.js` (:3999): **41 passed,
+  2 failed** — the two failures are the documented environmental
+  `assertions-runner` (shared-mock ordering: collection summary showed
+  "Requests: 10" vs the seeded 8 because earlier specs mutated "Mock API
+  Demo") and `nav-race` (URL stayed /manage); both reproduce on the clean
+  pre-change baseline and pass in isolation on a fresh mock (see §8). Suite
+  total grew from 25 specs / 39 tests to 26 specs / 43 tests.
+
+### 5.29 Narrow-pane preview UI fix (this turn)
+
+QA feedback in the platform preview pane (< 641px wide): "Fonts and buttons
+are very big, align everything properly, and also split view or side by side
+is not working properly check that as well." Root cause was found by measuring
+the running app (Playwright geometry across 1440→360px), not by guessing:
+the desktop >900px UI is compact (13px text, 28-44px buttons) and both split
+modes already work correctly at every desktop width, so the complaint only
+reproduced at ≤640px. There, `frontend/app/mobile.editor.css` intentionally
+forced `.split-pane-horizontal` into stacked full-width panes (choosing
+"Side by side" therefore visibly did nothing) and inflated every control to
+40-46px touch targets. All changes live in `frontend/app/mobile.editor.css`
+(media-scoped, desktop and committed testids untouched):
+
+- **≤900px** — removed the forced horizontal-split→stack override. "Side by
+  side" is now honored at every width: the two columns keep `min-width:0` +
+  internal scroll and the divider is widened to 10px for touch. Verified down
+  to 390px where it produces two usable, resizable columns. Vertical Split
+  and the desktop layout are unchanged.
+- **≤640px** — compacted the phone-size controls: method/url inputs 42→34px;
+  Send 44→36px and no longer full-width (actions become one left-aligned
+  wrapping row — api-type, Send, Save, export — at ≥480px instead of the
+  giant stacked rows); editor tabs 40→36px; KV/multipart/assertion inputs
+  40→34px; row icon/ghost buttons 40→34px; response tabs/actions 36→32px;
+  formula-helper + scratchpad rows 44-46→38px; CodeMirror min-height
+  40vh→32vh. Body font remains 13px everywhere; no horizontal overflow at any
+  probed width (360-1440px) in any view mode.
+
+Verification: Playwright sweeps of control sizes, pane boxes and
+`scrollWidth` vs `clientWidth` across widths and view modes found correctly
+sized side-by-side columns and no overflow; `tsc --noEmit` clean; `npm test`
+89/89; `next build` green. Full desktop e2e (25 specs / 39 tests): **37
+passed, 2 failed** — `nav-race` (documented environmental flake) and
+`history.spec` §"sees their own run" whose first `/history` dev compile took
+5.6s (> the spec's 5s assertion) and which passes warm — both environmental,
+not regressions (see §8).
+
+### 5.28 Team- and project-scoped workspaces
+
+User scope: "We should be able to create everything based on team wise." A
+member of a team (e.g. EMEA) with access to that team's projects (e.g. ats,
+ayq) should only work inside those; an admin must be able to assign a user to
+a project; opening a project should surface its users, its workspace, and
+access levels. Clarification answers that shaped the design: Team = the top
+grouping (open EMEA → its projects); "sub projects" = the project's workspace
+as an info panel; the project overview is a full command center (members +
+access, content, activity, settings controls); access management is done by
+admins AND project managers. The existing org → teams → workspaces → projects
+schema already supported this — nothing was missing data-wise, only the UX
+never surfaced teams or made the project the thing you "open".
+
+Backend (`routes/projects.js`, `routes/teams.js`, `routes/workspaces.js`):
+- `GET /api/teams/groups` — the user's teams (as team member OR org admin)
+  each with workspaces shared to that team (with the caller's workspace role),
+  plus `other` = accessible workspaces not shared by any of their teams
+  (direct membership / public). `listWorkspaces()` was exported from
+  `workspaces.js` and reused. Placed in `teams.js` (only `requireAuth`) so all
+  members can build the grouped nav.
+- `GET /api/projects/:projectId/overview` — member-readable (`requireProjectRead`):
+  project + workspace/organization info, `myAccess{level,isManager}` +
+  `canManage` (MANAGER/ADMIN level), content counts (collections/folders/
+  requests/automations/workflows + `has_mock_server`), managers (grantor +
+  granted_at) and members (role + grantor), and the 8 most recent project
+  runs. Lives in `projects.js`, NOT under `/manage` whose router gate
+  `requireManagerOrAdmin` would exclude pure project managers.
+- Project-scoped membership management gated by effective access ≥ MANAGER
+  (`requireProjectManager` — works for real project managers, org admins and
+  platform admins; VIEWER/EDITOR members get 403): `POST /api/projects/:projectId/members`
+  (upsert member; role restricted to EDITOR|VIEWER to prevent self-elevation),
+  `PATCH /api/projects/:projectId/members/:userId` (change role),
+  `DELETE /api/projects/:projectId/members/:userId` (remove member; managers
+  are protected), `GET /api/projects/:projectId/org-users` (org users not yet
+  on the project for the add-member picker). Every mutation writes an
+  `audit_logs` row (`grant_project_access` / `update_project_member_role` /
+  `revoke_project_access`). Admin grant endpoints under `/api/admin` are
+  unchanged.
+
+Frontend:
+- `WorkspaceStore`: new `groups` (from `teamApi.groups()` fetched in `refresh()`),
+  `overview` / `overviewLoading` / `overviewError`, `selectProjectOverview()`
+  (seq-guarded against out-of-order responses; clears request-tab state when
+  first opening, refreshes in place when the same project is reopened) and
+  `closeProjectOverview()`. Overview is cleared by selectWorkspace /
+  selectCollection / selectRequest / reloadTree / workspace create+delete.
+- `Sidebar` → `WorkspaceChips` now renders team sections
+  (`workspace-group-head`, `data-testid="team-group-<name>"`, member count from
+  the teams store) above each team's chips, then "Other workspaces", with a
+  flat fallback when the user has no groups; every pre-existing testid and the
+  chip markup are byte-identical (single `renderChip`), so `workspace-*`,
+  `delete-workspace-*`, `new-workspace` still behave the same. Project rows
+  (`CollectionsTree`) gained an `onOpenProject` affordance: the
+  `.tree-project-name` label is now a button (only when `p.can_access`) that
+  calls `goWorkspace()` + `SET_TAB request` + `selectProjectOverview`; the
+  `mock-server-*` icon and `request-access-*` button are untouched and still
+  work for non-members. Projects that the user can't access keep a plain label
+  + PENDING badge + request-access button exactly as before.
+- New `ProjectOverview.tsx` (rendered from `AppShell.WorkspaceArea` instead of
+  the request editor only while no request tab is open): tabs Overview (stat
+  tiles for counts + Workspace info card: workspace · organization ·
+  visibility), Members & Access (combined managers/members table with role
+  badges; for `canManage` users an org-user picker (`add-member-user`),
+  per-member role `<select>` `role-<email>` and `remove-member-<email>`, each
+  mutation refreshing the overview in place), and Activity (recent runs).
+  Header shows project name, its workspace·org badge, and the viewer's role;
+  `close-project-overview` returns to the normal empty editor state.
+- `globals.css` gained ~325 lines of `.workspace-group-*`, `.tree-project-head`
+  and `.project-overview`/`.po-*` styles using existing design tokens. All
+  media-query mobile CSS is untouched.
+
+Verification:
+- Backend curl matrix on :3001: `/teams/groups` correctly groups a workspace
+  under a freshly created "EMEA" team and removes it from `other`; overview
+  returns counts + PM manager + Dev member + recent runs; a VIEWER member gets
+  `canManage:false` and 403 on member routes; a project MANAGER adds/changes/
+  removes member roles (MANAGER role rejected with 400) and gets the
+  org-user picker. `node --check` clean.
+- Frontend gates: `tsc --noEmit` clean, `npm test` 89/89, `next build` green,
+  globals.css brace-balanced.
+- E2E: new `frontend/e2e/project-overview.spec.ts` (idempotent team create +
+  share → grouped chips → open overview → tiles/workspace card → Members tab
+  shows PM + MANAGER + add picker → Activity → close returns to editor).
+  Full suite = 25 specs / 39 tests → **37 passed, 2 failed**
+  (`nav-race`, `send-working-copy`). Both failures were reproduced identically
+  on the clean pre-change baseline (`git stash push -u`, re-run, `pop`) and
+  `send-working-copy` passes in isolation on a fresh seed + fresh mock
+  upstream ⇒ environmental flakes (see §8), not regressions.
+- Runs on :3000/:3001/:3999; preview
+  https://3000-d996ae6ab8ef93e4.monkeycode-ai.live
+
+### 5.27 Full mobile-responsive UI + touch UX — 4 parallel agents (this turn)
+
+User scope: "Make it full mobile responsive ui and better UX as well. Use
+parallel agents to achieve that and test." The app was desktop-only: every
+style lives in a single `frontend/app/globals.css` (4548 lines) and the
+Playwright suite runs at 1280px, so desktop >900px must not change. Plan:
+each agent appended media-query-only rules (`max-width:900px`/`640px` +
+a `min-width:901px` reset for new DOM) to an exclusive NEW CSS file, and got a
+disjoint TSX file list. Ownership — `mobile.chrome.css` + shell TSX (Agent 1),
+`mobile.editor.css` + RequestConfigurator/ScratchpadWorkspace (Agent 2),
+`mobile.views.css` + Admin/Manage/History views (Agent 3), `mobile.modals.css`
++ EnvironmentsModal + share page (Agent 4). `app/layout.tsx` imports them
+after globals in that order. No existing className/data-testid was renamed;
+structural JSX additions are hidden at desktop by the ≥901px reset block.
+
+- Agent 1 (chrome/nav): hamburger (`MenuIcon` in `icons.tsx`) + off-canvas
+  drawer. `TopBar` takes optional `drawerOpen`/`onToggleDrawer` and renders
+  `.mobile-drawer-toggle` (`aria-controls="app-sidebar"`); `AppShell` holds
+  `navOpen` (Escape closes, body scroll-lock, `.sidebar-backdrop`);
+  `Sidebar` gained optional `onRequestClose` and its modals moved out of the
+  `<aside>`. CSS: ≤900px `.sidebar` is `position:fixed; top:52px;
+  translateX(-102%)` and slides in on `.app.sidebar-drawer-open`; width forced
+  `!important` over the inline resize style; `.sidebar-panel-hidden{display:
+  flex}` shows the API tree in the drawer from top-level views; resizer /
+  rail-collapse hidden; top-bar text actions become 40px icon targets; tab
+  strips scroll on one line.
+- Agent 2 (editor): `.request-bar-actions` `display:contents` wrappers in
+  `RequestConfigurator` + `ScratchpadWorkspace` (desktop DOM unchanged).
+  ≤900px the split panes stack (touch divider, `touch-action:none`); ≤640px
+  method+URL wrap with full-width 44px Send; KV and Multipart rows restack
+  (checkbox top-left, value below key) with ≥40px targets; CodeMirror gets a
+  usable height.
+- Agent 3 (views): `AdminView`/`ManageView`/`HistoryView` tables wrapped in
+  additive `.table-wrap` (+ `.table-stack` where phone-card conversion is
+  wanted) and every cell got a `data-label`; ≤640px `td::before { content:
+  attr(data-label) }` renders rows as labelled cards with a full-width action
+  strip and `overflow-wrap:anywhere`; wide tables scroll; Automations +
+  WorkflowBuilder handled CSS-only; the overview grid collapses via
+  `minmax(148px,1fr)`.
+- Agent 4 (modals/auth/share): `EnvironmentsModal` and the public share page
+  (`app/s/[token]/page.tsx`) kv tables wrapped in `.table-scroll`; the share
+  page gained an "Open in API Hub" `next/link` (`data-testid=share-open-app`).
+  ≤640px modals render as bottom sheets (overlay `align-items:flex-end`,
+  `100dvh`+`vh` fallback, full-width, `max-height:92dvh`, rounded top,
+  `env(safe-area-inset-bottom)`, sticky header, contained internal scroll,
+  `overscroll-behavior:contain`); ≤900px modal cap `calc(100vw - 24px)`;
+  inputs ≥42px (48px auth) at 16px to stop iOS zoom; `.modal-actions` become
+  sticky full-width rows.
+- **Coordinator fixes on merge:** (a) verified each agent's diff stayed within
+  its ownership (no overlaps, no `globals.css`/layout edits by agents,
+  additive-only); (b) drawer UX bug caught by the 390px smoke test — browsing
+  (workspace chips, collection expand, APIs/Teams rails) closed the drawer
+  because `goWorkspace()` called `onRequestClose`; fixed by removing it there
+  and closing only on request select via a new `onRequestClose` prop on
+  `CollectionsTree` (`onSelectRequest`), keeping the existing close-on-top-
+  level-rail behaviour.
+- Verification: `npx tsc --noEmit` clean, `npm test` 89/89, `npm run build`
+  green; served CSS bundle contains the new rules; mobile smoke at 390px
+  (temp spec, not committed): no horizontal overflow, drawer opens/keeps-open
+  on workspace/chip, closes on request select, editor fits + Send reachable.
+  Desktop e2e (1280px): three runs against `next start` 37/38 and one against
+  `npm run dev` 35/38 — a DIFFERENT spec flakes each run on 5s waits / mock
+  upstream state / persistence races; every flake passes in isolation on a
+  fresh `reset:db`+`seed:dev`, i.e. environmental, not a code regression.
+  Prereqs to run e2e in this environment: `npx playwright install chromium`
+  + `install-deps chromium`, frontend on `npm run dev` :3000 (the config's
+  `reuseExistingServer` target), freshly started `mock-upstream.js`.
+
+### 5.26 Structured multipart/form-data body parts (text + files) — pushed
+
+Postman-style structured MULTIPART bodies end-to-end. User scope chosen in
+session: build a parts editor (text rows + file picker) in the request editor
+**and** scratchpad, send real file bytes on each run, and **persist file
+references** (name/mime/size metadata) on saved requests — bytes are never
+stored server-side and are re-picked per Send after a reload. Wire contract
+frozen: `bodyParts` array, part = `{ id, key, enabled, kind: 'text'|'file',
+value?, fileName?, fileType?, fileSize?, data? }`; `data` (base64 bytes)
+appears only in ephemeral run payloads.
+
+Backend:
+- `db/migrations/012_request_body_parts.sql` — adds `api_requests.body_parts
+  jsonb` (NULL for legacy rows).
+- `backend/src/api/runner.js` — `loadRequest` selects `body_parts`;
+  `normalizeInMemoryRequest` maps `input.bodyParts`; new `isMultipartPartsRequest`
+  (true only when parts exist, so legacy raw-text MULTIPART keeps its old text
+  path), `assertMultipartFileLimit` (10 MB/part, 20 MB total),
+  `buildMultipartBody` → native `FormData` (`{{var}}` substitution, file parts
+  reconstructed from base64 `data`, sanitised file name/mime) returning
+  `{ form, summary }`; `executePipeline` sends the FormData, drops any
+  caller-set `Content-Type` so undici sets the boundary, and stores the compact
+  `summary` in run snapshots/history (never raw bytes). Helpers + limits
+  exported.
+- `backend/src/api/routes/content.js` — request GET returns `bodyParts`;
+  PUT field map includes `body_parts` (JSON-encoded, NULL-safe); request +
+  folder duplicates copy `body_parts`; `POST /api/runs` now links run history
+  and fires ON_REQUEST/ON_RUN_FAILURE when the payload carries `id` +
+  `persistHistory:true` (the path stored-request file sends use).
+- `exports.js` — serialise/import round-trip `body_parts` via a new
+  `cleanBodyParts` sanitiser (id/key/kind/enabled + per-kind value or file
+  metadata; only on the MULTIPART path).
+- `shares.js` — share GET returns `body_parts`.
+- `redact.js` — redacts text-part `value`s in `body_parts` (file parts carry
+  no sensitive bytes).
+- `server.js` — `express.json` limit 2 MB → 25 MB (base64 file bytes).
+
+Frontend:
+- New `frontend/src/lib/multipartParts.js` — `makePartId`, `newTextPart`,
+  `newFilePart`, `normalizeParts`, `stripTransportData`, `seedPartsFromLegacy`
+  (`k=v&k2=v2` → text parts), `readFileAsBase64` (+ `multipartParts.test.cjs`).
+- New `frontend/src/components/MultipartRows.tsx` — parts grid with enable
+  checkbox / key / Text-File kind toggle / value or file picker (+ size) /
+  remove / add row, persisted-reference hint ("Re-choose a file to send");
+  stable testids `multipart-rows|row-N|kind-N|key-N|value-N|file-N|clear-N|
+  remove-N|add`.
+- `RequestConfigurator.tsx` — MULTIPART body renders `MultipartRows` (was a
+  raw-text editor); cURL paste + kind switch seed `bodyParts` from legacy text.
+- `ScratchpadWorkspace.tsx` — local draft `bodyParts` + in-memory `files` map;
+  Send validates file parts and embeds base64 `data`; Save persists via
+  `scratchDraftToServerPatch`; cURL paste seeds parts.
+- `WorkspaceStore.tsx` — `selectedFiles: Record<requestId, Record<partId,
+  File>>` + `setFileForPart` (pruned on tab close / request delete);
+  `toEditorRequest`/`toServerPatch`/`DIRTY_FIELDS` multipart-aware;
+  `runActiveRequest` routes multipart-with-file-part requests through the
+  ephemeral run with `id` + `persistHistory:!isDirty`; `runScratchpad` accepts
+  `bodyParts`.
+- `curl.js` `generateCurl` — emits `--form-string 'k=v'` for text parts and
+  `--form 'k=@fileName'` for file parts; `hasBody` accounts for parts
+  (+ updated `curl.test.cjs`).
+- `globals.css` — `.multipart-*` styles for the row grid / file cell.
+
+Coordinator follow-up fix after agent review: picking or clearing a file in
+`MultipartRows` now also writes `fileName`/`fileType`/`fileSize` into the part
+through `onChange` (a new `syncFileMetadata`), not just the in-memory `File`
+map — otherwise a Save persisted an empty file reference. Single central spot
+serves both the request editor and the scratchpad.
+
+Design notes: file bytes never persisted; a stored request with a file part
+will 400 on `POST /requests/:id/run` by design ("Missing file data …") — file
+sends always go through the ephemeral `POST /api/runs` with `id` +
+`persistHistory:true` so history/events still fire. Legacy text-only MULTIPART
+requests are unaffected.
+
+Verification: backend `npm run test:api` 63/63 (5 new multipart/upload cases
+in `ephemeralRuns.integration.test.cjs`, incl. a `/upload-echo` upstream
+asserting the raw multipart body), `npm test` 47/47, `npm run test:api:unit`
+49/49; frontend `npx tsc --noEmit` clean, `npm test` 89/89. Committed and
+pushed to `origin/master`.
+
+User reported sidebar/rail pages loading slowly. Investigation:
+
+- Backend is fast: timed the endpoints each page loads (workspaces, teams,
+  workspace content tree, notifications, manage overview/users/teams/projects/
+  access-requests/audit-logs/history, run history, workflows, admin users/access)
+  — all <75 ms locally. Not the bottleneck.
+- Providers live once in the root layout (no refetch when switching routes);
+  the cost was the **Next dev server**: every rail route (`/admin`, `/manage`,
+  `/automations`, `/history`, `/login`) recompiled on first request (0.5–2 s
+  cold, e.g. `/admin` 1.95 s), warming to ~30–80 ms afterwards.
+- Fix: frontend now runs a **production build**. Stopped `next dev`, ran
+  `next build` (green; `/` first-load JS 323 kB), started `next start -p 3000`
+  (background terminal term_1788511594790_6). Prod route timings now ~8–25 ms
+  for every route (`/admin` ~9 ms), no per-route compilation, no dev-mode JS
+  overhead.
+- Caveat recorded: no HMR under `next start`; rebuild + restart to ship frontend
+  changes, and run `npm run build` only while no dev/prod server holds `.next`.
+- No tests run (user waived). Preview:
+  https://3000-204dde05e6623a51.monkeycode-ai.live
+
+### 5.24 Pulled parallel-agent commit `c853316` "sidebar click fixes" + docs sync (this turn)
+
+The co-author/parallel agent built on the sidebar collapse-toggles work
+(`d41b27c`) and pushed `c853316`; pulled fast-forward (tree clean). No source
+changes needed from this side — this turn was docs + app-refresh only.
+
+What the pulled commit changed (recorded so the session state is accurate):
+- `frontend/src/components/Sidebar.tsx` — request/folder/collection tree-row
+  menus now close on a **document-level click** instead of the
+  `.tree-menu-backdrop` element (backdrop removed). Rationale in the commit:
+  the backdrop swallowed the same click, so opening a ⋯ menu made the following
+  sidebar click "disappear". The document listener ignores clicks inside
+  `.tree-menu` and on `[data-tree-menu-trigger]` buttons (which keep their own
+  onClick toggle). The collapse toggles from `d41b27c`
+  (`collapse-workspaces`/`collapse-collections`, `workspacesCollapsed`/
+  `collectionsCollapsed`, `.section-chevron`) survived the refactor intact.
+- `frontend/src/store/WorkspaceStore.tsx` — new `selectSeqRef` selection
+  sequencing: a stale in-flight `selectRequest` fetch can no longer clobber the
+  request the user actually clicked last; `deleteRequest`/`deleteCollection`/
+  `deleteWorkspace` bump the sequence to invalidate any in-flight selection.
+- `frontend/app/globals.css` — dropped the now-unused `.tree-menu-backdrop`
+  rule (net −6 lines).
+
+App refreshed against this HEAD and running: mock upstream :3999, backend :3001
+(`/api/health` ok), frontend :3000 — dev server recompiled the pulled files with
+no errors. Preview: https://3000-204dde05e6623a51.monkeycode-ai.live
+
+No tests run this turn (docs only; user waived testing).
+
+### 5.23 Independent collapse toggles for the left-sidebar panels (pushed `d41b27c`)
+
+User: "add collapse icon for both the side bars. not only for workspaces."
+Clarified as the two stacked panels inside the left sidebar (the user picked
+"Both panels inside left sidebar"). Each panel now collapses on its own —
+previously only the whole sidebar collapsed (rail button → rail-only).
+
+- `frontend/src/components/Sidebar.tsx`
+  - `Sidebar`: new `workspacesCollapsed` / `collectionsCollapsed` state; the
+    Workspaces section head gained a chevron toggle (`data-testid="collapse-workspaces"`)
+    and the chips/loading/error body renders only when expanded.
+  - `CollectionsTree`: new `collapsed: boolean` + `onToggleCollapsed` props
+    driven from `Sidebar` state. Its internal per-node collapse `Record` was
+    renamed `collapsedNodes` to avoid clashing with the boolean prop. The
+    Collections section head gained the matching chevron
+    (`data-testid="collapse-collections"`); header action buttons
+    (Import-export / New collection / Share) and the tree body are hidden while
+    collapsed.
+  - Collapsed sections keep only their header row; the chevron points right when
+    collapsed and rotates down when open.
+- `frontend/app/globals.css` — `.sidebar-section-head .section-chevron`
+  (rotate 90° on `.open`, same language as the `.chevron.open` tree rows).
+- Kept the existing bottom rail toggle (whole-sidebar collapse) unchanged.
+- Verification: `npx tsc --noEmit` clean, dev-server HMR recompiled (GET / 200).
+  No tests run this turn (working order, section 9).
+
+### 5.22 Fix follow-ups on remote commit `7af6044` (Ctrl+Enter from editors + formula helpers panel + admin Access tab)
+
+Pulled the remote fast-forward `26189c9..7af6044` ("fix(editor): ctrl+enter
+sends request from body/formula editors; formula helpers stop covering the edit
+pane", also bundling the admin Access tab). Inspected the commit, restarted the
+backend so the new `admin.js` routes would load, then verified/fixed what the
+commit introduced. Three fixes + verification:
+
+**Fix 1 — `CodeEditor` runtime crash (regression from the commit).**
+`CodeEditor.tsx` spread `...(extensionFor(language) as any[])`, but
+`extensionFor` returns a single **non-iterable** `Extension` object (not an
+array) for every language, so rendering any body/formula editor threw
+`extensionFor is not a function or its return value is not iterable` and the
+editor never appeared (caught via Playwright console/pageerror while smoke-
+testing Ctrl+Enter). Fixed by wrapping it in an array first
+(`const baseExtensions = [extensionFor(language)]`), then spreading.
+
+**Fix 2 — formula helpers panel still covered the edit pane.**
+The commit's CSS left the helper `flex-shrink: 0` with a `42vh` body cap, so on
+the ~220px-tall formula tab the 337px helper overflowed and overlapped the
+editor (measured via Playwright bounding boxes). Also, the commit targeted the
+nonexistent `.cm-theme` wrapper class (the real one is `.cm-theme-dark`), so the
+editor never filled its flex slot. Fixed in `globals.css`:
+- `.formula-helper` → `flex: 0 1 auto; min-height: 0; max-height: 45%; display:
+  flex; flex-direction: column` (shrinks to fit, never covers the editor).
+- `.formula-helper-body` → `flex: 1; min-height: 0` (internal scroll instead of
+  fixed `42vh`).
+- Added `.formula-editor .code-editor .cm-theme-dark` alongside `.cm-theme` so
+  the CodeMirror chain fills the remaining space.
+
+**Fix 3 — backend running stale code.** The backend predated the commit, so the
+new `/api/admin/access` routes weren't served; restarted it on :3001.
+
+**Verified (not changed):** the Ctrl+Enter `onModEnter` keymap (`Prec.highest`)
+works — standalone Playwright smoke confirms body and formula editors both run
+the request with exactly **one** history row each (no double-fire; the global
+handler skips `[data-mod-enter="true"]` editors). Admin Access tab renders and
+all grant/revoke endpoints work (project members, managers, workspace members,
+role selection) — smoke-tested with the boss admin login.
+
+**Tests:** backend jest 47/47 · `test:api` 58/58 · `test:api:unit` 49/49 ·
+frontend unit 68/68 · `tsc --noEmit` clean. E2e: request-tabs, scratchpad,
+send-working-copy, dirty-dot, assertions-runner, rename-f2, folder-drag-move,
+request-drag-move, request-duplicate pass standalone on a fresh reset+seeded DB.
+Two full-suite failures (`send-working-copy`, `assertions-runner`) are the
+**documented pre-existing ordering issue** — earlier specs mutate the shared
+mock upstream (`/posts`) and leave requests in "Mock API Demo", so later specs
+see `posts/2 not found` / `Requests: 9` instead of 8. Both pass standalone.
+
+### 5.21 M14 — Rework scratchpad: full-width editor pane + save location picker (pushed this turn)
+
+The M8 scratchpad modal was reworked into a full-width editor pane +
+save-location picker (`instructions.md` M14). `ScratchpadWorkspace.tsx` renders
+the pane in the main area (method select, URL input with cURL auto-parse,
+Params/Headers/Body/Formula/Tests tabs, Send ephemeral / Save / Close, response
+via `ResponsePane` in a split); `ScratchpadSaveModal.tsx` is the picker
+(required name + all collections with nested folders as an indented tree;
+confirm → `createRequest` + `updateRequest` + `reloadTree` + `selectRequest`).
+`AppShell` renders the pane full-width and closes it on sidebar request
+selection; `ScratchpadModal` removed. New shared lib `lib/scratchpadDraft.js`;
+e2e `scratchpad.spec.ts` rewritten for the new UI. Final commit SHA to be
+recorded in the `instructions.md` status table after push.
+
+### 5.20 M12 + M13 — F2 rename shortcut + folder drag-move (pushed this turn)
+
+Parallel-agent micro tasks completing the "Sidebar tree interactions" feature
+set (M10–M13 all done, pushed with M10+M11 in `c7ac1f3`):
+
+**M12 — F2 inline rename for the selected sidebar item**
+- New `frontend/src/components/useTreeRenameShortcut.ts`: capture-mode F2
+  keydown; ignores `INPUT`/`TEXTAREA`/`contentEditable` targets; calls
+  `onStartRename(kind, id, name)` for the selected row.
+- Wired into `CollectionsTree` in `Sidebar.tsx` (single call after
+  `startRename`, deps `selectedRow` + `ws.tree` + `startRename`).
+- New e2e `rename-f2.spec.ts` (rename request, rename folder, F2 ignored while
+  typing in the URL input).
+
+**M13 — drag-and-drop move of folders between nested folders**
+- Reuses existing `PUT /api/folders/:id` with `parentId` (backend cycle guard
+  already present). New store action `WorkspaceStore.moveFolder(folderId,
+  parentId)` patches `tree.folders` locally.
+- `Sidebar.handleDragStart` generalized to carry `kind: 'request'|'folder'`;
+  folder rows are now `draggable={!isRenaming}`; `handleDrop` gained a folder
+  path with a client-side cycle guard (folder into itself/descendant/root-when-
+  already-root → `Cannot move a folder into itself or its subfolder` toast).
+- `.tree-folder-row { cursor: grab }` affordance.
+- New e2e `folder-drag-move.spec.ts`.
+
+Verification: frontend `node --test` 56/56; `tsc --noEmit` clean; new e2e
+4/4 + regressions (nav-normal, request-tabs, request-drag-move,
+request-duplicate) all green. Backend untouched. Docs updated and committed.
+
+### 5.19 M9 — Docs + wrap-up (pushed 2d3ee16)
+
+Final micro task of the "Postman-style request editing" feature set — the
+feature is **fully shipped** (M1–M9 all done). M9 wrapped up the runbook docs
+and made the final commit; no source, test, or DB changes:
+- `session.md` — Current status → **COMPLETE (M1–M9 done)**; M9 DONE block in
+  Current; M9 marked DONE in the Plan (micro tasks) list and added to the
+  "Completed (this feature)" log.
+- `instructions.md` — M9 status-table row → done.
+- This log — dated narrative entry added (newest first).
+- Final commit records the full feature set.
+
+### 5.1 Pre-request Formula feature (completed, committed in 472cdf4 as partial)
+Already committed before this session's remaining work:
+- `db/migrations/004_request_formula.sql` — formula column on `api_requests`.
+- `backend/src/api/runner.js` — `loadRequest()` selects formula; `runRequest()`
+  builds `req = {method,url,headers,query,body}`, runs the formula in a 150 ms
+  sandbox via `FormulaRunner`, merges mutated `req`/`vars` back, substitutes
+  `{{vars}}`, then fetches. Auth-token flow and `run_history` snapshot kept.
+- `backend/src/api/routes/content.js` — GET `/requests/:id` returns `formula`;
+  PUT persists it.
+- `frontend/src/store/WorkspaceStore.tsx` + `frontend/src/lib/api.ts` —
+  formula round-trips through the editor.
+
+### 5.2 Sandbox helper expansion (this session, uncommitted)
+`backend/src/sandbox/formulaRunner.js` — the `HELPERS_SOURCE` IIFE (sandboxed,
+pure JS, no Node builtins) now also exposes: `addHours`, `addMinutes`,
+`addMonths` (clamps to end of month), `timestamp()` (epoch ms), `capitalize`,
+`lower`, `upper`, `trim`, `base64Encode`, `base64Decode` (own UTF-8 + base64
+implementations; verified byte-for-byte against Node's `Buffer`).
+`frontend/src/components/FormulaHelper.tsx` snippet picker updated to match the
+new helper names.
+Tests: extended `backend/tests/sandbox.rce.test.js` and added a formula
+integration test in `backend/tests/apiAuth.integration.test.cjs` (creates a
+JSON-body request with `req.body.userId = 2`, runs it, asserts the dispatched
+and upstream-echoed bodies contain `userId: 2`, and asserts
+`GET /requests/:id` round-trips the saved formula).
+
+### 5.3 Mock API for GET/POST/PUT checks (this session, uncommitted)
+`backend/scripts/mock-upstream.js` is now a jsonplaceholder-style REST mock on
+3999: `GET/POST/PUT/PATCH/DELETE` on `posts`, `users`, `comments`, `todos`
+(in-memory store seeded from `mock-data.json`), plus the legacy `/token` and
+`/echo` endpoints. Demo requests live in the "Mock API Demo" collection.
+
+### 5.4 Seed retention (this session, uncommitted)
+- `backend/scripts/seed-dev.js` + `npm run seed:dev` (see section 4).
+- `backend/package.json` — added `seed:dev` script.
+
+### 5.5 Polish items — verified end-to-end (this turn)
+The three user-reported polish items were implemented in the prior commit (commit `8bde46f`) with
+Playwright regression specs. This turn rebuilt the environment from scratch (PostgreSQL 15,
+Redis, `frontend/node_modules`, Playwright chromium) and **ran the full matrix green**:
+- `frontend/e2e/nav-from-manage.spec.ts` — sidebar workspace panel hidden on `/manage`,
+  `/admin`, `/automations`; icon rail stays; rail-apis returns to the editor.
+- `frontend/e2e/modal-create-user.spec.ts` — create-user modal overlays as a fixed, centered,
+  scrollable card and does not grow the document.
+- `frontend/e2e/large-response.spec.ts` — 200 KB POST body response scrolls inside the
+  response pane; document height stays ≤ viewport.
+
+How each fix works (all CSS in `frontend/app/globals.css`):
+1. Sidebar: `AppShell.tsx` renders `<Sidebar panelHidden={view !== 'workspace'} />`; the class
+   `.sidebar-panel-hidden { display: none }` hides the workspace chips + collections tree while
+   the `.rail` (icon rail) remains for navigation.
+2. Modal: `.modal-overlay` is `position: fixed; inset: 0` with centered flex; `.modal` is
+   `width:640px; max-width:92vw; max-height:88vh` and `.modal-body { overflow-y:auto }`.
+3. Response pane: `.response-pane`/`.app-body` keep `min-height:0`; `.response-body .code-editor`
+   is `flex:1; min-height:0; overflow:hidden`, the CodeMirror chain resolves `height:100%` down to
+   `.cm-scroller { overflow:auto !important }`.
+
+### 5.6 Admin users are now project-wise (this turn, committed in a5b12bb)
+User request: "Users are not project wise, in admin panel users". The admin Users list previously
+showed a flat global user table with no project association.
+- `backend/src/api/routes/admin.js` `GET /api/admin/users` now aggregates each user's project
+  memberships from `project_managers` + `project_members` into a `projects[]` array of
+  `{id, name, kind: 'manager'|'member', role}`.
+- `frontend/src/components/views/AdminView.tsx` renders a **Projects** column with per-project
+  chips (MANAGER projects highlighted in blue); `AdminUser` in `lib/api.ts` gained `projects`.
+- New CSS: `.admin-project-chips`, `.admin-project-chip`, `.admin-project-role`,
+  `.admin-project-chip.is-manager` in `globals.css`.
+- Verified: backend `test:api` 16/16, frontend unit 28/28 + `next build` OK, e2e 11/11.
+- NOTE: demo project-wise rows (pm=MANAGER, dev=VIEWER of the ADMIN's Default Project) were
+  inserted directly into the dev DB, NOT part of `seed:dev`.
+
+### 5.7 Workflow steps can now pass the previous request/response into the next (this turn)
+User request: "Do we have an option to pass the request to next flow and the response to next
+flow in workflow? If that is not available then implement that." Response pass-through already
+worked (each step's parsed body is stored under `vars[stepId]`, so `{{order.id}}` templates and
+`$vars.order.id` formulas chained steps), but the previous step's REQUEST snapshot was not exposed
+and there was no UI option. Implemented:
+- `backend/src/workflow/workflowEngine.js` stores friendly vars after every successful step:
+  `vars.step.<stepId>` and `vars.step.<labelKey>` (parsed body), `vars.stepRequest.<labelKey>`
+  (outgoing request snapshot), `vars.stepResponse.<labelKey>` (full response). `labelKey` comes
+  from `sanitizeLabel(label)` ("Create the order" -> `create_the_order`). `$steps.<id>.request`
+  summaries now include the request snapshot too. `vars[stepId]` is kept for backward compat.
+- `backend/src/engine/requestDispatcher.js` gained a `passInputs` option (passed from each
+  workflow step): `{ sourceStepId, data: 'request'|'response', field?: 'a.b', target,
+  targetKey? }` injects a resolved value into the current request as a URL query param (`url`),
+  query param (`query`), header (`header`) or body merge/key (`body`). Runs after the formula and
+  before template substitution; ignored silently if the source step's value is missing.
+- `frontend/src/components/WorkflowBuilder.tsx` per-step **"Pass data from previous step into this
+  request"** section: source-step select (earlier steps only), data type (Request/Response),
+  optional dot-path field, target (Header/Query param/URL param/Body) and destination key, with
+  an add/remove list and copyable reference chips `{{step.<key>.response}}`,
+  `{{stepRequest.<key>.url}}`, `{{stepResponse.<key>.status}}`.
+- `frontend/src/lib/workflowValidation.js` rejects passInputs whose source step does not run
+  before the step, unknown data/target values, or missing destination keys for url/query/header.
+  `sanitizeLabel` exported and mirrored on the backend.
+- `frontend/src/lib/types.ts` adds `StepPassInput` + `WorkflowStep.passInputs`.
+- Tests: backend jest `workflowChaining.integration.test.js` (new passInputs test, 7/7),
+  frontend unit 34/34 (6 new), new e2e spec `e2e/workflow-pass-inputs.spec.ts` (3 tests),
+  full e2e 14/14, TS `--noEmit` clean.
+
+### 5.8 Response assertions + collection runner (this turn, committed in 222cd58)
+User request: build the backlog features one by one. FEATURE 1 = response assertions / collection
+runner. The backend engine had already landed in `77ca26c` (`backend/src/engine/assertions.js`,
+`runner.js` evaluates assertions and returns `testResults`/`assertionsPassed`,
+`POST /api/collections/:id/run`, migration `006_request_assertions.sql`, `content.js` round-trips
+`assertions`). This turn added the frontend:
+- `types.ts`: `Assertion`, `assertions` on `ApiRequest`, `'tests'` request tab,
+  `RunResult.testResults`/`assertionsPassed`, `CollectionRunResult`.
+- `api.ts`: `RequestDetail.assertions`, `contentApi.runCollection()`.
+- `WorkspaceStore.tsx`: assertions round-trip + `runCollection` action (`collectionRun` state).
+- `RequestConfigurator.tsx`: **Tests** tab (`AssertionsEditor`); fixed a pre-existing Rules-of-Hooks
+  violation (useState after an early return).
+- `ResponsePane.tsx`: assertion result chips/list after each run.
+- `Sidebar.tsx`: per-collection **Run** button → `CollectionRunnerModal` (per-request results +
+  summary). Pure helpers in `lib/assertions.js` (unit tested).
+- Tests: frontend unit 37/37, e2e 15/15 (new `e2e/assertions-runner.spec.ts`), backend jest 47/47,
+  test:api 16/16, api:unit 14/14, db tests pass, tsc clean.
+- ENV NOTES: dev DB had been reset → `npm run seed:dev`; the backend process was stale (pre-pull
+  code) → restarted; migration 006 must be applied manually after a plain reset (see §8).
+
+### 5.9 Workflow event triggers + richer notifications (this turn, committed in c15149e)
+FEATURE 5 from the backlog. Two new automation trigger types + richer failure notifications:
+- **ON_REQUEST**: runs the automation's workflow after a request in the project executes.
+  Optionally bound to a single watched request (`event_request_id`, NULL = any request).
+- **ON_RUN_FAILURE**: runs the workflow when a run in the project fails. Optionally bound to a
+  single watched workflow (`source_workflow_id`, NULL = any run). Loop-guarded: never re-fires
+  for runs that were themselves started by an ON_RUN_FAILURE event.
+- Migration `008_workflow_event_triggers.sql`: widened `automations.trigger_type` CHECK, added
+  `event_request_id` / `source_workflow_id` / `notify_webhook_url` (+ indexes), added `run_trigger`
+  enum values `ON_REQUEST` / `ON_RUN_FAILURE`, and `notifications.payload` (jsonb) + `link`.
+- `workflowService.fireWorkflowEvent()` matches enabled automations by trigger type + project
+  (+ optional watch target), runs their workflows with the event context injected as
+  `{{event.*}}` input vars. `reflectInAutomations` now resolves the failing run's project from
+  `run_history` (JOIN workflow_chains / collections — the table has no project_id column),
+  writes `payload` + `/automations` `link` on in-app failure notifications, and POSTs a
+  `{event:'run_failed',...}` JSON payload to `notify_webhook_url` when set (fire-and-forget,
+  5s timeout, http(s) only).
+- Routes: `automations.js` accepts the new trigger types + fields (with "target must be in this
+  project" validation) and exposes them via `toApi`; `content.js` fires ON_REQUEST after every
+  request run and ON_RUN_FAILURE on a failed run in the single-run and collection-run handlers.
+- Frontend: `AutomationsView.tsx` modal adds "On request run"/"On run failure" options with a
+  watch-request / watch-workflow selector + an optional notify webhook URL; cards render the
+  trigger type + watch target + webhook. `api.ts` extends `Automation`/`AutomationInput`/
+  `Notification` (payload + link).
+- `seed-dev.js` now calls `ensureAdminDemoRows()` from `main()` — one `npm run seed:dev` also
+  restores the pm=MANAGER / dev=VIEWER demo rows (previously manual SQL only).
+- Tests: `backend/tests/automationEvents.integration.test.cjs` (4: create/validate new trigger
+  types; ON_REQUEST fires; ON_RUN_FAILURE fires; richer notification + webhook delivery via a
+  local capture HTTP server). e2e `frontend/e2e/automations-events.spec.ts` (2). The engine is
+  exercised end-to-end (BullMQ + Redis are up).
+- Verified matrix: backend jest **47/47**, `test:api` **29/29** (+4), `test:api:unit` **24/24**,
+  db tests all pass, frontend unit **42/42**, `tsc --noEmit` clean, e2e **21/21** (+2).
+- Backend restarted (`term_1786129995092_9` PID 17833, :3001). Preview:
+  https://3000-606b9b46b8d0d0bf.monkeycode-ai.live
+- NOTE for the next agent: the full e2e suite is only green when run on a freshly reseeded DB —
+  `history.spec.ts` and `mock-server.spec.ts` each leave a request inside the seeded "Mock API
+  Demo" collection, so `assertions-runner.spec.ts` ("Requests: 8") fails on the second run without
+  a reseed (or manual cleanup of `history-e2e-request` / `mock-e2e-request`).
+
+### 5.10 Sidebar collapses to icon rail on top-level pages (this turn)
+Follow-up on the sidebar polish: the panel content was already hidden on `/automations` `/manage`
+`/admin` (`.sidebar-panel-hidden`), but the `.sidebar` `<aside>` kept its 296px width — leaving a
+large empty column next to the rail. Fix:
+- `frontend/src/components/Sidebar.tsx` — the `<aside>` gets `sidebar-rail-only` when
+  `panelHidden` is true.
+- `frontend/app/globals.css` — `.sidebar-rail-only { width:48px; min-width:48px }` collapses the
+  shell to the icon-rail width so the panel pages use the full remaining width.
+- No tests run this turn (user directive: "Just fix that don't do any testing"); the running dev
+  server recompiled clean and serves `/` + `/automations` (200). `nav-from-manage.spec.ts` remains
+  the regression for this behavior.
+
+### 5.11 Collection folders + Aiven Postgres (pushed as `b61a2c6`)
+
+Postman-style nested folders inside collections, running against **Aiven cloud Postgres**.
+
+- **DB**: gitignored `backend/.env` supplies `DATABASE_URL=…?sslmode=require`; `db.js` reads it and
+  uses `db/ca.pem` (gitignored) as the SSL trust store, unless explicit `PG*` vars are set (tests/
+  psql stay on local Postgres). Migrations 001–011 applied on Aiven; DB seeded with demo accounts +
+  "Mock API Demo".
+- **Migration `db/migrations/011_folders.sql`**: `folders (id, collection_id, name, parent_id, …)`
+  with cascade deletes (deleting a folder removes nested sub-folders), `api_requests.folder_id`
+  FK (SET NULL on delete → requests resurface at collection root), RLS consistent with the
+  `app.*` helpers. (`011_collection_folders.sql` on the earlier feature branch was superseded by
+  this final shape.)
+- **Backend** (`backend/src/api/routes/content.js`): `POST /folders`, `PUT /folders/:folderId`
+  (rename or re-parent, with self/descendant cycle guard), `DELETE /folders/:folderId`;
+  `POST /requests` / `PUT /requests/:requestId` accept `folder_id`; the workspace content tree
+  (`GET /workspaces/:workspaceId/content`) now returns `folders[]` alongside collections/requests.
+- **Frontend**: `Sidebar.tsx` renders nested folders in the tree; `CreateModal.tsx` gains folder
+  creation (re-parenting via drag-drop); `WorkspaceStore.tsx` + `lib/api.ts` carry
+  folders/`folder_id`; per-request edit/rename/delete unchanged.
+- **Tests added**: `backend/tests/folders.integration.test.cjs`, `db/tests/04_collection_folders.sql`.
+- `next build` re-verified clean (2026-08-15). Frontend unit / e2e / backend `api:unit` not yet
+  re-run against the folders change — see root `session.md` test-status note.
+
+### 5.12 New API request modal — paste cURL directly (this turn, uncommitted)
+
+The **New API request** modal (`frontend/src/components/CreateModal.tsx`) gained a **Fill form /
+Paste cURL** toggle. In cURL mode the URL field is not required — the user pastes a `curl …`
+command and it is structured by the existing `lib/curl.js` `parseCurl` into method, URL, query
+params, headers, and body (JSON/form/multipart/raw auto-detected). The request is created via
+`POST /api/requests` then the structured fields are applied with `PUT /api/requests/:id`
+(mirroring the TopBar `CurlModal` import flow). Name is optional and auto-derived as
+`METHOD host`. Verified live against the Aiven DB (POST orders curl → all fields round-trip);
+`tsc --noEmit` + `next build` clean. New testids: `create-mode-toggle`, `create-mode-form`,
+`create-mode-curl`, `create-curl-input`.
+
+### 5.13 Postman-style request editing — M1/M2 + Ctrl+Enter (pushed e80c29c, e61cc82, 1f79920)
+
+Started the user-approved "Postman-style request editing" feature set
+(`instructions.md` micro tasks M1–M9). This covers M1, M2 and an extra shortcut:
+
+- **M1** — `CreateModal` cURL auto-detect (pushed `e80c29c`): removed the
+  Fill-form / Paste-cURL toggle (`.create-mode-*` CSS dropped). The URL field now
+  auto-detects a pasted `curl …` via `isCurlCommand` + `parseCurl` (shared
+  `frontend/src/lib/curl.js`), populating method + URL live; structured
+  headers/params/body are applied on create. Name stays optional with the
+  `METHOD host` fallback. Testids preserved: `new-api-modal`, `create-name`,
+  `create-method`, `create-url`, `create-submit`.
+- **M2** — URL-field cURL auto-parse in the existing editor (pushed `e61cc82`):
+  `RequestConfigurator.tsx` `onUrlChange` detects `curl …` pasted into
+  `url-input`, runs `parseCurl`, and applies method, URL, headers, queryParams,
+  bodyType/bodyJson to the working request via `updateActiveRequest`, with a
+  "cURL parsed into the request." toast.
+- **Extra** — Ctrl/Cmd+Enter anywhere in the editor triggers Send
+  (`runActiveRequest`); Send button label reads "Send (Ctrl+Enter)" (pushed in
+  `1f79920`, a Rules-of-Hooks fix moving the listener above the early return).
+
+### 5.14 M3 — dirty-state tracking in WorkspaceStore (pushed cb2451c)
+
+`frontend/src/store/WorkspaceStore.tsx` now stores a `savedBaseline` snapshot of
+the dirty-relevant request fields (method, url, headers, queryParams, bodyType,
+bodyJson, formula, assertions), captured in `selectRequest` and after
+`saveActiveRequest` succeeds. `isDirty` is derived by deep-comparing the working
+copy against the baseline and is exposed on the store/context (feeds M4).
+Cleared on save success and on select. Verified: `tsc --noEmit` clean,
+`next build` green, 47/47 frontend unit tests.
+
+### 5.15 M4 + M5 — dirty dot indicator + ephemeral run endpoint (pushed 2ad35d2, d9c80b4)
+
+- **M4** (pushed `2ad35d2`): when `isDirty` is true the editor's Save button
+  shows a `data-testid="unsaved-dot"` `•` (colour `--warn`) with
+  title/aria-label "You have unsaved changes"; it clears on save. CSS
+  `.unsaved-dot` in `frontend/app/globals.css`. New self-contained e2e spec
+  `frontend/e2e/dirty-dot.spec.ts` (fresh user + own request): no dot on load →
+  dot on edit → dot gone after save. tsc/build clean, 47/47 units,
+  curl-import + nav-normal e2e still pass.
+- **M5** (pushed `d9c80b4`): new authenticated `POST /api/runs` executing an
+  in-memory request shape (method, url, headers, queryParams, bodyType,
+  bodyJson, formula, assertions) with optional `collectionId` (env-var
+  resolution + folder auth provider, read-access enforced) and optional
+  `persistHistory`. `backend/src/api/runner.js` refactored: the fetch pipeline
+  was extracted into `executePipeline` (vars → formula → auth provider → HTTP →
+  assertions → history), shared by `runRequest` (stored) and the new
+  `runInMemoryRequest`; `resolveVariables`/`activeEnvironmentId` were
+  generalized to key off a `collectionId`. `run_history` is only written when
+  `persistHistory` is true (`request_id` NULL — the migration-005 nullable FK
+  allows it; history read path already LEFT JOINs, verified). New integration
+  test file `backend/tests/ephemeralRuns.integration.test.cjs` (5 tests);
+  backend jest 47/47, API units 49/49, existing integration suites green;
+  live smoke on the running backend.
+
+### 5.16 M6 — Send uses the working copy (pushed 6dd891e)
+
+`WorkspaceStore.runActiveRequest` now runs the **working copy**: when `isDirty`
+it calls the new `contentApi.runEphemeral` (`POST /api/runs`, added in
+`frontend/src/lib/api.ts`) with the current editor state + `activeCollectionId`
+and `persistHistory: false` — unsaved edits take effect immediately, no
+`run_history` row is written, and the stored request is untouched. When the
+request is clean it keeps `POST /requests/:id/run` so run_history stays linked
+to the request exactly as before. New e2e spec `frontend/e2e/send-working-copy.
+spec.ts`: clean send → response `/posts/1` + one history row; edit URL to
+`/posts/2` → dirty send executes `/posts/2`, history count unchanged, unsaved
+dot stays, stored URL still `/posts/1`. Also typed the implicit-any callbacks
+in `dirty-dot.spec.ts`. Verified: `tsc --noEmit` clean, `next build` green,
+47/47 frontend unit tests, dirty-dot/curl-import/assertions-runner e2e pass.
+
+### 5.17 M7 — Tabs for opened requests (pushed 183d7ab)
+
+Browser-style tab strip of every open request. `WorkspaceStore` gained
+`openRequestIds[]` + `activeRequestId` + `requestCopies{}` (a working copy per
+open request, so unsaved edits survive tab switches) + `baselines{}`
+(per-request saved baseline). `selectRequest` opens a request once (dedupe) or
+activates an already-open tab without refetching; `closeRequestTab` removes the
+tab and activates a neighbour (right, else left); `isTabDirty` exposes per-tab
+dirty state; delete/select flows close affected tabs. Pure helpers
+`frontend/src/lib/tabs.js` (`openTab`/`closeTab`) with `tabs.test.cjs` (6
+node:test cases). New `RequestTabs` component (method badge + name + dirty dot +
+close ×, `window.confirm` when closing a dirty tab) rendered above the editor
+in `AppShell`, styled in `globals.css`. New e2e
+`frontend/e2e/request-tabs.spec.ts` (2 tests: working-copy preservation + dirty
+dot + close-confirm; neighbour activation). `dirty-dot.spec.ts` and
+`send-working-copy.spec.ts` were scoped to the Save-button dot because tabs now
+carry their own dots. Verified: `tsc --noEmit` clean, `next build` green, new
+unit 6/6, new e2e 2/2, affected e2e 2/2.
+
+### 5.18 M8 — Test cURL without saving (scratchpad) (pushed 75143f7)
+
+Postman-style scratchpad: run a pasted cURL command immediately without saving
+anything. New TopBar "Test cURL" button (`topbar-test-curl`) opens
+`ScratchpadModal`. Pasting a curl command into the textarea (`scratchpad-input`)
+produces a live structured preview (`scratchpad-preview`: method badge + URL,
+headers, query params, and body groups) via the existing M1 `parseCurl` /
+`isCurlCommand`. **Send** (`scratchpad-send`) maps the parse output to the
+ephemeral run input through the pure helper `frontend/src/lib/scratchpad.js`
+(`scratchpadRequest`: `apiType:'REST'`, `persistHistory` absent, `collectionId`
+null), then `WorkspaceStore.runScratchpad` calls `contentApi.runEphemeral`
+(`POST /api/runs`) — no request row and no `run_history` row are created, the
+stored request is untouched. On success the modal closes, view switches to
+side-by-side, ResponsePane shows the result, and a toast says "Scratchpad
+request executed (nothing saved)." Non-curl input shows a "Paste a curl command"
+hint and Send reports "Could not find a URL". Unit tests
+`frontend/src/lib/__tests__/scratchpad.test.cjs` (3 node:test cases) cover the
+ephemeral shape mapping. e2e `frontend/e2e/scratchpad.spec.ts` (2 tests): fresh
+user pastes `curl -X POST .../posts` → preview shows POST + URL + "Headers (1)"
+→ Send → ResponsePane shows `"title": "scratch"` + 201 and the collection still
+has 0 requests; and the non-curl rejection path. Verified: `tsc --noEmit`
+clean, new unit 3/3, new e2e 2/2. Full suite + `next build` deferred to the
+final M9 wrap-up per user instruction.
+
+## 6. Verification performed
+
+- Workspaces sidebar scanability turn (§5.36): `tsc --noEmit` clean,
+  frontend `npm test` 89/89, e2e `nav-normal` + `project-overview` 2/2.
+  Skipped `next build` while `next dev` is live on `.next`.
+- Username for search/invite turn (§5.35): `tsc --noEmit` clean,
+  frontend `npm test` 89/89, backend `test:api:unit` 53/53 (incl. 4
+  username cases), `next build` green, `db/tests/run.sh` all pass
+  (incl. 14_user_username). Isolated picker API 1/1; e2e picker +
+  `nav-normal` + `project-overview` 3/3. Isolated API test drops schema
+  — reseeded; backend/frontend restarted.
+- Team invite searchable list turn (§5.34): frontend `tsc --noEmit` clean,
+  `npm test` 89/89, `next build` green. Isolated picker API test 1/1
+  (`team org-users picker…`); e2e `team-invite-picker` 1/1; regression
+  `nav-normal` + `project-overview` 2/2. Isolated API test drops schema —
+  reseeded; frontend restarted after stale `.next`.
+- Duplicate "(copy)" naming + sibling-unique names turn (§5.33): backend API
+  suite 64/64 (`npm run test:api`, includes the updated duplicate tests),
+  frontend `tsc --noEmit` clean, `npm test` 89/89, `next build` green. E2E:
+  `request-duplicate` 2/2 and regression batch 10/10 (`create-request-form`
+  ×2, `curl-import`, `request-tabs` ×4, `dirty-dot`, `folder-drag-move`,
+  `nav-normal`). DB reseeded after the integration suites dropped/recreated
+  the schema.
+- New API request dialog Form | cURL turn (§5.32): frontend `tsc --noEmit`
+  clean, `npm test` 89/89, `next build` green. New e2e spec
+  `create-request-form` 2/2 (GET shows Params/Headers with no Body; POST adds
+  the Body tab; persisted request keeps method/url/query params/body — and
+  cURL mode pre-fills a saved request). Regression batch 12/12:
+  `curl-import`, `request-tabs` ×4, `dirty-dot`, `request-duplicate` ×2,
+  `folder-drag-move`, `nav-normal`, plus the 2 new.
+- Undo/redo/back turn (§5.30): frontend `tsc --noEmit` clean, `npm test`
+  89/89, `next build` green. Full desktop e2e (26 specs / 43 tests) on a fresh
+  reset+seed DB and fresh mock-upstream: **41 passed, 2 failed** — the two
+  failures are the documented environmental `assertions-runner` (shared-mock
+  ordering) and `nav-race`; the new `request-undo-redo-back` spec passed 4/4
+  and the regression-critical `request-tabs` / `dirty-dot` /
+  `send-working-copy` specs stayed green.
+- Mobile-responsive UI (this turn, §5.27): frontend `tsc --noEmit` clean,
+  `npm test` 89/89, `next build` green, 390px smoke passed (no overflow,
+  drawer open→browse→request-select close, editor fits). Desktop e2e at
+  1280px: 37/38 across three `next start` runs and 35/38 on one `npm run dev`
+  run; each run flakes a different spec on timing/mock-state (see §8) — no
+  consistent failing spec.
+- Formula live check (API): set `formula: "req.body.userId = 2"` on a POST to
+  the mock, `GET /requests/:id` returns the formula, Run dispatches
+  `{"amount":19.99,"userId":2}`, upstream echoes `userId: 2`,
+  `run_history.request_snapshot` persists the mutated body.
+- All six mock API requests run through the app successfully
+  (GET 200, POST 201, PUT 200, PATCH 200, DELETE 200).
+- Full reset → `npm run seed:dev` → login as all three accounts → demo
+  collection present with 6 requests → runs work → formula still mutates body
+  (`req.body.userId = 42` dispatched as `userId: 42`).
+
+### Test matrix (all green at last run)
+- Backend: `npm run test:api` 16/16 · `npm run test:api:unit` 14/14 ·
+  `npm test` (jest) **40/40** (includes the new passInputs chaining test).
+- Frontend: `npm run test` **34/34** · `tsc --noEmit` clean · `npm run test:e2e`
+  (Playwright) **14/14** (11 existing + 3 new workflow pass-inputs specs).
+- DB: `cd db && bash tests/run.sh` — all pass (includes migration 005).
+
+## 7. Current uncommitted changes
+
+Fold-in turn (§5.51) committed + pushed as `9cf9d3a`: `frontend/src/store/
+NavStore.tsx` (AppView union),
+`frontend/src/components/RouteViewSync.tsx`, `frontend/src/components/AppShell.tsx`
+(inbox/settings cases + dynamic imports), `frontend/src/components/InboxView.tsx`
++ `frontend/src/components/ApiTokensView.tsx` (standalone topbars removed),
+`frontend/app/inbox/page.tsx` + `frontend/app/settings/api-tokens/page.tsx`
+(thin `<AppShell />` shells), `frontend/app/layout.tsx` (global inbox.css /
+api-tokens.css imports). Leave `frontend/tsconfig.tsbuildinfo` and
+`.next.bak-*`.
+
+Docs export/share/image + free-plan limits turn (§5.49): migrations
+`026_docs_image_share.sql`, `027_plan_limit_extensions.sql` (applied);
+`backend/src/api/entitlements.js`, `routes/content.js`, `routes/mockServers.js`,
+`routes/exports.js`, `routes/docs.js`, and a server.js pre-auth public mount
+(`/api/docs/public`); frontend `app/docs/page.tsx` (`?p=` deep-link +
+Suspense), new `app/s/doc/[token]/page.tsx`, `components/docs/**`
+(PageActions export/share, image blocks), `DocsView.tsx`, `docsApi.ts`.
+Leave `frontend/tsconfig.tsbuildinfo`.
+
+Docs polish turn (§5.50): `backend/src/api/routes/docs.js` (image size
+validation + width in blockToHtml, `format=word` branch, EXPORT_THEME_CSS +
+buildDocumentShell); frontend `docsApi.ts` (IMAGE_SIZES/IMAGE_SIZE_PCT/
+imageSizeOf + word format), `BlockEditor.tsx` (Size control),
+`Mentions.tsx` (viewer data-size/max-width), `PageActions.tsx` (Word item +
+themed-print hint), `docs.module.css` (sizeCtl styles). Leave
+`frontend/tsconfig.tsbuildinfo`.
+
+Prior Workspaces sidebar scanability turn (§5.36) plus username (§5.35) and
+team-invite picker (§5.34): Sidebar/WorkspaceStore/globals.css + e2e;
+migration `014_user_username.sql`, `backend/src/api/username.js`,
+auth/admin/teams/seed, TeamsModal/signup/AdminView, tests + docs. Not
+committed. Leave `frontend/tsconfig.tsbuildinfo`.
+
+Prior Duplicate "(copy)" naming + sibling-unique names turn (§5.33):
+`backend/src/api/routes/content.js`, `backend/tests/
+duplicate.integration.test.cjs`, `frontend/src/store/WorkspaceStore.tsx`,
+`frontend/src/components/Sidebar.tsx`, `frontend/e2e/request-duplicate.spec.ts`
+— plus `tsconfig.tsbuildinfo` churn (leave it). Committed and pushed on
+`master` alongside that docs update.
+
+Prior to that, the New API request dialog Form | cURL turn (§5.32), the
+per-request undo/redo + back-to-previous turn (§5.30), the portal landing/
+pricing turn (portal `A2`, see session.md), the team/project-scoped workspace
+turn (§5.28), the mobile-responsive UI turn (§5.27) and the structured
+multipart body-parts feature (§5.26) were committed and pushed on `master`.
+
+## 8. Known issues / notes for the next agent
+
+- **Undo/redo/back turn (§5.30) — full suite 41/43, same two environmental
+  flakes:** `assertions-runner` (expected `Requests: 8`, received
+  `Requests: 10` — earlier specs in the run mutate the shared in-memory
+  `mock-upstream.js` store / add requests to the seeded "Mock API Demo"
+  collection) and `nav-race` (URL stays on `/manage`). Both reproduce on the
+  clean pre-change baseline and pass in isolation after a fresh
+  `reset:db` + `seed:dev` + fresh `mock-upstream.js`. The new
+  `request-undo-redo-back` spec is hermetic by design: it only uses
+  `/echo/...` mock URLs and never asserts `posts/N` content. Suite is now
+  26 specs / 43 tests.
+- ~~**Deleting a run request via the API fails**~~ **FIXED**: migration
+  `005_relax_run_history_target.sql` relaxes the `run_history_target` CHECK constraint to
+  `NOT (request_id IS NOT NULL AND workflow_id IS NOT NULL)`, so `ON DELETE SET NULL` from a request/
+  workflow deletion no longer violates it. Run history is preserved as an audit trail; the manage
+  `/history` query labels orphaned rows `(deleted)` via a third `COALESCE` fallback. Regression test
+  added to `apiAuth.integration.test.cjs` (run a request → delete it → 200, rows preserved). App RLS
+  hides both-null rows from user-visible history, which is acceptable.
+- **Production build bug fixed**: `Sidebar.tsx` was missing `import Link from 'next/link'` (added);
+  `next build` now passes. `npm run test:e2e` may spawn its own dev server and conflict with a running
+  one on port 3000 — kill existing `next dev` before running e2e, or rely on `reuseExistingServer`.
+- The mock store is in-memory; restarting `mock-upstream.js` resets POST/PUT/
+  DELETE mutations back to `mock-data.json`.
+- `redis-cli config set dir` is a protected setting in this build; Redis was
+  pointed away from the repo so no `dump.rdb` is written into `/workspace`
+  (snapshots disabled via `save ""`).
+- During this turn the dev DB had been reset (seed users gone), which made the
+  nav/login e2e specs fail with "Invalid email or password". Fix: `cd backend &&
+  npm run seed:dev`. The admin demo rows (pm=MANAGER, dev=VIEWER of the ADMIN's
+  Default Project) are ALSO restored by `seed:dev` now (`ensureAdminDemoRows` in
+  `main()`); previously they needed manual SQL into `project_managers` /
+  `project_members`. After any `db/tests/run.sh` or DB reset, re-run `seed:dev`
+  before running e2e.
+- Installing Postgres/Redis/Playwright was required in this environment (they
+  were absent); see section 2 for how they are started.
+- **Structured multipart file parts (M16)** — file BYTES are never persisted,
+  only the reference (name/type/size in `api_requests.body_parts`). After a
+  reload the editor shows "Re-choose a file to send"; a stored request with a
+  file part run through `POST /requests/:id/run` (or a collection run) 400s
+  with "Missing file data …" **by design** — file sends must go through the
+  ephemeral `POST /api/runs` with `id` + `persistHistory:true`, which the
+  frontend does in `runActiveRequest`. The DB `body_parts` column (migration
+  `012_request_body_parts.sql`) is additive; run `psql … -f db/migrations/012…`
+  against any existing Aiven DB before deploying the backend.
+- **Desktop e2e suite is environment-flaky, not product-flaky (mobile turn,
+  §5.27):** running the full Playwright suite (serial, 1280px) here fails a
+  *different* single spec on each run — 5s `toBeVisible`/`toContainText`
+  waits after network actions, `mock-upstream.js` in-memory state polluted by
+  earlier specs (e.g. `send-working-copy` expects `posts/2` pristine), or a
+  create/save not yet visible in a re-fetched list. Every such spec passes in
+  isolation on a fresh `reset:db` + `seed:dev`. Before a run: fresh-reset the
+  DB, (re)start `mock-upstream.js`, and serve the frontend with `npm run dev`
+  on :3000 (the config's webServer reuses it; running `next start` there makes
+  dev-mode timing assumptions wrong). A fresh environment also needs
+  `npx playwright install chromium` and `npx playwright install-deps chromium`
+  — Chromium and its OS libs are not preinstalled.
+- **Team/project scoping turn (§5.28) — e2e still exhibits the same two
+  environmental flakes** (`nav-race` stays on `/manage` after rail-apis;
+  `send-working-copy` gets `posts/2 not found` when mock-upstream state was
+  polluted by earlier specs). Full-suite result this turn: 37/39. Both were
+  reproduced on the clean pre-change baseline (`git stash push -u` → run →
+  `git stash pop`), and `send-working-copy` passes alone after a fresh seed +
+  fresh `mock-upstream.js` — so they are NOT regressions of the team/project
+  work. The new `e2e/project-overview.spec.ts` is hermetic (deletes any prior
+  "E2E Team" before re-creating it) and passed. Suite is now 25 specs / 39
+  tests.
+- **Narrow-pane QA turn (§5.29) — same environmental class, different spec:**
+  full-suite run gave 37/39 with failures `nav-race` (unchanged) and
+  `history.spec` "sees their own run". The history failure is dev-server
+  cold-compile latency: the first hit of `/history` in a run compiles in
+  ~5.6s while the spec's `toBeVisible` waits only 5s; it passes in isolation
+  on a warm cache and is unrelated to the CSS-only fix in that turn.
+- **Navigation model decision (team-first)**: keep the existing schema; teams
+  (`GET /api/teams/groups`) group the sidebar's workspace chips, and clicking a
+  project name opens its command center (`GET /api/projects/:id/overview`).
+  Member-role mutations for projects are self-service for anyone with effective
+  MANAGER+ access on that project (`requireProjectManager`); global MANAGER
+  role is NOT required, so pure project managers work. Role changes are limited
+  to EDITOR/VIEWER (no self-promotion to MANAGER/ADMIN via the UI).
+
+## 9. How to continue
+
+**Working order (user-mandated):** 1) update `session.md` first, 2) make the
+changes, 3) commit + push to `origin/master`, 4) update `session.md` again
+after the push with what was completed and push that update too.
+
+1. If services are down, start them per section 2, then hit the preview link.
+2. If the DB was reset (e.g., by `db/tests/run.sh` or an integration test),
+   restore sample data with `cd backend && npm run seed:dev`.
+3. Sign in as `boss1785867669@test.io` / `bosspass123`, open "Mock API Demo",
+   press Run on any request to confirm the stack.
+4. The `DELETE /requests/:id` run-history bug is fixed (section 8).
+
+## 10. Archive — root `session.md` turn log (moved 2026-08-08)
+
+Moved verbatim out of the root `session.md` during **Step S0** (restructure). Newest first.
+Nothing was deleted — this is the durable narrative history of the pre-S0 turns.
+
+### 10.1 BACKLOG #7 — Share links for requests (pushed as `ac6cd52` on 2026-08-08)
+
+BACKLOG ITEM **#7 — Share links for requests** is DONE and on `origin/master`:
+- Migration `009_request_shares.sql` — `request_shares` table (request_id FK CASCADE,
+  unguessable uuid `token`, created_by, created_at) + index.
+- Backend `backend/src/api/routes/shares.js` (mounted at `/api` BEFORE the auth-gated routers so
+  the public read isn't intercepted by their router-level `requireAuth`):
+  - `POST /api/requests/:requestId/share` — idempotent (returns the existing link), EDITOR+
+    gated via `getProjectAccess`/`roleAtLeast`, audit-logged.
+  - `GET /api/shares/:token` — **public, no auth**. Loads the request + the latest run's
+    response snapshot from `run_history`; redacts sensitive header keys
+    (`authorization`, `cookie`, `set-cookie`, `x-api-key`, …) in both request kv-rows and
+    response headers.
+  - `DELETE /api/shares/:token` — revoke (owner or ADMIN or EDITOR+).
+- Frontend: `shareApi` in `api.ts` (`create`/`get`/`revoke`); `ShareLinksModal.tsx` (create,
+  copy, revoke; `share-url-input` / `share-copy-button` / `share-revoke-button` test ids);
+  "Share" button (`share-open-button`) in the `RequestConfigurator` bar + `ShareIcon`; public
+  read-only page `app/s/[token]/page.tsx` (renders outside AppShell so it needs no login;
+  request method/url/headers/params/body + latest response with status chip).
+- Tests: `backend/tests/shares.integration.test.cjs` (2: create/read-publicly-redacted/revoke +
+  non-editor denied). e2e `frontend/e2e/share-links.spec.ts` is self-contained (creates a
+  throwaway request → shares → opens public page in an anonymous context → revokes → deletes)
+  so it never pollutes shared seed data.
+- Verified matrix green: backend integration **35/35** (test:api incl. new shares spec), jest
+  **47/47**, api units **24/24**, `db/tests/run.sh` **all pass**, frontend unit **47/47**,
+  `tsc --noEmit` clean, **e2e 23/23** on a fresh `reset:db` + `seed:dev`.
+- Env notes: backend restarted to load the shares route (`term_1786220734805_18` PID 29387
+  :3001); DB reset during testing, re-seeded after. E2E full-suite still requires a freshly
+  reset+seeded DB (other specs leave requests in "Mock API Demo" — the "Requests: 8" assertion
+  in `assertions-runner.spec.ts` breaks otherwise).
+
+### 10.2 BACKLOG #6 — Export / import collections (pushed as `f496e7f` on 2026-08-08)
+
+User request: "okay mark the completed things as completed, and proceed with #6".
+- Housekeeping: marked backlog item **#4 Mock server per project** as DONE (verified existing code,
+  just wasn't flagged in the backlog).
+- **#6 Export / import collections** implemented and verified:
+  - Backend `backend/src/api/routes/exports.js` (mounted at `/api` in `server.js`):
+    `GET /api/collections/:collectionId/export` serializes a collection as `api-hub-collection`
+    v1 JSON (name, requests incl. method/url/headers/query_params/body/api_type/formula/
+    assertions, + optional auth provider); read-access gated.
+    `POST /api/collections/import` validates the payload, creates the collection + requests in a
+    transaction (EDITOR+ gated), re-links `auth_providers.token_request_id` via exported `sourceId`.
+  - Frontend: `src/lib/collectionExport.js` (parse/build JSON/curl/OpenAPI, `formatForDownload`),
+    `src/components/CollectionImportExportModal.tsx` (Export/Import tabs, file picker, target
+    project select), wired into `Sidebar.tsx` as the `open-import-export` button beside "New
+    collection", reloads the tree after import; `.modal-tabs`/`.modal-tab` in `globals.css`;
+    types + `collectionExportApi` in `src/lib/api.ts`.
+  - Tests: `backend/tests/exportImport.integration.test.cjs` (4 pass), `frontend/src/lib/__tests__/
+    collectionExport.test.cjs` (5 pass), `frontend/e2e/collection-export-import.spec.ts`.
+  - Full verification green: backend integration matrix (apiAuth 16, environments 4, exportImport 4,
+    history 2, mockServer 3, automationEvents 4) + jest 47 + api units 24 + `db/tests/run.sh`;
+    frontend jest 47 + `tsc --noEmit`; **full e2e suite 22/22 pass** on a freshly reseeded DB.
+- e2e hardening done while getting the suite green:
+  - `collection-export-import.spec.ts` is self-contained (creates a throwaway collection via API,
+    exports/imports it, deletes both at the end) so it never pollutes the shared seeded DB.
+  - `nav-from-manage.spec.ts` — raised the `toHaveURL` timeout to 15s for first-visit top-level
+    routes (Next.js dev-mode route compile makes the URL lag behind the rendered page).
+  - Full-suite requirements: mock upstream must be running (`backend/scripts/mock-upstream.js` on
+    :3999) — request-run specs (`assertions-runner`, `environments`, `history`, `large-response`)
+    assert `Status: 200` against it; and the DB must be reseeded before a full run (shared-DB
+    convention noted in session.md).
+- Added root `.gitignore` (node_modules, `.next`, `tsconfig.tsbuildinfo`, `test-results`,
+  `dump.rdb`, logs).
+
+### 10.3 Top-bar cleanup + collapsible sidebar (pushed as `e06b819` on 2026-08-08)
+
+User request: "Remove automation, manage, admin from top bar and make the side bar collapsible."
+Done and on `origin/master`:
+- `frontend/src/components/TopBar.tsx` — the `automations-link` / `manage-link` / `admin-link`
+  top-bar buttons are gone; nav to those views stays on the sidebar icon rail
+  (`rail-automations` / `rail-manage` / `rail-admin`). Unused `Link` / `useNav` / `BoltIcon` /
+  `ShieldIcon` / `UserIcon` imports were dropped from the file.
+- `frontend/src/components/Sidebar.tsx` — user toggle implemented: a `collapsed` state merged
+  with the existing `panelHidden` prop via `railHidden = panelHidden || collapsed` (so the panel
+  pages still force rail-only). A rail collapse/expand button (`rail-toggle`,
+  `data-testid="sidebar-toggle"`) sits at the bottom of the rail (pushed down by `.rail-spacer`);
+  when collapsed the panel is hidden (`.sidebar-panel-hidden`) and the shell shrinks to rail
+  width (`.sidebar-rail-only`). Clicking `rail-apis` / `rail-teams` auto-expands and returns to
+  the workspace view.
+- `frontend/app/globals.css` — `.rail-toggle` chevron rotation (points right when collapsed,
+  left when expanded), `.rail-spacer` (flex:1), reuse of `.sidebar-rail-only` /
+  `.sidebar-panel-hidden` for the collapsed state.
+- Verified: `tsc --noEmit` clean; dev server recompiled clean; `GET /` `/automations` `/manage`
+  `/admin` `/history` `/login` all 200. No tests run (previous turns' directive).
+- NOTE: this turn's code was already in the tree (the repo history was squashed to a single
+  commit `3529b78`), so the push here carried the `session.md` update that marks it complete.
+
+### 10.4 Notification bell closes on outside click (pushed as `326607c` on 2026-08-08)
+
+- `frontend/src/components/TopBar.tsx` — `NotificationBell` gained `bellRef` + a `document
+  mousedown` listener that closes the dropdown when the click is outside `.bell-wrap` (same pattern
+  as the views-menu, which already did this).
+- No test run; dev server recompiled clean.
+
+### 10.5 Sidebar collapses to icon rail on top-level pages (pushed as `e0e811c` on 2026-08-08)
+
+- `frontend/src/components/Sidebar.tsx` — the `<aside>` gains `sidebar-rail-only` when
+  `panelHidden` is true.
+- `frontend/app/globals.css` — `.sidebar-rail-only { width:48px; min-width:48px }` collapses the
+  shell to rail width so panel pages use the full remaining width.
+- No tests run (user directive this turn: "Just fix that don't do any testing"). Dev server
+  recompiled clean; `GET /` + `/automations` 200. `nav-from-manage.spec.ts` remains the regression.
+
+### 10.6 BACKLOG #5 — Workflow triggers & notifications (pushed as `c15149e` on 2026-08-07)
+
+BACKLOG ITEM **#5 — Workflow triggers & notifications** is DONE and on `origin/master`:
+- Two new automation trigger types:
+  - **ON_REQUEST** — runs the workflow after a request in the project executes. Optionally
+    bound to one watched request (`event_request_id`); NULL = any request in the project.
+  - **ON_RUN_FAILURE** — runs the workflow when a run in the project fails. Optionally bound to
+    one watched workflow (`source_workflow_id`); NULL = any run. Loop-guarded (never re-fires for
+    runs that were themselves triggered by ON_RUN_FAILURE).
+- Migration `008_workflow_event_triggers.sql`: widened `automations.trigger_type` CHECK, added
+  `event_request_id`, `source_workflow_id`, `notify_webhook_url` + indexes; added `run_trigger`
+  enum values `ON_REQUEST`/`ON_RUN_FAILURE`; added `notifications.payload` (jsonb) + `link`.
+- Richer notifications: in-app failure notifications now carry a structured `payload` (runId,
+  projectId, workflowId, status) + a `/automations` deep `link`; automations can set an optional
+  `notify_webhook_url` that receives a `{event:'run_failed', ...}` JSON POST on failure
+  (fire-and-forget, 5s timeout, http(s) only).
+- `workflowService.fireWorkflowEvent()` injects the event context into the workflow's input vars
+  under `{{event.*}}` (type, projectId, requestId, sourceWorkflowId, runId, status, httpStatus,
+  method, url). Fired from request runs (`content.js` run routes: single-run + collection runner)
+  and from `reflectInAutomations` for failed workflow runs.
+- Frontend: `AutomationsView` modal now offers the two event triggers, a Watch-request /
+  Watch-workflow selector, and a notify webhook URL field; cards show the trigger type + watch
+  target + webhook. `Automation`/`Notification` types extended in `api.ts`.
+- Tests: backend `automationEvents.integration.test.cjs` (4 tests: create/validate new types,
+  ON_REQUEST fires, ON_RUN_FAILURE fires, richer notification + webhook delivery via a local
+  capture server). e2e `automations-events.spec.ts` (2 tests).
+- Verified matrix: backend jest **47/47**, `test:api` **29/29** (+4), `test:api:unit` **24/24**,
+  db tests **all pass**, frontend unit **42/42**, `tsc --noEmit` clean, e2e **21/21** (+2).
+- Housekeeping folded in: `ensureAdminDemoRows` is now called from `main()` in `seed-dev.js` —
+  a single `npm run seed:dev` restores the admin demo rows (pm=MANAGER, dev=VIEWER) too. Backend
+  restarted to load the event-trigger code (`term_1786129995092_9`, PID 17833, :3001).
+- NOTE on e2e ordering: `assertions-runner.spec.ts` asserts "Requests: 8" on the seeded "Mock API
+  Demo" collection, but `history.spec.ts` + `mock-server.spec.ts` create-and-leave a request in it,
+  so the full suite is only green when run on a freshly reseeded DB (reseed before a full e2e run).
+
+### 10.7 BACKLOG #3 — Run history page (pushed as `f906755`)
+
+BACKLOG ITEM **#3 — Run history page** is DONE and on `origin/master` (`f906755`, pushed by the
+parallel session):
+- Backend `/api/history` per-user scoped (users see ONLY their own runs; cross-user detail = 404;
+  request/response snapshots + test_results). `userId` threaded into MANUAL workflow runs only;
+  automation/scheduled runs stay `user_id NULL`.
+- Frontend: `HistoryView` (list + detail modal), rail "History" for all users, `/history` route,
+  `runHistoryApi`, styles. e2e `history.spec.ts` green.
+- The `debug-history.spec.ts` debug spec was removed before the push (no leftover).
+- The top block in session.md was stale (said "in progress, not pushed") — refreshed on the next
+  `session.md` update.
+
+### 10.8 Merge session: in-app views + feature chain (pushed as `32bac39`)
+
+PUSHED as `32bac39` (plus the earlier origin merges through `8a69536`).
+This session: pulled origin (parallel AI was strictly ahead), merged in-app views architecture +
+the feature chain it shipped, then finished the remaining gaps and made the e2e suite green.
+
+**Merged from origin (now on `master`):**
+- In-app views architecture (user's requirement): single `AppShell` + `NavProvider`/`NavStore`
+  (`src/store/NavStore.tsx`) + `RouteViewSync` in the root layout; `/`, `/automations`, `/manage`,
+  `/admin` all render the same shell — rail clicks switch views in-app, no separate page jump.
+  Views extracted to `src/components/views/{Automations,Manage,Admin}View.tsx`.
+- Feature chain: assertions editor + collection runner (`222cd58`, migration
+  `006_request_assertions.sql`), workflow pass-through (`18b5794`), project-wise admin users
+  (`a5b12bb`), sidebar-nav fix (`6faed49`), environments (`8a69536`:
+  `backend/src/api/routes/environments.js`, `backend/src/api/db.js` session-var tx fix,
+  frontend `EnvironmentsModal.tsx`, `frontend/e2e/environments.spec.ts`).
+
+**Changes this session (pushed in `32bac39`):**
+- Added the missing `.admin-view` CSS in `globals.css` (flex:1 scroll container inside `.main-area`),
+  completing the in-app views wiring (`.admin-view` at globals.css after `.main-area`).
+- e2e suite made reliably green — the new specs depend on shared seed data + one boss account, so:
+  - `frontend/playwright.config.ts`: `fullyParallel: true` → `fullyParallel: false, workers: 1`
+    (parallel workers raced on the same backend DB: duplicate named environments, login contention).
+  - `frontend/e2e/environments.spec.ts`: idempotent — deletes any leftover "E2E Staging" via
+    `page.request` before creating it (strict-mode violation on `env-E2E Staging` after 2nd run).
+- Verified matrix **all green**: backend jest **47/47**, `test:api` **20/20**, `test:api:unit`
+  **14/14**, db tests pass, frontend unit **37/37** (fail 0), `tsc --noEmit` clean, e2e **16/16**
+  (env spec idempotency double-run verified without a DB reset).
+- Running services: backend restarted to load the environments route (`term_1786120583103_10`
+  PID 17246 :3001), frontend dev restarted (`term_1786120825958_11` PID 18320 :3000), mock
+  upstream PID 12617 :3999.
+
+### 10.9 Original feature backlog (user-approved 2026-08-06)
+
+The user answered "Which feature should I build next?" with: add everything below to the backlog,
+then build each feature one by one, following the working rules (update session.md first → make
+changes → push → update session.md after push) for EVERY feature.
+1. **Response assertions / collection runner** — per-request assertions (status, JSON path,
+   headers, response time) evaluated after each run; a "Run collection" runner that runs every
+   request in a collection and reports per-request pass/fail. DONE (`222cd58`).
+2. **Environments UI** — visual editor for environments/variables (backend-supported; no dedicated UI).
+   DONE (`8a69536` + `EnvironmentsModal.tsx`).
+3. **Run history page** — dedicated UI listing past runs with request/response snapshots, status, timing.
+   DONE (`f906755`).
+4. **Mock server per project** — per-project mock API server (routes + in-memory state) managed from the app.
+   DONE (was implemented but unflagged; `mockServers.js` + `MockServersModal.tsx` + `mock-server.spec.ts`).
+5. **Workflow triggers & notifications** — more trigger types (on-request, on-run-failure) + richer notifications.
+   DONE (`c15149e`).
+6. **Export / import collections** — export collections as JSON (+ cURL/OpenAPI) and import back.
+   DONE (`f496e7f`).
+7. **Share links for requests** — shareable public read-only links to a request with sample response.
+   DONE (`009_request_shares` + `shares.js` + `ShareLinksModal.tsx` + `app/s/[token]/page.tsx`).
+8. **Comments & collaboration** — inline comments on requests/collections + team mentions.
+9. **Global search** — Cmd-K quick switcher across requests, collections, workflows and runs.
+
+### 10.10 BACKLOG #1 — Response assertions / collection runner frontend (pushed as `222cd58` on 2026-08-06)
+
+PUSHED — **FEATURE 1: Response assertions / collection runner** (frontend; backend engine already
+in `77ca26c`). What landed:
+- `types.ts` — `Assertion` type, `assertions` on `ApiRequest`, `'tests'` request tab,
+  `RunResult.testResults`/`assertionsPassed`, `CollectionRunResult`.
+- `api.ts` — `RequestDetail.assertions`, `contentApi.runCollection()`.
+- `WorkspaceStore.tsx` — assertions round-trip (`toEditorRequest`/`toServerPatch`),
+  `runCollection` action + `collectionRun`/`collectionRunRunning` state.
+- `RequestConfigurator.tsx` — new **Tests** tab (`AssertionsEditor`: type/operator/path/expected,
+  add/remove); also fixed a pre-existing Rules-of-Hooks violation (useState after early return).
+- `ResponsePane.tsx` — assertion results (pass/fail chips + message list) after each run.
+- `Sidebar.tsx` `CollectionsTree` — per-collection **Run** button → `CollectionRunnerModal`
+  (per-request HTTP status, duration, assertions, error + summary).
+- `lib/assertions.js` (pure helper, unit-tested ×3) + `globals.css` styles.
+- e2e: `frontend/e2e/assertions-runner.spec.ts` (adds status assertion, sees it pass, runs collection).
+- Verified matrix: backend jest **47/47**, test:api **16/16**, api:unit **14/14**, db tests **all pass**,
+  frontend unit **37/37**, `tsc --noEmit` clean, e2e **15/15**.
+- Environment notes this turn: dev DB had been reset (login → "Invalid email or password") →
+  re-ran `npm run seed:dev`; backend server was running stale pre-pull code → restarted it; the
+  `assertions` column needs migration **006** (applied manually via psql, NOT applied by seed).
+
+### 10.11 Workflow pass-through (pushed as `18b5794` on 2026-08-06)
+
+PUSHED — **Workflow pass-through** (see the DONE block below for the full summary). Full matrix
+green at push time: backend jest 40/40, test:api 16/16, api:unit 14/14, db tests pass, frontend
+unit 34/34, tsc --noEmit clean, e2e 14/14.
+
+### 10.12 Workflow pass-through — DONE narrative (previous "in progress" block)
+
+DONE — **Workflow pass-through** implemented, tested (full matrix green) and ready to push:
+- Answer to the original question: response pass-through ALREADY existed via `vars[stepId]`
+  templates/formulas; the REQUEST snapshot was not exposed and there was no UI option.
+- `workflowEngine.js` now stores `vars.step.<labelKey>`, `vars.stepRequest.<labelKey>`,
+  `vars.stepResponse.<labelKey>` after each successful step (`sanitizeLabel`, e.g. "Create the
+  order" -> `create_the_order`); `$steps` summaries include the request snapshot.
+- `requestDispatcher.js` new `passInputs` option injects a previous step's request/response
+  (optional dot-path `field`) into url query param / query / header / body.
+- `WorkflowBuilder.tsx` per-step "Pass data from previous step into this request" UI with source
+  select, data type, field, target, key, add/remove list + reference chips
+  (`{{step.<key>.response}}` etc.). Validation in `workflowValidation.js` (source must be earlier).
+- Verified: backend jest **40/40**, test:api 16/16, api:unit 14/14, db tests pass, frontend unit
+  **34/34**, `tsc --noEmit` clean, e2e **14/14** (3 new specs in `workflow-pass-inputs.spec.ts`).
+- NOTE: dev DB had been reset this turn — re-ran `npm run seed:dev` and re-inserted the admin demo
+  rows (pm=MANAGER, dev=VIEWER of ADMIN's Default Project) via SQL into `project_managers` /
+  `project_members` (not part of seed).
+
+### 10.13 Admin Users list project-wise (pushed as `a5b12bb`)
+
+DONE — admin Users list is now **project-wise** (pushed as `a5b12bb`):
+- `GET /api/admin/users` returns `projects[]` per user (`{id,name,kind:'manager'|'member',role}`),
+  aggregated from `project_managers` + `project_members`.
+- `AdminView.tsx` shows a **Projects** column with per-project chips (MANAGER highlighted).
+- Verified: backend `test:api` 16/16, frontend unit 28/28 + build OK, e2e **11/11**.
+- Demo data: pm@… is MANAGER of the ADMIN's Default Project, dev@… is a VIEWER member (see admin
+  /users) — inserted directly into the dev DB, not part of `seed:dev`.
+- Note for future sessions: do NOT run `next build` while `next dev` is live on the same `.next`
+  dir — it clobbers dev chunks and breaks login/e2e; restart `npm run dev` afterwards.
+
+### 10.14 Legacy status / response-pane / product-requirement narrative (pre-S0)
+
+- Repo owner: **Ranjithramesh67** — https://github.com/Ranjithramesh67/MockShift (branch `master`).
+  Git author email used on this machine: monkeycode-ai@chaitin.com.
+- **Product requirement (implemented)**: The private "My Workspace" cannot be deleted. Each user's
+  signup/seed bootstrap creates a PRIVATE `My Workspace`. The backend `DELETE /api/workspaces/:id`
+  handler now refuses to delete a workspace named `My Workspace` (409 + friendly message), and the
+  UI hides/disables the delete button for it (`Sidebar.tsx`). Deleting any other workspace still works.
+- **Response pane (Postman-style) — implemented**: `frontend/src/components/ResponsePane.tsx` +
+  `frontend/src/lib/responseView.js` (pure helpers, unit tested) + `globals.css`:
+  - **Pretty / Raw / Preview** view-mode tabs on the response body; **Prettify** button (JSON via
+    `JSON.stringify(...,2)`, XML/HTML via a tag-depth indenter).
+  - **Preview**: HTML renders in a sandboxed `iframe`; JSON/XML show formatted text.
+  - **PDF / images**: binary responses are base64-encoded by the backend
+    (`backend/src/api/runner.js` `bodyEncoding: 'base64'` when content-type is binary) and rendered
+    inline (PDF viewer iframe / image) with a **Download** button (Blob + `URL.createObjectURL`).
+  - Demo: `GET sample PDF` and `GET HTML page` requests in the seeded collection hit
+    `http://127.0.0.1:3999/files/sample.pdf` and `/html`.
+- **Recent fixes (this session)**:
+  - **Fixed production build**: `frontend/src/components/Sidebar.tsx` used `<Link>` without importing
+    `next/link` (introduced in the sidebar-redesign commit) — `next build` failed type-check; added
+    the import.
+  - **Fixed `DELETE /requests/:id` after a run** (migration 005, see section 8). `manage.js`
+    run-history queries now `COALESCE(ar.name, wc.name, '(deleted)')` so preserved history rows read
+    cleanly.
+  - Prior session fixes (already pushed): sidebar icon-rail redesign, `runner.js` TDZ fix (shadowed
+    `body` var renamed to `responseBody`), "My Workspace" delete protection, response preview/PDF.
+
+### 10.15 Legacy "Run it" / sample APIs (pre-S0, superseded by root session.md ## Environment)
+
+- Run commands: backend `cd backend && PORT=3001 node src/api/server.js`; frontend
+  `cd frontend && npm run dev` (port 3000, proxies `/api` to 3001); mock upstream
+  `cd backend && node scripts/mock-upstream.js` (port 3999); seed `cd backend && npm run seed:dev`.
+- **Sample APIs** — **Local mock upstream** `backend/scripts/mock-upstream.js` (port 3999,
+  in-memory store seeded from `backend/scripts/mock-data.json`; mutations reset on restart):
+  - Resources: `/posts`, `/users`, `/comments`, `/todos` — `GET /:res` (list), `GET /:res/:id`,
+    `POST /:res` (201 + assigned id), `PUT /:res/:id`, `PATCH /:res/:id`, `DELETE /:res/:id`.
+  - `POST /token` — returns `{access_token:"mock-token-abc123", token_type:"Bearer"}` (auth-provider flow).
+  - `GET /files/sample.pdf` — a valid tiny PDF (for the response Preview/Download tabs).
+  - `GET /html` — a small HTML page (for the Preview tab).
+  - `/echo` — echoes back `{headers, body}`.
+- **Demo collection "Mock API Demo"** (created by `npm run seed:dev` under the ADMIN's Default
+  Project) with 8 ready-to-run requests: `GET all posts`, `GET post 1`, `POST create post`,
+  `PUT replace post 1`, `PATCH post 1`, `DELETE post 2`, `GET sample PDF`, `GET HTML page` — all
+  pointed at `http://127.0.0.1:3999`.
+
+### 10.16 Multi-tenancy: personal vs company identity (2026-09-11)
+
+- **Feature**: every signup is classified by email domain as **PERSONAL** (well-known consumer
+  mailbox / reserved test domain) or **COMPANY**. A company user auto-joins the COMPANY org already
+  registered for their domain (first signup = ADMIN, later = EDITOR); a personal user gets their own
+  `<Name>'s Org` as ADMIN. Both always receive a PRIVATE `My Workspace` + `Default Project`.
+- **New**: `db/migrations/039_organizations_identity.sql` — `org_kind` enum, `organizations.kind /
+  domain / created_at`, partial unique index `organizations_company_domain_uidx` (one COMPANY org per
+  domain). `backend/src/api/emailDomain.js` — classifier (`PERSONAL_EMAIL_DOMAINS`,
+  `SPECIAL_USE_DOMAINS`, `classifyEmail`, `companyNameFromDomain`, env overrides
+  `PERSONAL_EMAIL_DOMAINS` / `COMPANY_EMAIL_DOMAINS`). `backend/src/api/accountProvision.js` —
+  shared `provisionNewAccount()`.
+- **Wiring**: `backend/src/api/routes/auth.js` and `portal/backend/src/routes/publicCheckout.js` both
+  call `provisionNewAccount`; `userSummary` exposes `organizations[].kind/domain/role`.
+- **Visibility tightened**: targeted sharing is org-bound — `docs.js` rejects `kind:'user'` grants
+  unless the target is a member of the page's org (share context gains `members[]`); `sends.js`
+  rejects a recipient who shares neither an org nor a workspace with the sender. Plan-gated
+  anonymous public links remain the only external channel.
+- **Frontend**: `PageActions.tsx` person share is now an org-member `<select>` posting
+  `{kind:'user', targetUser:{id}}`; Portal B `subscribers` list adds an Account column +
+  `accountType` filter and the detail page shows account type + organizations.
+- **Tests**: `apiAuth` 19/19 (new company auto-join + personal-domain cases; disabled plan
+  enforcement in `before()` like the other suites, clearing the pre-existing baseline failures);
+  `docsShareAudiences` 7/7 (new cross-org rejection test); `docsShares` 5/5; `docsTreeVisibility`
+  12/12; API units 69/69; both Next.js frontends `tsc --noEmit` clean.
+
+### 10.17 Mock UX: shareable link, route picker, formula autocomplete, guided redesign (2026-09-12)
+
+- **Shareable mock link** — a Next `/mock/:path*` rewrite forwards to the backend, so the copied URL
+  uses the current origin. `frontend/src/lib/mockServer.js` is split into `mockBasePath(projectId)`
+  (relative, SSR-safe), `mockBaseUrl(projectId, origin?)` (shareable) and `mockRequestBaseUrl(projectId)`
+  (`NEXT_PUBLIC_MOCK_REQUEST_ORIGIN`, default `http://127.0.0.1:3001`). New `lib/clipboard.ts`
+  (`copyText`) and `mocks/MockServerLink` (base URL + Copy button), used in `MockServersModal` and the
+  panel header.
+- **Mock route picker** — `lib/mockRoutes.js` (`pathToRequestPath` converts `:id` → `{{id}}`,
+  `mockRouteUrl`, `filterMockRoutes`), `mocks/useProjectMockRoutes` (lazy loader) and
+  `mocks/MockRoutePicker`, embedded in `RequestConfigurator` and `CreateModal` (`kind="request"`).
+  Picking a route fills the method (omitted for the `*` wildcard) and the request URL.
+- **Formula autocomplete** — snippets extracted to `lib/formulaSnippets.js` (shared with
+  `FormulaHelper`); `lib/formulaCompletions.js` is a CodeMirror-free, unit-tested completion source
+  exposing `req.`, `$vars.`, `$utils.`, JS built-ins and snippets. `CodeEditor` gains a `completions`
+  prop (`@codemirror/autocomplete`), enabled for the formula editors in `RequestConfigurator`,
+  `ScratchpadWorkspace` and `WorkflowBuilder`.
+- **Guided mock redesign** — `mocks/useMockServerAdmin` holds all state/actions (moved verbatim out of
+  the 1274-line panel). `MockScenariosPanel` is now a five-tab shell (Overview, Endpoints, Scenarios,
+  Responses, Call log) built from `MockServerOverviewTab`, `MockEndpointsTab`, `MockScenariosTab`,
+  `MockResponsesTab`, `MockCallLogTab`, with plain-language labels and a “How it works” overview.
+- **Verification** — frontend unit suite 103/103 (`mockServer`, `mockRoutes`, `formulaCompletions`
+  added), `tsc --noEmit` clean, `/mock-scenarios` compiles (200), and `/mock/:id` proxies to Express.

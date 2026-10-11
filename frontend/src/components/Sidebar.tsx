@@ -1,0 +1,2252 @@
+'use client';
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { useWorkspace } from '@/store/WorkspaceStore';
+import { useApp, makeId } from '@/store/AppStore';
+import { useNav } from '@/store/NavStore';
+import { useMenuAccess } from '@/store/MenuAccessStore';
+import { useNavOrder } from '@/store/NavOrderStore';
+import { normalizeRailOrder } from '@/lib/menuKeys';
+import { useAuth } from '@/lib/auth';
+import { useTreeRenameShortcut } from './useTreeRenameShortcut';
+import { isUntitledWorkflow, UNTITLED_WORKFLOW_NAME } from '@/lib/workflowValidation';
+import { type ContentTree } from '@/lib/api';
+import { docsSharedApi } from '@/lib/docsApi';
+import { CreateModal, type CreateKind } from './CreateModal';
+import { SharingModal } from './SharingModal';
+import { ShareLinksModal } from './ShareLinksModal';
+import { SendItemDialog, type SendableItem } from './SendItemDialog';
+import { TeamsModal } from './TeamsModal';
+import { AuthProviderModal } from './AuthProviderModal';
+import { CollectionRunnerModal } from './CollectionRunnerModal';
+import { EnvironmentsModal } from './EnvironmentsModal';
+import { CollectionImportExportModal } from './CollectionImportExportModal';
+import {
+  WorkspaceIcon,
+  TeamIcon,
+  CollectionIcon,
+  KeyIcon,
+  PlusIcon,
+  TrashIcon,
+  ChevronIcon,
+  LockIcon,
+  BoltIcon,
+  ShieldIcon,
+  UserIcon,
+  HistoryIcon,
+  PlayIcon,
+  ServerIcon,
+  ImportIcon,
+  FolderIcon,
+  PencilIcon,
+  DotsIcon,
+  RequestIcon,
+  CopyIcon,
+  SendIcon,
+  ShareIcon,
+  FileIcon,
+  LayersIcon,
+  ClockIcon,
+  FormulaIcon,
+  UsersIcon,
+  WorkflowIcon,
+  SearchIcon,
+  XIcon,
+  CompareIcon,
+  NetworkIcon,
+  CrownIcon,
+  GaugeIcon,
+  GripIcon,
+} from './icons';
+import { NavOrderDialog } from './NavOrderDialog';
+
+type RailTab = 'apis' | 'teams' | 'workflow';
+
+const SIDEBAR_MIN_WIDTH = 240;
+const SIDEBAR_MAX_WIDTH = 560;
+const SIDEBAR_DEFAULT_WIDTH = 296;
+const SIDEBAR_WIDTH_KEY = 'mockshift.sidebarWidth';
+
+function WorkspaceChips({
+  onOpenCreate,
+  onNavigate,
+  onRequestWorkspace,
+  onOpenShareLink,
+  workspaces,
+}: {
+  onOpenCreate: (kind: CreateKind) => void;
+  onNavigate: () => void;
+  onRequestWorkspace: (w: { id: string; name: string }) => void;
+  onOpenShareLink: (w: { id: string; name: string }) => void;
+  workspaces: Array<{ id: string; name: string; visibility: string; role: string | null }>;
+}) {
+  const ws = useWorkspace();
+
+  const renderChip = (w: { id: string; name: string; visibility: string; role: string | null }) => (
+    <div key={w.id} className={`workspace-chip-wrap${ws.activeWorkspaceId === w.id ? ' is-active' : ''}`}>
+      <button
+        type="button"
+        className={`workspace-chip ${ws.activeWorkspaceId === w.id ? 'active' : ''}`}
+        data-testid={`workspace-${w.name}`}
+        title={w.name}
+        onClick={() => {
+          ws.selectWorkspace(w.id).catch(() => undefined);
+          onNavigate();
+        }}
+      >
+        <span className="workspace-chip-icon">
+          <WorkspaceIcon size={12} />
+        </span>
+        <span className="workspace-chip-name">{w.name}</span>
+        <span className={`vis-dot vis-${w.visibility.toLowerCase()}`} title={`${w.visibility} visibility`} />
+      </button>
+      {!w.role && (
+        <button
+          type="button"
+          className="ghost-button small"
+          data-testid={`workspace-request-${w.id}`}
+          title={`Request access to ${w.name}`}
+          aria-label={`Request access to ${w.name}`}
+          onClick={() => onRequestWorkspace({ id: w.id, name: w.name })}
+        >
+          <LockIcon size={12} />
+        </button>
+      )}
+      {w.role && (
+        <span className="workspace-chip-actions">
+          <button
+            type="button"
+            className="icon-button workspace-chip-share"
+            title={`Share link for ${w.name}`}
+            aria-label={`Share link for ${w.name}`}
+            data-testid={`share-workspace-${w.name}`}
+            onClick={() => onOpenShareLink({ id: w.id, name: w.name })}
+          >
+            <ShareIcon size={12} />
+          </button>
+          <button
+            type="button"
+            className="icon-button danger workspace-chip-delete"
+            title="Delete workspace"
+            aria-label={`Delete workspace ${w.name}`}
+            data-testid={`delete-workspace-${w.name}`}
+            disabled={w.name === 'My Workspace'}
+            onClick={() => {
+              if (w.name === 'My Workspace') return;
+              if (
+                window.confirm(
+                  `Delete workspace "${w.name}"? This removes all of its projects, collections and requests.`
+                )
+              ) {
+                ws.deleteWorkspace(w.id).catch((err) =>
+                  alert(err instanceof Error ? err.message : 'Failed to delete workspace')
+                );
+              }
+            }}
+          >
+            <TrashIcon size={12} />
+          </button>
+        </span>
+      )}
+    </div>
+  );
+
+  const availableIds = new Set(workspaces.map((w) => w.id));
+  const nonEmptyGroups = (ws.groups?.groups ?? []).filter((g) =>
+    g.workspaces.some((w) => availableIds.has(w.id))
+  );
+  const grouped = nonEmptyGroups.length > 0;
+
+  let body: React.ReactNode;
+  if (!grouped) {
+    body = (
+      <>
+        {workspaces.map((w) => renderChip(w))}
+        {workspaces.length === 0 && !ws.loading && <p className="hint">No workspaces yet.</p>}
+        {workspaces.length > 0 && (
+          <button
+            type="button"
+            className="workspace-chip new"
+            title="New workspace"
+            aria-label="New workspace"
+            data-testid="new-workspace"
+            onClick={() => onOpenCreate('workspace')}
+          >
+            <PlusIcon size={12} />
+          </button>
+        )}
+      </>
+    );
+  } else {
+    const groups = nonEmptyGroups;
+    const accounted = new Set<string>();
+    const sections: React.ReactNode[] = [];
+    let chipCount = 0;
+    for (const g of groups) {
+      // A workspace can belong to several teams; render its chip only once so
+      // the sidebar never emits duplicate `workspace-<name>` testids.
+      const chips = g.workspaces.filter((w) => availableIds.has(w.id) && !accounted.has(w.id));
+      if (chips.length === 0) continue;
+      chips.forEach((w) => accounted.add(w.id));
+      chipCount += chips.length;
+      const team = ws.teams.find((t) => t.id === g.id);
+      sections.push(
+        <React.Fragment key={g.id}>
+          <div className="workspace-group-head" data-testid={`team-group-${g.name}`}>
+            <TeamIcon size={11} />
+            <span className="workspace-group-label">Team</span>
+            <span className="workspace-group-name">{g.name}</span>
+            {team && (
+              <span className="workspace-group-count" title={`${team.members.length} members`}>
+                {team.members.length}
+              </span>
+            )}
+          </div>
+          <div className="workspace-group-chips">{chips.map((w) => renderChip(w))}</div>
+        </React.Fragment>
+      );
+    }
+    const otherChips = ws.groups!.other.filter((w) => availableIds.has(w.id));
+    otherChips.forEach((w) => accounted.add(w.id));
+    const leftoverChips = workspaces.filter((w) => !accounted.has(w.id));
+    chipCount += otherChips.length + leftoverChips.length;
+    if (otherChips.length > 0 || leftoverChips.length > 0) {
+      sections.push(
+        <React.Fragment key="other">
+          <div className="workspace-group-head other">
+            <WorkspaceIcon size={11} />
+            <span className="workspace-group-label">Workspaces</span>
+            <span className="workspace-group-name">Ungrouped</span>
+          </div>
+          <div className="workspace-group-chips">
+            {otherChips.map((w) => renderChip(w))}
+            {leftoverChips.map((w) => renderChip(w))}
+          </div>
+        </React.Fragment>
+      );
+    }
+    if (chipCount === 0 && !ws.loading) {
+      sections.push(
+        <p key="hint" className="hint">
+          No workspaces yet.
+        </p>
+      );
+    }
+    if (chipCount > 0) {
+      sections.push(
+        <button
+          key="new"
+          type="button"
+          className="workspace-chip new"
+          title="New workspace"
+          aria-label="New workspace"
+          data-testid="new-workspace"
+          onClick={() => onOpenCreate('workspace')}
+        >
+          <PlusIcon size={12} />
+        </button>
+      );
+    }
+    body = sections;
+  }
+
+  return (
+    <div className={`workspace-chips${grouped ? ' grouped' : ''}`} data-testid="workspace-chips">
+      {body}
+    </div>
+  );
+}
+
+function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, onRequestClose, onRunCollection, onOpenImportExport, collapsed, onToggleCollapsed }: {
+  onOpenCreate: (kind: CreateKind, collectionId?: string, folderId?: string) => void;
+  onOpenSharing: () => void;
+  onOpenAuth: (collectionId: string) => void;
+  onNavigate: () => void;
+  onRequestClose?: () => void;
+  onRunCollection: (collectionId: string, collectionName: string) => void;
+  onOpenImportExport: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+}) {
+  const ws = useWorkspace();
+  const { dispatch } = useApp();
+  const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({});
+  const [renaming, setRenaming] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [menuFor, setMenuFor] = useState<{ kind: 'request' | 'folder' | 'collection'; id: string } | null>(null);
+  const [sendTarget, setSendTarget] = useState<SendableItem | null>(null);
+  const [shareTarget, setShareTarget] = useState<SendableItem | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [selectedRow, setSelectedRow] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
+
+  // M11: Ctrl/Cmd+C duplicates the currently selected request or folder.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!selectedRow) return;
+      if (!(e.ctrlKey || e.metaKey) || (e.key !== 'c' && e.key !== 'C')) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      e.preventDefault();
+      const action =
+        selectedRow.kind === 'request'
+          ? ws.duplicateRequest(selectedRow.id)
+          : ws.duplicateFolder(selectedRow.id);
+      action
+        .then(({ name: copyName }) => {
+          if (copyName) {
+            dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${copyName}"` });
+          }
+        })
+        .catch((err) => {
+          dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' });
+        });
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [selectedRow, ws, dispatch]);
+
+  // While a row menu is open, clicking anywhere outside it closes the menu. A
+  // document-level listener (instead of a full-viewport backdrop) lets the same
+  // click still reach the tree row underneath, so opening a ⋯ menu never makes
+  // the following sidebar click "disappear". Trigger buttons and the open menu
+  // itself are excluded so their own onClick keeps working.
+  useEffect(() => {
+    if (!menuFor) return;
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t) return;
+      if (t.closest('.tree-menu')) return;
+      if (t.closest('[data-tree-menu-trigger]')) return;
+      setMenuFor(null);
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [menuFor]);
+
+  const toggle = (id: string) => {
+    setCollapsedNodes((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const onSelectRequest = (id: string) => {
+    dispatch({ type: 'SELECT_REQUEST', id });
+    ws.selectRequest(id).catch(() => undefined);
+    onNavigate();
+    onRequestClose?.();
+  };
+
+  const startRename = (kind: 'request' | 'folder', id: string, name: string) => {
+    setMenuFor(null);
+    setRenaming({ kind, id });
+    setRenameValue(name);
+  };
+
+  // M12: F2 on the selected row starts its inline rename.
+  useTreeRenameShortcut({ selectedRow, tree: ws.tree, onStartRename: startRename });
+
+  const commitRename = async () => {
+    if (!renaming) return;
+    const name = renameValue.trim();
+    setRenaming(null);
+    if (!name) return;
+    try {
+      if (renaming.kind === 'request') {
+        await ws.renameRequest(renaming.id, name);
+      } else {
+        await ws.renameFolder(renaming.id, name);
+      }
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Rename failed' });
+    }
+  };
+
+  const deleteRequest = (id: string, name: string) => {
+    if (window.confirm(`Delete request "${name}"?`)) {
+      ws.deleteRequest(id).catch((err) =>
+        alert(err instanceof Error ? err.message : 'Failed to delete request')
+      );
+    }
+  };
+
+  const deleteFolder = (id: string, name: string) => {
+    if (
+      window.confirm(
+        `Delete folder "${name}" and its contents? Requests inside will be moved back to the collection root.`
+      )
+    ) {
+      ws.deleteFolder(id).catch((err) =>
+        alert(err instanceof Error ? err.message : 'Failed to delete folder')
+      );
+    }
+  };
+
+  const projectTree = ws.projectTree;
+  // The project-first tree is mapped onto the legacy ContentTree shape so the
+  // existing folder/request renderers can be reused unchanged.
+  const tree: ContentTree | null = projectTree
+    ? {
+        workspaceId: projectTree.workspaces[0]?.id ?? '',
+        projects: [],
+        collections: projectTree.collections.map((c) => ({
+          id: c.id,
+          name: c.name,
+          project_id: ws.activeProjectId ?? '',
+          has_auth: c.has_auth,
+        })),
+        folders: projectTree.folders,
+        requests: projectTree.requests,
+      }
+    : ws.tree;
+  if (!tree) return null;
+
+  // M10: native HTML5 drag-and-drop — request rows and folder rows are drag
+  // sources; folder rows and collection roots are drop targets.
+  const handleDragStart = (e: React.DragEvent, kind: 'request' | 'folder', id: string) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify({ kind, id }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, target: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget(target);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    const related = e.relatedTarget as Node | null;
+    if (related && e.currentTarget.contains(related)) return;
+    setDropTarget(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, folderId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTarget(null);
+    try {
+      const payload = JSON.parse(e.dataTransfer.getData('text/plain')) as { kind?: string; id?: string };
+      if (!payload || typeof payload.id !== 'string') return;
+
+      if (payload.kind === 'request') {
+        const moved = tree.requests.find((r) => r.id === payload.id);
+        ws.moveRequest(payload.id, folderId)
+          .then(() => {
+            dispatch({
+              type: 'SHOW_TOAST',
+              kind: 'success',
+              message: moved ? `Moved "${moved.name}"` : 'Request moved',
+            });
+          })
+          .catch((err) => {
+            dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Move failed' });
+          });
+        return;
+      }
+
+      if (payload.kind === 'folder') {
+        const dragged = tree.folders.find((f) => f.id === payload.id);
+        if (!dragged) return;
+        const descendantIds = new Set<string>();
+        const collect = (parentId: string) => {
+          for (const f of tree.folders) {
+            if (f.parent_id === parentId && !descendantIds.has(f.id)) {
+              descendantIds.add(f.id);
+              collect(f.id);
+            }
+          }
+        };
+        collect(payload.id);
+        const wouldCycle =
+          folderId === payload.id ||
+          (folderId !== null && descendantIds.has(folderId)) ||
+          (folderId === null && dragged.parent_id == null);
+        if (wouldCycle) {
+          dispatch({
+            type: 'SHOW_TOAST',
+            kind: 'error',
+            message: 'Cannot move a folder into itself or its subfolder',
+          });
+          return;
+        }
+        ws.moveFolder(payload.id, folderId)
+          .then(() => {
+            dispatch({
+              type: 'SHOW_TOAST',
+              kind: 'success',
+              message: `Moved "${dragged.name}"`,
+            });
+          })
+          .catch((err) => {
+            dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Move failed' });
+          });
+        return;
+      }
+    } catch {
+      // ignore malformed drag payload
+    }
+  };
+
+  const renderRequest = (r: (typeof tree.requests)[number]) => {
+    const isActive = ws.activeRequest?.id === r.id;
+    const isRenaming = renaming?.kind === 'request' && renaming.id === r.id;
+    const isSelected = selectedRow?.kind === 'request' && selectedRow.id === r.id;
+    return (
+      <li
+        key={r.id}
+        className={`sidebar-row ${isSelected ? 'selected' : ''}`}
+        data-testid={`sidebar-row-${r.name}`}
+        draggable={!isRenaming}
+        onDragStart={(e) => handleDragStart(e, 'request', r.id)}
+      >
+        {isRenaming ? (
+          <input
+            type="text"
+            className="tree-rename-input"
+            autoFocus
+            defaultValue={r.name}
+            data-testid={`rename-input-${r.name}`}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename();
+              if (e.key === 'Escape') setRenaming(null);
+            }}
+            onBlur={commitRename}
+          />
+        ) : (
+          <button
+            type="button"
+            className={`sidebar-item sidebar-item-indent ${isActive ? 'active' : ''}`}
+            data-testid={`sidebar-request-${r.name}`}
+            onClick={() => {
+              setSelectedRow({ kind: 'request', id: r.id });
+              onSelectRequest(r.id);
+            }}
+          >
+            <span className={`method-badge method-${r.method}`}>{r.method}</span>
+            <span className="sidebar-item-name">{r.name}</span>
+            {r.api_type !== 'REST' && (
+              <span className="vis-badge api-type-badge">{r.api_type}</span>
+            )}
+          </button>
+        )}
+        <div className="sidebar-row-actions">
+          <button
+            type="button"
+            className="icon-button"
+            title="Request options"
+            aria-label={`Options for ${r.name}`}
+            data-testid={`request-options-${r.name}`}
+            data-tree-menu-trigger
+            onClick={() => setMenuFor(menuFor?.kind === 'request' && menuFor.id === r.id ? null : { kind: 'request', id: r.id })}
+          >
+            <DotsIcon size={13} />
+          </button>
+        </div>
+        {menuFor?.kind === 'request' && menuFor.id === r.id && (
+          <div className="tree-menu" data-testid={`request-menu-${r.name}`}>
+            <button
+              type="button"
+              data-testid={`request-edit-${r.name}`}
+              onClick={() => {
+                setMenuFor(null);
+                onSelectRequest(r.id);
+              }}
+            >
+              <RequestIcon size={13} />
+              Edit
+            </button>
+            <button
+              type="button"
+              data-testid={`request-rename-${r.name}`}
+              onClick={() => startRename('request', r.id, r.name)}
+            >
+              <PencilIcon size={13} />
+              Rename
+            </button>
+            <button
+              type="button"
+              data-testid={`request-duplicate-${r.name}`}
+              onClick={() => {
+                setMenuFor(null);
+                ws.duplicateRequest(r.id)
+                  .then(({ name: copyName }) =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${copyName}"` })
+                  )
+                  .catch((err) =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
+                  );
+              }}
+            >
+              <CopyIcon size={13} />
+              Duplicate
+            </button>
+            <button
+              type="button"
+              data-testid={`request-send-${r.name}`}
+              onClick={() => {
+                setMenuFor(null);
+                setSendTarget({ id: r.id, type: 'request', name: r.name });
+              }}
+            >
+              <SendIcon size={13} />
+              Send to user
+            </button>
+            <button
+              type="button"
+              data-testid={`request-share-${r.name}`}
+              onClick={() => {
+                setMenuFor(null);
+                setShareTarget({ id: r.id, type: 'request', name: r.name });
+              }}
+            >
+              <ShareIcon size={13} />
+              Share link
+            </button>
+            <button
+              type="button"
+              className="danger"
+              data-testid={`request-delete-${r.name}`}
+              onClick={() => {
+                setMenuFor(null);
+                deleteRequest(r.id, r.name);
+              }}
+            >
+              <TrashIcon size={13} />
+              Delete
+            </button>
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  const renderFolder = (folder: (typeof tree.folders)[number], collectionId: string) => {
+    const isCollapsed = !!collapsedNodes[folder.id];
+    const isRenaming = renaming?.kind === 'folder' && renaming.id === folder.id;
+    const subFolders = tree.folders.filter(
+      (f) => f.collection_id === collectionId && f.parent_id === folder.id
+    );
+    const requests = tree.requests.filter(
+      (r) => r.collection_id === collectionId && r.folder_id === folder.id
+    );
+    const hasChildren = subFolders.length > 0 || requests.length > 0;
+    const isSelected = selectedRow?.kind === 'folder' && selectedRow.id === folder.id;
+    const isDropTarget = dropTarget === `folder:${folder.id}`;
+    return (
+      <div key={folder.id} className="tree-folder">
+        <div
+          className={`tree-folder-row ${isSelected ? 'selected' : ''} ${isDropTarget ? 'tree-drop-target' : ''}`}
+          draggable={!isRenaming}
+          onDragStart={(e) => handleDragStart(e, 'folder', folder.id)}
+          onDragOver={(e) => handleDragOver(e, `folder:${folder.id}`)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, folder.id)}
+        >
+          {isRenaming ? (
+            <input
+              type="text"
+              className="tree-rename-input"
+              autoFocus
+              defaultValue={folder.name}
+              data-testid={`rename-folder-input-${folder.name}`}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+              onBlur={commitRename}
+            />
+          ) : (
+            <button
+              type="button"
+              className="tree-folder-name"
+              data-testid={`folder-${folder.name}`}
+              onClick={() => {
+                setSelectedRow({ kind: 'folder', id: folder.id });
+                toggle(folder.id);
+              }}
+            >
+              <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
+                <ChevronIcon size={11} />
+              </span>
+              <span className="tree-folder-icon">
+                <FolderIcon size={13} />
+              </span>
+              <span className="name">{folder.name}</span>
+              {!isCollapsed && hasChildren && <span className="folder-count">{requests.length}</span>}
+            </button>
+          )}
+          <div className="tree-folder-actions">
+            <button
+              type="button"
+              className="icon-button"
+              title="New API request"
+              aria-label={`New request in ${folder.name}`}
+              data-testid={`new-request-folder-${folder.name}`}
+              onClick={() => onOpenCreate('request', collectionId, folder.id)}
+            >
+              <PlusIcon size={12} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="Folder options"
+              aria-label={`Options for ${folder.name}`}
+              data-testid={`folder-options-${folder.name}`}
+              data-tree-menu-trigger
+              onClick={() =>
+                setMenuFor(
+                  menuFor?.kind === 'folder' && menuFor.id === folder.id
+                    ? null
+                    : { kind: 'folder', id: folder.id }
+                )
+              }
+            >
+              <DotsIcon size={12} />
+            </button>
+          </div>
+          {menuFor?.kind === 'folder' && menuFor.id === folder.id && (
+            <div className="tree-menu" data-testid={`folder-menu-${folder.name}`}>
+              <button
+                type="button"
+                data-testid={`new-subfolder-${folder.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  onOpenCreate('folder', collectionId, folder.id);
+                }}
+              >
+                <FolderIcon size={13} />
+                New sub-folder
+              </button>
+              <button
+                type="button"
+                data-testid={`rename-folder-${folder.name}`}
+                onClick={() => startRename('folder', folder.id, folder.name)}
+              >
+                <PencilIcon size={13} />
+                Rename
+              </button>
+              <button
+                type="button"
+                data-testid={`duplicate-folder-${folder.name}`}
+              onClick={() => {
+                setMenuFor(null);
+                ws.duplicateFolder(folder.id)
+                  .then(({ name: copyName }) =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Duplicated "${copyName}"` })
+                  )
+                  .catch((err) =>
+                    dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Duplicate failed' })
+                  );
+              }}
+              >
+                <CopyIcon size={13} />
+                Duplicate
+              </button>
+              <button
+                type="button"
+                data-testid={`folder-send-${folder.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  setSendTarget({ id: folder.id, type: 'folder', name: folder.name });
+                }}
+              >
+                <SendIcon size={13} />
+                Send to user
+              </button>
+              <button
+                type="button"
+                data-testid={`folder-share-${folder.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  setShareTarget({ id: folder.id, type: 'folder', name: folder.name });
+                }}
+              >
+                <ShareIcon size={13} />
+                Share link
+              </button>
+              <button
+                type="button"
+                className="danger"
+                data-testid={`delete-folder-${folder.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  deleteFolder(folder.id, folder.name);
+                }}
+              >
+                <TrashIcon size={13} />
+                Delete folder
+              </button>
+            </div>
+          )}
+        </div>
+        {!isCollapsed && (
+          <div
+            className={`tree-folder-children ${isDropTarget ? 'tree-drop-target' : ''}`}
+            onDragOver={(e) => handleDragOver(e, `folder:${folder.id}`)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, folder.id)}
+          >
+            {subFolders.map((f) => renderFolder(f, collectionId))}
+            {requests.length > 0 && (
+              <ul className="sidebar-list">
+                {requests.map((r) => renderRequest(r))}
+              </ul>
+            )}
+            {!hasChildren && (
+              <p className="hint" style={{ padding: '4px 8px 6px 26px' }}>
+                Empty folder.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderCollection = (c: { id: string; name: string; has_auth: string | null }) => {
+    const isCollapsed = !!collapsedNodes[c.id];
+    const rootFolders = tree.folders.filter(
+      (f) => f.collection_id === c.id && !f.parent_id
+    );
+    const rootRequests = tree.requests.filter(
+      (r) => r.collection_id === c.id && !r.folder_id
+    );
+    return (
+      <div key={c.id} className="tree-collection">
+        <div
+          className={`tree-collection-row ${dropTarget === `collection:${c.id}` ? 'tree-drop-target' : ''}`}
+          onDragOver={(e) => handleDragOver(e, `collection:${c.id}`)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, null)}
+        >
+          <button
+            type="button"
+            className={`tree-collection-name ${ws.activeCollectionId === c.id ? 'active' : ''}`}
+            data-testid={`collection-${c.name}`}
+            onClick={() => {
+              toggle(c.id);
+              ws.selectCollection(c.id, c.name).catch(() => undefined);
+              onNavigate();
+            }}
+          >
+            <span className={`chevron ${isCollapsed ? '' : 'open'}`}>
+              <ChevronIcon size={12} />
+            </span>
+            <span className="tree-collection-icon">
+              <CollectionIcon size={14} />
+            </span>
+            <span className="name">{c.name}</span>
+            {c.has_auth && <span className="vis-badge auth-badge">AUTH</span>}
+          </button>
+          <div className="tree-collection-actions">
+            <button
+              type="button"
+              className="icon-button"
+              title="New API request"
+              aria-label={`New request in ${c.name}`}
+              data-testid={`new-request-${c.name}`}
+              onClick={() => onOpenCreate('request', c.id)}
+            >
+              <PlusIcon size={13} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="Collection options"
+              aria-label={`Options for ${c.name}`}
+              data-testid={`collection-options-${c.name}`}
+              data-tree-menu-trigger
+              onClick={() =>
+                setMenuFor(
+                  menuFor?.kind === 'collection' && menuFor.id === c.id
+                    ? null
+                    : { kind: 'collection', id: c.id }
+                )
+              }
+            >
+              <DotsIcon size={13} />
+            </button>
+          </div>
+          {menuFor?.kind === 'collection' && menuFor.id === c.id && (
+            <div className="tree-menu" data-testid={`collection-menu-${c.name}`}>
+              <button
+                type="button"
+                data-testid={`new-folder-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  onOpenCreate('folder', c.id);
+                }}
+              >
+                <FolderIcon size={13} />
+                New folder
+              </button>
+              <button
+                type="button"
+                data-testid={`run-collection-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  onRunCollection(c.id, c.name);
+                }}
+              >
+                <PlayIcon size={13} />
+                Run collection
+              </button>
+              <button
+                type="button"
+                data-testid={`auth-settings-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  onOpenAuth(c.id);
+                }}
+              >
+                <KeyIcon size={13} />
+                Auth settings
+              </button>
+              <button
+                type="button"
+                data-testid={`collection-send-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  setSendTarget({ id: c.id, type: 'collection', name: c.name });
+                }}
+              >
+                <SendIcon size={13} />
+                Send to user
+              </button>
+              <button
+                type="button"
+                data-testid={`collection-share-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  setShareTarget({ id: c.id, type: 'collection', name: c.name });
+                }}
+              >
+                <ShareIcon size={13} />
+                Share link
+              </button>
+              <button
+                type="button"
+                className="danger"
+                data-testid={`delete-collection-${c.name}`}
+                onClick={() => {
+                  setMenuFor(null);
+                  if (window.confirm(`Delete collection "${c.name}" and all of its requests?`)) {
+                    ws.deleteCollection(c.id).catch((err) =>
+                      alert(err instanceof Error ? err.message : 'Failed to delete collection')
+                    );
+                  }
+                }}
+              >
+                <TrashIcon size={13} />
+                Delete collection
+              </button>
+            </div>
+          )}
+        </div>
+        {!isCollapsed && (rootFolders.length > 0 || rootRequests.length > 0) && (
+          <div
+            className={`tree-collection-children ${dropTarget === `children:${c.id}` ? 'tree-drop-target' : ''}`}
+            onDragOver={(e) => handleDragOver(e, `children:${c.id}`)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, null)}
+          >
+            {rootFolders.map((f) => renderFolder(f, c.id))}
+            {rootRequests.length > 0 && (
+              <ul className="sidebar-list">
+                {rootRequests.map((r) => renderRequest(r))}
+              </ul>
+            )}
+          </div>
+        )}
+        {!isCollapsed && rootFolders.length === 0 && rootRequests.length === 0 && (
+          <p className="hint" style={{ padding: '4px 8px 6px 26px' }}>
+            No requests yet.
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="sidebar-section tree-section">
+        <div className="sidebar-section-head">
+        <button
+          type="button"
+          className={`icon-button section-chevron ${collapsed ? '' : 'open'}`}
+          data-testid="collapse-collections"
+          title={collapsed ? 'Show collections' : 'Hide collections'}
+          aria-label={collapsed ? 'Show collections' : 'Hide collections'}
+          aria-expanded={!collapsed}
+          onClick={onToggleCollapsed}
+        >
+          <ChevronIcon size={13} />
+        </button>
+        <h3>Collections</h3>
+        {!collapsed && (
+          <>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Import / export collections"
+              title="Import / export collections"
+              data-testid="open-import-export"
+              onClick={onOpenImportExport}
+            >
+              <ImportIcon size={14} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="New collection"
+              title="New collection"
+              data-testid="new-collection"
+              onClick={() => onOpenCreate('collection')}
+            >
+              <PlusIcon size={14} />
+            </button>
+            <button
+              type="button"
+              className="ghost-button small"
+              title="Manage who can access this workspace (people and teams)"
+              data-testid="share-workspace"
+              onClick={onOpenSharing}
+            >
+              Workspace access
+            </button>
+          </>
+        )}
+      </div>
+      {!collapsed && !ws.activeProjectId && !projectTree && (
+        <p className="hint" data-testid="no-active-project">
+          Select a project in the top bar.
+        </p>
+      )}
+      {!collapsed && (() => {
+        // The sidebar is workspace-scoped: the project lives in the top bar, so
+        // the tree shows only the active workspace's collections.
+        const collections = projectTree
+          ? projectTree.collections.filter((c) => c.workspace_id === ws.activeWorkspaceId)
+          : ws.activeProjectId
+            ? tree.collections.filter((c) => c.project_id === ws.activeProjectId)
+            : tree.collections;
+        return (
+          <>
+            {collections.map((c) => renderCollection(c))}
+            {collections.length === 0 && (
+              <p className="hint">
+                {ws.activeWorkspaceId
+                  ? 'No collections yet.'
+                  : 'Open a workspace to see its collections.'}
+              </p>
+            )}
+          </>
+        );
+      })()}
+      </div>
+      <SendItemDialog open={Boolean(sendTarget)} item={sendTarget} onClose={() => setSendTarget(null)} />
+      <ShareLinksModal
+        open={Boolean(shareTarget)}
+        itemType={shareTarget?.type ?? 'request'}
+        itemId={shareTarget?.id ?? ''}
+        itemName={shareTarget?.name ?? ''}
+        onClose={() => setShareTarget(null)}
+      />
+    </>
+  );
+}
+
+function TeamsPanel({ onManage, onOpenTeam }: { onManage: () => void; onOpenTeam: (teamId: string) => void }) {
+  const ws = useWorkspace();
+  return (
+    <div className="sidebar-section">
+      <div className="sidebar-section-head">
+        <h3>Teams</h3>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Manage teams"
+          title="Manage teams"
+          data-testid="manage-teams"
+          onClick={onManage}
+        >
+          <PlusIcon size={14} />
+        </button>
+      </div>
+      {ws.loading && <p className="hint">Loading…</p>}
+      {ws.error && <p className="auth-error">{ws.error}</p>}
+      <ul className="sidebar-list team-list">
+        {ws.teams.map((t) => (
+          <li key={t.id}>
+            <button
+              type="button"
+              className="team-card"
+              data-testid={`open-team-${t.name}`}
+              onClick={() => onOpenTeam(t.id)}
+            >
+              <div className="team-card-row">
+                <span className="team-avatar">
+                  <TeamIcon size={14} />
+                </span>
+                <span className="team-card-name">{t.name}</span>
+                <span className="vis-badge team-count" title={`${t.members.length} members`}>
+                  {t.members.length}
+                </span>
+              </div>
+              <div className="team-card-members">
+                {t.members.slice(0, 5).map((m) => (
+                  <span key={m.id} className="member-chip" title={m.username ? `${m.name} (@${m.username})` : m.name}>
+                    {(m.name || m.username || '?').charAt(0).toUpperCase()}
+                  </span>
+                ))}
+                {t.members.length > 5 && (
+                  <span className="member-chip more" title={`${t.members.length - 5} more members`}>
+                    +{t.members.length - 5}
+                  </span>
+                )}
+              </div>
+            </button>
+          </li>
+        ))}
+        {!ws.loading && ws.teams.length === 0 && (
+          <p className="hint">No teams yet. Create one to invite collaborators.</p>
+        )}
+      </ul>
+      <button
+        type="button"
+        className="ghost-button full"
+        data-testid="manage-teams-link"
+        onClick={onManage}
+      >
+        <TeamIcon size={13} />
+        Manage teams
+      </button>
+    </div>
+  );
+}
+
+function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
+  const { state, dispatch } = useApp();
+
+  const startNewWorkflow = () => {
+    const existing = state.workflows.find((w) => isUntitledWorkflow(w.name));
+    if (existing) {
+      dispatch({ type: 'SELECT_WORKFLOW', id: existing.id });
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'info',
+        message: 'An untitled workflow already exists. Rename the existing one to create another.',
+      });
+      window.setTimeout(() => {
+        const input = document.querySelector<HTMLInputElement>('[data-testid="workflow-name-input"]');
+        input?.focus();
+        input?.select();
+      }, 0);
+      return;
+    }
+    const workflow = { id: makeId('wf'), name: UNTITLED_WORKFLOW_NAME, steps: [] };
+    dispatch({ type: 'SAVE_WORKFLOW', workflow });
+    dispatch({ type: 'SET_TAB', tab: 'workflow' });
+  };
+
+  const deleteWorkflow = (id: string, name: string) => {
+    if (!window.confirm(`Delete workflow "${name}"?`)) return;
+    dispatch({ type: 'DELETE_WORKFLOW', id });
+    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow deleted.' });
+  };
+
+  return (
+    <div className="sidebar-section" data-testid="workflows-panel">
+      <div className="sidebar-section-head">
+        <h3>Workflows</h3>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="New workflow"
+          title="New workflow"
+          data-testid="new-workflow"
+          onClick={startNewWorkflow}
+        >
+          <PlusIcon size={14} />
+        </button>
+      </div>
+      <ul className="sidebar-list">
+        {state.workflows.map((w) => (
+          <li key={w.id} className="sidebar-row">
+            <button
+              type="button"
+              className={`sidebar-item workflow-item ${
+                state.activeTab === 'workflow' && state.activeWorkflowId === w.id ? 'active' : ''
+              }`}
+              data-testid={`workflow-${w.name}`}
+              onClick={() => {
+                dispatch({ type: 'SELECT_WORKFLOW', id: w.id });
+              }}
+            >
+              <WorkflowIcon size={13} />
+              <span className="sidebar-item-name">{w.name}</span>
+              <span className="workflow-item-count">{w.steps.length} steps</span>
+            </button>
+            <div className="sidebar-row-actions">
+              <button
+                type="button"
+                className="icon-button danger"
+                title="Delete workflow"
+                aria-label={`Delete workflow ${w.name}`}
+                data-testid={`workflow-delete-${w.name}`}
+                onClick={() => deleteWorkflow(w.id, w.name)}
+              >
+                <TrashIcon size={13} />
+              </button>
+            </div>
+          </li>
+        ))}
+        {state.workflows.length === 0 && <p className="hint">No workflows yet.</p>}
+      </ul>
+      <button type="button" className="ghost-button full" data-testid="back-to-apis" onClick={onBackToApis}>
+        <CollectionIcon size={13} />
+        Back to APIs
+      </button>
+    </div>
+  );
+}
+
+type TreeSearchKind = 'workspace' | 'collection' | 'folder' | 'subfolder' | 'request';
+
+interface TreeSearchHit {
+  kind: TreeSearchKind;
+  id: string;
+  name: string;
+  meta: string;
+  method?: string;
+}
+
+/**
+ * Client-side filter over the already-loaded sidebar data. It searches the
+ * workspaces the user belongs to plus the active workspace's collections,
+ * folders/subfolders and requests (name, url, or an exact HTTP method). No API
+ * call is made, so results update as the user types.
+ */
+function TreeSearchResults({
+  query,
+  onSelect,
+}: {
+  query: string;
+  onSelect: (kind: TreeSearchKind, id: string, name: string) => void;
+}) {
+  const ws = useWorkspace();
+
+  // Search the same project-first tree the sidebar actually renders. After the
+  // project-first refactor the legacy `ws.tree` diverges from what is shown, so
+  // filtering on it dropped every collection/folder/request result.
+  const tree = useMemo<ContentTree | null>(() => {
+    const projectTree = ws.projectTree;
+    if (!projectTree) return ws.tree;
+    return {
+      workspaceId: projectTree.workspaces[0]?.id ?? '',
+      projects: [],
+      collections: projectTree.collections.map((c) => ({
+        id: c.id,
+        name: c.name,
+        project_id: ws.activeProjectId ?? '',
+        has_auth: c.has_auth,
+      })),
+      folders: projectTree.folders,
+      requests: projectTree.requests,
+    };
+  }, [ws.projectTree, ws.tree, ws.activeProjectId]);
+
+  const hits = useMemo<TreeSearchHit[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const out: TreeSearchHit[] = [];
+    const has = (...values: Array<string | null | undefined>) =>
+      values.some((v) => (v ?? '').toLowerCase().includes(q));
+
+    for (const w of ws.workspaces) {
+      if (has(w.name)) out.push({ kind: 'workspace', id: w.id, name: w.name, meta: 'Workspace' });
+    }
+    if (!tree) return out;
+
+    const activeProjectId = ws.activeProjectId;
+    const activeCollectionIds = new Set(
+      tree.collections
+        .filter((c) => !activeProjectId || c.project_id === activeProjectId)
+        .map((c) => c.id)
+    );
+
+    const projectName = new Map(tree.projects.map((p) => [p.id, p.name]));
+    const collectionName = new Map(tree.collections.map((c) => [c.id, c.name]));
+    const folderName = new Map(tree.folders.map((f) => [f.id, f.name]));
+
+    for (const c of tree.collections) {
+      if (!activeCollectionIds.has(c.id)) continue;
+      if (has(c.name)) {
+        out.push({ kind: 'collection', id: c.id, name: c.name, meta: projectName.get(c.project_id) ?? 'Collection' });
+      }
+    }
+    for (const f of tree.folders) {
+      if (!activeCollectionIds.has(f.collection_id)) continue;
+      if (!has(f.name)) continue;
+      const collection = collectionName.get(f.collection_id) ?? '';
+      if (f.parent_id) {
+        const parent = folderName.get(f.parent_id) ?? '';
+        out.push({ kind: 'subfolder', id: f.id, name: f.name, meta: [collection, parent].filter(Boolean).join(' / ') });
+      } else {
+        out.push({ kind: 'folder', id: f.id, name: f.name, meta: collection });
+      }
+    }
+    for (const r of tree.requests) {
+      if (!activeCollectionIds.has(r.collection_id)) continue;
+      const methodMatch = r.method.toLowerCase() === q;
+      if (!methodMatch && !has(r.name, r.url)) continue;
+      out.push({ kind: 'request', id: r.id, name: r.name, method: r.method, meta: collectionName.get(r.collection_id) ?? '' });
+    }
+    return out;
+  }, [query, tree, ws.workspaces, ws.activeProjectId]);
+
+  const groups: Array<{ kind: TreeSearchKind; label: string }> = [
+    { kind: 'workspace', label: 'Workspaces' },
+    { kind: 'collection', label: 'Collections' },
+    { kind: 'folder', label: 'Folders' },
+    { kind: 'subfolder', label: 'Subfolders' },
+    { kind: 'request', label: 'Requests' },
+  ];
+
+  if (hits.length === 0) {
+    return (
+      <div className="sidebar-search-empty" data-testid="tree-search-empty">
+        <SearchIcon size={18} />
+        <p>No matches for &ldquo;{query.trim()}&rdquo;.</p>
+        {!tree && ws.loading ? <p className="hint">Still loading this workspace&hellip;</p> : null}
+      </div>
+    );
+  }
+
+  const iconFor = (kind: TreeSearchKind) => {
+    if (kind === 'workspace') return <WorkspaceIcon size={13} />;
+    if (kind === 'collection') return <CollectionIcon size={13} />;
+    if (kind === 'request') return <RequestIcon size={13} />;
+    return <FolderIcon size={13} />;
+  };
+
+  return (
+    <div className="sidebar-search-results" data-testid="tree-search-results">
+      {groups.map((g) => {
+        const items = hits.filter((h) => h.kind === g.kind);
+        if (items.length === 0) return null;
+        return (
+          <div key={g.kind} className="sidebar-search-group">
+            <div className="sidebar-search-group-head">
+              <span>{g.label}</span>
+              <span className="sidebar-search-count">{items.length}</span>
+            </div>
+            <ul className="sidebar-search-list">
+              {items.map((h) => (
+                <li key={`${h.kind}-${h.id}`}>
+                  <button
+                    type="button"
+                    className="sidebar-search-hit"
+                    data-testid={`tree-search-${h.kind}-${h.id}`}
+                    title={h.name}
+                    onClick={() => onSelect(h.kind, h.id, h.name)}
+                  >
+                    <span className="sidebar-search-icon">{iconFor(h.kind)}</span>
+                    <span className="sidebar-search-text">
+                      <span className="sidebar-search-name">
+                        {h.method ? <span className="sidebar-search-method">{h.method}</span> : null}
+                        {h.name}
+                      </span>
+                      {h.meta ? <span className="sidebar-search-meta">{h.meta}</span> : null}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function Sidebar({
+  panelHidden = false,
+  onRequestClose,
+}: {
+  panelHidden?: boolean;
+  onRequestClose?: () => void;
+}) {
+  const ws = useWorkspace();
+  const { user, organizations } = useAuth();
+  const { state, dispatch } = useApp();
+  const { view, setView } = useNav();
+  const menu = useMenuAccess();
+  const navOrder = useNavOrder();
+  const pathname = usePathname();
+  const router = useRouter();
+  // True while a rail link has navigated away from the workspace view but the
+  // route has not committed yet (window.location.pathname is still '/'). Read
+  // by goWorkspace to decide whether it must push '/' to supersede it.
+  const navPendingRef = useRef(false);
+  useEffect(() => {
+    navPendingRef.current = false;
+  }, [pathname]);
+  const [rail, setRail] = useState<RailTab>(() => (state.activeTab === 'workflow' ? 'workflow' : 'apis'));
+  const [collapsed, setCollapsed] = useState(false);
+  const [workspacesCollapsed, setWorkspacesCollapsed] = useState(false);
+  const [collectionsCollapsed, setCollectionsCollapsed] = useState(false);
+  const [treeSearch, setTreeSearch] = useState('');
+  const [createKind, setCreateKind] = useState<CreateKind | null>(null);
+  const [targetCollectionId, setTargetCollectionId] = useState<string | null>(null);
+  const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const [navOrderOpen, setNavOrderOpen] = useState(false);
+  const [railDragKey, setRailDragKey] = useState<string | null>(null);
+  const [railDragOverKey, setRailDragOverKey] = useState<string | null>(null);
+  const railRef = useRef<HTMLElement | null>(null);
+  const railOverElRef = useRef<HTMLElement | null>(null);
+  const [shareLinkTarget, setShareLinkTarget] = useState<SendableItem | null>(null);
+  const [teamsOpen, setTeamsOpen] = useState(false);
+  const [managingTeamId, setManagingTeamId] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [environmentsOpen, setEnvironmentsOpen] = useState(false);
+  const [runnerOpen, setRunnerOpen] = useState(false);
+  const [runnerCollectionId, setRunnerCollectionId] = useState<string | null>(null);
+  const [runnerCollectionName, setRunnerCollectionName] = useState('');
+  const [requestingWorkspace, setRequestingWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [workspaceReason, setWorkspaceReason] = useState('');
+  const [importExportOpen, setImportExportOpen] = useState(false);
+  const [width, setWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
+    const saved = window.localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    const parsed = saved ? parseInt(saved, 10) : NaN;
+    return Number.isFinite(parsed)
+      ? Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, parsed))
+      : SIDEBAR_DEFAULT_WIDTH;
+  });
+  const widthRef = useRef(width);
+  widthRef.current = width;
+
+  const onResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = widthRef.current;
+    const move = (ev: PointerEvent) => {
+      setWidth(
+        Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, startWidth + (ev.clientX - startX)))
+      );
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      document.body.classList.remove('is-col-dragging');
+      window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(widthRef.current));
+    };
+    document.body.classList.add('is-col-dragging');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }, []);
+
+  const openCreate = (kind: CreateKind, collectionId?: string, folderId?: string) => {
+    setTargetCollectionId(collectionId ?? null);
+    setTargetFolderId(folderId ?? null);
+    setCreateKind(kind);
+  };
+
+  const goWorkspace = () => {
+    setView('workspace');
+    // While a /manage|/admin|/automations navigation is in flight the browser
+    // location is still '/', so a pathname-only guard would skip the push and
+    // let the pending away-navigation win. navPendingRef flags that case; when
+    // we are genuinely parked on '/', skip the redundant push (and the history
+    // entry / re-render it would cause).
+    const onHome = typeof window !== 'undefined' && window.location.pathname === '/';
+    if (onHome && !navPendingRef.current) return;
+    navPendingRef.current = false;
+    router.push('/');
+  };
+
+  const railHidden = panelHidden || collapsed;
+
+  // Open a sidebar search hit: clear the query so the tree returns, switch back
+  // to the workspace view, then select the target (folders resolve to their
+  // owning collection, since folders have no standalone view).
+  const onSearchSelect = async (kind: TreeSearchKind, id: string, name: string) => {
+    setTreeSearch('');
+    goWorkspace();
+    onRequestClose?.();
+    try {
+      if (kind === 'workspace') {
+        await ws.selectWorkspace(id);
+      } else if (kind === 'collection') {
+        await ws.selectCollection(id, name);
+      } else if (kind === 'folder' || kind === 'subfolder') {
+        const folder = ws.tree?.folders.find((f) => f.id === id);
+        if (folder) {
+          const collection = ws.tree?.collections.find((c) => c.id === folder.collection_id);
+          await ws.selectCollection(folder.collection_id, collection?.name ?? '');
+        }
+      } else {
+        await ws.selectRequest(id);
+      }
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Failed to open result' });
+    }
+  };
+
+  const submitWorkspaceRequest = async () => {
+    if (!requestingWorkspace) return;
+    try {
+      await docsSharedApi.requestWorkspaceAccess({
+        workspaceId: requestingWorkspace.id,
+        reason: workspaceReason || undefined,
+      });
+      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: `Access requested for "${requestingWorkspace.name}"` });
+      setRequestingWorkspace(null);
+      setWorkspaceReason('');
+      await ws.refresh();
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Request failed' });
+    }
+  };
+
+  const onOpenAuth = async (collectionId: string) => {
+    await ws.selectCollection(collectionId, ws.tree?.collections.find((c) => c.id === collectionId)?.name ?? '');
+    setAuthOpen(true);
+    goWorkspace();
+  };
+
+  const onRunCollection = async (collectionId: string, collectionName: string) => {
+    setRunnerCollectionId(collectionId);
+    setRunnerCollectionName(collectionName);
+    setRunnerOpen(true);
+    try {
+      await ws.runCollection(collectionId);
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Collection run failed' });
+      setRunnerOpen(false);
+    }
+  };
+
+  const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const canAccess =
+    user?.role === 'ADMIN' ||
+    organizations.some((o) => o.role === 'ADMIN' || o.role === 'MANAGER');
+
+  // Rail order is applied through CSS flex `order`, so the built-in DOM order is
+  // untouched until the user saves a custom arrangement.
+  const customRail = navOrder.custom;
+  const railOrderStyle = (key: string) =>
+    customRail ? { order: navOrder.orderFor(key) } : undefined;
+  const railAvailableKeys = [
+    'apis',
+    'workflow',
+    ...(menu.isEnabled('teams') ? ['teams'] : []),
+    ...(menu.isEnabled('automations') ? ['automations'] : []),
+    ...(menu.isEnabled('history') ? ['history'] : []),
+    ...(menu.isEnabled('docs') ? ['docs'] : []),
+    ...(menu.isEnabled('contracts') ? ['contracts'] : []),
+    ...(menu.isEnabled('monitors') ? ['monitors'] : []),
+    ...(menu.isEnabled('mock-scenarios') ? ['mock-scenarios'] : []),
+    ...(menu.isEnabled('copilot') ? ['copilot'] : []),
+    ...(menu.isEnabled('collab') ? ['collab'] : []),
+    ...(menu.isEnabled('json-compare') ? ['json-compare'] : []),
+    ...(menu.isEnabled('network') ? ['network'] : []),
+    ...(user?.role === 'ADMIN' ? ['superadmin'] : []),
+    ...(canAccess ? ['org-analytics'] : []),
+    ...(canManage && menu.isEnabled('manage') ? ['manage'] : []),
+    ...(user?.role === 'ADMIN' ? ['admin'] : []),
+    ...(canAccess ? ['access'] : []),
+  ];
+  const railAvailableKeyList = railAvailableKeys.join(',');
+
+  // Mark the visible rail items as drag handles. Doing this here (rather than on
+  // each element) keeps the rail markup untouched and automatically respects the
+  // menus the current user can see.
+  useEffect(() => {
+    const nav = railRef.current;
+    if (!nav) return;
+    const allowed = new Set(railAvailableKeyList ? railAvailableKeyList.split(',') : []);
+    nav.querySelectorAll<HTMLElement>('[data-testid^="rail-"]').forEach((el) => {
+      const key = (el.getAttribute('data-testid') || '').replace(/^rail-/, '');
+      if (allowed.has(key)) {
+        el.setAttribute('draggable', 'true');
+        el.setAttribute('data-rail-key', key);
+      } else {
+        el.removeAttribute('draggable');
+        el.removeAttribute('data-rail-key');
+      }
+    });
+  }, [railAvailableKeyList]);
+
+  const railKeyFromTarget = (target: EventTarget | null): string | null => {
+    if (!(target instanceof Element)) return null;
+    return target.closest<HTMLElement>('[data-rail-key]')?.getAttribute('data-rail-key') ?? null;
+  };
+
+  const clearRailDropTarget = () => {
+    railOverElRef.current?.removeAttribute('data-dragover');
+    railOverElRef.current = null;
+  };
+
+  const endRailDrag = () => {
+    clearRailDropTarget();
+    setRailDragKey(null);
+    setRailDragOverKey(null);
+  };
+
+  const dropRail = (targetKey: string) => {
+    const from = railDragKey;
+    if (!from || from === targetKey) return;
+    const order = normalizeRailOrder(navOrder.order, railAvailableKeys);
+    const fromIndex = order.indexOf(from);
+    const toIndex = order.indexOf(targetKey);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const next = [...order];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    navOrder.save(next).catch(() => undefined);
+  };
+
+  return (
+    <>
+      <aside
+        id="app-sidebar"
+        className={`sidebar ${railHidden ? 'sidebar-rail-only' : ''}`}
+        data-testid="sidebar"
+        style={railHidden ? undefined : { width }}
+      >
+      <nav
+        className="rail"
+        aria-label="Sidebar navigation"
+        ref={railRef}
+        data-dragging={railDragKey ? 'true' : undefined}
+        onClickCapture={(e) => {
+          const anchor = e.target instanceof Element ? e.target.closest('a[href]') : null;
+          const href = anchor?.getAttribute('href') ?? '';
+          if (href && href !== '/' && !href.startsWith('#')) navPendingRef.current = true;
+        }}
+        onDragStart={(e) => {
+          const key = railKeyFromTarget(e.target);
+          if (!key) return;
+          setRailDragKey(key);
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            try {
+              e.dataTransfer.setData('text/plain', key);
+            } catch {
+              // Some browsers restrict data during dragstart; the state above
+              // still tracks the item being moved.
+            }
+          }
+        }}
+        onDragOver={(e) => {
+          const key = railKeyFromTarget(e.target);
+          if (!key || !railDragKey || railDragKey === key) return;
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          const el =
+            e.target instanceof Element ? e.target.closest<HTMLElement>('[data-rail-key]') : null;
+          if (el && el !== railOverElRef.current) {
+            clearRailDropTarget();
+            railOverElRef.current = el;
+            el.setAttribute('data-dragover', 'true');
+          }
+          if (railDragOverKey !== key) setRailDragOverKey(key);
+        }}
+        onDragLeave={(e) => {
+          const el =
+            e.target instanceof Element ? e.target.closest<HTMLElement>('[data-rail-key]') : null;
+          if (el && el === railOverElRef.current) {
+            clearRailDropTarget();
+            setRailDragOverKey(null);
+          }
+        }}
+        onDrop={(e) => {
+          const key = railKeyFromTarget(e.target);
+          if (!key) return;
+          e.preventDefault();
+          dropRail(key);
+          endRailDrag();
+        }}
+        onDragEnd={endRailDrag}
+      >
+        <button
+          type="button"
+          className={`rail-button ${view === 'workspace' && rail === 'apis' ? 'active' : ''}`}
+          data-testid="rail-apis"
+          title="APIs & collections"
+          aria-label="APIs & collections"
+          style={railOrderStyle('apis')}
+          onClick={() => {
+            setRail('apis');
+            setCollapsed(false);
+            goWorkspace();
+            dispatch({ type: 'SET_TAB', tab: 'request' });
+          }}
+        >
+          <CollectionIcon size={17} />
+        </button>
+        <button
+          type="button"
+          className={`rail-button ${view === 'workspace' && rail === 'workflow' ? 'active' : ''}`}
+          data-testid="rail-workflow"
+          title="Workflows"
+          aria-label="Workflows"
+          style={railOrderStyle('workflow')}
+          onClick={() => {
+            setRail('workflow');
+            setCollapsed(false);
+            goWorkspace();
+            dispatch({ type: 'SET_TAB', tab: 'workflow' });
+          }}
+        >
+          <WorkflowIcon size={17} />
+        </button>
+        {menu.isEnabled('teams') && (
+          <button
+            type="button"
+            className={`rail-button ${view === 'workspace' && rail === 'teams' ? 'active' : ''}`}
+            data-testid="rail-teams"
+            title="Teams"
+            aria-label="Teams"
+            style={railOrderStyle('teams')}
+            onClick={() => {
+              setRail('teams');
+              setCollapsed(false);
+              goWorkspace();
+            }}
+          >
+            <TeamIcon size={17} />
+          </button>
+        )}
+        <div className="rail-sep" style={customRail ? { display: 'none' } : undefined} />
+        {menu.isEnabled('automations') && (
+          <Link
+            href="/automations"
+            className={`rail-button ${view === 'automations' ? 'active' : ''}`}
+            data-testid="rail-automations"
+            title="Automations"
+            aria-label="Automations"
+            style={railOrderStyle('automations')}
+            onClick={() => {
+              setView('automations');
+              onRequestClose?.();
+            }}
+          >
+            <BoltIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('history') && (
+          <Link
+            href="/history"
+            className={`rail-button ${view === 'history' ? 'active' : ''}`}
+            data-testid="rail-history"
+            title="Run history"
+            aria-label="Run history"
+            style={railOrderStyle('history')}
+            onClick={() => {
+              setView('history');
+              onRequestClose?.();
+            }}
+          >
+            <HistoryIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('docs') && (
+          <Link
+            href="/docs"
+            className={`rail-button ${view === 'docs' ? 'active' : ''}`}
+            data-testid="rail-docs"
+            title="Docs"
+            aria-label="Docs"
+            style={railOrderStyle('docs')}
+            onClick={() => {
+              setView('docs');
+              onRequestClose?.();
+            }}
+          >
+            <FileIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('contracts') && (
+          <Link
+            href="/contracts"
+            className={`rail-button ${view === 'contracts' ? 'active' : ''}`}
+            data-testid="rail-contracts"
+            title="API contracts"
+            aria-label="API contracts"
+            style={railOrderStyle('contracts')}
+            onClick={() => {
+              setView('contracts');
+              onRequestClose?.();
+            }}
+          >
+            <LayersIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('monitors') && (
+          <Link
+            href="/monitors"
+            className={`rail-button ${view === 'monitors' ? 'active' : ''}`}
+            data-testid="rail-monitors"
+            title="Monitors"
+            aria-label="Monitors"
+            style={railOrderStyle('monitors')}
+            onClick={() => {
+              setView('monitors');
+              onRequestClose?.();
+            }}
+          >
+            <ClockIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('mock-scenarios') && (
+          <Link
+            href="/mock-scenarios"
+            className={`rail-button ${view === 'mock-scenarios' ? 'active' : ''}`}
+            data-testid="rail-mock-scenarios"
+            title="Mock scenarios"
+            aria-label="Mock scenarios"
+            style={railOrderStyle('mock-scenarios')}
+            onClick={() => {
+              setView('mock-scenarios');
+              onRequestClose?.();
+            }}
+          >
+            <ServerIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('copilot') && (
+          <Link
+            href="/copilot"
+            className={`rail-button ${view === 'copilot' ? 'active' : ''}`}
+            data-testid="rail-copilot"
+            title="AI copilot"
+            aria-label="AI copilot"
+            style={railOrderStyle('copilot')}
+            onClick={() => {
+              setView('copilot');
+              onRequestClose?.();
+            }}
+          >
+            <FormulaIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('collab') && (
+          <Link
+            href="/collab"
+            className={`rail-button ${view === 'collab' ? 'active' : ''}`}
+            data-testid="rail-collab"
+            title="Collaboration"
+            aria-label="Collaboration"
+            style={railOrderStyle('collab')}
+            onClick={() => {
+              setView('collab');
+              onRequestClose?.();
+            }}
+          >
+            <UsersIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('json-compare') && (
+          <Link
+            href="/json-compare"
+            className={`rail-button ${view === 'json-compare' ? 'active' : ''}`}
+            data-testid="rail-json-compare"
+            title="JSON compare"
+            aria-label="JSON compare"
+            style={railOrderStyle('json-compare')}
+            onClick={() => {
+              setView('json-compare');
+              onRequestClose?.();
+            }}
+          >
+            <CompareIcon size={17} />
+          </Link>
+        )}
+        {menu.isEnabled('network') && (
+          <Link
+            href="/network"
+            className={`rail-button ${view === 'network' ? 'active' : ''}`}
+            data-testid="rail-network"
+            title="People"
+            aria-label="People"
+            style={railOrderStyle('network')}
+            onClick={() => {
+              setView('network');
+              onRequestClose?.();
+            }}
+          >
+            <NetworkIcon size={17} />
+          </Link>
+        )}
+        {user?.role === 'ADMIN' && (
+          <Link
+            href="/superadmin"
+            className={`rail-button ${view === 'superadmin' ? 'active' : ''}`}
+            data-testid="rail-superadmin"
+            title="Superadmin"
+            aria-label="Superadmin"
+            style={railOrderStyle('superadmin')}
+            onClick={() => {
+              setView('superadmin');
+              onRequestClose?.();
+            }}
+          >
+            <CrownIcon size={17} />
+          </Link>
+        )}
+        {canAccess && (
+          <Link
+            href="/org-analytics"
+            className={`rail-button ${view === 'org-analytics' ? 'active' : ''}`}
+            data-testid="rail-org-analytics"
+            title="Org analytics"
+            aria-label="Org analytics"
+            style={railOrderStyle('org-analytics')}
+            onClick={() => {
+              setView('org-analytics');
+              onRequestClose?.();
+            }}
+          >
+            <GaugeIcon size={17} />
+          </Link>
+        )}
+        {canManage && menu.isEnabled('manage') && (
+          <Link
+            href="/manage"
+            className={`rail-button ${view === 'manage' ? 'active' : ''}`}
+            data-testid="rail-manage"
+            title="Manage"
+            aria-label="Manage"
+            style={railOrderStyle('manage')}
+            onClick={() => {
+              setView('manage');
+              onRequestClose?.();
+            }}
+          >
+            <ShieldIcon size={17} />
+          </Link>
+        )}
+        {user?.role === 'ADMIN' && (
+          <Link
+            href="/admin"
+            className={`rail-button ${view === 'admin' ? 'active' : ''}`}
+            data-testid="rail-admin"
+            title="Admin"
+            aria-label="Admin"
+            style={railOrderStyle('admin')}
+            onClick={() => {
+              setView('admin');
+              onRequestClose?.();
+            }}
+          >
+            <UserIcon size={17} />
+          </Link>
+        )}
+        {canAccess && (
+          <Link
+            href="/access"
+            className={`rail-button ${view === 'access' ? 'active' : ''}`}
+            data-testid="rail-access"
+            title="Access"
+            aria-label="Access"
+            style={railOrderStyle('access')}
+            onClick={() => {
+              setView('access');
+              onRequestClose?.();
+            }}
+          >
+            <LockIcon size={17} />
+          </Link>
+        )}
+        <button
+          type="button"
+          className="rail-button rail-customize"
+          data-testid="rail-customize"
+          title="Customize menu (drag icons to reorder)"
+          aria-label="Customize menu (drag icons to reorder)"
+          style={customRail ? { order: 997 } : undefined}
+          onClick={() => setNavOrderOpen(true)}
+        >
+          <GripIcon size={17} />
+        </button>
+        <div className="rail-spacer" style={customRail ? { order: 998 } : undefined} />
+        <button
+          type="button"
+          className={`rail-button rail-toggle ${collapsed ? 'is-collapsed' : ''}`}
+          data-testid="sidebar-toggle"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={customRail ? { order: 999 } : undefined}
+          onClick={() => setCollapsed((v) => !v)}
+        >
+          <ChevronIcon size={15} />
+        </button>
+      </nav>
+
+      {navOrderOpen && (
+        <NavOrderDialog availableKeys={railAvailableKeys} onClose={() => setNavOrderOpen(false)} />
+      )}
+
+      <div className={`sidebar-panel ${railHidden ? 'sidebar-panel-hidden' : ''}`}>
+        {rail === 'apis' ? (
+          <>
+            <div className="sidebar-search">
+              <SearchIcon size={14} />
+              <input
+                type="text"
+                className="sidebar-search-input"
+                data-testid="tree-search"
+                placeholder="Search workspaces, collections, folders, requests"
+                aria-label="Search workspaces, collections, folders and requests"
+                value={treeSearch}
+                onChange={(e) => setTreeSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setTreeSearch('');
+                  }
+                }}
+              />
+              {treeSearch && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  data-testid="tree-search-clear"
+                  title="Clear search"
+                  aria-label="Clear search"
+                  onClick={() => setTreeSearch('')}
+                >
+                  <XIcon size={13} />
+                </button>
+              )}
+            </div>
+
+            {treeSearch.trim() ? (
+              <TreeSearchResults query={treeSearch} onSelect={onSearchSelect} />
+            ) : (
+              <>
+            <div className="sidebar-section">
+              <div className="sidebar-section-head">
+                <button
+                  type="button"
+                  className={`icon-button section-chevron ${workspacesCollapsed ? '' : 'open'}`}
+                  data-testid="collapse-workspaces"
+                  title={workspacesCollapsed ? 'Show workspaces' : 'Hide workspaces'}
+                  aria-label={workspacesCollapsed ? 'Show workspaces' : 'Hide workspaces'}
+                  aria-expanded={!workspacesCollapsed}
+                  onClick={() => setWorkspacesCollapsed((v) => !v)}
+                >
+                  <ChevronIcon size={13} />
+                </button>
+                <h3>Workspaces</h3>
+                <button
+                  type="button"
+                  className="ghost-button small"
+                  title="Environments & variables"
+                  data-testid="environments-open"
+                  onClick={() => setEnvironmentsOpen(true)}
+                >
+                  Env
+                </button>
+              </div>
+              {!workspacesCollapsed && (
+                <>
+                  {ws.loading && <p className="hint">Loading…</p>}
+                  {ws.error && <p className="auth-error">{ws.error}</p>}
+                  <WorkspaceChips
+                    onOpenCreate={openCreate}
+                    onNavigate={goWorkspace}
+                    onRequestWorkspace={(w) => setRequestingWorkspace(w)}
+                    onOpenShareLink={(w) => setShareLinkTarget({ id: w.id, type: 'workspace', name: w.name })}
+                    workspaces={
+                      ws.projectTree
+                        ? ws.projectTree.workspaces.map((pw) => {
+                            const full = ws.workspaces.find((w) => w.id === pw.id);
+                            return (
+                              full ?? { id: pw.id, name: pw.name, visibility: pw.visibility, role: null }
+                            );
+                          })
+                        : ws.workspaces
+                    }
+                  />
+                </>
+              )}
+            </div>
+
+            {ws.tree && ws.activeWorkspaceId ? (
+              <CollectionsTree
+                onOpenCreate={openCreate}
+                onOpenSharing={() => setSharingOpen(true)}
+                onOpenAuth={onOpenAuth}
+                onNavigate={goWorkspace}
+                onRequestClose={onRequestClose}
+                onRunCollection={onRunCollection}
+                onOpenImportExport={() => setImportExportOpen(true)}
+                collapsed={collectionsCollapsed}
+                onToggleCollapsed={() => setCollectionsCollapsed((v) => !v)}
+              />
+            ) : ws.loading || (ws.activeWorkspaceId && !ws.tree && !ws.error) ? (
+              <p className="hint workspace-loading-hint">Loading collections…</p>
+            ) : (
+              <div className="empty-state" data-testid="empty-state">
+                <CollectionIcon size={20} />
+                {(ws.projectTree ? ws.projectTree.workspaces.length : ws.workspaces.length) === 0 ? (
+                  <>
+                    <p>No workspaces yet. Create one to add collections and requests.</p>
+                    <button
+                      type="button"
+                      className="primary-button small"
+                      data-testid="empty-new-workspace"
+                      onClick={() => openCreate('workspace')}
+                    >
+                      <PlusIcon size={13} />
+                      New workspace
+                    </button>
+                  </>
+                ) : (
+                  <p>Open a workspace above to see its collections.</p>
+                )}
+              </div>
+            )}
+              </>
+            )}
+          </>
+        ) : rail === 'workflow' ? (
+          <WorkflowsPanel
+            onBackToApis={() => {
+              setRail('apis');
+              dispatch({ type: 'SET_TAB', tab: 'request' });
+            }}
+          />
+        ) : (
+          <TeamsPanel
+            onManage={() => {
+              setManagingTeamId(null);
+              setTeamsOpen(true);
+            }}
+            onOpenTeam={(id) => {
+              setManagingTeamId(id);
+              setTeamsOpen(true);
+            }}
+          />
+        )}
+      </div>
+
+      {!railHidden && (
+        <div
+          className="sidebar-resizer"
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          title="Drag to resize"
+          onPointerDown={onResizeStart}
+        />
+      )}
+    </aside>
+
+    {createKind && (
+      <CreateModal
+        kind={createKind}
+        collectionId={targetCollectionId ?? undefined}
+        folderId={targetFolderId ?? undefined}
+        onClose={() => setCreateKind(null)}
+      />
+    )}
+    {requestingWorkspace && (
+      <div
+        className="modal-overlay"
+        data-testid="workspace-request-modal"
+        onClick={() => {
+          setRequestingWorkspace(null);
+          setWorkspaceReason('');
+        }}
+      >
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2>Request access</h2>
+          </div>
+          <div className="modal-body">
+            <p className="hint">
+              Request access to <strong>{requestingWorkspace.name}</strong>. A workspace admin will
+              review your request.
+            </p>
+            <div className="modal-form">
+              <label className="field">
+                <span className="field-label">Reason (optional)</span>
+                <textarea
+                  className="text-input"
+                  data-testid="workspace-request-reason"
+                  rows={3}
+                  placeholder="e.g. I need to collaborate on the payments workspace"
+                  value={workspaceReason}
+                  onChange={(e) => setWorkspaceReason(e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="ghost-button"
+              data-testid="workspace-request-cancel"
+              onClick={() => {
+                setRequestingWorkspace(null);
+                setWorkspaceReason('');
+              }}
+            >
+              Cancel
+            </button>
+            <button type="button" className="primary-button" data-testid="workspace-request-confirm" onClick={submitWorkspaceRequest}>
+              Request access
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    <SharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} />
+    <ShareLinksModal
+      open={Boolean(shareLinkTarget)}
+      itemType={shareLinkTarget?.type ?? 'workspace'}
+      itemId={shareLinkTarget?.id ?? ''}
+      itemName={shareLinkTarget?.name ?? ''}
+      onClose={() => setShareLinkTarget(null)}
+    />
+    <TeamsModal
+      open={teamsOpen}
+      teamId={managingTeamId}
+      onClose={() => {
+        setTeamsOpen(false);
+        setManagingTeamId(null);
+      }}
+    />
+    <EnvironmentsModal open={environmentsOpen} onClose={() => setEnvironmentsOpen(false)} />
+    <AuthProviderModal open={authOpen} onClose={() => setAuthOpen(false)} />
+    <CollectionRunnerModal
+      open={runnerOpen}
+      running={ws.collectionRunRunning}
+      collectionId={runnerCollectionId}
+      collectionName={runnerCollectionName}
+      result={ws.collectionRun}
+      onRun={(options) => {
+        if (!runnerCollectionId) return;
+        ws.runCollection(runnerCollectionId, options).catch((err) => {
+          dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Collection run failed' });
+        });
+      }}
+      onClose={() => {
+        setRunnerOpen(false);
+        ws.clearCollectionRun();
+      }}
+    />
+    <CollectionImportExportModal open={importExportOpen} onClose={() => setImportExportOpen(false)} />
+    </>
+  );
+}

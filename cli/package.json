@@ -1,0 +1,28 @@
+{
+  "name": "mockshift-cli",
+  "version": "0.1.0",
+  "description": "Official command-line interface for Mockshift: browse workspaces, projects, collections and requests and trigger server-side request runs from CI.",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "lib/cli.js",
+  "bin": {
+    "mockshift": "./bin/mockshift.js",
+    "mockshift-cli": "./bin/mockshift.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "keywords": [
+    "mockshift",
+    "cli",
+    "api-testing"
+  ]
+}

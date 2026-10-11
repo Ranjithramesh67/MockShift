@@ -1,0 +1,944 @@
+'use strict';
+
+// Portal B (B3): subscriber directory + subscription/order/invoice lifecycle.
+// server.js mounts this router only at /api/subscribers, so the lifecycle
+// actions from CONTRACT.md live beneath it as /subscriptions/...,
+// /orders/... and /invoices/... sub-routes. Response shapes match CONTRACT.md.
+
+const crypto = require('crypto');
+const { Router } = require('express');
+const { pool, query, authLib } = require('../shared');
+const { access, roleAtLeast, requirePortalRole } = require('../portalAccess');
+const { logAudit } = require('../auditLog');
+const { allocateUsername } = require('../../../../backend/src/api/username');
+
+const router = Router();
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const SUB_STATUSES = ['TRIALING', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED', 'EXPIRED'];
+const LIST_STATUSES = [...SUB_STATUSES, 'NONE'];
+const CYCLES = ['MONTHLY', 'YEARLY', 'CUSTOM'];
+// Roles a portal admin may assign while creating a subscriber account. Kept to
+// the non-privileged app roles so the portal cannot mint app ADMIN/MANAGER.
+const SUB_ROLE_CHOICES = ['EDITOR', 'VIEWER'];
+
+// Base: any portal role (VIEWER+). Mutations stack MANAGER/ADMIN per route.
+router.use(access.requireAuth);
+router.use(requirePortalRole('VIEWER'));
+
+function isUuid(value) {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
+// Detail-shape subscription row (plan embedded), used by GET :userId and by
+// every lifecycle response (`subscription` key per CONTRACT.md).
+const SUB_COLUMNS = `s.id, s.status, s.billing_cycle,
+  s.current_period_start, s.current_period_end, s.trial_ends_at,
+  s.cancel_at_period_end, s.cancelled_at, s.created_at,
+  p.id AS plan_id, p.key AS plan_key, p.name AS plan_name, p.currency AS plan_currency`;
+
+function toSubscriptionShape(r) {
+  return {
+    id: r.id,
+    status: r.status,
+    billing_cycle: r.billing_cycle,
+    plan: {
+      id: r.plan_id,
+      key: r.plan_key,
+      name: r.plan_name,
+      currency: r.plan_currency,
+    },
+    current_period_start: r.current_period_start,
+    current_period_end: r.current_period_end,
+    trial_ends_at: r.trial_ends_at,
+    cancel_at_period_end: r.cancel_at_period_end,
+    cancelled_at: r.cancelled_at,
+    created_at: r.created_at,
+  };
+}
+
+async function fetchSubscription(id, options) {
+  const { rows } = await query(
+    `SELECT ${SUB_COLUMNS}
+       FROM subscriptions s
+       JOIN plans p ON p.id = s.plan_id
+      WHERE s.id = $1`,
+    [id],
+    options
+  );
+  return rows[0] ? toSubscriptionShape(rows[0]) : null;
+}
+
+function toOrderShape(r) {
+  return {
+    id: r.id,
+    plan_key: r.plan_key,
+    plan_name: r.plan_name,
+    billing_cycle: r.billing_cycle,
+    amount: r.amount,
+    currency: r.currency,
+    status: r.status,
+    payment_method: r.payment_method,
+    created_at: r.created_at,
+  };
+}
+
+async function fetchOrder(id) {
+  const { rows } = await query(
+    `SELECT o.id, p.key AS plan_key, p.name AS plan_name, o.billing_cycle,
+            o.amount::text AS amount, o.currency, o.status, o.payment_method,
+            o.created_at
+       FROM orders o
+       JOIN plans p ON p.id = o.plan_id
+      WHERE o.id = $1`,
+    [id]
+  );
+  return rows[0] ? toOrderShape(rows[0]) : null;
+}
+
+async function fetchInvoice(id) {
+  const { rows } = await query(
+    `SELECT i.id, i.number, i.amount::text AS amount, i.currency, i.status,
+            i.issued_at, i.paid_at
+       FROM invoices i
+      WHERE i.id = $1`,
+    [id]
+  );
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    id: r.id,
+    number: r.number,
+    amount: r.amount,
+    currency: r.currency,
+    status: r.status,
+    issued_at: r.issued_at,
+    paid_at: r.paid_at,
+  };
+}
+
+// Run `fn(client)` inside a transaction with the session user context set
+// (same scheme as shared.query). Used for multi-statement mutations (refund).
+async function withTransaction(userId, fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', userId]);
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+function parsePaging(query) {
+  const page = Number.parseInt(String(query.page ?? ''), 10);
+  const pageSize = Number.parseInt(String(query.pageSize ?? ''), 10);
+  const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
+  const rawSize = Number.isFinite(pageSize) && pageSize >= 1 ? pageSize : 20;
+  return { page: safePage, pageSize: Math.min(100, rawSize) };
+}
+
+/* --------------------------------------------------- Manual onboarding helpers */
+
+function normalizeEmail(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+// Random url-safe password for admin-created accounts; returned once when the
+// caller does not supply one.
+function generatePassword() {
+  return crypto.randomBytes(12).toString('base64url');
+}
+
+async function fetchPlan(planId, options) {
+  const { rows } = await query(
+    `SELECT id, key, name, currency, billing_cycles, trial_days FROM plans WHERE id = $1`,
+    [planId],
+    options
+  );
+  return rows[0] || null;
+}
+
+function defaultCycle(plan) {
+  if (plan.billing_cycles.includes('MONTHLY')) return 'MONTHLY';
+  return plan.billing_cycles[0] || 'MONTHLY';
+}
+
+// Insert a subscription for a user. Manual grants start now and default to
+// ACTIVE (or TRIALING when the plan ships a trial) until the admin overrides.
+async function grantSubscription({ userId, plan, cycle, status }, options) {
+  const chosenStatus = status || (plan.trial_days > 0 ? 'TRIALING' : 'ACTIVE');
+  const { rows } = await query(
+    `INSERT INTO subscriptions
+       (user_id, plan_id, status, billing_cycle,
+        current_period_start, current_period_end, trial_ends_at)
+     VALUES ($1, $2, $3, $4, now(),
+             CASE $4
+               WHEN 'MONTHLY' THEN now() + interval '1 month'
+               WHEN 'YEARLY' THEN now() + interval '1 year'
+               ELSE NULL
+             END,
+             CASE WHEN $5::int > 0 THEN now() + ($5::int || ' days')::interval ELSE NULL END)
+     RETURNING id`,
+    [userId, plan.id, chosenStatus, cycle, plan.trial_days],
+    options
+  );
+  return fetchSubscription(rows[0].id, options);
+}
+
+/* ------------------------------------------------------------- List users */
+
+// GET /api/subscribers — every user that has at least one subscription (the
+// demo "subscriber" universe). `status=NONE` (explicit filter) flips that to
+// users with no subscription at all. VIEWER gets `email: null` (no PII).
+router.get('/', async (req, res, next) => {
+  try {
+    const { page, pageSize } = parsePaging(req.query);
+    const where = [];
+    const params = [];
+    const addParam = (value) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+
+    const search = String(req.query.search || '').trim();
+    if (search) {
+      const like = addParam(`${search}%`);
+      where.push(
+        `(u.name ILIKE ${like} OR u.email ILIKE ${like} OR u.username ILIKE ${like}
+          OR org.name ILIKE ${like} OR org.domain ILIKE ${like})`
+      );
+    }
+
+    const status = String(req.query.status || '').toUpperCase();
+    if (status) {
+      if (!LIST_STATUSES.includes(status)) {
+        return res.status(400).json({
+          error: `status must be one of ${LIST_STATUSES.join('/')}`,
+        });
+      }
+      if (status === 'NONE') {
+        where.push(`NOT EXISTS (SELECT 1 FROM subscriptions ss WHERE ss.user_id = u.id)`);
+      } else {
+        where.push(`l.status = ${addParam(status)}`);
+      }
+    } else {
+      where.push(`EXISTS (SELECT 1 FROM subscriptions ss WHERE ss.user_id = u.id)`);
+    }
+
+    if (req.query.planId !== undefined && req.query.planId !== '') {
+      const planId = String(req.query.planId);
+      if (!isUuid(planId)) {
+        return res.status(400).json({ error: 'planId must be a valid id' });
+      }
+      where.push(`l.plan_id = ${addParam(planId)}`);
+    }
+
+    // Account type: individuals (personal email domains) vs companies. Derived
+    // from the caller's company org membership, falling back to their personal
+    // org, so a company-email user always shows as COMPANY.
+    const accountType = String(req.query.accountType || '').toUpperCase();
+    if (accountType) {
+      if (!['PERSONAL', 'COMPANY'].includes(accountType)) {
+        return res.status(400).json({ error: 'accountType must be PERSONAL or COMPANY' });
+      }
+      where.push(`COALESCE(org.kind::text, 'PERSONAL') = ${addParam(accountType)}`);
+    }
+
+    const whereSql = where.join(' AND ');
+    const fromSql = `
+      FROM users u
+      LEFT JOIN LATERAL (
+        SELECT s.id, s.plan_id, s.status, s.billing_cycle,
+               s.current_period_start, s.current_period_end, s.trial_ends_at,
+               s.cancel_at_period_end, s.created_at
+          FROM subscriptions s
+         WHERE s.user_id = u.id
+         ORDER BY s.created_at DESC
+         LIMIT 1
+      ) l ON true
+      LEFT JOIN plans p ON p.id = l.plan_id
+      LEFT JOIN LATERAL (
+        SELECT o.id, o.name, o.kind, o.domain
+          FROM organization_members om
+          JOIN organizations o ON o.id = om.org_id
+         WHERE om.user_id = u.id
+         ORDER BY (o.kind = 'COMPANY') DESC, o.created_at ASC
+         LIMIT 1
+      ) org ON true`;
+
+    const { rows: countRows } = await query(
+      `SELECT count(*)::int AS total ${fromSql} WHERE ${whereSql}`,
+      params,
+      { userId: req.user.id }
+    );
+
+    const { rows } = await query(
+      `SELECT u.id, u.name, u.email,
+              l.id AS sub_id, l.plan_id, l.status, l.billing_cycle,
+              l.current_period_start, l.current_period_end, l.trial_ends_at,
+              l.cancel_at_period_end, l.created_at,
+              p.key AS plan_key, p.name AS plan_name,
+              org.name AS org_name, org.kind AS org_kind, org.domain AS org_domain,
+              (SELECT count(*)::int FROM orders o WHERE o.user_id = u.id) AS total_orders,
+              (SELECT coalesce(sum(o2.amount) FILTER (WHERE o2.status = 'PAID'), 0)::text
+                 FROM orders o2 WHERE o2.user_id = u.id) AS total_paid
+        ${fromSql}
+       WHERE ${whereSql}
+       ORDER BY u.name ASC, u.id
+       LIMIT ${addParam(pageSize)} OFFSET ${addParam((page - 1) * pageSize)}`,
+      params,
+      { userId: req.user.id }
+    );
+
+    const canEmail = roleAtLeast(req.user.role, 'SUPPORT');
+    const subscribers = rows.map((r) => ({
+      user: { id: r.id, name: r.name, email: canEmail ? r.email : null },
+      account: {
+        type: r.org_kind === 'COMPANY' ? 'COMPANY' : 'PERSONAL',
+        orgName: r.org_name || null,
+        domain: r.org_domain || null,
+      },
+      subscription: r.sub_id
+        ? {
+            id: r.sub_id,
+            status: r.status,
+            billing_cycle: r.billing_cycle,
+            plan_id: r.plan_id,
+            plan_key: r.plan_key,
+            plan_name: r.plan_name,
+            current_period_end: r.current_period_end,
+            trial_ends_at: r.trial_ends_at,
+            cancel_at_period_end: r.cancel_at_period_end,
+          }
+        : null,
+      totalOrders: r.total_orders,
+      totalPaid: r.total_paid,
+    }));
+
+    res.json({ total: countRows[0].total, page, pageSize, subscribers });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* -------------------------------------------------------------- Detail */
+
+// GET /api/subscribers/:userId — SUPPORT+; full user + subscriptions/orders/invoices.
+router.get('/:userId', requirePortalRole('SUPPORT'), async (req, res, next) => {
+  try {
+    if (!isUuid(req.params.userId)) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const { rows: userRows } = await query(
+      `SELECT id, name, email, username, role, is_active, created_at
+         FROM users WHERE id = $1`,
+      [req.params.userId],
+      { userId: req.user.id }
+    );
+    if (!userRows[0]) return res.status(404).json({ error: 'User not found' });
+
+    const { rows: subRows } = await query(
+      `SELECT ${SUB_COLUMNS}
+         FROM subscriptions s
+         JOIN plans p ON p.id = s.plan_id
+        WHERE s.user_id = $1
+        ORDER BY s.created_at DESC`,
+      [req.params.userId],
+      { userId: req.user.id }
+    );
+    const { rows: orderRows } = await query(
+      `SELECT o.id, p.key AS plan_key, p.name AS plan_name, o.billing_cycle,
+              o.amount::text AS amount, o.currency, o.status, o.payment_method,
+              o.created_at
+         FROM orders o
+         JOIN plans p ON p.id = o.plan_id
+        WHERE o.user_id = $1
+        ORDER BY o.created_at DESC`,
+      [req.params.userId],
+      { userId: req.user.id }
+    );
+    const { rows: invoiceRows } = await query(
+      `SELECT i.id, i.number, i.amount::text AS amount, i.currency, i.status,
+              i.issued_at, i.paid_at
+         FROM invoices i
+        WHERE i.user_id = $1
+        ORDER BY i.created_at DESC`,
+      [req.params.userId],
+      { userId: req.user.id }
+    );
+
+    const { rows: orgRows } = await query(
+      `SELECT o.id, o.name, o.kind, o.domain, om.role
+         FROM organization_members om
+         JOIN organizations o ON o.id = om.org_id
+        WHERE om.user_id = $1
+        ORDER BY (o.kind = 'COMPANY') DESC, o.name`,
+      [req.params.userId],
+      { userId: req.user.id }
+    );
+    const companyOrg = orgRows.find((o) => o.kind === 'COMPANY') || null;
+
+    res.json({
+      user: userRows[0],
+      account: {
+        type: companyOrg ? 'COMPANY' : 'PERSONAL',
+        orgName: companyOrg ? companyOrg.name : orgRows[0]?.name || null,
+        domain: companyOrg ? companyOrg.domain : null,
+      },
+      organizations: orgRows.map((o) => ({
+        id: o.id,
+        name: o.name,
+        kind: o.kind,
+        domain: o.domain,
+        role: o.role,
+      })),
+      subscriptions: subRows.map(toSubscriptionShape),
+      orders: orderRows.map(toOrderShape),
+      invoices: invoiceRows.map((r) => ({
+        id: r.id,
+        number: r.number,
+        amount: r.amount,
+        currency: r.currency,
+        status: r.status,
+        issued_at: r.issued_at,
+        paid_at: r.paid_at,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ------------------------------------------------- Create subscriber (MANAGER+) */
+
+// POST /api/subscribers
+// Body: { name, email, password?, role?, username?, planId?, billingCycle?, status? }
+// Creates a user account and optionally grants a plan, so an admin can onboard
+// a customer manually without waiting for self-service signup. When `password`
+// is omitted a random one is generated and returned as `temporaryPassword`.
+router.post('/', requirePortalRole('MANAGER'), async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const errors = [];
+    const email = normalizeEmail(body.email);
+    const name = String(body.name ?? '').trim();
+    if (!name) errors.push('name is required');
+    if (!email || !EMAIL_RE.test(email)) errors.push('a valid email is required');
+
+    const role =
+      body.role === undefined || body.role === null || body.role === ''
+        ? 'EDITOR'
+        : String(body.role).toUpperCase();
+    if (!SUB_ROLE_CHOICES.includes(role)) {
+      errors.push(`role must be one of ${SUB_ROLE_CHOICES.join('/')}`);
+    }
+
+    let password =
+      body.password === undefined || body.password === null ? '' : String(body.password);
+    let generated = false;
+    if (password) {
+      if (password.length < 8) errors.push('password must be at least 8 characters');
+    } else {
+      password = generatePassword();
+      generated = true;
+    }
+
+    const status =
+      body.status === undefined || body.status === null || body.status === ''
+        ? null
+        : String(body.status).toUpperCase();
+    if (status && !SUB_STATUSES.includes(status)) {
+      errors.push(`status must be one of ${SUB_STATUSES.join('/')}`);
+    }
+    if (
+      body.billingCycle !== undefined &&
+      body.billingCycle !== null &&
+      body.billingCycle !== '' &&
+      !CYCLES.includes(String(body.billingCycle).toUpperCase())
+    ) {
+      errors.push(`billingCycle must be one of ${CYCLES.join('/')}`);
+    }
+
+    let plan = null;
+    const hasPlan = body.planId !== undefined && body.planId !== null && body.planId !== '';
+    if (hasPlan) {
+      if (!isUuid(String(body.planId))) {
+        errors.push('planId must be a valid id');
+      } else {
+        plan = await fetchPlan(String(body.planId), { userId: req.user.id });
+        if (!plan) errors.push('Plan not found');
+      }
+    }
+    if (errors.length) return res.status(400).json({ error: errors.join('; ') });
+
+    const existing = await query(
+      `SELECT id FROM users WHERE lower(email) = $1`,
+      [email],
+      { userId: req.user.id }
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'A user with that email already exists' });
+    }
+
+    let cycle = null;
+    if (plan) {
+      cycle = body.billingCycle
+        ? String(body.billingCycle).toUpperCase()
+        : defaultCycle(plan);
+      if (!plan.billing_cycles.includes(cycle)) {
+        return res
+          .status(400)
+          .json({ error: `Plan ${plan.key} does not support billing cycle ${cycle}` });
+      }
+    }
+
+    const username = await allocateUsername(query, {
+      username: body.username,
+      email,
+      name,
+    });
+    const { rows: userRows } = await query(
+      `INSERT INTO users (email, password_hash, name, role, username)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, name, username, role, is_active, created_at`,
+      [email, await authLib.hashPassword(password), name, role, username],
+      { userId: req.user.id }
+    );
+    const user = userRows[0];
+
+    let subscription = null;
+    if (plan) {
+      subscription = await grantSubscription(
+        { userId: user.id, plan, cycle, status },
+        { userId: req.user.id }
+      );
+    }
+
+    await logAudit(req, {
+      action: 'subscribers.create',
+      targetType: 'user',
+      targetId: user.id,
+      targetRef: email,
+      after: {
+        role,
+        ...(plan ? { plan: plan.key, billing_cycle: cycle, status: subscription.status } : {}),
+      },
+    });
+
+    res.status(201).json({
+      user,
+      subscription,
+      ...(generated ? { temporaryPassword: password } : {}),
+    });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'A user with that email already exists' });
+    }
+    next(err);
+  }
+});
+
+/* ------------------------------------------- Grant subscription (MANAGER+) */
+
+// POST /api/subscribers/:userId/subscriptions
+// Body: { planId, billingCycle?, status? }
+// Grants a plan to an existing user (manual comp / enterprise onboarding).
+router.post('/:userId/subscriptions', requirePortalRole('MANAGER'), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    if (!isUuid(userId)) return res.status(404).json({ error: 'User not found' });
+
+    const body = req.body || {};
+    const errors = [];
+    const planId =
+      body.planId === undefined || body.planId === null ? '' : String(body.planId);
+    if (!planId) errors.push('planId is required');
+    else if (!isUuid(planId)) errors.push('planId must be a valid id');
+    if (
+      body.billingCycle !== undefined &&
+      body.billingCycle !== null &&
+      body.billingCycle !== '' &&
+      !CYCLES.includes(String(body.billingCycle).toUpperCase())
+    ) {
+      errors.push(`billingCycle must be one of ${CYCLES.join('/')}`);
+    }
+    const status =
+      body.status === undefined || body.status === null || body.status === ''
+        ? null
+        : String(body.status).toUpperCase();
+    if (status && !SUB_STATUSES.includes(status)) {
+      errors.push(`status must be one of ${SUB_STATUSES.join('/')}`);
+    }
+    if (errors.length) return res.status(400).json({ error: errors.join('; ') });
+
+    const { rows: userRows } = await query(`SELECT id FROM users WHERE id = $1`, [userId], {
+      userId: req.user.id,
+    });
+    if (!userRows[0]) return res.status(404).json({ error: 'User not found' });
+
+    const plan = await fetchPlan(planId, { userId: req.user.id });
+    if (!plan) return res.status(400).json({ error: 'Plan not found' });
+
+    const cycle = body.billingCycle
+      ? String(body.billingCycle).toUpperCase()
+      : defaultCycle(plan);
+    if (!plan.billing_cycles.includes(cycle)) {
+      return res
+        .status(400)
+        .json({ error: `Plan ${plan.key} does not support billing cycle ${cycle}` });
+    }
+
+    const existing = await query(
+      `SELECT id FROM subscriptions
+        WHERE user_id = $1 AND status IN ('TRIALING', 'ACTIVE', 'PAST_DUE')`,
+      [userId],
+      { userId: req.user.id }
+    );
+    if (existing.rows.length > 0) {
+      return res
+        .status(409)
+        .json({ error: 'User already has an active subscription — use change-plan instead' });
+    }
+
+    const subscription = await grantSubscription(
+      { userId, plan, cycle, status },
+      { userId: req.user.id }
+    );
+
+    await logAudit(req, {
+      action: 'subscriptions.grant',
+      targetType: 'subscription',
+      targetId: subscription.id,
+      targetRef: plan.key,
+      after: {
+        user_id: userId,
+        plan: plan.key,
+        billing_cycle: cycle,
+        status: subscription.status,
+      },
+    });
+
+    res.status(201).json({ ok: true, subscription });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* --------------------------------------------------- Subscription lifecycle (MANAGER+) */
+
+router.post(
+  '/subscriptions/:id/activate',
+  requirePortalRole('MANAGER'),
+  async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) {
+        return res.status(404).json({ error: 'Subscription not found' });
+      }
+      const before = await fetchSubscription(req.params.id, { userId: req.user.id });
+      if (!before) return res.status(404).json({ error: 'Subscription not found' });
+      if (before.status === 'ACTIVE') {
+        return res.status(409).json({ error: 'Subscription is already active' });
+      }
+      await query(
+        `UPDATE subscriptions
+            SET status = 'ACTIVE', cancel_at_period_end = false,
+                cancelled_at = NULL, current_period_start = now(),
+                updated_at = now()
+          WHERE id = $1`,
+        [req.params.id],
+        { userId: req.user.id }
+      );
+      await logAudit(req, {
+        action: 'subscriptions.activate',
+        targetType: 'subscription',
+        targetId: req.params.id,
+        targetRef: before.plan.key,
+        before: { status: before.status },
+        after: { status: 'ACTIVE' },
+      });
+      const subscription = await fetchSubscription(req.params.id, { userId: req.user.id });
+      res.json({ ok: true, subscription });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  '/subscriptions/:id/suspend',
+  requirePortalRole('MANAGER'),
+  async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) {
+        return res.status(404).json({ error: 'Subscription not found' });
+      }
+      const before = await fetchSubscription(req.params.id, { userId: req.user.id });
+      if (!before) return res.status(404).json({ error: 'Subscription not found' });
+      if (before.status === 'SUSPENDED' || before.status === 'CANCELLED') {
+        return res.status(409).json({
+          error: `Cannot suspend a ${before.status.toLowerCase()} subscription`,
+        });
+      }
+      await query(
+        `UPDATE subscriptions SET status = 'SUSPENDED', updated_at = now()
+          WHERE id = $1`,
+        [req.params.id],
+        { userId: req.user.id }
+      );
+      await logAudit(req, {
+        action: 'subscriptions.suspend',
+        targetType: 'subscription',
+        targetId: req.params.id,
+        targetRef: before.plan.key,
+        before: { status: before.status },
+        after: { status: 'SUSPENDED' },
+      });
+      const subscription = await fetchSubscription(req.params.id, { userId: req.user.id });
+      res.json({ ok: true, subscription });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  '/subscriptions/:id/cancel',
+  requirePortalRole('MANAGER'),
+  async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) {
+        return res.status(404).json({ error: 'Subscription not found' });
+      }
+      const before = await fetchSubscription(req.params.id, { userId: req.user.id });
+      if (!before) return res.status(404).json({ error: 'Subscription not found' });
+      if (before.status === 'CANCELLED') {
+        return res.status(409).json({ error: 'Subscription is already cancelled' });
+      }
+      await query(
+        `UPDATE subscriptions
+            SET status = 'CANCELLED', cancelled_at = now(), updated_at = now()
+          WHERE id = $1`,
+        [req.params.id],
+        { userId: req.user.id }
+      );
+      await logAudit(req, {
+        action: 'subscriptions.cancel',
+        targetType: 'subscription',
+        targetId: req.params.id,
+        targetRef: before.plan.key,
+        before: { status: before.status },
+        after: { status: 'CANCELLED' },
+      });
+      const subscription = await fetchSubscription(req.params.id, { userId: req.user.id });
+      res.json({ ok: true, subscription });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// POST body { planId, billingCycle? } — billingCycle defaults to the plan's
+// default (MONTHLY) per CONTRACT; when the current cycle is still supported it
+// is preserved otherwise the plan default is used.
+router.post(
+  '/subscriptions/:id/change-plan',
+  requirePortalRole('MANAGER'),
+  async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) {
+        return res.status(404).json({ error: 'Subscription not found' });
+      }
+      const before = await fetchSubscription(req.params.id, { userId: req.user.id });
+      if (!before) return res.status(404).json({ error: 'Subscription not found' });
+
+      const body = req.body || {};
+      const errors = [];
+      let planId = body.planId;
+      if (planId === undefined || planId === null || planId === '') {
+        errors.push('planId is required');
+      } else if (!isUuid(String(planId))) {
+        errors.push('planId must be a valid id');
+      }
+      if (body.billingCycle !== undefined && body.billingCycle !== null) {
+        if (!CYCLES.includes(String(body.billingCycle).toUpperCase())) {
+          errors.push(`billingCycle must be one of ${CYCLES.join('/')}`);
+        }
+      }
+      if (errors.length) return res.status(400).json({ error: errors.join('; ') });
+      planId = String(planId);
+
+      const { rows: planRows } = await query(
+        `SELECT id, key, name, billing_cycles FROM plans WHERE id = $1`,
+        [planId],
+        { userId: req.user.id }
+      );
+      const plan = planRows[0];
+      if (!plan) return res.status(400).json({ error: 'Plan not found' });
+
+      let cycle;
+      if (body.billingCycle) {
+        cycle = String(body.billingCycle).toUpperCase();
+        if (!plan.billing_cycles.includes(cycle)) {
+          return res.status(400).json({
+            error: `Plan ${plan.key} does not support billing cycle ${cycle}`,
+          });
+        }
+      } else {
+        cycle = plan.billing_cycles.includes(before.billing_cycle)
+          ? before.billing_cycle
+          : plan.billing_cycles.includes('MONTHLY')
+            ? 'MONTHLY'
+            : plan.billing_cycles[0] || 'MONTHLY';
+      }
+
+      await query(
+        `UPDATE subscriptions
+            SET plan_id = $2, billing_cycle = $3,
+                current_period_start = now(), current_period_end = NULL,
+                updated_at = now()
+          WHERE id = $1`,
+        [req.params.id, planId, cycle],
+        { userId: req.user.id }
+      );
+      await logAudit(req, {
+        action: 'subscriptions.change_plan',
+        targetType: 'subscription',
+        targetId: req.params.id,
+        targetRef: plan.key,
+        before: {
+          status: before.status,
+          plan_id: before.plan.id,
+          billing_cycle: before.billing_cycle,
+        },
+        after: {
+          status: before.status,
+          plan_id: planId,
+          billing_cycle: cycle,
+        },
+      });
+      const subscription = await fetchSubscription(req.params.id, { userId: req.user.id });
+      res.json({ ok: true, subscription });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/* ---------------------------------------------------- Order / invoice (ADMIN) */
+
+router.post('/orders/:id/refund', requirePortalRole('ADMIN'), async (req, res, next) => {
+  try {
+    if (!isUuid(req.params.id)) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    const before = await fetchOrder(req.params.id);
+    if (!before) return res.status(404).json({ error: 'Order not found' });
+    if (!['PAID', 'ISSUED'].includes(before.status)) {
+      const conflict = before.status === 'REFUNDED' ? 'Order is already refunded' : `Cannot refund a ${before.status.toLowerCase()} order`;
+      return res.status(409).json({ error: conflict });
+    }
+
+    // Refund is terminal for the order: void the invoice AND cancel the
+    // subscription this order created, so a refunded customer does not keep
+    // paid entitlements. The order row is locked FOR UPDATE so concurrent
+    // refunds cannot both pass the status check (and both write audits).
+    let cancelledSubscriptionId = null;
+    await withTransaction(req.user.id, async (client) => {
+      const { rows: lockRows } = await client.query(
+        'SELECT status, subscription_id FROM orders WHERE id = $1 FOR UPDATE',
+        [req.params.id]
+      );
+      if (lockRows.length === 0) {
+        const err = new Error('Order not found');
+        err.status = 404;
+        throw err;
+      }
+      if (!['PAID', 'ISSUED'].includes(lockRows[0].status)) {
+        const err = new Error(
+          lockRows[0].status === 'REFUNDED'
+            ? 'Order is already refunded'
+            : `Cannot refund a ${String(lockRows[0].status).toLowerCase()} order`
+        );
+        err.status = 409;
+        throw err;
+      }
+
+      await client.query(
+        `UPDATE orders SET status = 'REFUNDED' WHERE id = $1`,
+        [req.params.id]
+      );
+      await client.query(
+        `UPDATE invoices SET status = 'VOID', paid_at = NULL
+          WHERE order_id = $1 AND status IN ('ISSUED', 'PAID')`,
+        [req.params.id]
+      );
+
+      const subscriptionId = lockRows[0].subscription_id;
+      if (subscriptionId) {
+        const { rowCount } = await client.query(
+          `UPDATE subscriptions
+              SET status = 'CANCELLED', cancel_at_period_end = false,
+                  cancelled_at = now(), updated_at = now()
+            WHERE id = $1 AND status <> 'CANCELLED'`,
+          [subscriptionId]
+        );
+        if (rowCount === 1) cancelledSubscriptionId = subscriptionId;
+      }
+    });
+    await logAudit(req, {
+      action: 'orders.refund',
+      targetType: 'order',
+      targetId: req.params.id,
+      targetRef: before.plan_key,
+      before: { status: before.status, amount: before.amount },
+      after: { status: 'REFUNDED', cancelled_subscription_id: cancelledSubscriptionId },
+    });
+    const order = await fetchOrder(req.params.id);
+    res.json({ ok: true, order, cancelledSubscriptionId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/invoices/:id/void', requirePortalRole('ADMIN'), async (req, res, next) => {
+  try {
+    if (!isUuid(req.params.id)) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+    const before = await fetchInvoice(req.params.id);
+    if (!before) return res.status(404).json({ error: 'Invoice not found' });
+    if (before.status === 'VOID') {
+      return res.status(409).json({ error: 'Invoice is already void' });
+    }
+    await query(
+      `UPDATE invoices SET status = 'VOID', paid_at = NULL WHERE id = $1`,
+      [req.params.id],
+      { userId: req.user.id }
+    );
+    await logAudit(req, {
+      action: 'invoices.void',
+      targetType: 'invoice',
+      targetId: req.params.id,
+      targetRef: before.number,
+      before: { status: before.status },
+      after: { status: 'VOID' },
+    });
+    const invoice = await fetchInvoice(req.params.id);
+    res.json({ ok: true, invoice });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

@@ -1,0 +1,122 @@
+'use strict';
+
+// ---------------------------------------------------------------------------
+// Account provisioning shared by every signup path (main-app register and
+// Portal A checkout). Keeps the org/workspace bootstrap in one place.
+//
+// Identity rules (see emailDomain.js):
+//   * personal email  -> a PERSONAL "<Name>'s Org" the user owns as ADMIN.
+//   * company email   -> joins the COMPANY org already registered for that
+//                        domain as EDITOR, or creates it (first user = ADMIN).
+//
+// Always gives the new user a private "My Workspace" + "Default Project"
+// inside their organization so they can start working immediately.
+// ---------------------------------------------------------------------------
+
+const { classifyEmail, companyNameFromDomain } = require('./emailDomain');
+const { lookupRegisteredCompany, linkRegisteredCompany } = require('./companyNetwork');
+const { ensureSystemRolesForOrg } = require('./permissions');
+
+/**
+ * @param {import('pg').PoolClient} client an open transaction client
+ * @param {{ userId: string, email: string, displayName: string }} account
+ * @returns {Promise<{ orgId: string, orgName: string, orgRole: 'ADMIN'|'EDITOR',
+ *   accountType: 'PERSONAL'|'COMPANY', domain: string|null,
+ *   joinedExisting: boolean, workspaceId: string }>}
+ */
+async function provisionNewAccount(client, { userId, email, displayName }) {
+  const name = String(displayName || '').trim() || String(email || '').split('@')[0] || 'User';
+  const { accountType, domain, isPersonal } = classifyEmail(email);
+
+  let orgId = null;
+  let orgRole = 'ADMIN';
+  let joinedExisting = false;
+
+  // Admin-registered company for this domain, if any. It supplies the human
+  // company name and may already point at the organization serving the domain.
+  const run = (sql, params) => client.query(sql, params);
+  const registered = isPersonal ? null : await lookupRegisteredCompany(run, domain);
+
+  if (!isPersonal) {
+    if (registered && registered.organization_id) {
+      orgId = registered.organization_id;
+      orgRole = 'EDITOR';
+      joinedExisting = true;
+    } else {
+      const { rows } = await client.query(
+        `SELECT id FROM organizations
+          WHERE kind = 'COMPANY' AND domain = $1
+          FOR UPDATE`,
+        [domain]
+      );
+      if (rows.length > 0) {
+        orgId = rows[0].id;
+        orgRole = 'EDITOR';
+        joinedExisting = true;
+      }
+    }
+  }
+
+  let orgName;
+  if (orgId) {
+    const { rows } = await client.query(`SELECT name FROM organizations WHERE id = $1`, [orgId]);
+    orgName = rows[0]
+      ? rows[0].name
+      : (registered && registered.company_name) || companyNameFromDomain(domain);
+  } else {
+    orgName = isPersonal
+      ? `${name}'s Org`
+      : (registered && registered.company_name) || companyNameFromDomain(domain);
+    const { rows } = await client.query(
+      `INSERT INTO organizations (name, owner_id, kind, domain)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [orgName, userId, accountType, isPersonal ? null : domain]
+    );
+    orgId = rows[0].id;
+    if (registered && !registered.organization_id) {
+      await linkRegisteredCompany(run, domain, orgId);
+    }
+  }
+
+  await client.query(
+    `INSERT INTO organization_members (org_id, user_id, role)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (org_id, user_id) DO NOTHING`,
+    [orgId, userId, orgRole]
+  );
+
+  // Layer IAM on top of the legacy membership: seed the org's system roles and
+  // grant this member the matching system role. Both are idempotent, and the
+  // upsert uses the transaction client so it sees the just-created org.
+  await ensureSystemRolesForOrg(orgId, run);
+  await client.query(
+    `INSERT INTO iam_member_roles (organization_id, user_id, role_id)
+     SELECT $1, $2, r.id
+       FROM iam_roles r
+      WHERE r.organization_id = $1 AND r.system_key = $3 AND r.is_system
+     ON CONFLICT (organization_id, user_id, role_id) DO NOTHING`,
+    [orgId, userId, orgRole]
+  );
+
+  const ws = await client.query(
+    `INSERT INTO workspaces (organization_id, name, visibility, created_by)
+     VALUES ($1, $2, 'PRIVATE', $3)
+     RETURNING id`,
+    [orgId, 'My Workspace', userId]
+  );
+  const workspaceId = ws.rows[0].id;
+  await client.query(
+    `INSERT INTO workspace_members (workspace_id, user_id, role)
+     VALUES ($1, $2, 'ADMIN')`,
+    [workspaceId, userId]
+  );
+  await client.query(
+    `INSERT INTO projects (workspace_id, name, created_by) VALUES ($1, $2, $3)`,
+    [workspaceId, 'Default Project', userId]
+  );
+
+  return { orgId, orgName, orgRole, accountType, domain, joinedExisting, workspaceId };
+}
+
+module.exports = { provisionNewAccount };

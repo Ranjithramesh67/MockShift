@@ -1,0 +1,27 @@
+{
+  "name": "mockshift-sdk",
+  "version": "0.2.0",
+  "description": "Sync Express/HTTP routes into Mockshift as testable requests, with payload, schema and assertion inference.",
+  "license": "MIT",
+  "private": false,
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "bin": { "mockshift-sdk": "./bin/mockshift-sdk.js" },
+  "exports": {
+    ".": "./src/index.js",
+    "./express": "./src/adapters/express.js",
+    "./capture": "./src/adapters/capture.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "bin", "README.md", "LICENSE"],
+  "engines": { "node": ">=18.0.0" },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": ["mockshift", "api-testing", "express", "http", "openapi", "routes", "middleware"],
+  "repository": { "type": "git", "url": "https://github.com/Ranjithramesh67/MockShift.git", "directory": "sdk" },
+  "peerDependencies": { "express": ">=4" },
+  "peerDependenciesMeta": { "express": { "optional": true } },
+  "devDependencies": { "express": "^4.19.2" }
+}

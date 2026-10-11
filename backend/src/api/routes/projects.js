@@ -1,0 +1,770 @@
+'use strict';
+
+const { Router } = require('express');
+const { query } = require('../db');
+const {
+  requireAuth,
+  requireProjectRead,
+  getProjectAccess,
+  getWorkspaceRole,
+  roleAtLeast,
+} = require('../access');
+const { requirePermissionFor, requireResourcePermission } = require('../permissions');
+const { logAudit } = require('../audit');
+const { checkSeatGate, checkCountGate } = require('../entitlements');
+const { notifyUsers, projectReviewerIds } = require('../notify');
+
+const router = Router();
+router.use(requireAuth);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Notify the project's reviewers (platform admins + assigned managers) that a
+// user has requested access. Shared by both the re-request and fresh-INSERT
+// branches of POST /projects/:projectId/access-requests.
+async function notifyReviewers(projectId, projectName, actor, requestedRole, requestId) {
+  const ids = await projectReviewerIds(projectId, actor.id);
+  await notifyUsers(ids, {
+    title: 'New project access request',
+    body: `${actor.name || actor.email} requested ${requestedRole} access to "${projectName}".`,
+    kind: 'request',
+    payload: { requestId, projectId, type: 'project_access_request' },
+    link: '/manage?tab=requests',
+  });
+}
+
+// ------------------------------------------------- Access request lifecycle
+// Any authenticated user may request access to a project. The project's
+// managers (and admins) review these via /api/manage/access-requests/:id/review.
+router.post('/projects/:projectId/access-requests', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { reason, role } = req.body || {};
+    const project = await query(`SELECT id, name FROM projects WHERE id = $1`, [projectId]);
+    if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+
+    const access = await getProjectAccess(req.user.id, projectId);
+    if (access) return res.status(409).json({ error: 'You already have access to this project' });
+
+    const requestedRole = ['VIEWER', 'EDITOR'].includes(role) ? role : 'VIEWER';
+    const existing = await query(
+      `SELECT id, status FROM access_requests WHERE project_id = $1 AND user_id = $2`,
+      [projectId, req.user.id]
+    );
+    if (existing.rows.length > 0) {
+      if (existing.rows[0].status === 'PENDING') {
+        return res.status(409).json({ error: 'You already have a pending request for this project' });
+      }
+      await query(
+        `UPDATE access_requests SET status = 'PENDING', reason = $1, reviewed_by = NULL,
+                reviewed_at = NULL, role = $2, requested_at = now()
+          WHERE id = $3`,
+        [reason || null, requestedRole, existing.rows[0].id]
+      );
+      await logAudit({
+        actorId: req.user.id,
+        entityType: 'access_request',
+        entityId: existing.rows[0].id,
+        action: 'request_access',
+        detail: { projectId, reopened: true },
+        ip: req.ip,
+      });
+      await notifyReviewers(projectId, project.rows[0].name, req.user, requestedRole, existing.rows[0].id);
+      const { rows } = await query(
+        `SELECT id, project_id, user_id, role, reason, status, requested_at
+           FROM access_requests WHERE id = $1`,
+        [existing.rows[0].id]
+      );
+      return res.status(201).json({ accessRequest: rows[0] });
+    }
+
+    const { rows } = await query(
+      `INSERT INTO access_requests (project_id, user_id, role, reason)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, project_id, user_id, role, reason, status, requested_at`,
+      [projectId, req.user.id, requestedRole, reason || null]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'access_request',
+      entityId: rows[0].id,
+      action: 'request_access',
+      detail: { projectId },
+      ip: req.ip,
+    });
+    await notifyReviewers(projectId, project.rows[0].name, req.user, requestedRole, rows[0].id);
+    res.status(201).json({ accessRequest: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/projects/:projectId/access-requests', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { rows } = await query(
+      `SELECT id, project_id, user_id, role, reason, status, requested_at
+         FROM access_requests WHERE project_id = $1 AND user_id = $2`,
+      [projectId, req.user.id]
+    );
+    res.json({ accessRequests: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/access-requests/mine', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT ar.id, ar.project_id, ar.role, ar.reason, ar.status, ar.requested_at,
+              p.name AS project_name
+         FROM access_requests ar JOIN projects p ON p.id = ar.project_id
+        WHERE ar.user_id = $1
+        ORDER BY ar.requested_at DESC`,
+      [req.user.id]
+    );
+    res.json({ accessRequests: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Creator-only cancellation while the request is pending.
+router.post('/projects/:projectId/access-requests/:requestId/cancel', async (req, res, next) => {
+  try {
+    const { projectId, requestId } = req.params;
+    if (!UUID_RE.test(requestId)) {
+      return res.status(404).json({ error: 'Access request not found' });
+    }
+    const { rows } = await query(
+      `SELECT id, user_id, status FROM access_requests WHERE id = $1 AND project_id = $2`,
+      [requestId, projectId]
+    );
+    if (rows.length === 0 || rows[0].user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Access request not found' });
+    }
+    if (rows[0].status !== 'PENDING') {
+      return res.status(409).json({ error: 'Only pending requests can be cancelled' });
+    }
+    await query(`UPDATE access_requests SET status = 'CANCELLED' WHERE id = $1`, [requestId]);
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'access_request',
+      entityId: requestId,
+      action: 'cancel',
+      detail: { projectId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------- Project overview / management
+// Middleware: caller must hold MANAGER (or above) access on the project,
+// i.e. a project manager, an org admin, or a platform admin.
+async function requireProjectManager(req, res, next) {
+  try {
+    const { projectId } = req.params;
+    if (!projectId) return res.status(400).json({ error: 'projectId required' });
+    const access = await getProjectAccess(req.user.id, projectId);
+    if (!access || !roleAtLeast(access.level, 'MANAGER')) {
+      return res.status(403).json({ error: 'Project manager or admin access required' });
+    }
+    req.projectAccess = access;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+const MEMBER_ROLES = ['EDITOR', 'VIEWER'];
+
+// ------------------------------------------------ Project lifecycle
+// Create/rename/delete projects. Project names are unique per workspace
+// (case-insensitive), so a conflict is surfaced as 409 and the client can ask
+// for another name. The last project in a workspace cannot be deleted: every
+// workspace must keep at least one place to hold collections.
+
+function normalizeProjectName(name) {
+  return typeof name === 'string' ? name.trim() : '';
+}
+
+async function projectNameTaken(workspaceId, name, excludeProjectId) {
+  const { rows } = await query(
+    `SELECT 1 FROM projects
+      WHERE workspace_id = $1 AND lower(name) = lower($2)
+        AND ($3::uuid IS NULL OR id <> $3::uuid)
+      LIMIT 1`,
+    [workspaceId, name, excludeProjectId || null]
+  );
+  return rows.length > 0;
+}
+
+// Creating a project is a top-level operation. Callers may either:
+//   * pass organizationId (project-centric): require org ADMIN or platform MANAGER+; or
+//   * pass workspaceId (legacy workspace-centric path): require workspace MANAGER+.
+async function requireProjectCreator(req, res, next) {
+  try {
+    const { workspaceId, organizationId } = req.body || {};
+    if (workspaceId) {
+      if (!UUID_RE.test(workspaceId)) return res.status(400).json({ error: 'workspaceId is invalid' });
+      req.legacyWorkspaceId = workspaceId;
+      if (roleAtLeast(req.user.role, 'MANAGER')) return next();
+      const role = await getWorkspaceRole(req.user.id, workspaceId);
+      if (!roleAtLeast(role, 'MANAGER')) {
+        return res.status(403).json({ error: 'Workspace manager or admin required' });
+      }
+      return next();
+    }
+    if (organizationId) {
+      if (!UUID_RE.test(organizationId)) return res.status(400).json({ error: 'organizationId is invalid' });
+      req.projectOrgId = organizationId;
+      if (roleAtLeast(req.user.role, 'MANAGER')) return next();
+      const { rows } = await query(
+        `SELECT 1 FROM organization_members
+          WHERE org_id = $1 AND user_id = $2 AND role = 'ADMIN'`,
+        [organizationId, req.user.id]
+      );
+      if (rows.length === 0) return res.status(403).json({ error: 'Organization admin required' });
+      return next();
+    }
+    return res.status(400).json({ error: 'organizationId or workspaceId is required' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Org a project is being created into: prefer the workspace's org, else the
+// explicit organizationId from the body. Unknown -> null (legacy guard rules).
+async function resolveProjectCreateOrg(req) {
+  const { workspaceId, organizationId } = req.body || {};
+  if (workspaceId) {
+    const { rows } = await query(`SELECT organization_id FROM workspaces WHERE id = $1`, [workspaceId]);
+    if (rows[0]) return rows[0].organization_id;
+  }
+  return organizationId || null;
+}
+
+// Project-rooted content tree for the inverted hierarchy
+// (project -> workspace -> collection -> folder -> request). Workspaces are the
+// direct children of the project; collections belong to a workspace. Any caller
+// with read access on the project may load the whole tree.
+router.get('/projects/:projectId/content', requireProjectRead, async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { rows: workspaces } = await query(
+      `SELECT id, name, visibility
+         FROM workspaces WHERE project_id = $1 ORDER BY name`,
+      [projectId]
+    );
+    const workspaceIds = workspaces.map((w) => w.id);
+    let collections = [];
+    let folders = [];
+    let requests = [];
+    if (workspaceIds.length) {
+      collections = (await query(
+        `SELECT c.id, c.name, c.workspace_id,
+                (SELECT ap.auth_type FROM auth_providers ap WHERE ap.collection_id = c.id) AS has_auth
+           FROM collections c WHERE c.workspace_id = ANY($1::uuid[]) ORDER BY c.name`,
+        [workspaceIds]
+      )).rows;
+      const collectionIds = collections.map((c) => c.id);
+      if (collectionIds.length) {
+        folders = (await query(
+          `SELECT id, name, collection_id, parent_id
+             FROM folders WHERE collection_id = ANY($1::uuid[]) ORDER BY name`,
+          [collectionIds]
+        )).rows;
+        requests = (await query(
+          `SELECT id, name, method, url, api_type, collection_id, folder_id
+             FROM api_requests WHERE collection_id = ANY($1::uuid[]) ORDER BY name`,
+          [collectionIds]
+        )).rows;
+      }
+    }
+    res.json({ projectId, workspaces, collections, folders, requests });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Create a workspace inside a project (the new hierarchy's nesting operation).
+// Project managers and above may create workspaces.
+router.post('/projects/:projectId/workspaces', requireProjectManager, requireResourcePermission('project', 'workspace.create'), async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+    const vis = req.body?.visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE';
+
+    const { rows: proj } = await query(
+      `SELECT organization_id FROM projects WHERE id = $1`,
+      [projectId]
+    );
+    if (proj.length === 0) return res.status(404).json({ error: 'Project not found' });
+    const orgId = proj[0].organization_id;
+
+    const gate = await checkCountGate({ userId: req.user.id, orgId, key: 'workspaces' });
+    if (gate) return res.status(403).json(gate);
+
+    const client = await require('../db').pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `INSERT INTO workspaces (organization_id, project_id, name, visibility, created_by)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, name, visibility, project_id`,
+        [orgId, projectId, name, vis, req.user.id]
+      );
+      await client.query(
+        `INSERT INTO workspace_members (workspace_id, user_id, role)
+         VALUES ($1, $2, 'ADMIN') ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+        [rows[0].id, req.user.id]
+      );
+      await client.query('COMMIT');
+      res.status(201).json({ workspace: { ...rows[0], organization_id: orgId, role: 'ADMIN' } });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Global project list for the top-nav project picker. Returns every project in
+// every workspace the caller can read (direct membership, team share, or a
+// PUBLIC workspace in an org they belong to). This is additive: it does not
+// change the workspace-scoped content endpoint.
+router.get('/projects', async (req, res, next) => {
+  try {
+    const { rows: workspaces } = await query(
+      `SELECT DISTINCT w.id, w.name
+         FROM workspaces w
+        WHERE EXISTS (SELECT 1 FROM workspace_members wm
+                       WHERE wm.workspace_id = w.id AND wm.user_id = $1)
+           OR EXISTS (SELECT 1 FROM workspace_teams wt
+                        JOIN team_members tm ON tm.team_id = wt.team_id
+                       WHERE wt.workspace_id = w.id AND tm.user_id = $1)
+           OR (w.visibility = 'PUBLIC'
+               AND EXISTS (SELECT 1 FROM organization_members om
+                            WHERE om.org_id = w.organization_id AND om.user_id = $1))`,
+      [req.user.id]
+    );
+    const workspaceIds = workspaces.map((w) => w.id);
+
+    const { rows: projects } = await query(
+      `SELECT p.id, p.name, p.workspace_id, p.organization_id,
+              w.name AS workspace_name, o.name AS organization_name
+         FROM projects p
+         LEFT JOIN workspaces w ON w.id = p.workspace_id
+         LEFT JOIN organizations o ON o.id = p.organization_id
+        WHERE p.workspace_id = ANY($1::uuid[])
+           OR p.organization_id IN (SELECT om.org_id FROM organization_members om
+                                     WHERE om.user_id = $2 AND om.role = 'ADMIN')
+           OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $2)
+           OR EXISTS (SELECT 1 FROM project_managers pm WHERE pm.project_id = p.id AND pm.user_id = $2)
+        ORDER BY o.name, p.name`,
+      [workspaceIds, req.user.id]
+    );
+
+    const result = await Promise.all(
+      projects.map(async (p) => {
+        const [access, requests] = await Promise.all([
+          getProjectAccess(req.user.id, p.id),
+          query(
+            `SELECT status FROM access_requests WHERE project_id = $1 AND user_id = $2`,
+            [p.id, req.user.id]
+          ),
+        ]);
+        return {
+          ...p,
+          can_access: !!access,
+          access_status: requests.rows[0]?.status ?? null,
+        };
+      })
+    );
+    res.json({ projects: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/projects', requireProjectCreator, requirePermissionFor(resolveProjectCreateOrg, 'project.create'), async (req, res, next) => {
+  try {
+    const workspaceId = req.legacyWorkspaceId || null;
+    const name = normalizeProjectName(req.body?.name);
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    let orgId = req.projectOrgId || null;
+    if (workspaceId) {
+      const { rows: wsRows } = await query(
+        `SELECT organization_id FROM workspaces WHERE id = $1`,
+        [workspaceId]
+      );
+      if (wsRows.length === 0) return res.status(404).json({ error: 'Workspace not found' });
+      orgId = wsRows[0].organization_id;
+      if (await projectNameTaken(workspaceId, name)) {
+        return res.status(409).json({ error: `A project named "${name}" already exists in this workspace` });
+      }
+    } else {
+      const dup = await query(
+        `SELECT 1 FROM projects WHERE organization_id = $1 AND lower(name) = lower($2) LIMIT 1`,
+        [orgId, name]
+      );
+      if (dup.rows.length > 0) {
+        return res.status(409).json({ error: `A project named "${name}" already exists in this organization` });
+      }
+    }
+
+    // L2 gate — projects are counted against the org pool plan.
+    const gate = await checkCountGate({ userId: req.user.id, orgId, key: 'projects' });
+    if (gate) return res.status(403).json(gate);
+
+    const { rows } = workspaceId
+      ? await query(
+          `INSERT INTO projects (workspace_id, organization_id, name, created_by)
+           VALUES ($1, $2, $3, $4) RETURNING id, name, workspace_id, organization_id`,
+          [workspaceId, orgId, name, req.user.id]
+        )
+      : await query(
+          `INSERT INTO projects (organization_id, name, created_by)
+           VALUES ($1, $2, $3) RETURNING id, name, workspace_id, organization_id`,
+          [orgId, name, req.user.id]
+        );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: rows[0].id,
+      action: 'project_created',
+      detail: { name },
+    });
+    res.status(201).json({ project: rows[0] });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'A project with that name already exists' });
+    }
+    next(err);
+  }
+});
+
+router.patch('/projects/:projectId', requireProjectManager, requireResourcePermission('project', 'project.update'), async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const name = normalizeProjectName(req.body?.name);
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const { rows: current } = await query(
+      `SELECT name, workspace_id FROM projects WHERE id = $1`,
+      [projectId]
+    );
+    if (current.length === 0) return res.status(404).json({ error: 'Project not found' });
+    if (await projectNameTaken(current[0].workspace_id, name, projectId)) {
+      return res.status(409).json({ error: `A project named "${name}" already exists in this workspace` });
+    }
+
+    const { rows } = await query(
+      `UPDATE projects SET name = $2 WHERE id = $1 RETURNING id, name, workspace_id`,
+      [projectId, name]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'project_renamed',
+      detail: { from: current[0].name, to: name },
+    });
+    res.json({ project: rows[0] });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'A project with that name already exists in this workspace' });
+    }
+    next(err);
+  }
+});
+
+router.delete('/projects/:projectId', requireProjectManager, requireResourcePermission('project', 'project.delete'), async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { rows } = await query(
+      `SELECT name, workspace_id FROM projects WHERE id = $1`,
+      [projectId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+
+    const count = await query(
+      `SELECT count(*)::int AS n FROM projects WHERE workspace_id = $1`,
+      [rows[0].workspace_id]
+    );
+    if (Number(count.rows[0].n) <= 1) {
+      return res.status(409).json({
+        error: 'A workspace must keep at least one project. Create another project before deleting this one.',
+      });
+    }
+
+    await query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'project_deleted',
+      detail: { name: rows[0].name },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Rich, member-readable project home. Any user with read access on the
+// project may load it; fields describing what the caller may do (canManage)
+// are derived from their effective access level.
+router.get('/projects/:projectId/overview', requireProjectRead, async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const project = await query(
+      `SELECT p.id, p.name, p.workspace_id, w.name AS workspace_name,
+              w.visibility AS workspace_visibility, w.organization_id,
+              o.name AS organization_name
+         FROM projects p
+         JOIN workspaces w ON w.id = p.workspace_id
+         JOIN organizations o ON o.id = w.organization_id
+        WHERE p.id = $1`,
+      [projectId]
+    );
+    if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    const access = req.projectAccess;
+
+    const [counts, managers, members, recentRuns] = await Promise.all([
+      query(
+        `SELECT
+           (SELECT count(*) FROM collections WHERE project_id = $1) AS collections,
+           (SELECT count(*) FROM folders f
+             WHERE f.collection_id IN (SELECT id FROM collections WHERE project_id = $1)) AS folders,
+           (SELECT count(*) FROM api_requests ar
+             WHERE ar.collection_id IN (SELECT id FROM collections WHERE project_id = $1)) AS requests,
+           (SELECT count(*) FROM automations WHERE project_id = $1) AS automations,
+           (SELECT count(*) FROM workflow_chains WHERE project_id = $1) AS workflows,
+           EXISTS (SELECT 1 FROM mock_servers WHERE project_id = $1) AS has_mock_server`,
+        [projectId]
+      ),
+      query(
+        `SELECT u.id, u.email, u.name, pm.created_at AS granted_at,
+                g.name AS grantor_name
+           FROM project_managers pm
+           JOIN users u ON u.id = pm.user_id
+           LEFT JOIN users g ON g.id = pm.created_by
+          WHERE pm.project_id = $1 ORDER BY u.name`,
+        [projectId]
+      ),
+      query(
+        `SELECT u.id, u.email, u.name, pm.role, pm.created_at AS granted_at,
+                g.name AS grantor_name
+           FROM project_members pm
+           JOIN users u ON u.id = pm.user_id
+           LEFT JOIN users g ON g.id = pm.granted_by
+          WHERE pm.project_id = $1 ORDER BY u.name`,
+        [projectId]
+      ),
+      query(
+        `SELECT rh.id, rh.status, rh.trigger, rh.started_at, rh.finished_at,
+                COALESCE(ar.name, '') AS request_name, wc.name AS workflow_name,
+                COALESCE(u.name, '') AS user_name
+           FROM run_history rh
+           LEFT JOIN api_requests ar ON ar.id = rh.request_id
+           LEFT JOIN workflow_chains wc ON wc.id = rh.workflow_id
+           LEFT JOIN users u ON u.id = rh.user_id
+          WHERE (ar.collection_id IN (SELECT id FROM collections WHERE project_id = $1))
+             OR (wc.project_id = $1)
+          ORDER BY rh.started_at DESC
+          LIMIT 8`,
+        [projectId]
+      ),
+    ]);
+
+    res.json({
+      project: project.rows[0],
+      myAccess: {
+        level: access.level,
+        isManager: !!access.isManager,
+      },
+      canManage: roleAtLeast(access.level, 'MANAGER'),
+      counts: counts.rows[0],
+      managers: managers.rows.map((m) => ({ ...m, role: 'MANAGER' })),
+      members: members.rows,
+      recentRuns: recentRuns.rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Users inside the project's organization who are not already managers or
+// members, for populating the "Add member" picker.
+router.get('/projects/:projectId/org-users', requireProjectManager, async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { rows } = await query(
+      `SELECT u.id, u.name, u.email
+         FROM users u
+         JOIN organization_members om ON om.user_id = u.id
+         JOIN projects p ON p.id = $1
+         JOIN workspaces w ON w.id = p.workspace_id
+        WHERE om.org_id = w.organization_id
+          AND u.id <> $2
+          AND NOT EXISTS (SELECT 1 FROM project_members pm
+                           WHERE pm.project_id = p.id AND pm.user_id = u.id)
+          AND NOT EXISTS (SELECT 1 FROM project_managers pm
+                           WHERE pm.project_id = p.id AND pm.user_id = u.id)
+        ORDER BY u.name`,
+      [projectId, req.user.id]
+    );
+    res.json({ users: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Grant or update a member's role on a project. Project managers and admins
+// may only assign editor/viewer roles here (never elevate to manager).
+router.post('/projects/:projectId/members', requireProjectManager, requireResourcePermission('project', 'project.manage_members'), async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { userId, role } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot add yourself as a member' });
+    }
+    const roleValue = MEMBER_ROLES.includes(role) ? role : 'VIEWER';
+    const [user, project] = await Promise.all([
+      query(`SELECT id, name FROM users WHERE id = $1`, [userId]),
+      query(`SELECT id FROM projects WHERE id = $1`, [projectId]),
+    ]);
+    if (user.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    const isManager = await query(
+      `SELECT 1 FROM project_managers WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId]
+    );
+    if (isManager.rows.length > 0) {
+      return res.status(409).json({ error: 'User is already a project manager' });
+    }
+    const orgId = await require('../entitlements').orgOfProject(projectId);
+    const seatGate = await checkSeatGate({ userId: req.user.id, orgId, targetUserId: userId });
+    if (seatGate) return res.status(403).json(seatGate);
+    await query(
+      `INSERT INTO project_members (project_id, user_id, role, granted_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role, granted_by = EXCLUDED.granted_by`,
+      [projectId, userId, roleValue, req.user.id]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'grant_project_access',
+      detail: { userId, role: roleValue },
+      ip: req.ip,
+    });
+    res.json({ ok: true, role: roleValue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Change an existing member's role (no-op if the user is a manager).
+router.patch('/projects/:projectId/members/:userId', requireProjectManager, requireResourcePermission('project', 'project.manage_members'), async (req, res, next) => {
+  try {
+    const { projectId, userId } = req.params;
+    const { role } = req.body || {};
+    if (!role) return res.status(400).json({ error: 'role is required' });
+    const roleValue = MEMBER_ROLES.includes(role) ? role : null;
+    if (!roleValue) {
+      return res.status(400).json({ error: 'role must be one of EDITOR, VIEWER' });
+    }
+    const isManager = await query(
+      `SELECT 1 FROM project_managers WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId]
+    );
+    if (isManager.rows.length > 0) {
+      return res.status(409).json({ error: 'User is a project manager, not a member' });
+    }
+    const res2 = await query(
+      `UPDATE project_members SET role = $1, granted_by = $2 WHERE project_id = $3 AND user_id = $4`,
+      [roleValue, req.user.id, projectId, userId]
+    );
+    if (res2.rowCount === 0) return res.status(404).json({ error: 'Member not found in project' });
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'update_project_member_role',
+      detail: { userId, role: roleValue },
+      ip: req.ip,
+    });
+    res.json({ ok: true, role: roleValue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Remove a member from the project. Project managers can only remove plain
+// members (never managers); the removee keeps any workspace-level access.
+router.delete('/projects/:projectId/members/:userId', requireProjectManager, requireResourcePermission('project', 'project.manage_members'), async (req, res, next) => {
+  try {
+    const { projectId, userId } = req.params;
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot remove yourself from the project' });
+    }
+    const isManager = await query(
+      `SELECT 1 FROM project_managers WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId]
+    );
+    if (isManager.rows.length > 0) {
+      return res.status(409).json({ error: 'Remove managers via project management instead' });
+    }
+    const res2 = await query(
+      `DELETE FROM project_members WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId]
+    );
+    if (res2.rowCount === 0) return res.status(404).json({ error: 'Member not found in project' });
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'revoke_project_access',
+      detail: { userId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------- Project membership
+router.get('/projects/:projectId/members', requireProjectRead, async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const [managers, members] = await Promise.all([
+      query(
+        `SELECT u.id, u.email, u.name FROM project_managers pm
+           JOIN users u ON u.id = pm.user_id WHERE pm.project_id = $1 ORDER BY u.name`,
+        [projectId]
+      ),
+      query(
+        `SELECT u.id, u.email, u.name, pm.role FROM project_members pm
+           JOIN users u ON u.id = pm.user_id WHERE pm.project_id = $1 ORDER BY u.name`,
+        [projectId]
+      ),
+    ]);
+    res.json({ managers: managers.rows, members: members.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

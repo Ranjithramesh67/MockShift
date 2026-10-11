@@ -1,0 +1,586 @@
+'use strict';
+
+const { Router } = require('express');
+const { query } = require('../db');
+const { requireAuth, requireAdmin } = require('../access');
+const { hashPassword } = require('../authLib');
+const { logAudit } = require('../audit');
+const { allocateUsername } = require('../username');
+const { checkSeatGate, orgOfProject, orgOfWorkspace } = require('../entitlements');
+const { MENU_KEYS, isMenuKey } = require('../menuAccess');
+const { normalizeDomain, isSpecialUseDomain } = require('../emailDomain');
+
+const router = Router();
+router.use(requireAuth, requireAdmin);
+
+const ROLES = ['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'];
+
+async function userExists(userId) {
+  const { rows } = await query(`SELECT id, name, email, is_active FROM users WHERE id = $1`, [userId]);
+  return rows[0] || null;
+}
+
+// ------------------------------------------------------------- Access overview
+// Admin-only view of every project and workspace with their current access
+// grants, so an admin can directly create/revoke membership.
+router.get('/access', async (req, res, next) => {
+  try {
+    const [projects, workspaces] = await Promise.all([
+      query(
+        `SELECT p.id, p.name, p.workspace_id, w.name AS workspace_name,
+                COALESCE(json_agg(DISTINCT m) FILTER (WHERE m.id IS NOT NULL), '[]'::json) AS managers,
+                COALESCE(json_agg(DISTINCT mem) FILTER (WHERE mem.id IS NOT NULL), '[]'::json) AS members
+           FROM projects p
+           JOIN workspaces w ON w.id = p.workspace_id
+           LEFT JOIN (
+             SELECT pm.project_id, u.id, u.name, u.email
+               FROM project_managers pm JOIN users u ON u.id = pm.user_id
+           ) m ON m.project_id = p.id
+           LEFT JOIN (
+             SELECT pm.project_id, u.id, u.name, u.email, pm.role
+               FROM project_members pm JOIN users u ON u.id = pm.user_id
+           ) mem ON mem.project_id = p.id
+          GROUP BY p.id, w.name
+          ORDER BY w.name, p.name`
+      ),
+      query(
+        `SELECT ws.id, ws.name, ws.organization_id, o.name AS organization_name,
+                COALESCE(json_agg(DISTINCT wm) FILTER (WHERE wm.id IS NOT NULL), '[]'::json) AS members
+           FROM workspaces ws
+           JOIN organizations o ON o.id = ws.organization_id
+           LEFT JOIN (
+             SELECT wm.workspace_id, u.id, u.name, u.email, wm.role
+               FROM workspace_members wm JOIN users u ON u.id = wm.user_id
+           ) wm ON wm.workspace_id = ws.id
+          GROUP BY ws.id, o.name
+          ORDER BY o.name, ws.name`
+      ),
+    ]);
+    res.json({ projects: projects.rows, workspaces: workspaces.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------- Project membership
+// Directly grant a user project access (bypasses the access-request flow).
+router.post('/projects/:projectId/members', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { userId, role } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    const roleValue = ROLES.includes(role) ? role : 'VIEWER';
+    const [user, project] = await Promise.all([
+      userExists(userId),
+      query(`SELECT id, name FROM projects WHERE id = $1`, [projectId]),
+    ]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    const orgId = await orgOfProject(projectId);
+    const seatGate = await checkSeatGate({ userId: req.user.id, orgId, targetUserId: userId });
+    if (seatGate) return res.status(403).json(seatGate);
+    await query(
+      `INSERT INTO project_members (project_id, user_id, role, granted_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role, granted_by = EXCLUDED.granted_by`,
+      [projectId, userId, roleValue, req.user.id]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'grant_project_access',
+      detail: { userId, role: roleValue },
+      ip: req.ip,
+    });
+    res.json({ ok: true, role: roleValue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/projects/:projectId/members/:userId', async (req, res, next) => {
+  try {
+    const { projectId, userId } = req.params;
+    await query(
+      `DELETE FROM project_members WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'revoke_project_access',
+      detail: { userId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------- Manager assignment
+router.post('/projects/:projectId/managers', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    const [user, project] = await Promise.all([
+      userExists(userId),
+      query(`SELECT id FROM projects WHERE id = $1`, [projectId]),
+    ]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    await query(
+      `INSERT INTO project_managers (project_id, user_id, created_by)
+       VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [projectId, userId, req.user.id]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'assign_manager',
+      detail: { userId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/projects/:projectId/managers/:userId', async (req, res, next) => {
+  try {
+    const { projectId, userId } = req.params;
+    await query(
+      `DELETE FROM project_managers WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'project',
+      entityId: projectId,
+      action: 'remove_manager',
+      detail: { userId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------ Workspace membership
+// Directly grant/revoke workspace membership (overrides visibility defaults).
+router.post('/workspaces/:workspaceId/members', async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+    const { userId, role } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    const roleValue = ROLES.includes(role) ? role : 'VIEWER';
+    const [user, workspace] = await Promise.all([
+      userExists(userId),
+      query(`SELECT id, name FROM workspaces WHERE id = $1`, [workspaceId]),
+    ]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (workspace.rows.length === 0) return res.status(404).json({ error: 'Workspace not found' });
+    const wsOrgId = await orgOfWorkspace(workspaceId);
+    const wsSeatGate = await checkSeatGate({ userId: req.user.id, orgId: wsOrgId, targetUserId: userId });
+    if (wsSeatGate) return res.status(403).json(wsSeatGate);
+    await query(
+      `INSERT INTO workspace_members (workspace_id, user_id, role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+      [workspaceId, userId, roleValue]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'workspace',
+      entityId: workspaceId,
+      action: 'grant_workspace_access',
+      detail: { userId, role: roleValue },
+      ip: req.ip,
+    });
+    res.json({ ok: true, role: roleValue });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/workspaces/:workspaceId/members/:userId', async (req, res, next) => {
+  try {
+    const { workspaceId, userId } = req.params;
+    await query(
+      `DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`,
+      [workspaceId, userId]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'workspace',
+      entityId: workspaceId,
+      action: 'revoke_workspace_access',
+      detail: { userId },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/users', async (req, res, next) => {
+  try {
+    const { email, name, role, password, username } = req.body || {};
+    if (!email || !name || !password) {
+      return res.status(400).json({ error: 'email, name and password are required' });
+    }
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    if (String(password).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const roleValue = ['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'].includes(role) ? role : 'EDITOR';
+
+    const existing = await query(`SELECT id FROM users WHERE lower(email) = $1`, [normalizedEmail]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'A user with that email already exists' });
+    }
+
+    const usernameValue = await allocateUsername(query, {
+      username,
+      email: normalizedEmail,
+      name: String(name).trim(),
+    });
+
+    const { rows } = await query(
+      `INSERT INTO users (email, password_hash, name, role, username)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, username, name, role, is_active, created_at`,
+      [normalizedEmail, await hashPassword(String(password)), String(name).trim() || normalizedEmail, roleValue, usernameValue]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'user',
+      entityId: rows[0].id,
+      action: 'create_user',
+      detail: { email: normalizedEmail, role: roleValue },
+      ip: req.ip,
+    });
+    res.status(201).json({ user: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/users', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT u.id, u.email, u.username, u.name, u.role, u.is_active, u.created_at,
+              COALESCE((
+                SELECT json_agg(x ORDER BY x.name)
+                  FROM (
+                    SELECT p.id, p.name,
+                           CASE WHEN pmg.project_id IS NOT NULL THEN 'manager' ELSE 'member' END AS kind,
+                           COALESCE(pmm.role::text, 'MANAGER') AS role
+                      FROM projects p
+                      JOIN (
+                        SELECT project_id FROM project_managers WHERE user_id = u.id
+                        UNION
+                        SELECT project_id FROM project_members WHERE user_id = u.id
+                      ) sub ON sub.project_id = p.id
+                      LEFT JOIN project_members pmm ON pmm.project_id = p.id AND pmm.user_id = u.id
+                      LEFT JOIN project_managers pmg ON pmg.project_id = p.id AND pmg.user_id = u.id
+                  ) x
+              ), '[]'::json) AS projects
+         FROM users u
+        ORDER BY u.created_at DESC`
+    );
+    res.json({ users: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/users/:userId', async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { role, isActive } = req.body || {};
+
+    const target = await query(`SELECT role FROM users WHERE id = $1`, [userId]);
+    if (target.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    if (role !== undefined) {
+      if (!['ADMIN', 'MANAGER', 'EDITOR', 'VIEWER'].includes(role)) {
+        return res.status(400).json({ error: 'Invalid role' });
+      }
+      if (userId === req.user.id && role !== 'ADMIN') {
+        return res.status(400).json({ error: 'You cannot demote yourself' });
+      }
+      await query(`UPDATE users SET role = $1 WHERE id = $2`, [role, userId]);
+    }
+
+    if (isActive !== undefined) {
+      if (userId === req.user.id && isActive === false) {
+        return res.status(400).json({ error: 'You cannot deactivate yourself' });
+      }
+      // Never deactivate the last active admin.
+      if (isActive === false && target.rows[0].role === 'ADMIN') {
+        const admins = await query(
+          `SELECT count(*)::int AS n FROM users WHERE role = 'ADMIN' AND is_active = true`
+        );
+        if (admins.rows[0].n <= 1) {
+          return res.status(400).json({ error: 'Cannot deactivate the last admin' });
+        }
+      }
+      await query(`UPDATE users SET is_active = $1 WHERE id = $2`, [isActive === true, userId]);
+    }
+
+    const updated = await query(
+      `SELECT id, email, name, role, is_active, created_at FROM users WHERE id = $1`,
+      [userId]
+    );
+    res.json({ user: updated.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------ menu settings
+// Platform-admin control of per-org / per-project feature visibility.
+router.get('/menus', async (req, res, next) => {
+  try {
+    const [settings, organizations, projects] = await Promise.all([
+      query(
+        `SELECT ms.id, ms.menu_key, ms.scope, ms.enabled, ms.updated_at,
+                ms.organization_id, o.name AS organization_name,
+                ms.project_id, p.name AS project_name, w.name AS workspace_name
+           FROM menu_settings ms
+           LEFT JOIN organizations o ON o.id = ms.organization_id
+           LEFT JOIN projects p ON p.id = ms.project_id
+           LEFT JOIN workspaces w ON w.id = p.workspace_id
+          ORDER BY ms.menu_key, ms.scope, ms.updated_at DESC`
+      ),
+      query(`SELECT id, name, kind FROM organizations ORDER BY kind, name`),
+      query(
+        `SELECT p.id, p.name, w.name AS workspace_name
+           FROM projects p JOIN workspaces w ON w.id = p.workspace_id
+          ORDER BY w.name, p.name`
+      ),
+    ]);
+    res.json({
+      keys: MENU_KEYS,
+      settings: settings.rows,
+      organizations: organizations.rows,
+      projects: projects.rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/menus', async (req, res, next) => {
+  try {
+    const { menuKey, scope, organizationId, projectId, enabled } = req.body || {};
+    if (!isMenuKey(menuKey)) return res.status(400).json({ error: 'Unknown menu key' });
+    if (scope !== 'org' && scope !== 'project') {
+      return res.status(400).json({ error: 'scope must be "org" or "project"' });
+    }
+    if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be boolean' });
+
+    let setting;
+    if (scope === 'org') {
+      if (!organizationId) return res.status(400).json({ error: 'organizationId is required' });
+      const org = await query(`SELECT id FROM organizations WHERE id = $1`, [organizationId]);
+      if (org.rows.length === 0) return res.status(404).json({ error: 'Organization not found' });
+      const { rows } = await query(
+        `INSERT INTO menu_settings (menu_key, scope, organization_id, enabled, updated_by)
+         VALUES ($1, 'org', $2, $3, $4)
+         ON CONFLICT (menu_key, organization_id) WHERE scope = 'org'
+         DO UPDATE SET enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = now()
+         RETURNING *`,
+        [menuKey, organizationId, enabled, req.user.id]
+      );
+      setting = rows[0];
+    } else {
+      if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+      const project = await query(`SELECT id FROM projects WHERE id = $1`, [projectId]);
+      if (project.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+      const { rows } = await query(
+        `INSERT INTO menu_settings (menu_key, scope, project_id, enabled, updated_by)
+         VALUES ($1, 'project', $2, $3, $4)
+         ON CONFLICT (menu_key, project_id) WHERE scope = 'project'
+         DO UPDATE SET enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = now()
+         RETURNING *`,
+        [menuKey, projectId, enabled, req.user.id]
+      );
+      setting = rows[0];
+    }
+
+    await logAudit({
+      actorId: req.user.id,
+      entityType: scope === 'org' ? 'organization' : 'project',
+      entityId: scope === 'org' ? organizationId : projectId,
+      action: 'set_menu_setting',
+      detail: { menuKey, scope, enabled },
+      ip: req.ip,
+    });
+    res.json({ setting });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/menus/:id', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `DELETE FROM menu_settings WHERE id = $1 RETURNING *`,
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Menu setting not found' });
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'menu_setting',
+      entityId: req.params.id,
+      action: 'delete_menu_setting',
+      detail: { menuKey: rows[0].menu_key, scope: rows[0].scope },
+      ip: req.ip,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------- individual LLM master switch
+// When false (default) the per-user LLM config UI is hidden and the copilot
+// uses USER_LLM_* only. When true each user may store their own config.
+router.get('/settings/individual-llm', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      'SELECT allow_individual_llm FROM portal_settings ORDER BY id LIMIT 1'
+    );
+    res.json({ allowed: rows.length > 0 && rows[0].allow_individual_llm === true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/settings/individual-llm', async (req, res, next) => {
+  try {
+    const { allowed } = req.body || {};
+    if (typeof allowed !== 'boolean') return res.status(400).json({ error: 'allowed must be boolean' });
+    await query(
+      `UPDATE portal_settings
+          SET allow_individual_llm = $1, updated_by = $2, updated_at = now()`,
+      [allowed, req.user.id]
+    );
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'portal_settings',
+      entityId: null,
+      action: 'set_individual_llm',
+      detail: { setting: 'individual_llm', allowed },
+      ip: req.ip,
+    });
+    res.json({ allowed });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------- Company domain registry
+// Admin-maintained mapping of "Company Name" -> email domain. Any account that
+// signs up or logs in with a registered domain joins the company organization
+// (see companyNetwork.js).
+router.get('/company-domains', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT cd.id, cd.company_name, cd.domain, cd.organization_id, cd.created_at,
+              o.name AS organization_name,
+              (SELECT count(*)::int FROM organization_members om
+                WHERE om.org_id = cd.organization_id) AS member_count
+         FROM company_domains cd
+         LEFT JOIN organizations o ON o.id = cd.organization_id
+        ORDER BY cd.company_name, cd.domain`
+    );
+    res.json({ domains: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/company-domains', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const companyName = String(body.companyName || body.company_name || '').trim();
+    const domain = normalizeDomain(body.domain || '');
+    if (!companyName) return res.status(400).json({ error: 'companyName is required' });
+    if (companyName.length > 160) return res.status(400).json({ error: 'companyName is too long' });
+    if (!domain) return res.status(400).json({ error: 'A valid email domain is required' });
+    if (isSpecialUseDomain(domain)) {
+      return res.status(400).json({ error: 'Reserved and test domains cannot be registered' });
+    }
+
+    // Link to an existing company organization for the domain when one exists.
+    const org = await query(
+      `SELECT id FROM organizations WHERE kind = 'COMPANY' AND domain = $1`,
+      [domain]
+    );
+    const orgId = org.rows[0] ? org.rows[0].id : null;
+    const { rows } = await query(
+      `INSERT INTO company_domains (company_name, domain, organization_id, created_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (domain) DO UPDATE
+         SET company_name = EXCLUDED.company_name,
+             organization_id = COALESCE(company_domains.organization_id, EXCLUDED.organization_id)
+       RETURNING *`,
+      [companyName, domain, orgId, req.user.id]
+    );
+    // The registry is authoritative: keep the linked organization's display
+    // name in step with the admin-provided company name.
+    if (rows[0].organization_id) {
+      await query(`UPDATE organizations SET name = $1 WHERE id = $2`, [
+        companyName,
+        rows[0].organization_id,
+      ]);
+    }
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'company_domain',
+      entityId: rows[0].id,
+      action: 'register_company_domain',
+      detail: { companyName, domain, organizationId: rows[0].organization_id },
+      ip: req.ip,
+    });
+    res.status(201).json({ domain: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/company-domains/:id', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `DELETE FROM company_domains WHERE id = $1 RETURNING id, company_name, domain`,
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Company domain not found' });
+    await logAudit({
+      actorId: req.user.id,
+      entityType: 'company_domain',
+      entityId: rows[0].id,
+      action: 'remove_company_domain',
+      detail: { companyName: rows[0].company_name, domain: rows[0].domain },
+      ip: req.ip,
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;
