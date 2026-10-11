@@ -237,9 +237,11 @@ router.get('/mock-servers/:id/routes', async (req, res, next) => {
 
 router.post('/mock-servers/:id/routes', async (req, res, next) => {
   try {
-    const { server, canRead } = await canAccessMockServer(req.user.id, req.params.id);
+    const { server } = await canAccessMockServer(req.user.id, req.params.id);
     if (!server) return res.status(404).json({ error: 'Mock server not found' });
-    if (!canRead) return res.status(403).json({ error: 'No access to this mock server' });
+    if (!(await canWriteProject(req.user.id, server.project_id))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
     const parsed = validateRouteInput(req.body);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
     const { method, path, status, headers, body, delayMs } = parsed.value;
