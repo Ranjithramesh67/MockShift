@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useWorkspace } from '@/store/WorkspaceStore';
 import { useApp, makeId } from '@/store/AppStore';
 import { useNav } from '@/store/NavStore';
@@ -1387,7 +1387,15 @@ export function Sidebar({
   const { view, setView } = useNav();
   const menu = useMenuAccess();
   const navOrder = useNavOrder();
+  const pathname = usePathname();
   const router = useRouter();
+  // True while a rail link has navigated away from the workspace view but the
+  // route has not committed yet (window.location.pathname is still '/'). Read
+  // by goWorkspace to decide whether it must push '/' to supersede it.
+  const navPendingRef = useRef(false);
+  useEffect(() => {
+    navPendingRef.current = false;
+  }, [pathname]);
   const [rail, setRail] = useState<RailTab>(() => (state.activeTab === 'workflow' ? 'workflow' : 'apis'));
   const [collapsed, setCollapsed] = useState(false);
   const [workspacesCollapsed, setWorkspacesCollapsed] = useState(false);
@@ -1452,14 +1460,14 @@ export function Sidebar({
 
   const goWorkspace = () => {
     setView('workspace');
-    // Navigate to '/' only when the browser is not already there. We compare
-    // against window.location.pathname (the latest committed route) rather than
-    // usePathname(), which can be stale while a /manage|/admin|/automations
-    // navigation is still in flight — skipping then would let the in-flight
-    // navigation win and RouteViewSync snap the view back to the admin page.
-    // When already on '/', pushing a duplicate '/' on every sidebar click is a
-    // needless navigation + history entry that makes clicks feel slow.
-    if (typeof window !== 'undefined' && window.location.pathname === '/') return;
+    // While a /manage|/admin|/automations navigation is in flight the browser
+    // location is still '/', so a pathname-only guard would skip the push and
+    // let the pending away-navigation win. navPendingRef flags that case; when
+    // we are genuinely parked on '/', skip the redundant push (and the history
+    // entry / re-render it would cause).
+    const onHome = typeof window !== 'undefined' && window.location.pathname === '/';
+    if (onHome && !navPendingRef.current) return;
+    navPendingRef.current = false;
     router.push('/');
   };
 
@@ -1618,6 +1626,11 @@ export function Sidebar({
         aria-label="Sidebar navigation"
         ref={railRef}
         data-dragging={railDragKey ? 'true' : undefined}
+        onClickCapture={(e) => {
+          const anchor = e.target instanceof Element ? e.target.closest('a[href]') : null;
+          const href = anchor?.getAttribute('href') ?? '';
+          if (href && href !== '/' && !href.startsWith('#')) navPendingRef.current = true;
+        }}
         onDragStart={(e) => {
           const key = railKeyFromTarget(e.target);
           if (!key) return;
