@@ -41,11 +41,11 @@ async function lookupRegisteredCompany(run, domain) {
 /** Point a registry row at the organization that serves its domain. */
 async function linkRegisteredCompany(run, domain, orgId) {
   if (!domain || !orgId) return;
-  await run(
-    `UPDATE company_domains SET organization_id = $1
-      WHERE domain = $2 AND (organization_id IS NULL OR organization_id <> $1)`,
-    [orgId, domain]
-  );
+  // Runs via a SECURITY DEFINER helper: this path has no admin session (it
+  // fires during signup/login), and the company_domains UPDATE policy is
+  // admin/manager-only (migration 063). The function can only set
+  // organization_id on an existing row.
+  await run(`SELECT app.link_company_domain($1, $2)`, [domain, orgId]);
 }
 
 /**
