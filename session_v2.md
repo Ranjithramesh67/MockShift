@@ -421,3 +421,34 @@ Env: temporarily enabled `ALLOW_SELF_SIGNUP=1` for the e2e run, then restored it
 Agent 2's in-place `next build` corrupted the shared dev `.next`; moved it to
 `/tmp/opencode/next-bak-*` and restarted `next dev` on `:3000` (back to 200). Backend restarted on
 `:3001` with the original env. Working tree clean.
+
+### Repo audit + Collection Runner QA options (2026-10-11)
+
+Follow-up audit of the auth/access, money, RLS and web-state paths, plus additive
+Collection Runner tooling for QA. No live stack here (no Postgres/Redis/Docker),
+so the round is backed by dependency-free unit suites: backend `node --test`
+**146/146**, frontend `npm test` **193/193**; `node --check` clean on every edited
+JS file. Full write-up in `issues.md` under "Repo audit pass — 2026-10-11".
+
+Fixes:
+
+- `AUTH-1` `POST /api/runs` now enforces the API token's project/workspace binding.
+- `AUTH-2` `POST /api/mock-servers/:id/routes` requires project write access (was read).
+- `AUTH-3` token-lookup failures are no longer echoed as `401` with the raw error.
+- `PORTAL-1` `AUTH_SECRET` fails closed in production (no committed-default fallback); both servers assert it at boot.
+- `VAL-1` the mock-gateway webhook secret no longer falls back to a committed value (fail-closed).
+- `RACE-1` duplicate pending review maps `23505` → `409` instead of a 500.
+- `RACE-2` invoice numbering serialised with a per-year `pg_advisory_xact_lock`.
+- `DB-1` `company_domains` write RLS restricted to ADMIN/MANAGER (migration `063`) with a `SECURITY DEFINER` link helper for the pre-auth path.
+- `DATA-1` sign-out clears all workspace/project/collection/tab state.
+- `FE-1` an in-flight run only paints `lastRun` while its own request is still active.
+- `FE-2` renaming an environment variable removes the old key.
+
+Left open: `DB-2` (`projects.workspace_id` legacy mirror in access fallbacks) needs
+a live DB to change safely.
+
+Feature (`QA-1`): Collection Runner now supports stop-on-error, delay, retries,
+iterations, a CSV/JSON dataset (one row per collection pass, `{{data.field}}` /
+`{{field}}`), re-run-failed-only, and JSON/JUnit/CSV/Markdown/HTML report export.
+New pure modules `backend/src/api/collectionRun.js`, `frontend/src/lib/collectionRun.js`
+and `frontend/src/lib/collectionReport.js` ship with unit tests.

@@ -321,3 +321,106 @@ Backend unit tests 137/137, vault integration 3/3.
 - Implemented: the cross-user test no longer expects `history-empty`; it asserts the privacy rule directly -- the dev user's history list never contains the boss's `history-e2e-request` run (works whether or not the dev has their own background runs).
 - Verified: `npx tsc --noEmit` clean.
 - Status: FIXED (9f88891)
+
+---
+
+## Repo audit pass — 2026-10-11
+
+Static/code-review audit of the security- and correctness-sensitive paths (auth,
+multi-tenant access, money, RLS, web state). No live stack was available (no
+Postgres/Redis/Docker), so findings are backed by code reading plus the
+dependency-free unit suites (`node --test`): backend 146/146, frontend 193/193.
+
+### Summary
+
+| ID | Severity | Title | Status |
+|----|----------|-------|--------|
+| AUTH-1 | High | API-token project/workspace binding not enforced on `POST /api/runs` | FIXED |
+| AUTH-2 | High | `POST /api/mock-servers/:id/routes` accepted read access | FIXED |
+| AUTH-3 | Medium | API-token lookup failures echoed as `401` with the raw DB error | FIXED |
+| PORTAL-1 | High | `AUTH_SECRET` silently fell back to the committed default secret | FIXED |
+| VAL-1 | High | Mock-gateway webhook accepted a committed default secret | FIXED |
+| RACE-1 | Medium | Duplicate pending review returned a raw `23505` → 500 | FIXED |
+| RACE-2 | Medium | Concurrent checkouts could collide on the invoice number | FIXED |
+| DB-1 | Medium | `company_domains` write RLS was permissive (`USING/WITH CHECK true`) | FIXED |
+| DATA-1 | Medium | Sign-out left the previous account's workspace state in memory | FIXED |
+| FE-1 | Medium | An in-flight run could paint its response on the wrong request | FIXED |
+| FE-2 | Low | Renaming an environment variable left the old key behind | FIXED |
+| DB-2 | Low | `projects.workspace_id` legacy mirror still backs access fallbacks | OPEN |
+
+### AUTH-1 — API-token binding not enforced on the server-run route
+- File: `backend/src/api/routes/serverRuns.js`.
+- Cause: `/runs` checked the token *scope* but never called `apiTokenBindingError`, so a token bound to project/workspace X could run a request in project Y.
+- Fix: after the scope check, set `req.apiToken` and reject with the helper's `403` when the bound token targets a different project/workspace.
+
+### AUTH-2 — Mock-server route creation only required read access
+- File: `backend/src/api/routes/mockServers.js`.
+- Cause: `POST /mock-servers/:id/routes` gated on `canRead`, so a viewer could add routes.
+- Fix: require `canWriteProject(req.user.id, server.project_id)` (editor/manager/admin), matching the other route mutations.
+
+### AUTH-3 — Token-lookup errors surfaced as 401 with internals
+- Files: `backend/src/api/access.js`, `backend/src/api/tokenAuth.js`, `backend/src/api/routes/serverRuns.js`.
+- Cause: `catch (err) { res.status(err.status || 401).json({ error: err.message }) }` echoed any error — including transient DB failures — as a client-facing 401 with the raw message.
+- Fix: only `err.code === 'invalid_api_token'` is echoed (401); everything else goes to `next(err)` for the central 500 handler.
+
+### PORTAL-1 — Session secret defaulted to a committed value
+- Files: `backend/src/api/authLib.js`, `backend/src/api/server.js`, `portal/backend/src/server.js`.
+- Cause: `secret()` fell back to `'dev-only-auth-secret-change-me'` unconditionally, so a production deploy missing `AUTH_SECRET` would accept anyone's forged session cookie.
+- Fix: `secret()` now throws in production when `AUTH_SECRET` is unset or still the built-in default; `assertAuthSecret()` is invoked at boot by both servers so a misconfiguration fails fast. Non-production keeps the dev default.
+
+### VAL-1 — Mock-gateway webhook secret defaulted to a committed value
+- Files: `portal/backend/src/routes/webhooks.js`, `portal/backend/src/server.js`.
+- Cause: `GATEWAY_WEBHOOK_SECRET` fell back to `'whsec_apihub_sim_gateway_dev'`, so the opt-in mock gateway would accept the publicly known secret.
+- Fix: an unset secret now fails closed (no signature can match); the portal warns at boot when `ALLOW_MOCK_GATEWAY=1` has no secret.
+
+### RACE-1 — Duplicate pending review 500s
+- File: `backend/src/api/routes/reviews.js`.
+- Cause: two concurrent review requests both passed the pending pre-check; the partial unique index rejected the loser with a raw `23505`, surfacing as a 500.
+- Fix: map `23505` to `409` ("already pending").
+
+### RACE-2 — Invoice number collision
+- File: `portal/backend/src/routes/publicCheckout.js`.
+- Cause: `nextInvoiceNumber` computed `MAX+1` without serialising; two concurrent transactions read the same number and the `UNIQUE(number)` insert failed as a 500.
+- Fix: take a transaction-scoped `pg_advisory_xact_lock` keyed by the invoice year before reading the max.
+
+### DB-1 — Permissive RLS on `company_domains`
+- Files: `db/migrations/063_company_domains_rls.sql`, `backend/src/api/companyNetwork.js`.
+- Cause: migration 052 allowed INSERT/UPDATE/DELETE for every app connection, relying only on route-layer checks.
+- Fix: new migration restricts INSERT/UPDATE/DELETE to platform ADMIN/MANAGER (the main-app admin route is ADMIN, the portal route MANAGER+), keeps SELECT open for signup/login classification, and moves the pre-auth "link domain to org" update into a narrowly-scoped `SECURITY DEFINER` function (`app.link_company_domain`) that can only set `organization_id` on an existing row.
+- Note: migration not executed here (no database); reviewed against the existing RLS patterns in 003/025/033.
+
+### DATA-1 — Sign-out left stale workspace state
+- File: `frontend/src/store/WorkspaceStore.tsx`.
+- Cause: when `user` became null, `refresh()` cleared the list state only; the active workspace/project/collection, tree, open tabs, cached runs and edit buffers survived, so the next account could briefly see the previous session's data.
+- Fix: the `!user` branch of `refresh` now resets every selection and per-request cache and invalidates in-flight selections.
+
+### FE-1 — Run result applied to the wrong active request
+- File: `frontend/src/store/WorkspaceStore.tsx`.
+- Cause: `runActiveRequest` always called `setLastRun(result)` on resolve, so switching tabs mid-flight painted request A's response on request B.
+- Fix: capture the initiating id, always cache the response under it, but only `setLastRun` when that request is still active (mirrored via a ref).
+
+### FE-2 — Renaming an environment variable kept the old key
+- File: `frontend/src/components/EnvironmentsModal.tsx`.
+- Cause: save upserted by key and only deleted drafts matched by id, so a rename inserted the new key and left the old row.
+- Fix: delete every stored variable whose key is no longer present, then upsert the drafts (key-based, so renames, additions and deletions all settle correctly).
+
+### DB-2 — Legacy `projects.workspace_id` (open)
+- Files: `backend/src/api/access.js:254-282` (and RLS policies in 025/033/026…).
+- Observation: after 057/058 a project may own several workspaces, but `getProjectAccess` still falls back to the single legacy `projects.workspace_id` mirror to derive a workspace role, so a member of a non-primary workspace of a project may be denied access unless also a project member. Fixing it requires a live DB to verify the semantics of the mirror across the split workspaces, so it is left open rather than changed blind.
+
+---
+
+## QA feature — Collection Runner options (2026-10-11)
+
+Additive product work alongside the audit, aimed at QA/tester throughput.
+
+| ID | Title | Status |
+|----|-------|--------|
+| QA-1 | Collection Runner run options, datasets, retries and result exports | IMPLEMENTED |
+
+### QA-1 — Collection Runner QA options
+- Backend: `backend/src/api/collectionRun.js` (pure helpers: option clamping, data-row normalisation, run-plan building, failure/summary logic) + `backend/src/api/__tests__/collectionRun.test.cjs`; `runner.js` `runRequest(id, userId, extraVars)` overlays per-row variables; `routes/content.js` `/collections/:id/run` accepts `stopOnError, delayMs, retries, iterations, requestIds, data`, charges `plan.length` calls up-front, retries, stops early, and fires workflow events once per execution.
+- Dataset: each row is exposed to templates as both `{{data.<field>}}` and `{{<field>}}`.
+- Frontend: `frontend/src/lib/collectionRun.js` (CSV/JSON dataset parse) and `frontend/src/lib/collectionReport.js` (json/junit/csv/markdown/html reports) with `node:test` suites; `lib/api.ts` types; `WorkspaceStore.runCollection(id, options?)`; `CollectionRunnerModal.tsx` gains an options fieldset, dataset box, "re-run failed" and export buttons; `Sidebar.tsx` passes the collection id and run handler; `globals.css` styles.
+- Limits: iterations ≤ 50, retries ≤ 5, delay ≤ 10000ms, data rows ≤ 200, request ids ≤ 500, cell length ≤ 2000.
+- Verified: frontend 193/193 and backend 146/146 unit tests pass; `node --check` clean on the edited JS.
