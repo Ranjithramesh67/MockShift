@@ -366,6 +366,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // below) and updated synchronously by updateActiveRequest so undo snapshots
   // always capture the request as it was before the edit that is being applied.
   const activeRequestRef = useRef<ApiRequest | null>(null);
+  // Mirror of activeRequestId, read synchronously when an async run resolves so
+  // a response for a request the user has since navigated away from is not
+  // painted against the now-active request.
+  const activeRequestIdRef = useRef<string | null>(null);
   // Per-request Undo/Redo edit stacks. Undo entries are snapshots of the
   // working copy *before* each edit burst; Redo entries are snapshots produced
   // by Undo. Held in refs (mutated inside update/undo/redo handlers) and read
@@ -421,6 +425,34 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setTeams([]);
       setGroups(null);
       setAllProjects([]);
+      // Sign-out must not leak the previous account's data into the next
+      // session: clear every selection and per-request cache, not just the
+      // workspace lists. In-flight selections are invalidated so a late
+      // response cannot repopulate the tree after logout.
+      setOverview(null);
+      setOverviewError(null);
+      setActiveWorkspaceId(null);
+      setActiveWorkspaceRole(null);
+      setActiveProjectId(null);
+      setTree(null);
+      setProjectTree(null);
+      setActiveCollectionId(null);
+      setActiveCollectionName('');
+      setAuthProvider(null);
+      setActiveRequest(null);
+      setActiveRequestId(null);
+      setOpenRequestIds([]);
+      setRequestCopies({});
+      setBaselines({});
+      setClosedTabs([]);
+      setNavStack([]);
+      setLastRun(null);
+      setRequestRuns({});
+      setCollectionRun(null);
+      setSelectedFiles({});
+      selectSeqRef.current += 1;
+      selectTargetRef.current = null;
+      autoSelectRef.current = false;
       setLoading(false);
       return;
     }
@@ -452,6 +484,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     activeRequestRef.current = activeRequest;
   }, [activeRequest]);
+
+  useEffect(() => {
+    activeRequestIdRef.current = activeRequestId;
+  }, [activeRequestId]);
 
   // Back-navigation bookkeeping. Every real activation transition (A -> B)
   // records A as the most recent history entry so Back can return to it. A
@@ -1137,10 +1173,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         };
         result = (await tryRunInBrowser(payload)) ?? (await contentApi.runRequest(activeRequest.id));
       }
-      setLastRun(result);
-      // Keep the response for this request in memory so it can be restored when
-      // the tab is closed and reopened (Ctrl+Q / Ctrl+Shift+Q) or switched to.
-      setRequestRuns((runs) => ({ ...runs, [activeRequest.id]: result }));
+      // Keep the response for the request that initiated the run, so it can be
+      // restored when the tab is closed and reopened (Ctrl+Q / Ctrl+Shift+Q) or
+      // switched to. The initiating id is captured at call time — not read from
+      // the live `activeRequest`, which may have changed mid-flight.
+      const runRequestId = req.id;
+      setRequestRuns((runs) => ({ ...runs, [runRequestId]: result }));
+      // Only paint the response when the initiating request is still active;
+      // otherwise the user switched away and the result belongs to a now-
+      // background tab (it reappears via requestRuns when they switch back).
+      if (activeRequestIdRef.current === runRequestId) setLastRun(result);
     } finally {
       requestRunningRef.current = false;
       setRequestRunning(false);
