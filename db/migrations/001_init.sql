@@ -285,8 +285,16 @@ $$;
 -- ============================================================================
 
 -- Workload role used by tests (and the app's DB user in production).
-DROP ROLE IF EXISTS app_user;
-CREATE ROLE app_user NOLOGIN;
+-- The role is cluster-global, so multiple databases (e.g. the integration
+-- harness and the SDK-sync suite) share it. Create it only when absent so
+-- re-applying the schema never fails on objects in a sibling database.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
+    CREATE ROLE app_user NOLOGIN;
+  END IF;
+END
+$$;
 GRANT USAGE ON SCHEMA public, app TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public, app TO app_user;
