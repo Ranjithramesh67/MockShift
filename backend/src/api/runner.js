@@ -490,10 +490,16 @@ async function executePipeline({ request, vars, userId, persistHistory }) {
  *   token, injects the configured header)
  * - performs the HTTP call and records run_history
  */
-async function runRequest(requestId, userId) {
+async function runRequest(requestId, userId, extraVars = null) {
   const request = await loadRequest(requestId);
   if (!request) throw Object.assign(new Error('Request not found'), { status: 404 });
-  const vars = await resolveVariables({ requestId: request.id }, userId);
+  const baseVars = await resolveVariables({ requestId: request.id }, userId);
+  // Data-driven collection runs pass a per-row variable map; it wins over the
+  // environment so `{{data.field}}` (and bare `{{field}}`) resolve per row.
+  const vars =
+    extraVars && typeof extraVars === 'object' && Object.keys(extraVars).length
+      ? { ...baseVars, ...extraVars }
+      : baseVars;
   return executePipeline({ request, vars, userId, persistHistory: true });
 }
 

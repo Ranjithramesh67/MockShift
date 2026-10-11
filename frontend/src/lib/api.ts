@@ -242,17 +242,45 @@ export interface CollectionRunItem {
   durationMs: number | null;
   assertions: AssertionResult[];
   assertionsPassed: boolean;
+  /** 1-based data-row/iteration this execution belongs to (QA options). */
+  iteration?: number;
+  /** Which attempt produced this result (1 = first try). */
+  attempt?: number;
+  /** The data row applied to this execution, when a dataset was supplied. */
+  row?: Record<string, string> | null;
+}
+
+export interface CollectionRunSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  assertionsTotal: number;
+  assertionsPassed: number;
+  iterations?: number;
+  dataRows?: number;
+  stoppedEarly?: boolean;
+  checksFailed?: number;
 }
 
 export interface CollectionRunResult {
   results: CollectionRunItem[];
-  summary: {
-    total: number;
-    passed: number;
-    failed: number;
-    assertionsTotal: number;
-    assertionsPassed: number;
-  };
+  summary: CollectionRunSummary;
+}
+
+/** QA run options for the collection runner. */
+export interface CollectionRunOptions {
+  /** Stop the run on the first failed request/assertion. */
+  stopOnError?: boolean;
+  /** Pause between executions, in milliseconds. */
+  delayMs?: number;
+  /** Retry a failed execution this many times before recording a failure. */
+  retries?: number;
+  /** Repeat the whole collection this many times (ignored when `data` is set). */
+  iterations?: number;
+  /** Restrict the run to these request ids (e.g. re-run failures only). */
+  requestIds?: string[];
+  /** One row per iteration; exposed to templates as {{data.field}} / {{field}}. */
+  data?: Record<string, string>[];
 }
 
 // ---- Browser-executed runs (localhost/private hosts the server cannot reach)
@@ -489,8 +517,11 @@ export const contentApi = {
   // Record + evaluate a run the browser already executed.
   completeRun: (input: CompleteRunInput) =>
     apiFetch<RunResult>('/api/runs/complete', { method: 'POST', body: input }),
-  runCollection: (collectionId: string) =>
-    apiFetch<CollectionRunResult>(`/api/collections/${collectionId}/run`, { method: 'POST' }),
+  runCollection: (collectionId: string, options?: CollectionRunOptions) =>
+    apiFetch<CollectionRunResult>(`/api/collections/${collectionId}/run`, {
+      method: 'POST',
+      body: options ?? {},
+    }),
   getAuthProvider: (collectionId: string) =>
     apiFetch<{ authProvider: AuthProvider | null }>(`/api/collections/${collectionId}/auth-provider`),
   setAuthProvider: (collectionId: string, provider: AuthProvider) =>

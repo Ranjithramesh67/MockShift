@@ -11,6 +11,7 @@ const { checkCountGate, checkSeatGate, checkPublicSharingGate, chargeRuns, orgOf
 const { publish, roomKey } = require('../realtime');
 const { REQUEST_SELECT, serializeRequest } = require('../requestSnapshot');
 const { changedFields } = require('../collabDiff');
+const { normalizeRunOptions, buildRunPlan, runItemFailed, summarizeRun } = require('../collectionRun');
 
 const router = Router();
 router.use(requireAuth);
@@ -1087,6 +1088,9 @@ router.post('/runs/complete', async (req, res, next) => {
 });
 
 // ----------------------------------------------------------- Collection runner
+// QA options (all optional): stopOnError, delayMs, retries, iterations,
+// requestIds (re-run a subset, e.g. the failures) and data (one row per
+// iteration; each row is exposed to templates as {{data.<field>}} / {{<field>}}).
 router.post('/collections/:collectionId/run', requireResourcePermission('collection', 'request.send'), async (req, res, next) => {
   try {
     const { collectionId } = req.params;
@@ -1095,64 +1099,91 @@ router.post('/collections/:collectionId/run', requireResourcePermission('collect
     if (!(await canReadProjectContent(req.user.id, projectId))) {
       return res.status(403).json({ error: 'No access to this collection' });
     }
-    const { rows } = await query(
+    const options = normalizeRunOptions(req.body);
+    let { rows } = await query(
       `SELECT id, name FROM api_requests WHERE collection_id = $1 ORDER BY name`,
       [collectionId]
     );
-    // L4 — a collection run executes every request in it; charge the whole
-    // batch up-front so an over-budget org is blocked before any HTTP call.
-    if (rows.length > 0) {
+    if (options.requestIds.length) {
+      const wanted = new Set(options.requestIds);
+      rows = rows.filter((r) => wanted.has(r.id));
+    }
+    // one entry per HTTP call (row x request, or iterations x request)
+    const plan = buildRunPlan(rows, options);
+    // L4 — a collection run executes every call; charge the whole batch
+    // up-front so an over-budget org is blocked before any HTTP call.
+    if (plan.length > 0) {
       const runCharge = await chargeRuns({
         userId: req.user.id,
         orgId: await orgOfProject(projectId),
-        n: rows.length,
+        n: plan.length,
       });
       if (!runCharge.ok) return res.status(403).json(runCharge.body);
     }
     const results = [];
-    for (const r of rows) {
-      try {
-        const result = await runRequest(r.id, req.user.id);
-        await fireRequestRunEvents(r.id, projectId, result);
-        results.push({
-          requestId: r.id,
-          name: r.name,
-          runStatus: result.runStatus,
-          httpStatus: result.httpStatus,
-          error: result.error,
-          durationMs: result.response ? result.response.durationMs : null,
-          assertions: result.testResults,
-          assertionsPassed: result.assertionsPassed,
-        });
-      } catch (err) {
-        results.push({
-          requestId: r.id,
-          name: r.name,
+    let stoppedEarly = false;
+    for (let idx = 0; idx < plan.length; idx++) {
+      const { request, iteration, row, extraVars } = plan[idx];
+      let item = null;
+      let attempts = 0;
+      let lastResult = null;
+      for (let attempt = 0; attempt <= options.retries; attempt++) {
+        attempts = attempt + 1;
+        try {
+          const result = await runRequest(request.id, req.user.id, extraVars);
+          lastResult = result;
+          item = {
+            requestId: request.id,
+            name: request.name,
+            iteration,
+            attempt: attempts,
+            row: row || null,
+            runStatus: result.runStatus,
+            httpStatus: result.httpStatus,
+            error: result.error,
+            durationMs: result.response ? result.response.durationMs : null,
+            assertions: result.testResults || [],
+            assertionsPassed: result.assertionsPassed,
+          };
+          if (!runItemFailed(item)) break;
+        } catch (err) {
+          // Never surface internal error text to the client; log it instead.
+          console.error(`collection run failed for request ${request.id}:`, err && err.message);
+        }
+      }
+      // Fire workflow/notification events once per execution (not per retry).
+      if (lastResult) await fireRequestRunEvents(request.id, projectId, lastResult);
+      if (!item) {
+        item = {
+          requestId: request.id,
+          name: request.name,
+          iteration,
+          attempt: attempts,
+          row: row || null,
           runStatus: 'FAILED',
           httpStatus: 0,
-          error: err.message,
+          error: 'Request failed',
           durationMs: null,
           assertions: [],
           assertionsPassed: false,
-        });
+        };
+      }
+      results.push(item);
+      if (options.stopOnError && runItemFailed(item)) {
+        stoppedEarly = true;
+        break;
+      }
+      if (options.delayMs > 0 && idx < plan.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, options.delayMs));
       }
     }
-    const total = results.length;
-    const passed = results.filter((r) => r.runStatus === 'SUCCESS').length;
-    const assertionsTotal = results.reduce((n, r) => n + (r.assertions?.length || 0), 0);
-    const assertionsPassed = results.reduce(
-      (n, r) => n + (r.assertions?.filter((a) => a.passed).length || 0),
-      0
-    );
     res.json({
       results,
-      summary: {
-        total,
-        passed,
-        failed: total - passed,
-        assertionsTotal,
-        assertionsPassed,
-      },
+      summary: summarizeRun(results, {
+        iterations: options.data.length || options.iterations,
+        dataRows: options.data.length,
+        stoppedEarly,
+      }),
     });
   } catch (err) {
     next(err);

@@ -1408,6 +1408,7 @@ export function Sidebar({
   const [authOpen, setAuthOpen] = useState(false);
   const [environmentsOpen, setEnvironmentsOpen] = useState(false);
   const [runnerOpen, setRunnerOpen] = useState(false);
+  const [runnerCollectionId, setRunnerCollectionId] = useState<string | null>(null);
   const [runnerCollectionName, setRunnerCollectionName] = useState('');
   const [requestingWorkspace, setRequestingWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [workspaceReason, setWorkspaceReason] = useState('');
@@ -1513,6 +1514,7 @@ export function Sidebar({
   };
 
   const onRunCollection = async (collectionId: string, collectionName: string) => {
+    setRunnerCollectionId(collectionId);
     setRunnerCollectionName(collectionName);
     setRunnerOpen(true);
     try {
@@ -2217,8 +2219,15 @@ export function Sidebar({
     <CollectionRunnerModal
       open={runnerOpen}
       running={ws.collectionRunRunning}
+      collectionId={runnerCollectionId}
       collectionName={runnerCollectionName}
       result={ws.collectionRun}
+      onRun={(options) => {
+        if (!runnerCollectionId) return;
+        ws.runCollection(runnerCollectionId, options).catch((err) => {
+          dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Collection run failed' });
+        });
+      }}
       onClose={() => {
         setRunnerOpen(false);
         ws.clearCollectionRun();

@@ -4902,6 +4902,76 @@ body.is-col-dragging .sidebar {
    margin-left: 24px;
 }
 
+/* QA run options + report exports */
+.runner-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  align-items: center;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.runner-options legend {
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.runner-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.runner-option input[type='number'] {
+  width: 72px;
+}
+
+.runner-data {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.runner-data label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.runner-data textarea {
+  width: 100%;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  resize: vertical;
+}
+
+.runner-data-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.runner-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.runner-exports {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
 /* ------------------------------------------------------------------ Environments */
 .env-list {
   list-style: none;
@@ -6549,4 +6619,3 @@ body.is-col-dragging .sidebar {
   accent-color: var(--accent);
   flex-shrink: 0;
 }
-

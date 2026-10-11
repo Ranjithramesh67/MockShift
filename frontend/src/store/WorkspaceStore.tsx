@@ -17,6 +17,7 @@ import {
   workspaceApi,
   type ApiType,
   type AuthProvider,
+  type CollectionRunOptions,
   type CollectionRunResult,
   type ContentTree,
   type EphemeralRunInput,
@@ -251,7 +252,7 @@ interface WorkspaceState {
     assertions?: Assertion[];
     apiType?: ApiType;
   }) => Promise<void>;
-  runCollection: (collectionId: string) => Promise<CollectionRunResult>;
+  runCollection: (collectionId: string, options?: CollectionRunOptions) => Promise<CollectionRunResult>;
   clearCollectionRun: () => void;
   clearScratchpadRun: () => void;
 
@@ -1230,11 +1231,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setLastRun(null);
   }, []);
 
-  const runCollection = useCallback(async (collectionId: string) => {
+  const runCollection = useCallback(async (collectionId: string, options?: CollectionRunOptions) => {
     setCollectionRunRunning(true);
     setCollectionRun(null);
     try {
-      const result = await contentApi.runCollection(collectionId);
+      const result = await contentApi.runCollection(collectionId, options);
       setCollectionRun(result);
       return result;
     } finally {
