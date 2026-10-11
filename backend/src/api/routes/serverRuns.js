@@ -5,6 +5,7 @@ const { query } = require('../db');
 const { getProjectAccess } = require('../access');
 const { loadRequest, executePipeline, resolveVariables } = require('../runner');
 const { authenticateApiToken, readBearerToken } = require('../tokenAuth');
+const { apiTokenBindingError } = require('../tokenAuth');
 const { verifySession, readSessionToken } = require('../authLib');
 const { loadUserById } = require('../access');
 const { fireWorkflowEvent } = require('../workflowService');
@@ -122,14 +123,25 @@ router.post('/runs', async (req, res, next) => {
     try {
       actor = await authenticate(req);
     } catch (err) {
-      return res.status(err.status || 401).json({ error: err.message || 'Invalid API token' });
+      // Only surface the controlled token errors; a transient DB failure inside
+      // token lookup must not echo its raw message as a 401.
+      if (err && err.code === 'invalid_api_token') {
+        return res.status(401).json({ error: err.message });
+      }
+      return next(err);
     }
     if (!actor) {
       return res.status(401).json({ error: 'Not authenticated — session cookie or API token required' });
     }
 
-    if (actor.kind === 'token' && !actor.apiToken.scopes.some((s) => TOKEN_RUN_SCOPES.includes(s))) {
-      return res.status(403).json({ error: 'API token requires the "runs" or "write" scope to run requests' });
+    if (actor.kind === 'token') {
+      if (!actor.apiToken.scopes.some((s) => TOKEN_RUN_SCOPES.includes(s))) {
+        return res.status(403).json({ error: 'API token requires the "runs" or "write" scope to run requests' });
+      }
+      // A project/workspace-bound token may only run requests in its scope.
+      req.apiToken = actor.apiToken;
+      const binding = await apiTokenBindingError(req);
+      if (binding) return res.status(binding.status).json({ error: binding.error });
     }
 
     const requestId = body.requestId.trim();

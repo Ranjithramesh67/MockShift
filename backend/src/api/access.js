@@ -100,7 +100,12 @@ async function requireAuth(req, res, next) {
           return next();
         }
       } catch (err) {
-        return res.status(err.status || 401).json({ error: err.message || 'Invalid API token' });
+        // Only the controlled token errors are safe to echo; anything else
+        // (e.g. a transient DB failure during lookup) must not leak as a 401.
+        if (err && err.code === 'invalid_api_token') {
+          return res.status(401).json({ error: err.message });
+        }
+        return next(err);
       }
     }
     return res.status(401).json({ error: 'Not authenticated' });

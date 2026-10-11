@@ -209,7 +209,10 @@ async function tokenAuth(req, res, next) {
     req.apiToken = auth.token;
     next();
   } catch (err) {
-    return res.status(err.status || 401).json({ error: err.message || 'Invalid API token' });
+    if (err && err.code === 'invalid_api_token') {
+      return res.status(401).json({ error: err.message });
+    }
+    return next(err);
   }
 }
 
