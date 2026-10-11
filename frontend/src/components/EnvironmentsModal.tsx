@@ -144,6 +144,13 @@ export function EnvironmentsModal({ open, onClose }: { open: boolean; onClose: (
     setError('');
     setBusy(true);
     try {
+      const desiredKeys = new Set(drafts.map((d) => d.key.trim()).filter(Boolean));
+      // Delete every stored variable whose key is no longer present. Matching on
+      // key (not id) also catches renames: the API upserts by key, so a renamed
+      // row would otherwise be inserted as a new key while the old one lingers.
+      for (const v of variables) {
+        if (!desiredKeys.has(v.key)) await environmentApi.deleteVariable(selectedId, v.id);
+      }
       // Upsert every non-empty draft row (the API upserts by key).
       for (const d of drafts) {
         if (!d.key.trim()) continue;
@@ -152,11 +159,6 @@ export function EnvironmentsModal({ open, onClose }: { open: boolean; onClose: (
           value: d.value,
           isSecret: d.isSecret,
         });
-      }
-      // Remove variables that were deleted in the UI.
-      const removed = variables.filter((v) => !drafts.some((d) => d.id === v.id && d.key.trim() !== ''));
-      for (const v of removed) {
-        await environmentApi.deleteVariable(selectedId, v.id);
       }
       await loadVariables(selectedId);
       await loadEnvironments();
