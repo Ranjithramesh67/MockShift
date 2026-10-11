@@ -481,3 +481,18 @@ killed by their own timeout mid-run and produced a false 16-failure cascade);
 `reset:db` + `seed:dev` before the Playwright suite (`assertions-runner` asserts the
 seed's 8-request collection); warm `/login` plus one authenticated `/` load so the
 first spec does not lose to a cold `next dev` compile.
+
+### Live E2E suite (e2e-live) pass (2026-10-11)
+
+Ran `node e2e-live/run-all.cjs` against the local stack with the portal stood up too
+(`portal/backend` `:3102`, `portal/frontend` `:3002`). Result: **54 pass / 0 fail /
+2 warn**.
+
+- `TEST-7` fixed the harness: `browser-run.lna-guidance` assumed a public target, but
+  with a loopback `E2E_MAIN` Chrome never gates the loopback fetch, so the check is now
+  a `warn` for local runs (`e2e-live/suites/05-browser-run.cjs`).
+- The two warns are environment-only: `login.signup-closed` (`open=true` because the
+  local backend runs `ALLOW_SELF_SIGNUP=1`) and the TEST-7 LNA skip.
+- Run invocation: `E2E_MAIN=http://127.0.0.1:3000 E2E_PORTAL=http://127.0.0.1:3002
+  E2E_BOSS_EMAIL=... E2E_BOSS_PASS=... E2E_SUPER_EMAIL=... E2E_SUPER_PASS=...
+  node e2e-live/run-all.cjs` (seeded ADMIN account doubles as the superadmin login).

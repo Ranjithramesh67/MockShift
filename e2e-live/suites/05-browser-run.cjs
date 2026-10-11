@@ -5,6 +5,18 @@ const path = require('path');
 const { launch, newPage, login } = require('../lib/browser.cjs');
 const ui = require('../lib/ui.cjs');
 
+// Chrome only gates "public site -> loopback" fetches. When E2E_MAIN itself is a
+// loopback origin (local runs) the page is already local, so the gate never
+// fires and there is no guidance to assert on.
+function mainIsLoopback(main) {
+  try {
+    const host = new URL(main).hostname.replace(/^\[|\]$/g, '');
+    return host === 'localhost' || host === '::1' || /^127\./.test(host) || host === '0.0.0.0';
+  } catch {
+    return false;
+  }
+}
+
 function waitForPort(url, timeoutMs) {
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
@@ -58,10 +70,14 @@ module.exports = {
       // not the old misleading 15s timeout.
       const denied = await runCase(config, { bypassLna: false, headless: true });
       const msg = denied.err || '';
-      report[/Local Network Access/.test(msg) ? 'pass' : 'fail'](
-        'browser-run.lna-guidance',
-        /Local Network Access/.test(msg) ? 'shows Local Network Access guidance' : `err=${msg.slice(0, 110)}`
-      );
+      if (mainIsLoopback(config.MAIN)) {
+        report.warn('browser-run.lna-guidance', 'skipped: E2E_MAIN is a loopback origin, gate cannot fire');
+      } else {
+        report[/Local Network Access/.test(msg) ? 'pass' : 'fail'](
+          'browser-run.lna-guidance',
+          /Local Network Access/.test(msg) ? 'shows Local Network Access guidance' : `err=${msg.slice(0, 110)}`
+        );
+      }
       report[/15000ms/.test(msg) ? 'fail' : 'pass'](
         'browser-run.no-stale-timeout',
         /15000ms/.test(msg) ? 'stale 15s timeout text present' : 'ok'

@@ -440,6 +440,7 @@ mock upstream `:3999`, `next dev` `:3000`) on a fresh `npm run reset:db` +
 | WEB-2 | Low | Environment secret toggle was not clickable by pointer/automation | FIXED |
 | TEST-5 | Test | Integration harness could not provision a second test DB (cluster-global `app_user` drop) | FIXED |
 | TEST-6 | Test | Five Playwright specs assumed pre-"project-first" UI / anonymous share pages | FIXED |
+| TEST-7 | Test | `e2e-live` LNA-guidance check assumed a public target, so it failed on a loopback `E2E_MAIN` | FIXED |
 
 ### SNAP-1 — JSON request snapshots skipped credential redaction
 - File: `backend/src/api/bodyCodec.js`.
@@ -468,7 +469,13 @@ mock upstream `:3999`, `next dev` `:3000`) on a fresh `npm run reset:db` +
 - Files: `frontend/e2e/{collection-export-import,mock-server,project-overview,share-links,scratchpad}.spec.ts`, `frontend/playwright.config.ts`.
 - Changes: open project overview / mock tabs from the `project-switcher-button` dropdown (the tree rows were removed); `page.reload()` before selecting API-created collections (the sidebar renders `projectTree`, which `selectWorkspace` does not refresh); the share page is login-gated, so the spec signs in through the context cookie jar; the scratchpad save spec now awaits the async save (picker close / editor open) instead of racing the `/content` refetch; `expect.timeout` raised to 15s for cold `next dev` compiles.
 
+### TEST-7 — e2e-live LNA-guidance check failed on a loopback target
+- File: `e2e-live/suites/05-browser-run.cjs`.
+- Cause: the `browser-run.lna-guidance` check assumes Chrome gates a public-site-to-loopback fetch (`Local Network Access`) so the run errors with actionable guidance. When `E2E_MAIN` is itself `http://127.0.0.1:3000` (local runs) the page origin is already local, so the gate never fires, the request succeeds, `denied.err` is empty, and the check failed even though nothing is wrong.
+- Fix: detect a loopback `E2E_MAIN` and report the check as a `warn` (gate cannot fire) instead of a `fail`. The `no-stale-timeout` guard still runs.
+
 Verification (live stack, fresh `reset:db` + `seed:dev`):
 
 - Frontend: Playwright **53/53**, `tsc --noEmit` clean, `npm test` **193/193**, `next build` OK.
 - Backend: jest **47/47**, `test:api:unit` **147/147**, integration (`tests/*.integration.test.cjs`) **331/331**.
+- Live (`node e2e-live/run-all.cjs` against the local stack, portal `:3002` + portal-api `:3102` included): **54 pass / 0 fail / 2 warn** (`login.signup-closed` open because the local backend runs `ALLOW_SELF_SIGNUP=1`; `browser-run.lna-guidance` skipped per TEST-7).
