@@ -452,3 +452,32 @@ iterations, a CSV/JSON dataset (one row per collection pass, `{{data.field}}` /
 `{{field}}`), re-run-failed-only, and JSON/JUnit/CSV/Markdown/HTML report export.
 New pure modules `backend/src/api/collectionRun.js`, `frontend/src/lib/collectionRun.js`
 and `frontend/src/lib/collectionReport.js` ship with unit tests.
+
+### Live test-pyramid pass + fixes (2026-10-11)
+
+Ran the whole pyramid against a live local stack (Postgres/Redis, backend `:3001`,
+mock upstream `:3999`, `next dev` `:3000`) on a fresh `reset:db` + `seed:dev`.
+Full write-up in `issues.md` under "Live test-pyramid pass - 2026-10-11".
+
+Result: Playwright **53/53**, frontend unit **193/193**, `tsc` clean, `build` OK;
+backend jest **47/47**, api units **147/147**, integration **331/331**.
+
+Fixes:
+
+- `SNAP-1` JSON/GraphQL request snapshots are now stored as serialized text, so
+  `redactSnapshot` actually redacts secrets in run history and shares (previously
+  object snapshots were skipped).
+- `WEB-1` the sidebar "APIs" click no longer loses to an in-flight `/manage`-style
+  navigation (rail `onClickCapture` + `navPendingRef`).
+- `WEB-2` the environment secret toggle input now overlays the switch, so it is
+  clickable by pointer and automation.
+- `TEST-5` `001_init.sql` creates the cluster-global `app_user` role only when
+  absent, so a second integration DB (`apihub_sdk_test`) migrates cleanly.
+- `TEST-6` five Playwright specs updated for the project-first refactor, the
+  login-gated share page, and the async scratchpad save; `expect.timeout` 15s.
+
+Operator notes: keep the stack alive for the whole run (background terminals were
+killed by their own timeout mid-run and produced a false 16-failure cascade);
+`reset:db` + `seed:dev` before the Playwright suite (`assertions-runner` asserts the
+seed's 8-request collection); warm `/login` plus one authenticated `/` load so the
+first spec does not lose to a cold `next dev` compile.

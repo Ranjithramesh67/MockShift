@@ -424,3 +424,51 @@ Additive product work alongside the audit, aimed at QA/tester throughput.
 - Frontend: `frontend/src/lib/collectionRun.js` (CSV/JSON dataset parse) and `frontend/src/lib/collectionReport.js` (json/junit/csv/markdown/html reports) with `node:test` suites; `lib/api.ts` types; `WorkspaceStore.runCollection(id, options?)`; `CollectionRunnerModal.tsx` gains an options fieldset, dataset box, "re-run failed" and export buttons; `Sidebar.tsx` passes the collection id and run handler; `globals.css` styles.
 - Limits: iterations ≤ 50, retries ≤ 5, delay ≤ 10000ms, data rows ≤ 200, request ids ≤ 500, cell length ≤ 2000.
 - Verified: frontend 193/193 and backend 146/146 unit tests pass; `node --check` clean on the edited JS.
+
+---
+
+## Live test-pyramid pass — 2026-10-11
+
+Full pyramid run against a live local stack (Postgres 15 + Redis, backend `:3001`,
+mock upstream `:3999`, `next dev` `:3000`) on a fresh `npm run reset:db` +
+`npm run seed:dev`. New defects found and fixed:
+
+| ID | Severity | Title | Status |
+|----|----------|-------|--------|
+| SNAP-1 | Medium | JSON/GraphQL request-body snapshots stored as objects, so credential redaction skipped them | FIXED |
+| WEB-1 | Medium | Sidebar "APIs" click during an in-flight away-navigation could be superseded | FIXED |
+| WEB-2 | Low | Environment secret toggle was not clickable by pointer/automation | FIXED |
+| TEST-5 | Test | Integration harness could not provision a second test DB (cluster-global `app_user` drop) | FIXED |
+| TEST-6 | Test | Five Playwright specs assumed pre-"project-first" UI / anonymous share pages | FIXED |
+
+### SNAP-1 — JSON request snapshots skipped credential redaction
+- File: `backend/src/api/bodyCodec.js`.
+- Cause: `serializeBody` returned the parsed object as the snapshot for JSON/GraphQL bodies, while every other body type (text/XML/multipart) and every response snapshot is a string. `redactSnapshot` in `backend/src/api/redact.js` only redacts `typeof body === 'string'`, so a JSON request body containing `password`/`token`/... was persisted to `run_history` and public shares unredacted. It also contradicted the client contract (`requestSnapshot.body: string | null`).
+- Fix: snapshot JSON/GraphQL bodies as the serialized string.
+- Test: `backend/src/api/__tests__/bodyCodec.test.cjs` asserts the snapshot equals the serialized body; the `apiAuth` formula round-trip integration test parses it as before.
+
+### WEB-1 — Sidebar navigation race
+- File: `frontend/src/components/Sidebar.tsx`.
+- Cause: `goWorkspace()` guarded its `router.push('/')` on `window.location.pathname === '/'`. While a `/manage`|`/admin`|`/automations` navigation was still in flight the committed pathname was still `/`, so the guard skipped the push and the pending away-navigation won, leaving the app off the workspace view.
+- Fix: `onClickCapture` on the rail marks in-flight away-navigations (`navPendingRef`, cleared on `pathname` change); `goWorkspace` skips the push only when genuinely parked on `/`.
+- Regression: `frontend/e2e/nav-race.spec.ts`.
+
+### WEB-2 — Environment secret toggle not clickable
+- File: `frontend/app/globals.css`.
+- Cause: `.toggle-switch-input` was hidden with `clip: rect(0 0 0 0)` at 1x1, so pointer/automation hit-testing landed on the spanning track instead of the checkbox.
+- Fix: the input overlays the switch (`position:absolute; inset:0; width/height 100%; opacity:0; z-index:1`).
+- Regression: `frontend/e2e/environments.spec.ts`.
+
+### TEST-5 — Shared `app_user` role blocked a second test DB
+- File: `db/migrations/001_init.sql`.
+- Cause: the migration unconditionally `DROP ROLE IF EXISTS app_user; CREATE ROLE app_user`. The role is cluster-global, so once its objects existed in `apihub`, the `sdkSync` suite's re-application against `apihub_sdk_test` failed with `role "app_user" cannot be dropped because some objects depend on it` (9 tests).
+- Fix: create the role only when absent (`DO $$ ... pg_roles ... $$`); the following `GRANT`s stay idempotent.
+
+### TEST-6 — Playwright specs after the project-first refactor
+- Files: `frontend/e2e/{collection-export-import,mock-server,project-overview,share-links,scratchpad}.spec.ts`, `frontend/playwright.config.ts`.
+- Changes: open project overview / mock tabs from the `project-switcher-button` dropdown (the tree rows were removed); `page.reload()` before selecting API-created collections (the sidebar renders `projectTree`, which `selectWorkspace` does not refresh); the share page is login-gated, so the spec signs in through the context cookie jar; the scratchpad save spec now awaits the async save (picker close / editor open) instead of racing the `/content` refetch; `expect.timeout` raised to 15s for cold `next dev` compiles.
+
+Verification (live stack, fresh `reset:db` + `seed:dev`):
+
+- Frontend: Playwright **53/53**, `tsc --noEmit` clean, `npm test` **193/193**, `next build` OK.
+- Backend: jest **47/47**, `test:api:unit` **147/147**, integration (`tests/*.integration.test.cjs`) **331/331**.
