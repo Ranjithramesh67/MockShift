@@ -181,6 +181,11 @@ async function sessionUser(req) {
 // Called inside the writer transaction (the caller owns the lock window).
 async function nextInvoiceNumber(client) {
   const year = new Date().getFullYear();
+  // Serialise allocation across concurrent transactions: without this, two
+  // transactions can read the same MAX and both try to INSERT the same number,
+  // which the UNIQUE(number) constraint rejects as a 500. The advisory lock is
+  // transaction-scoped, so it releases on COMMIT/ROLLBACK.
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`invoice-number:${year}`]);
   const { rows } = await client.query(
     `SELECT COALESCE(MAX(CAST(RIGHT(number, 4) AS integer)), 0) + 1 AS next
        FROM invoices
