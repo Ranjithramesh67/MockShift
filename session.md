@@ -2021,6 +2021,17 @@ Marketing-grade rework of the narrated tour (media still gitignored):
 
 ## Completed
 
+- **SDK nested routers + 0.3.0 release prep (2026-10-19, `adcd5ad`, tag `v0.3.0`)** —
+  the Express adapter now composes mount prefixes through nested routers and
+  sub-apps. `app.use` / `Router.use` are patched so mounted routers are
+  instrumented, `express.Router` is hooked so routers created after `attach`
+  are tracked from birth, and Express 4 layer regexps recover routers mounted
+  before attach. Express 5 dropped the mount path from layers, so that order
+  is documented as unsupported there. 7 new adapter tests (SDK suite 50/50);
+  packed tarball smoke-tested against Express 5.3.0. npm publish is blocked
+  until a maintainer runs `npm login` (or supplies an Automation token) —
+  `npm publish --dry-run` and the tarball inspection are clean, and
+  `mockshift-sdk` is still unclaimed on the registry.
 - **DB-2 fixed (2026-10-19, `8a6c5fe`)** — a project may own several workspaces after 057/058;
   access derivation, `/api/projects` listings, the workspace content tree, run-environment
   resolution and API-token binding no longer rely solely on the legacy `projects.workspace_id`
