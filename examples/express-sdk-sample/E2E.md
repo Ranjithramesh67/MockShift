@@ -2,7 +2,7 @@
 
 Date: 2026-10-19
 Instance: `https://mockshift.keerainnovations.com`
-SDK: `mockshift-sdk@0.3.1` from the npm registry, Express `4.22.3`
+SDK: `mockshift-sdk@0.3.2` from the npm registry, Express `4.22.3`
 
 ## What was exercised
 

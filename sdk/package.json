@@ -1,6 +1,6 @@
 {
   "name": "mockshift-sdk",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Sync Express/HTTP routes into Mockshift as testable requests, with payload, schema and assertion inference.",
   "license": "MIT",
   "private": false,
@@ -37,6 +37,10 @@
     "routes",
     "middleware"
   ],
+  "homepage": "https://mockshift.keerainnovations.com/",
+  "bugs": {
+    "url": "https://github.com/Ranjithramesh67/MockShift/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Ranjithramesh67/MockShift.git",

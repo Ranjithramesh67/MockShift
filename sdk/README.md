@@ -2,6 +2,8 @@
 
 Sync the routes your Express or Node HTTP app defines into [Mockshift](https://github.com/Ranjithramesh67/MockShift) as collections, nested folders and testable requests — then keep them fresh by observing real traffic.
 
+**Live app:** <https://mockshift.keerainnovations.com/> · **Website:** <https://mockshift-portal.keerainnovations.com/> · **Source:** <https://github.com/Ranjithramesh67/MockShift>
+
 The SDK can:
 
 - **Discover routes** by wrapping an Express app (`attach(app)`) or a raw `http.Server` (`attachHttp(server)`).

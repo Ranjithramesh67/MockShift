@@ -567,6 +567,14 @@ Platform branding was removed from everything this repository publishes:
 - Confirmed the npm tarball (18 files, shasum `10fb8715...`) contains no
   platform references.
 
+`0.3.2` adds `homepage` (`https://mockshift.keerainnovations.com/`) and `bugs`
+(GitHub issues) to the package metadata and puts the live app, marketing site
+and source links at the top of the README. Note that `npm publish` on a package
+that already exists can return `202 Accepted` and hold the version for a minute
+or more before it appears; a retry in that window returns
+`409 Cannot publish over previously staged version`. Wait and re-poll instead
+of forcing a new version.
+
 ### Production deploy (2026-10-19)
 
 Deployed `4429ad5` to `mokeycode@213.210.37.153:/home/mokeycode/MockShift`
