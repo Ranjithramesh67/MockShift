@@ -575,6 +575,20 @@ or more before it appears; a retry in that window returns
 `409 Cannot publish over previously staged version`. Wait and re-poll instead
 of forcing a new version.
 
+GitHub contributor attribution was cleaned on 2026-10-19. The default branch was
+already authored entirely by `Ranjithramesh67@users.noreply.github.com`, but
+seven September branches still carried `monkeycode-ai@chaitin.com` as author
+(89-371 commits each). All seven were rewritten with `filter-branch` to the
+Ranjithramesh67 identity, including one commit whose `Co-authored-by` trailer had
+been appended to the subject line, and force-pushed. Tree hashes were compared
+against `refs/backup/*` before pushing, so file content is byte-identical. The
+contributors API now returns only `Ranjithramesh67`.
+
+Still visible: PR #1 (`feat: add nested folders inside API collections`) shows
+`MonkeyCode-AI` because its two commits keep that author and GitHub does not
+allow editing PR authorship. Removing it requires deleting and recreating the
+repository.
+
 ### Production deploy (2026-10-19)
 
 Deployed `4429ad5` to `mokeycode@213.210.37.153:/home/mokeycode/MockShift`
