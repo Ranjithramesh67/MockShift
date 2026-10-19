@@ -519,6 +519,29 @@ Committed as `8a6c5fe`. Verification: Playwright not rerun (no frontend changes)
 backend Jest 47/47, API units 147/147, integration 336/336 on `apihub_test`,
 frontend `tsc --noEmit` clean.
 
+### SDK end-to-end sample + DB-3 (2026-10-19)
+
+Synced `examples/express-sdk-sample` (8 routes through nested routers) into the
+production workspace with an SDK-scoped token. Three defects surfaced:
+
+- SDK-2: bound tokens hit `403 API token is bound to a different project or
+  workspace` on `POST /api/sdk/sync`; the targetless sync route is now exempt
+  from the router-level binding check.
+- SDK-1: index routes kept a trailing slash and parameterised mounts lost a
+  segment; the adapter now normalises paths and parses mounts recursively
+  (`mockshift-sdk@0.3.1`).
+- DB-3: `/api/projects/:projectId/content` selected collections by workspace,
+  so a project sharing a workspace with a sibling was empty while the sibling
+  showed its collection. Collections are now scoped by `collections.project_id`
+  and the tree lists owned plus legacy mirror workspaces.
+
+Committed as `406a623` (DB-3) and `44882f4` (sample). Re-sync updated all 8
+requests in place; running the synced `GET /health` from the account returned
+200 with the sample body. Production verifies 8 requests in `SDK E2E Sample`
+and 0 SDK requests in `Default Project`. Verification: SDK 51/51, Jest 47/47,
+API units 147/147, integration 338 tests (9 SDK sync cases need
+`apihub_sdk_test`).
+
 ### Production deploy (2026-10-19)
 
 Deployed `4429ad5` to `mokeycode@213.210.37.153:/home/mokeycode/MockShift`
