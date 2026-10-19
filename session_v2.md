@@ -519,8 +519,31 @@ Committed as `8a6c5fe`. Verification: Playwright not rerun (no frontend changes)
 backend Jest 47/47, API units 147/147, integration 336/336 on `apihub_test`,
 frontend `tsc --noEmit` clean.
 
-Deployment note: production still runs `f1a4d47`. The DB-2 change needs no
-migration and no frontend rebuild; deploying is `git pull` plus
-`pm2 restart mockshift-api mockshift-portal-api`. Remote SSH password auth is
-required and no key is installed in this workspace, so deployment is pending
-operator credentials.
+### Production deploy (2026-10-19)
+
+Deployed `4429ad5` to `mokeycode@213.210.37.153:/home/mokeycode/MockShift`
+(previously `6e2fcfe`, 21 commits behind).
+
+- Pulled with `git pull --ff-only`; `portal/backend/.env` is intentionally absent
+  (the portal API reuses the main backend's DB config).
+- Applied the only new migration, `db/migrations/063_company_domains_rls.sql`
+  (verified `app.link_company_domain` now exists). It is additive and idempotent.
+- No dependency install was needed (no lockfile changes).
+- Rebuilt `frontend` (`next build`, 30/30 static pages) and restarted
+  `mockshift-api`, `mockshift-portal-api`, `mockshift-web`, `mockshift-mock`.
+  The portal frontend had no changes.
+- Public checks: both domains 200, `/api/health` ok, boss login through the
+  production API 200, malformed logins still 401.
+
+Boot persistence is now in place without root: `loginctl enable-linger mokeycode`
+plus a user unit `~/.config/systemd/user/pm2-mockshift.service` that runs
+`pm2 resurrect`. Tested for real with `pm2 kill` followed by
+`systemctl --user start pm2-mockshift`: all six apps came back and both domains
+responded. `pm2 save` holds the six-app dump.
+
+Live E2E against production: first run 55/56 (only `functional.scratchpad`,
+`chip=null`, during an Aiven reconnect window that logged
+`connect ETIMEDOUT 165.22.105.33:15062`); a DB probe afterwards was stable and the
+rerun passed **56/56 with 0 warnings**. Treated as a transient DB blip, not a
+regression. Remaining risk: Aiven connectivity drops briefly whenever the
+managed instance reconnects; the scheduler logs the retry but the API recovers.

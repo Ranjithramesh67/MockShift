@@ -1350,6 +1350,11 @@ Folders added `backend/tests/folders.integration.test.cjs` + `db/tests/04_collec
   browser + `install-deps` for e2e. A stray empty root `package-lock.json`
   (artifact of a failed root `npm install`) is left untracked in the working tree.
 - `frontend/tsconfig.tsbuildinfo` shows as modified in `git status` (build artifact; leave it).
+- 2026-10-19 production deploy: Aiven logged brief `connect ETIMEDOUT` / "database
+  system is shutting down" lines around the PM2 stop/start window. The API recovered
+  on its own and a follow-up probe was stable (69-71 ms after the first connect).
+  The first production E2E run lost one scratchpad check in that window; the rerun
+  passed 56/56. Worth watching if the managed instance restarts more often.
 - Old top-of-file "Current turn (in progress)" block for #7 was stale (that item shipped in
   `ac6cd52`) — removed in S0.
 
@@ -2022,6 +2027,9 @@ Marketing-grade rework of the narrated tour (media still gitignored):
   mirror. Members of non-primary workspaces now get project access, and runs use the collection's
   own active environment. New `backend/tests/projectWorkspaceAccess.integration.test.cjs` (5 cases);
   Jest 47/47, API units 147/147, integration 336/336, frontend `tsc` clean.
+  Deployed to production as `4429ad5` on 2026-10-19 together with migration 063; PM2 now
+  survives reboots via linger + a user systemd unit, and the production live E2E suite
+  passed 56/56.
 - **Mock UX + formula autocomplete (2026-09-12)** — shareable mock link via a Next `/mock` proxy with
   a `MockServerLink` copy button; a `MockRoutePicker` in add/edit request (`RequestConfigurator` +
   `CreateModal`) that fills method + URL from the project's mock routes; in-editor formula
