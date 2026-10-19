@@ -346,7 +346,7 @@ dependency-free unit suites (`node --test`): backend 146/146, frontend 193/193.
 | DATA-1 | Medium | Sign-out left the previous account's workspace state in memory | FIXED |
 | FE-1 | Medium | An in-flight run could paint its response on the wrong request | FIXED |
 | FE-2 | Low | Renaming an environment variable left the old key behind | FIXED |
-| DB-2 | Low | `projects.workspace_id` legacy mirror still backs access fallbacks | OPEN |
+| DB-2 | Low | `projects.workspace_id` legacy mirror still backs access fallbacks | FIXED | 8a6c5fe |
 
 ### AUTH-1 — API-token binding not enforced on the server-run route
 - File: `backend/src/api/routes/serverRuns.js`.
@@ -404,9 +404,11 @@ dependency-free unit suites (`node --test`): backend 146/146, frontend 193/193.
 - Cause: save upserted by key and only deleted drafts matched by id, so a rename inserted the new key and left the old row.
 - Fix: delete every stored variable whose key is no longer present, then upsert the drafts (key-based, so renames, additions and deletions all settle correctly).
 
-### DB-2 — Legacy `projects.workspace_id` (open)
-- Files: `backend/src/api/access.js:254-282` (and RLS policies in 025/033/026…).
-- Observation: after 057/058 a project may own several workspaces, but `getProjectAccess` still falls back to the single legacy `projects.workspace_id` mirror to derive a workspace role, so a member of a non-primary workspace of a project may be denied access unless also a project member. Fixing it requires a live DB to verify the semantics of the mirror across the split workspaces, so it is left open rather than changed blind.
+### DB-2 — Legacy `projects.workspace_id` (fixed)
+- Files: `backend/src/api/access.js` (`getProjectAccess`), `backend/src/api/routes/projects.js` (`GET /api/projects`), `backend/src/api/routes/content.js` (`workspace content tree`), `backend/src/api/runner.js` (`activeEnvironmentId`), `backend/src/api/routes/serverRuns.js` (`environmentMatchesRequest`), `backend/src/api/tokenAuth.js` (`resolveBindingTarget`).
+- Cause: after 057/058 a project may own several workspaces, but project access, project listings, the workspace content tree, run-environment resolution and token binding still keyed off the single legacy `projects.workspace_id` mirror (the primary workspace). A member of a non-primary workspace could be denied unless also a project member, and runs from secondary workspaces resolved the wrong active environment.
+- Fix: derive access from every workspace under the project (highest role wins), include all project workspaces in listings and the content tree, resolve run environments from `collections.workspace_id`, and make token binding recover path-based targets (the router-level auth middleware runs before `req.params` is populated) with workspace-to-project context.
+- Tests: new `backend/tests/projectWorkspaceAccess.integration.test.cjs` covers secondary-workspace read, sibling non-leak, secondary-workspace active environment, workspace-bound token runs, and project-bound token context on workspace paths. Verified: Jest 47/47, API units 147/147, integration 336/336.
 
 ---
 

@@ -2016,6 +2016,12 @@ Marketing-grade rework of the narrated tour (media still gitignored):
 
 ## Completed
 
+- **DB-2 fixed (2026-10-19, `8a6c5fe`)** — a project may own several workspaces after 057/058;
+  access derivation, `/api/projects` listings, the workspace content tree, run-environment
+  resolution and API-token binding no longer rely solely on the legacy `projects.workspace_id`
+  mirror. Members of non-primary workspaces now get project access, and runs use the collection's
+  own active environment. New `backend/tests/projectWorkspaceAccess.integration.test.cjs` (5 cases);
+  Jest 47/47, API units 147/147, integration 336/336, frontend `tsc` clean.
 - **Mock UX + formula autocomplete (2026-09-12)** — shareable mock link via a Next `/mock` proxy with
   a `MockServerLink` copy button; a `MockRoutePicker` in add/edit request (`RequestConfigurator` +
   `CreateModal`) that fills method + URL from the project's mock routes; in-editor formula

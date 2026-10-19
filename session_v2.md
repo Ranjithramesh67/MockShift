@@ -496,3 +496,31 @@ Ran `node e2e-live/run-all.cjs` against the local stack with the portal stood up
 - Run invocation: `E2E_MAIN=http://127.0.0.1:3000 E2E_PORTAL=http://127.0.0.1:3002
   E2E_BOSS_EMAIL=... E2E_BOSS_PASS=... E2E_SUPER_EMAIL=... E2E_SUPER_PASS=...
   node e2e-live/run-all.cjs` (seeded ADMIN account doubles as the superadmin login).
+
+### DB-2 — multi-workspace project access (2026-10-19)
+
+Implemented the last open defect from the 2026-09-15 audit: `projects.workspace_id`
+is only the primary-workspace mirror, but access and run resolution treated it as
+the sole workspace of a project.
+
+- `getProjectAccess` now considers every workspace under the project and keeps the
+  highest role; sibling-workspace non-leak behaviour is preserved by
+  `getWorkspaceRole` on the specific workspace.
+- `/api/projects` and `/api/workspaces/:id/content` include projects owned through
+  any workspace, not just the primary one.
+- `activeEnvironmentId` / `environmentMatchesRequest` resolve environments through
+  `collections.workspace_id`, so secondary-workspace runs use their own active env.
+- `resolveBindingTarget` recovers path targets (`/requests/:id/run`,
+  `/workspaces/:id/content`, environments) because router-level auth runs before
+  `req.params` exists, and carries workspace→project context for project-bound
+  tokens.
+
+Committed as `8a6c5fe`. Verification: Playwright not rerun (no frontend changes);
+backend Jest 47/47, API units 147/147, integration 336/336 on `apihub_test`,
+frontend `tsc --noEmit` clean.
+
+Deployment note: production still runs `f1a4d47`. The DB-2 change needs no
+migration and no frontend rebuild; deploying is `git pull` plus
+`pm2 restart mockshift-api mockshift-portal-api`. Remote SSH password auth is
+required and no key is installed in this workspace, so deployment is pending
+operator credentials.
