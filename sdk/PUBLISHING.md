@@ -8,9 +8,9 @@ Maintainer guide for releasing the SDK. The user-facing docs live in
 
 | Field | Value |
 | --- | --- |
-| npm name | `mockshift-sdk` (verified unclaimed) |
-| Current version | `0.3.1` |
-| Scoped alternative | `@mockshift/sdk` (also unclaimed) |
+| npm name | `mockshift-sdk` (published 2026-10-19, owner `keera_innovations`) |
+| Current version | `0.3.1` (`latest`) |
+| Scoped alternative | `@mockshift/sdk` (not used) |
 | License | MIT |
 | Node engine | `>=18.0.0` |
 | Peer dependency | `express >=4` (optional) |
@@ -27,9 +27,20 @@ Maintainer guide for releasing the SDK. The user-facing docs live in
 npm login
 ```
 
-For CI, create an **Automation** access token (Classic tokens with 2FA cannot
-publish non-interactively) at <https://www.npmjs.com/settings/> → Access Tokens,
-then expose it as `NPM_TOKEN`.
+For CI, create a **Granular** access token at
+<https://www.npmjs.com/settings/> → Access Tokens with:
+
+- `Bypass two-factor authentication` checked. Without it npm returns
+  `E403 ... Two-factor authentication or granular access token with bypass 2fa
+  enabled is required to publish packages`.
+- `Packages and scopes` → `Read and write (publish and stage)` → `All Packages`.
+
+Store it in `~/.npmrc` as `//registry.npmjs.org/:_authToken=<token>` (mode 600)
+or expose it as `NPM_TOKEN`.
+
+A stage-only token accepts `npm publish` but only stages the version: the
+registry then shows a `0.0.0-stage` placeholder until a maintainer approves the
+staged package with 2FA.
 
 ## Preflight (always run first)
 
@@ -87,7 +98,8 @@ npm publish --access public
 
 ## Release automation (GitHub Actions)
 
-Add `NPM_TOKEN` (Automation token) to the repository secrets, then a workflow
+Add `NPM_TOKEN` (granular token with publish access and 2FA bypass) to the
+repository secrets, then a workflow
 such as:
 
 ```yaml

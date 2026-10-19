@@ -2,7 +2,7 @@
 
 Date: 2026-10-19
 Instance: `https://mockshift.keerainnovations.com`
-SDK: `mockshift-sdk@0.3.1` (packed tarball), Express `4.22.3`
+SDK: `mockshift-sdk@0.3.1` from the npm registry, Express `4.22.3`
 
 ## What was exercised
 
@@ -69,7 +69,5 @@ dedicated `apihub_sdk_test` database).
 - The synced URLs must point at an address the Mockshift server can reach;
   `127.0.0.1` only works when both processes share a host. This run used a
   preview URL for the sample.
-- `mockshift-sdk@0.3.1` is not on npm yet; install the packed tarball until a
-  maintainer publishes it.
 - Express 5 still cannot recover routers mounted before `attach()` because the
   framework no longer stores the mount path on the layer.

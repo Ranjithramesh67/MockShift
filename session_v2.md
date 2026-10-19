@@ -542,6 +542,31 @@ and 0 SDK requests in `Default Project`. Verification: SDK 51/51, Jest 47/47,
 API units 147/147, integration 338 tests (9 SDK sync cases need
 `apihub_sdk_test`).
 
+### npm publish + branding scrub (2026-10-19)
+
+`mockshift-sdk@0.3.1` is published on the public registry under the
+`keera_innovations` account (`latest`). The first token only produced `E403`
+because npm requires 2FA or a granular token with 2FA bypass; the working token
+is a granular publish token. A stage-only token is not sufficient: it creates a
+public `0.0.0-stage` placeholder and waits for 2FA approval.
+
+Verified with a clean registry install: `npm install mockshift-sdk@0.3.1`
+resolves `https://registry.npmjs.org/mockshift-sdk/-/mockshift-sdk-0.3.1.tgz`,
+and `require('mockshift-sdk')` plus `mockshift-sdk/express` both load. The sample
+was reinstalled from the registry, re-discovered all 8 routes and re-synced in
+place against production.
+
+Platform branding was removed from everything this repository publishes:
+
+- Git author/committer is now `Ranjithramesh67
+  <Ranjithramesh67@users.noreply.github.com>` (was `monkeycode-ai@chaitin.com`).
+- Deleted the `coauthor.0.*` config and the `Co-authored-by: monkeycode-ai`
+  trailers; rewrote `master` and the `v0.3.0` tag and force-pushed
+  (`origin/master` now `993fd78`).
+- Removed brand names from the design-system CSS comments.
+- Confirmed the npm tarball (18 files, shasum `10fb8715...`) contains no
+  platform references.
+
 ### Production deploy (2026-10-19)
 
 Deployed `4429ad5` to `mokeycode@213.210.37.153:/home/mokeycode/MockShift`

@@ -52,10 +52,6 @@ open the project in the Mockshift UI, or check from the API:
 curl -s "$MOCKSHIFT_BASE_URL/api/projects" -H "Authorization: Bearer $MOCKSHIFT_API_KEY"
 ```
 
-Until `mockshift-sdk@0.3.1` is published, install the packed tarball:
-
-```bash
-npm install /path/to/mockshift-sdk-0.3.1.tgz
-```
-
-See `E2E.md` for the recorded end-to-end run against a production instance.
+`mockshift-sdk@0.3.1` is published, so `npm install` pulls it from the public
+registry. See `E2E.md` for the recorded end-to-end run against a production
+instance.
