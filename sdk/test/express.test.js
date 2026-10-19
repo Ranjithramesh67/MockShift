@@ -134,3 +134,26 @@ test('records a router mounted twice under both prefixes', () => {
     'GET /v2/ping',
   ]);
 });
+
+test('normalizes index routes and composes parameterised nested mounts', () => {
+  const app = express();
+  const api = express.Router();
+  const v1 = express.Router();
+  const orders = express.Router();
+  const items = express.Router({ mergeParams: true });
+
+  orders.use('/:orderId/items', items);
+  items.get('/', (req, res) => res.end());
+  orders.get('/', (req, res) => res.end());
+  v1.use('/orders', orders);
+  api.use('/v1', v1);
+  app.use('/api', api);
+
+  const hub = createHub({ apiKey: 'k', autoSync: false });
+  hub.express(app);
+
+  assert.deepEqual(hub.manifest().requests.map((r) => r.key).sort(), [
+    'GET /api/v1/orders',
+    'GET /api/v1/orders/:orderId/items',
+  ]);
+});

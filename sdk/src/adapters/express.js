@@ -19,7 +19,10 @@ function joinPaths(prefix, path) {
   const p = String(path == null ? '' : path);
   if (!p) return base || '/';
   if (!base) return p.startsWith('/') ? p : `/${p}`;
-  return `${base}${p.startsWith('/') ? p : `/${p}`}`;
+  const joined = `${base}${p.startsWith('/') ? p : `/${p}`}`;
+  // A router's index route is registered as "/", but Express serves it with
+  // and without the trailing slash. Record the canonical form only.
+  return joined.length > 1 ? joined.replace(/\/+$/, '') : joined;
 }
 
 // The stack of an Express app or Router, across versions: routers expose
@@ -40,37 +43,70 @@ function stackOf(target) {
   }
 }
 
-// Recover the mount path of a router layer. Express 4 keeps it in the layer's
-// regexp; Express 5 dropped it, so an unknown prefix returns null and the
-// caller skips the layer instead of registering a wrong path.
+// Recover a mount path from the layer regexp Express 4 keeps. The source is
+// built by path-to-regexp, e.g. "^\\/?:lang?\\/?(?=\\/|$)" or
+// "^(?:\\/([^/]+?))\\/items\\/?(?=\\/|$)". Rewrite parameter captures as
+// ":name" using the layer keys; bail out on constructs we cannot model
+// faithfully (alternation) rather than register a wrong path.
+function parseMountSource(body, keys, state) {
+  let out = '';
+  let i = 0;
+  while (i < body.length) {
+    const ch = body[i];
+    if (ch === '\\') {
+      out += body[i + 1] || '';
+      i += 2;
+      continue;
+    }
+    if (ch === '|') return null;
+    if (ch === '(') {
+      // Find the matching close paren, accounting for nested groups.
+      let depth = 0;
+      let end = -1;
+      for (let j = i; j < body.length; j++) {
+        if (body[j] === '\\') {
+          j += 1;
+          continue;
+        }
+        if (body[j] === '(') depth += 1;
+        else if (body[j] === ')') {
+          depth -= 1;
+          if (depth === 0) {
+            end = j;
+            break;
+          }
+        }
+      }
+      if (end < 0) return null;
+      const isNonCapturing = body.startsWith('(?:', i);
+      const content = body.slice(i + (isNonCapturing ? 3 : 1), end);
+      if (isNonCapturing) {
+        const nested = parseMountSource(content, keys, state);
+        if (nested === null) return null;
+        out += nested;
+      } else {
+        const key = keys[state.index++];
+        if (!key) return null;
+        out += `:${key.name}`;
+      }
+      i = end + 1;
+      continue;
+    }
+    if (ch === ')') return null;
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
 function mountPathFromLayer(layer) {
   const source = layer && layer.regexp && layer.regexp.source;
   if (!source) return null;
   const suffix = '\\/?(?=\\/|$)';
   if (!source.startsWith('^') || !source.endsWith(suffix)) return null;
-  let body = source.slice(1, -suffix.length);
-  const paramPattern = '(?:([^\\/]+?))';
-  const paramCount = body.split(paramPattern).length - 1;
-  if (paramCount > 0) {
-    const keys = layer.keys || [];
-    if (keys.length !== paramCount) return null;
-    let index = 0;
-    let replaced = '';
-    let rest = body;
-    for (;;) {
-      const at = rest.indexOf(paramPattern);
-      if (at < 0) {
-        replaced += rest;
-        break;
-      }
-      replaced += rest.slice(0, at) + `:${keys[index++].name}`;
-      rest = rest.slice(at + paramPattern.length);
-    }
-    body = replaced;
-  } else if (/[()[\]|]/.test(body)) {
-    return null;
-  }
-  return body.replace(/\\\//g, '/').replace(/\\(.)/g, '$1');
+  const path = parseMountSource(source.slice(1, -suffix.length), layer.keys || [], { index: 0 });
+  if (!path || !path.startsWith('/')) return null;
+  return path;
 }
 
 // Flatten app.use('/x', [a, b], c) handler lists.

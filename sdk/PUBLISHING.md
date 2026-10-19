@@ -9,7 +9,7 @@ Maintainer guide for releasing the SDK. The user-facing docs live in
 | Field | Value |
 | --- | --- |
 | npm name | `mockshift-sdk` (verified unclaimed) |
-| Current version | `0.3.0` |
+| Current version | `0.3.1` |
 | Scoped alternative | `@mockshift/sdk` (also unclaimed) |
 | License | MIT |
 | Node engine | `>=18.0.0` |
