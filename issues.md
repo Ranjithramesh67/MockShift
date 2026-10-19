@@ -410,6 +410,28 @@ dependency-free unit suites (`node --test`): backend 146/146, frontend 193/193.
 - Fix: derive access from every workspace under the project (highest role wins), include all project workspaces in listings and the content tree, resolve run environments from `collections.workspace_id`, and make token binding recover path-based targets (the router-level auth middleware runs before `req.params` is populated) with workspace-to-project context.
 - Tests: new `backend/tests/projectWorkspaceAccess.integration.test.cjs` covers secondary-workspace read, sibling non-leak, secondary-workspace active environment, workspace-bound token runs, and project-bound token context on workspace paths. Verified: Jest 47/47, API units 147/147, integration 336/336.
 
+## SDK end-to-end sample (2026-10-19)
+
+Found while syncing `examples/express-sdk-sample` into production.
+
+### SDK-2 — Bound tokens were rejected by SDK sync
+- File: `backend/src/api/tokenAuth.js`.
+- Cause: the content router's binding check ran for `POST /api/sdk/sync` and demanded a path target, so a project- or workspace-bound SDK token always failed with `403 API token is bound to a different project or workspace`.
+- Fix: exempt the targetless sync route (`isSdkSync`) from the router-level binding check; the sync handler resolves and validates the bound project/workspace itself.
+- Tests: `backend/tests/apiTokenBinding.integration.test.cjs` (3/3).
+
+### SDK-1 — Trailing-slash index routes and parameterised mounts
+- File: `sdk/src/adapters/express.js`.
+- Cause: the adapter joined mount and route paths verbatim, so router index routes produced `GET /api/v1/users/`, and only the first mount segment was parsed, dropping `/:orderId/items`.
+- Fix: `joinPaths` strips a trailing slash, and `parseMountSource` walks parameterised mount sources recursively.
+- Tests: `sdk/test/express.test.js` (8 adapter cases, SDK suite 51/51).
+
+### DB-3 — Project content tree leaked sibling collections
+- File: `backend/src/api/routes/projects.js` (`GET /api/projects/:projectId/content`).
+- Cause: the route listed workspaces owned by the project and then selected every collection in those workspaces. When a second project was created inside an existing workspace (as SDK sync does with a workspace-bound token), the new project's tree was empty while its collection and 8 requests appeared in the first project's tree.
+- Fix: list the project's owned workspaces plus its legacy mirror, and select collections by `collections.project_id` so sibling projects never share rows.
+- Tests: new case in `backend/tests/projectRootHierarchy.integration.test.cjs`; full integration suite passes (338 tests, including the 9 SDK sync cases once `apihub_sdk_test` exists).
+
 ---
 
 ## QA feature — Collection Runner options (2026-10-11)

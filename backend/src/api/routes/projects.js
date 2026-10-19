@@ -254,35 +254,39 @@ async function resolveProjectCreateOrg(req) {
 router.get('/projects/:projectId/content', requireProjectRead, async (req, res, next) => {
   try {
     const { projectId } = req.params;
+    // A project may share its legacy mirror workspace with sibling projects
+    // (e.g. a second project created inside an existing workspace). List the
+    // workspaces it owns plus that mirror, but scope collections by the
+    // project edge so sibling content never leaks into this tree.
     const { rows: workspaces } = await query(
-      `SELECT id, name, visibility
-         FROM workspaces WHERE project_id = $1 ORDER BY name`,
+      `SELECT DISTINCT w.id, w.name, w.visibility
+         FROM workspaces w
+         JOIN projects p ON p.id = $1
+        WHERE w.project_id = $1 OR w.id = p.workspace_id
+        ORDER BY w.name`,
       [projectId]
     );
-    const workspaceIds = workspaces.map((w) => w.id);
     let collections = [];
     let folders = [];
     let requests = [];
-    if (workspaceIds.length) {
-      collections = (await query(
-        `SELECT c.id, c.name, c.workspace_id,
-                (SELECT ap.auth_type FROM auth_providers ap WHERE ap.collection_id = c.id) AS has_auth
-           FROM collections c WHERE c.workspace_id = ANY($1::uuid[]) ORDER BY c.name`,
-        [workspaceIds]
+    collections = (await query(
+      `SELECT c.id, c.name, c.workspace_id,
+              (SELECT ap.auth_type FROM auth_providers ap WHERE ap.collection_id = c.id) AS has_auth
+         FROM collections c WHERE c.project_id = $1 ORDER BY c.name`,
+      [projectId]
+    )).rows;
+    const collectionIds = collections.map((c) => c.id);
+    if (collectionIds.length) {
+      folders = (await query(
+        `SELECT id, name, collection_id, parent_id
+           FROM folders WHERE collection_id = ANY($1::uuid[]) ORDER BY name`,
+        [collectionIds]
       )).rows;
-      const collectionIds = collections.map((c) => c.id);
-      if (collectionIds.length) {
-        folders = (await query(
-          `SELECT id, name, collection_id, parent_id
-             FROM folders WHERE collection_id = ANY($1::uuid[]) ORDER BY name`,
-          [collectionIds]
-        )).rows;
-        requests = (await query(
-          `SELECT id, name, method, url, api_type, collection_id, folder_id
-             FROM api_requests WHERE collection_id = ANY($1::uuid[]) ORDER BY name`,
-          [collectionIds]
-        )).rows;
-      }
+      requests = (await query(
+        `SELECT id, name, method, url, api_type, collection_id, folder_id
+           FROM api_requests WHERE collection_id = ANY($1::uuid[]) ORDER BY name`,
+        [collectionIds]
+      )).rows;
     }
     res.json({ projectId, workspaces, collections, folders, requests });
   } catch (err) {

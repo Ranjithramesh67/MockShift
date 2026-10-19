@@ -77,6 +77,27 @@ test('a second workspace can be created inside a project', async () => {
   assert.equal(ops.workspace_id, staging.id, 'collection lands in the selected workspace');
 });
 
+test('projects sharing a workspace see only their own collections', async () => {
+  const c = await admin();
+  const proj = (await c.api('GET', '/api/projects')).json.projects.find((p) => p.name === 'Default Project');
+  const base = (await c.api('GET', `/api/projects/${proj.id}/content`)).json;
+  const wsId = base.workspaces[0].id;
+
+  await c.api('POST', '/api/collections', { projectId: proj.id, name: 'Primary' });
+  const sibling = await c.api('POST', '/api/projects', { workspaceId: wsId, name: 'Shared Sibling' });
+  assert.equal(sibling.status, 201);
+  const siblingId = sibling.json.project.id;
+  await c.api('POST', '/api/collections', { projectId: siblingId, name: 'Sibling Only' });
+
+  const siblingTree = (await c.api('GET', `/api/projects/${siblingId}/content`)).json;
+  assert.deepEqual(siblingTree.workspaces.map((w) => w.id), [wsId], 'mirror workspace is listed');
+  assert.deepEqual(siblingTree.collections.map((x) => x.name), ['Sibling Only']);
+  assert.equal(siblingTree.requests.length, 0);
+
+  const primaryTree = (await c.api('GET', `/api/projects/${proj.id}/content`)).json;
+  assert.deepEqual(primaryTree.collections.map((x) => x.name), ['Primary'], 'sibling collection does not leak');
+});
+
 test('a new top-level project can be created from an organization', async () => {
   const c = await admin();
   const proj = (await c.api('GET', '/api/projects')).json.projects.find((p) => p.name === 'Default Project');

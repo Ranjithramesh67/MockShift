@@ -2032,6 +2032,16 @@ Marketing-grade rework of the narrated tour (media still gitignored):
   until a maintainer runs `npm login` (or supplies an Automation token) —
   `npm publish --dry-run` and the tarball inspection are clean, and
   `mockshift-sdk` is still unclaimed on the registry.
+- **SDK end-to-end sample + 0.3.1 (2026-10-19)** — added
+  `examples/express-sdk-sample` (nested routers, 8 routes) and synced it into the
+  production workspace with an SDK-scoped token. The run surfaced and fixed three
+  defects: bound tokens were rejected by `POST /api/sdk/sync` (SDK-2), the adapter
+  emitted trailing-slash index keys and dropped parameterised mounts (SDK-1), and
+  `/api/projects/:id/content` scoped collections by workspace so sibling projects
+  leaked into each other's trees (DB-3). Re-sync updated all 8 requests in place,
+  and running the synced `GET /health` from the account returned 200 with the
+  sample body. Evidence and limitations: `examples/express-sdk-sample/E2E.md`.
+  Verified: SDK 51/51, token binding 3/3, SDK sync 9/9, integration 338 tests.
 - **DB-2 fixed (2026-10-19, `8a6c5fe`)** — a project may own several workspaces after 057/058;
   access derivation, `/api/projects` listings, the workspace content tree, run-environment
   resolution and API-token binding no longer rely solely on the legacy `projects.workspace_id`
