@@ -42,6 +42,12 @@ A stage-only token accepts `npm publish` but only stages the version: the
 registry then shows a `0.0.0-stage` placeholder until a maintainer approves the
 staged package with 2FA.
 
+The first publish of a brand-new name also creates that public `0.0.0-stage`
+placeholder version, and npmjs.com can serve its "Temporary Holding Version"
+page for a few minutes while the site cache catches up (the registry API and
+`npm install mockshift-sdk` already return the real version). Do not republish
+to "fix" this; wait for the page to refresh.
+
 ## Preflight (always run first)
 
 ```bash
