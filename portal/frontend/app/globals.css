@@ -1,11 +1,11 @@
 /* ==========================================================================
    Mockshift — Public portal (Portal A) landing, dark marketing theme
    Mirrors the Mockshift app design system: deep green-black surfaces with a
-   MonkeyCode mint accent and Inter / JetBrains Mono type.
+   mint accent and Inter / JetBrains Mono type.
    ========================================================================== */
 
 :root {
-  /* Base surfaces (deep green-black, MonkeyCode palette) */
+  /* Base surfaces (deep green-black palette) */
   --bg: #0a0d0a;
   --bg-panel: #111814;
   --bg-panel-2: #162019;
@@ -23,7 +23,7 @@
   --text-muted: #8e9b94;
   --text-faint: #5f6b64;
 
-  /* Brand accent (MonkeyCode mint) */
+  /* Brand accent (mint) */
   --accent: #7cf29c;
   --accent-hover: #a5f7bd;
   --accent-soft: rgba(124, 242, 156, 0.12);
