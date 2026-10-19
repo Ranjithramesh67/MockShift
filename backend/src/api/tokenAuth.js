@@ -82,6 +82,16 @@ function isRunRequest(req) {
   return /\/run$/.test(path) || /\/runs$/.test(path);
 }
 
+// The SDK sync endpoint is a write that carries no resource id in its path: it
+// resolves the target project/workspace from the token binding itself (and
+// rejects a token whose binding no longer exists). Binding enforcement here
+// would reject every bound token before the route can do that.
+function isSdkSync(req) {
+  if (req.method !== 'POST') return false;
+  const path = `${req.baseUrl || ''}${req.path || ''}`;
+  return /^\/api\/sdk\/sync$/.test(path);
+}
+
 /**
  * Check a token's scopes against the request it is trying to make. Returns
  * null when the request is allowed, or a `{ status, error }` object otherwise.
@@ -228,7 +238,7 @@ async function apiTokenBindingError(req) {
   if (target) {
     if (boundProject && target.projectId === boundProject) return null;
     if (boundWorkspace && target.workspaceId === boundWorkspace) return null;
-  } else if (SAFE_METHODS.has(req.method)) {
+  } else if (SAFE_METHODS.has(req.method) || isSdkSync(req)) {
     return null;
   }
   return { status: 403, error: 'API token is bound to a different project or workspace' };

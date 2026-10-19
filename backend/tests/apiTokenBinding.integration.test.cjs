@@ -88,3 +88,29 @@ test('a workspace-bound token only works inside its workspace', async () => {
   const denied = await bearer('POST', '/api/collections', token, { projectId: outside.projectId, name: 'Outside' });
   assert.equal(denied.status, 403, `outside workspace must be denied; got ${denied.status}`);
 });
+
+test('a bound token may use the SDK sync endpoint, which enforces the binding itself', async () => {
+  const owner = await signupAndLogin(base, 'bind-sdk@test.io', 'bindpass123', 'Binder');
+  const workspace = await extraWorkspace(owner.client, 'SDK Bound WS');
+  const token = await issueBoundToken(owner.client, { workspaceId: workspace.workspaceId, scopes: ['sdk'] });
+
+  const manifest = {
+    source: 'express',
+    project: 'SDK Bound Project',
+    collection: 'SDK Bound Collection',
+    targetBaseUrl: 'http://127.0.0.1:4000',
+    folders: [],
+    requests: [
+      { method: 'GET', path: '/health', name: 'GET /health' },
+    ],
+  };
+
+  const res = await bearer('POST', '/api/sdk/sync', token, manifest);
+  assert.equal(res.status, 201, JSON.stringify(res.json));
+  assert.ok(res.json.projectId, 'sync returns the created project id');
+
+  const tree = await owner.client.api('GET', `/api/workspaces/${workspace.workspaceId}/content`);
+  assert.equal(tree.status, 200);
+  const project = tree.json.projects.find((p) => p.id === res.json.projectId);
+  assert.ok(project, 'the synced project lives in the token-bound workspace');
+});
