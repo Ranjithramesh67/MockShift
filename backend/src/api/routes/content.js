@@ -226,8 +226,14 @@ router.get('/workspaces/:workspaceId/content', async (req, res, next) => {
     if (!(await canReadWorkspace(req.user.id, workspaceId))) {
       return res.status(403).json({ error: 'No access to this workspace' });
     }
+    // A project may own several workspaces (057/058). Include the project this
+    // workspace belongs to even when the legacy mirror names a sibling.
     const { rows: projects } = await query(
-      `SELECT id, name FROM projects WHERE workspace_id = $1 ORDER BY name`,
+      `SELECT DISTINCT p.id, p.name
+         FROM projects p
+        WHERE p.workspace_id = $1
+           OR p.id IN (SELECT project_id FROM workspaces WHERE id = $1)
+        ORDER BY p.name`,
       [workspaceId]
     );
     const accessByProject = new Map();

@@ -363,6 +363,8 @@ router.get('/projects', async (req, res, next) => {
          LEFT JOIN workspaces w ON w.id = p.workspace_id
          LEFT JOIN organizations o ON o.id = p.organization_id
         WHERE p.workspace_id = ANY($1::uuid[])
+           OR EXISTS (SELECT 1 FROM workspaces pw
+                       WHERE pw.project_id = p.id AND pw.id = ANY($1::uuid[]))
            OR p.organization_id IN (SELECT om.org_id FROM organization_members om
                                      WHERE om.user_id = $2 AND om.role = 'ADMIN')
            OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $2)

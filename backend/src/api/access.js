@@ -275,8 +275,20 @@ async function getProjectAccess(userId, projectId) {
   if (row.member_role) {
     return { level: row.member_role, workspaceRole: row.member_role, isManager: false };
   }
-  if (!row.workspace_id) return null;
-  const workspaceRole = await getWorkspaceRole(userId, row.workspace_id);
+  // A project can own several workspaces (057/058 inverted the hierarchy).
+  // Membership of ANY of them grants project access; the legacy
+  // projects.workspace_id column only mirrors the primary one.
+  const { rows: workspaceRows } = await query(
+    `SELECT id FROM workspaces WHERE project_id = $1 OR id = $2`,
+    [projectId, row.workspace_id]
+  );
+  let workspaceRole = null;
+  for (const workspace of workspaceRows) {
+    const role = await getWorkspaceRole(userId, workspace.id);
+    if (role && (!workspaceRole || ROLE_RANK[role] > ROLE_RANK[workspaceRole])) {
+      workspaceRole = role;
+    }
+  }
   if (!workspaceRole) return null;
   return { level: workspaceRole, workspaceRole, isManager: false };
 }

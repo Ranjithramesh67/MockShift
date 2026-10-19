@@ -60,9 +60,7 @@ async function activeEnvironmentId({ requestId = null, collectionId = null }, us
   const { rows } = await query(
     `SELECT e.id
        FROM environments e
-       JOIN workspaces w ON w.id = e.workspace_id
-       JOIN projects p  ON p.workspace_id = w.id
-       JOIN collections c ON c.project_id = p.id
+       JOIN collections c ON c.workspace_id = e.workspace_id
        ${requestId ? 'JOIN api_requests ar ON ar.collection_id = c.id' : ''}
       WHERE ${requestId ? 'ar.id = $1' : 'c.id = $1'} AND e.is_active = true
       LIMIT 1`,

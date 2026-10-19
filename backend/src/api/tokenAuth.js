@@ -115,6 +115,28 @@ function firstUuid(...values) {
 }
 
 /**
+ * Extract resource ids from the URL path. Router-level auth middleware runs
+ * before Express has populated `req.params`, so path-based targets must be
+ * recovered from the path itself.
+ */
+function idsFromPath(req) {
+  const raw = req.originalUrl || req.url || '';
+  const path = raw.split('?')[0];
+  const match = (segment) => {
+    const m = new RegExp(`/api/${segment}/([^/]+)`).exec(path);
+    return m ? firstUuid(m[1]) : null;
+  };
+  return {
+    projectId: match('projects'),
+    collectionId: match('collections'),
+    folderId: match('folders'),
+    requestId: match('requests'),
+    environmentId: match('environments'),
+    workspaceId: match('workspaces'),
+  };
+}
+
+/**
  * Best-effort resolution of the project/workspace a request targets, from its
  * route params and (for create routes) its body. Returns null when the request
  * does not reference a specific resource.
@@ -122,12 +144,13 @@ function firstUuid(...values) {
 async function resolveBindingTarget(req) {
   const params = req.params || {};
   const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const projectId = firstUuid(params.projectId, body.projectId);
-  const collectionId = firstUuid(params.collectionId, body.collectionId);
-  const folderId = firstUuid(params.folderId, body.folderId);
-  const requestId = firstUuid(params.requestId, body.requestId, body.id);
-  const environmentId = firstUuid(params.environmentId, body.environmentId);
-  const workspaceId = firstUuid(params.workspaceId, body.workspaceId);
+  const fromPath = idsFromPath(req);
+  const projectId = firstUuid(params.projectId, body.projectId, fromPath.projectId);
+  const collectionId = firstUuid(params.collectionId, body.collectionId, fromPath.collectionId);
+  const folderId = firstUuid(params.folderId, body.folderId, fromPath.folderId);
+  const requestId = firstUuid(params.requestId, body.requestId, body.id, fromPath.requestId);
+  const environmentId = firstUuid(params.environmentId, body.environmentId, fromPath.environmentId);
+  const workspaceId = firstUuid(params.workspaceId, body.workspaceId, fromPath.workspaceId);
 
   if (projectId) {
     const { rows } = await query(`SELECT workspace_id FROM projects WHERE id = $1`, [projectId]);
@@ -135,7 +158,8 @@ async function resolveBindingTarget(req) {
   }
   if (collectionId) {
     const { rows } = await query(
-      `SELECT p.id AS project_id, p.workspace_id
+      `SELECT p.id AS project_id,
+              COALESCE(c.workspace_id, p.workspace_id) AS workspace_id
          FROM collections c JOIN projects p ON p.id = c.project_id
         WHERE c.id = $1`,
       [collectionId]
@@ -144,7 +168,8 @@ async function resolveBindingTarget(req) {
   }
   if (folderId) {
     const { rows } = await query(
-      `SELECT p.id AS project_id, p.workspace_id
+      `SELECT p.id AS project_id,
+              COALESCE(c.workspace_id, p.workspace_id) AS workspace_id
          FROM folders f
          JOIN collections c ON c.id = f.collection_id
          JOIN projects p ON p.id = c.project_id
@@ -155,7 +180,8 @@ async function resolveBindingTarget(req) {
   }
   if (requestId) {
     const { rows } = await query(
-      `SELECT p.id AS project_id, p.workspace_id
+      `SELECT p.id AS project_id,
+              COALESCE(c.workspace_id, p.workspace_id) AS workspace_id
          FROM api_requests rq
          JOIN collections c ON c.id = rq.collection_id
          JOIN projects p ON p.id = c.project_id
@@ -165,10 +191,21 @@ async function resolveBindingTarget(req) {
     return rows[0] ? { projectId: rows[0].project_id, workspaceId: rows[0].workspace_id } : null;
   }
   if (environmentId) {
-    const { rows } = await query(`SELECT workspace_id FROM environments WHERE id = $1`, [environmentId]);
-    return rows[0] ? { projectId: null, workspaceId: rows[0].workspace_id } : null;
+    const { rows } = await query(
+      `SELECT e.workspace_id, w.project_id
+         FROM environments e
+         LEFT JOIN workspaces w ON w.id = e.workspace_id
+        WHERE e.id = $1`,
+      [environmentId]
+    );
+    return rows[0]
+      ? { projectId: rows[0].project_id || null, workspaceId: rows[0].workspace_id }
+      : null;
   }
-  if (workspaceId) return { projectId: null, workspaceId };
+  if (workspaceId) {
+    const { rows } = await query(`SELECT project_id FROM workspaces WHERE id = $1`, [workspaceId]);
+    return { projectId: (rows[0] && rows[0].project_id) || null, workspaceId };
+  }
   return null;
 }
 

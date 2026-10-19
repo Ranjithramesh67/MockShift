@@ -57,8 +57,7 @@ async function environmentMatchesRequest(environmentId, requestId) {
     `SELECT 1
        FROM api_requests ar
        JOIN collections c ON c.id = ar.collection_id
-       JOIN projects p ON p.id = c.project_id
-       JOIN environments e ON e.workspace_id = p.workspace_id
+       JOIN environments e ON e.workspace_id = c.workspace_id
       WHERE ar.id = $1 AND e.id = $2`,
     [requestId, environmentId]
   );
