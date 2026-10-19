@@ -156,12 +156,37 @@ and `app.listen`:
 - After `app.listen(...)` returns, the adapter triggers `syncSoon()` when
   `autoSync` is enabled.
 
-### Gotcha: `app.all` and `app.use`
+### Routers, sub-apps and mount prefixes
 
-The adapter must be installed **before** your routes and before you mount
-sub-routers with `app.use`, otherwise those routes are never captured. If you
-use a catch-all `app.all('*', ...)` (for example a SPA fallback), it will be
-synced as a route named `ALL /*`. Exclude it:
+The adapter wraps `app.use` and the router methods, so Express `Router`
+instances and mounted sub-apps are recorded with their full path:
+
+```js
+const hub = attach(app);
+
+const api = express.Router();
+const v1 = express.Router();
+api.use('/v1', v1);
+v1.get('/users/:id', handler); // GET /api/v1/users/:id
+app.use('/api', api);
+```
+
+- Mount prefixes compose through any depth of nested routers.
+- A router mounted under several prefixes is recorded once per prefix.
+- Include/exclude filters run against the composed path.
+- Parameterised mounts such as `app.use('/api/:version', router)` keep the
+  parameter: `GET /api/:version/users`.
+
+Express 5 no longer exposes a mounted router's prefix, so routers that were
+mounted **before** `attach(app)` can only be recovered on Express 4. Install
+the adapter before mounting when you target Express 5. Routers created with
+`express.Router()` after `attach(app)` are tracked from creation, so the order
+of nested `use` calls does not matter.
+
+### Gotcha: `app.all`
+
+If you use a catch-all `app.all('*', ...)` (for example a SPA fallback), it
+will be synced as a route named `ALL /*`. Exclude it:
 
 ```js
 attach(app, {

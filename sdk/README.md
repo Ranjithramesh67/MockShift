@@ -73,6 +73,29 @@ const hub = attach(app);        // or: const hub = createHub({ configFile: 'mock
 app.use(hub.middleware());      // capture without patching app.listen
 ```
 
+### Routers and sub-apps
+
+Mount prefixes are composed automatically, including nested routers:
+
+```js
+const hub = attach(app);
+
+const api = express.Router();
+const v1 = express.Router();
+api.use('/v1', v1);
+v1.get('/users/:id', handler);   // synced as GET /api/v1/users/:id
+
+app.use('/api', api);
+app.use('/admin', adminApp);     // sub-apps work the same way
+```
+
+A router mounted twice is recorded under both prefixes. Attach before you
+mount routers when possible: on Express 5 the mount path of an already-mounted
+router is not recoverable, so routers mounted *before* `attach(app)` are only
+discovered on Express 4. Routers created with `express.Router()` after
+`attach(app)` are tracked from creation, so their nesting order does not
+matter.
+
 ## Explicit assertions and formulas
 
 ```js

@@ -127,6 +127,7 @@ export declare class Mockshift {
   manifest(): unknown;
   sync(): Promise<SyncResult>;
   syncSoon(): this;
+  /** Install the Express adapter. Captures routes, routers and sub-apps with their mount prefixes. */
   express(app: unknown, options?: MockshiftOptions): this;
   http(server: unknown): this;
   middleware(): (req: unknown, res: unknown, next: (err?: unknown) => void) => void;

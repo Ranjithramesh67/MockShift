@@ -1,6 +1,6 @@
 {
   "name": "mockshift-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Sync Express/HTTP routes into Mockshift as testable requests, with payload, schema and assertion inference.",
   "license": "MIT",
   "private": false,

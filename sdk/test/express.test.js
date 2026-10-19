@@ -44,3 +44,93 @@ test('autoSync triggers a sync when the server starts listening', async () => {
   server.close();
   assert.equal(synced, 1);
 });
+
+test('records routes on a router mounted after attach', () => {
+  const app = express();
+  const hub = createHub({ apiKey: 'k', autoSync: false });
+  hub.express(app);
+  const api = express.Router();
+  app.use('/api', api);
+  api.get('/users', (req, res) => res.end());
+  api.post('/users', (req, res) => res.end());
+  assert.deepEqual(hub.manifest().requests.map((r) => r.key).sort(), [
+    'GET /api/users',
+    'POST /api/users',
+  ]);
+});
+
+test('records routes defined before the router is mounted', () => {
+  const app = express();
+  const hub = createHub({ apiKey: 'k', autoSync: false });
+  hub.express(app);
+  const api = express.Router();
+  api.get('/health', (req, res) => res.end());
+  app.use('/api', api);
+  assert.deepEqual(hub.manifest().requests.map((r) => r.key), ['GET /api/health']);
+});
+
+test('composes nested router mounts', () => {
+  const app = express();
+  const hub = createHub({ apiKey: 'k', autoSync: false });
+  hub.express(app);
+  const api = express.Router();
+  const v1 = express.Router();
+  api.use('/v1', v1);
+  v1.get('/users/:id', (req, res) => res.end());
+  app.use('/api', api);
+  assert.deepEqual(hub.manifest().requests.map((r) => r.key), ['GET /api/v1/users/:id']);
+});
+
+test('records routes mounted before attach (Express 4 prefix recovery)', () => {
+  const app = express();
+  const api = express.Router();
+  const v1 = express.Router();
+  v1.get('/users', (req, res) => res.end());
+  api.use('/v1', v1);
+  app.use('/api', api);
+  app.get('/root', (req, res) => res.end());
+
+  const hub = createHub({ apiKey: 'k', autoSync: false });
+  hub.express(app);
+
+  assert.deepEqual(hub.manifest().requests.map((r) => r.key).sort(), [
+    'GET /api/v1/users',
+    'GET /root',
+  ]);
+});
+
+test('keeps a parameterised mount prefix', () => {
+  const app = express();
+  const hub = createHub({ apiKey: 'k', autoSync: false });
+  hub.express(app);
+  const api = express.Router();
+  app.use('/api/:version', api);
+  api.get('/users', (req, res) => res.end());
+  assert.deepEqual(hub.manifest().requests.map((r) => r.key), ['GET /api/:version/users']);
+});
+
+test('applies include filters to the composed router path', () => {
+  const app = express();
+  const hub = createHub({ apiKey: 'k', autoSync: false, include: ['/api'] });
+  hub.express(app);
+  const api = express.Router();
+  app.use('/api', api);
+  app.use('/internal', express.Router());
+  api.get('/users', (req, res) => res.end());
+  app.get('/internal/health', (req, res) => res.end());
+  assert.deepEqual(hub.manifest().requests.map((r) => r.key), ['GET /api/users']);
+});
+
+test('records a router mounted twice under both prefixes', () => {
+  const app = express();
+  const hub = createHub({ apiKey: 'k', autoSync: false });
+  hub.express(app);
+  const shared = express.Router();
+  app.use('/v1', shared);
+  app.use('/v2', shared);
+  shared.get('/ping', (req, res) => res.end());
+  assert.deepEqual(hub.manifest().requests.map((r) => r.key).sort(), [
+    'GET /v1/ping',
+    'GET /v2/ping',
+  ]);
+});
