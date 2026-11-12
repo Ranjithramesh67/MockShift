@@ -98,6 +98,11 @@ const SNIPPETS = [
     code: '({ total: req.body.qty * 12, stamp: $utils.now() })',
     description: 'Return value is merged into the request context',
   },
+  {
+    title: 'Replace every matching key',
+    code: '$utils.replaceKeys(req.body, "id", $utils.add(req.body.id, 1))',
+    description: 'Find every property with the same name and replace its value',
+  },
 ];
 
 module.exports = { SNIPPETS };

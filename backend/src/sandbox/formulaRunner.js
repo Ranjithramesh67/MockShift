@@ -151,6 +151,20 @@ const HELPERS_SOURCE = `
       return target.toISOString();
     },
     round: (n, precision) => Number(n.toFixed(precision)),
+    replaceKeys: (obj, key, value) => {
+      const walk = (node) => {
+        if (Array.isArray(node)) {
+          for (let i = 0; i < node.length; i++) walk(node[i]);
+        } else if (node && typeof node === 'object') {
+          for (const k of Object.keys(node)) {
+            if (k === key) node[k] = value;
+            else walk(node[k]);
+          }
+        }
+      };
+      walk(obj);
+      return obj;
+    },
     capitalize: (value) => {
       const s = String(value);
       return s.charAt(0).toUpperCase() + s.slice(1);

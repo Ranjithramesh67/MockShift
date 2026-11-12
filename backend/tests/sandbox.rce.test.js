@@ -147,4 +147,23 @@ describe('sandbox legitimate usage', () => {
     expect(outcome.req.body.b64).toBe('aMOpbGxvIOKGkiDwn4yN');
     expect(outcome.req.body.b64dec).toBe('hello world');
   });
+
+  test('replaceKeys replaces every matching key at any depth', async () => {
+    const outcome = await runner.run({
+      source: '$utils.replaceKeys(req.body, "id", 6);',
+      req: {
+        body: {
+          id: 5,
+          nested: { id: 5, qty: 2 },
+          items: [{ id: 5 }, { id: 9, inner: { id: 5 } }],
+        },
+      },
+      vars: {},
+    });
+    expect(outcome.req.body).toEqual({
+      id: 6,
+      nested: { id: 6, qty: 2 },
+      items: [{ id: 6 }, { id: 6, inner: { id: 6 } }],
+    });
+  });
 });

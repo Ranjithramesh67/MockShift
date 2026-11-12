@@ -516,7 +516,7 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-2 | High | Request save sometimes fails on large raw JSON | FIXED | — |
 | ED-3 | Medium | Cannot scroll JSON request body | FIXED | — |
 | ED-4 | Medium | No env-key autocomplete while typing inside `{{}}` | FIXED | — |
-| ED-5 | Medium | Formula: find all keys with the same name and replace | OPEN | — |
+| ED-5 | Medium | Formula: find all keys with the same name and replace | FIXED | — |
 | ED-6 | Medium | Formula: copy a value and add/sub/mul/div | OPEN | — |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
@@ -548,7 +548,9 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 ### ED-5 — Formula: find all keys with the same name and replace
 - Files: `backend/src/sandbox/formulaRunner.js` (`$utils`), `frontend/src/lib/formulaSnippets.js`, `frontend/src/lib/formulaCompletions.js`.
 - Cause: `$utils` has round/date/string/base64 helpers only. No walk of `req.body` (or any object) that replaces every property matching a key.
-- Intended fix: `$utils.replaceKeys(obj, key, value)` (deep, arrays included) plus a helper snippet.
+- Fix: `$utils.replaceKeys(obj, key, value)` mutates in place, arrays included, plus a helper snippet and `$utils.` completion.
+- Test: `backend/tests/sandbox.rce.test.js` replaceKeys case.
+- Status: FIXED
 
 ### ED-6 — Formula: copy a value and add/sub/mul/div
 - Files: same as ED-5.
