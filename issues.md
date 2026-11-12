@@ -518,6 +518,10 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-4 | Medium | No env-key autocomplete while typing inside `{{}}` | FIXED | 6b7ec96 |
 | ED-5 | Medium | Formula: find all keys with the same name and replace | FIXED | 7319364 |
 | ED-6 | Medium | Formula: copy a value and add/sub/mul/div | FIXED | 446311d |
+| ED-7 | Low | Solo presence label wastes request-bar space | FIXED | ab3d869 |
+| ED-8 | Medium | Formula top/bottom splitter broken | FIXED | 3194078 |
+| ED-9 | Medium | Formula: add date/months with format | FIXED | 9e6162f |
+| ED-10 | Medium | Formula: create custom snippet | FIXED | 66e8c3f |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -557,4 +561,30 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 - Cause: arithmetic is only raw JS (`req.body.qty * 12`). No helpers to copy a numeric field (qty, primary-key id) and add/sub/mul/div.
 - Fix: `$utils.add` / `sub` / `mul` / `div` coerce with `Number()`; div-by-zero raises a sandbox error. Snippets and `$utils.` completions included.
 - Test: `backend/tests/sandbox.rce.test.js` arithmetic + div-by-zero (sandbox 25/25); formulaCompletions 5/5.
+- Status: FIXED
+
+### ED-7 — Solo presence label wastes request-bar space
+- Files: `frontend/src/lib/realtime.js`.
+- Cause: `viewerSummary` returned `"You are the only one here"` when no one else was viewing, and the request bar rendered any truthy label.
+- Fix: return an empty label when `others === 0` so existing `.label &&` guards hide the chip.
+- Test: `frontend/src/lib/__tests__/realtime.test.cjs`.
+- Status: FIXED
+
+### ED-8 — Formula top/bottom splitter broken
+- Files: `frontend/src/components/SplitPane.tsx`, `frontend/src/components/RequestConfigurator.tsx`, `frontend/app/globals.css`.
+- Cause: ratio was not reset on orientation change; vertical first pane used `overflow: auto` so the editor grew instead of filling a percent height.
+- Fix: reset ratio on orientation; remount SplitPane with `key={formulaLayout}`; formula split panes use a bounded flex height chain and `overflow: hidden`.
+- Status: FIXED
+
+### ED-9 — Formula: add date/months with format
+- Files: `backend/src/sandbox/formulaRunner.js`, `frontend/src/lib/formulaSnippets.js`, `frontend/src/lib/formulaCompletions.js`.
+- Cause: `addDays`/`addMonths` always returned ISO; no `formatDate`.
+- Fix: `$utils.formatDate(value, format)` with YYYY/YY/MM/DD/HH/mm/ss tokens; optional third `format` arg on addDays/Hours/Minutes/Months.
+- Test: sandbox.rce 29/29; formulaCompletions includes `formatDate`.
+- Status: FIXED
+
+### ED-10 — Formula: create custom snippet
+- Files: `frontend/src/components/FormulaHelper.tsx`, `frontend/app/globals.css`.
+- Cause: helper panel only listed built-in snippets.
+- Fix: "Create formula" saves name+code to `localStorage` (`mockshift.formula.customSnippets`) and lists them with a delete control.
 - Status: FIXED
