@@ -1,17 +1,65 @@
 'use client';
 
-import React, { useState } from 'react';
-import { FormulaIcon, ChevronIcon } from './icons';
+import React, { useEffect, useState } from 'react';
+import { FormulaIcon, ChevronIcon, XIcon } from './icons';
 import { SNIPPETS } from '@/lib/formulaSnippets';
 
 interface HelperSnippet {
   title: string;
   code: string;
   description: string;
+  custom?: boolean;
+}
+
+const CUSTOM_KEY = 'mockshift.formula.customSnippets';
+
+function loadCustom(): HelperSnippet[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((s) => s && typeof s.title === 'string' && typeof s.code === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function saveCustom(items: HelperSnippet[]) {
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(items));
 }
 
 export function FormulaHelper({ onInsert }: { onInsert: (code: string) => void }) {
   const [open, setOpen] = useState(true);
+  const [custom, setCustom] = useState<HelperSnippet[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+
+  useEffect(() => {
+    setCustom(loadCustom());
+  }, []);
+
+  const persist = (items: HelperSnippet[]) => {
+    setCustom(items);
+    saveCustom(items);
+  };
+
+  const onSave = () => {
+    const title = name.trim();
+    const body = code.trim();
+    if (!title || !body) return;
+    persist([...custom, { title, code: body, description: 'Custom formula', custom: true }]);
+    setName('');
+    setCode('');
+    setCreating(false);
+  };
+
+  const onDelete = (title: string) => {
+    persist(custom.filter((s) => s.title !== title));
+  };
+
+  const items: HelperSnippet[] = [...SNIPPETS, ...custom.map((s) => ({ ...s, custom: true }))];
 
   return (
     <div className="formula-helper" data-testid="formula-helper" data-open={open ? 'true' : 'false'}>
@@ -26,7 +74,7 @@ export function FormulaHelper({ onInsert }: { onInsert: (code: string) => void }
           <FormulaIcon size={13} />
           Formula helpers
         </span>
-        <span className="formula-helper-count">{SNIPPETS.length} snippets</span>
+        <span className="formula-helper-count">{items.length} snippets</span>
         <ChevronIcon size={12} style={{ transform: `rotate(${open ? 0 : -90}deg)`, transition: 'transform 0.15s ease' }} />
       </button>
       {open && (
@@ -37,20 +85,78 @@ export function FormulaHelper({ onInsert }: { onInsert: (code: string) => void }
             <code>returned</code>.
           </p>
           <div className="formula-helper-grid">
-            {SNIPPETS.map((s: HelperSnippet) => (
-              <button
-                key={s.title}
-                type="button"
-                className="formula-helper-item"
-                data-testid="formula-helper-item"
-                title={s.description}
-                onClick={() => onInsert(s.code)}
-              >
-                <span className="formula-helper-name">{s.title}</span>
-                <code className="formula-helper-code">{s.code}</code>
-              </button>
+            {items.map((s: HelperSnippet) => (
+              <div key={s.title} className="formula-helper-item-wrap">
+                <button
+                  type="button"
+                  className="formula-helper-item"
+                  data-testid="formula-helper-item"
+                  title={s.description}
+                  onClick={() => onInsert(s.code)}
+                >
+                  <span className="formula-helper-name">{s.title}</span>
+                  <code className="formula-helper-code">{s.code}</code>
+                </button>
+                {s.custom && (
+                  <button
+                    type="button"
+                    className="formula-helper-delete"
+                    aria-label={`Delete ${s.title}`}
+                    data-testid="formula-helper-delete"
+                    onClick={() => onDelete(s.title)}
+                  >
+                    <XIcon size={11} />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
+          {creating ? (
+            <div className="formula-create" data-testid="formula-create-form">
+              <input
+                className="kv-cell"
+                type="text"
+                placeholder="Name"
+                value={name}
+                data-testid="formula-create-name"
+                onChange={(e) => setName(e.target.value)}
+              />
+              <input
+                className="kv-cell"
+                type="text"
+                placeholder={'req.body.stamp = $utils.formatDate($utils.now(), "YYYY-MM-DD")'}
+                value={code}
+                data-testid="formula-create-code"
+                onChange={(e) => setCode(e.target.value)}
+              />
+              <div className="formula-create-actions">
+                <button type="button" className="primary-button small" data-testid="formula-create-save" onClick={onSave}>
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button small"
+                  data-testid="formula-create-cancel"
+                  onClick={() => {
+                    setCreating(false);
+                    setName('');
+                    setCode('');
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="ghost-button small formula-create-open"
+              data-testid="formula-create-open"
+              onClick={() => setCreating(true)}
+            >
+              Create formula
+            </button>
+          )}
         </div>
       )}
     </div>

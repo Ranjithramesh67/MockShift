@@ -4656,7 +4656,6 @@ body.is-col-dragging .sidebar {
   letter-spacing: 0.04em;
 }
 
-/* The code editor fills its split pane so the divider can be dragged. */
 .formula-editor > .split-pane {
   flex: 1;
   min-height: 0;
@@ -4672,6 +4671,7 @@ body.is-col-dragging .sidebar {
   overflow: hidden;
 }
 
+/* The code editor fills its split pane so the divider can be dragged. */
 .formula-code-pane {
   flex: 1;
   min-height: 0;
@@ -4803,6 +4803,48 @@ body.is-col-dragging .sidebar {
   font-size: 11px;
   color: var(--accent);
   word-break: break-all;
+}
+
+.formula-helper-item-wrap {
+  position: relative;
+}
+
+.formula-helper-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.formula-helper-delete:hover {
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.formula-create {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.formula-create-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.formula-create-open {
+  margin-top: 10px;
 }
 
 /* ==========================================================================
