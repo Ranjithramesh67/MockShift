@@ -503,3 +503,50 @@ Verification (live stack, fresh `reset:db` + `seed:dev`):
 - Frontend: Playwright **53/53**, `tsc --noEmit` clean, `npm test` **193/193**, `next build` OK.
 - Backend: jest **47/47**, `test:api:unit` **147/147**, integration (`tests/*.integration.test.cjs`) **331/331**.
 - Live (`node e2e-live/run-all.cjs` against the local stack, portal `:3002` + portal-api `:3102` included): **54 pass / 0 fail / 2 warn** (`login.signup-closed` open because the local backend runs `ALLOW_SELF_SIGNUP=1`; `browser-run.lna-guidance` skipped per TEST-7).
+
+---
+
+## Request editor / env / formula — 2026-11-12
+
+User-reported MockShift editor issues. One commit per fix. Do not push this register until asked.
+
+| ID | Severity | Title | Status | Commit |
+|----|----------|-------|--------|--------|
+| ED-1 | High | Secret (and all) env vars not substituted in JSON request bodies | FIXED | — |
+| ED-2 | High | Request save sometimes fails on large raw JSON | OPEN | — |
+| ED-3 | Medium | Cannot scroll JSON request body | OPEN | — |
+| ED-4 | Medium | No env-key autocomplete while typing inside `{{}}` | OPEN | — |
+| ED-5 | Medium | Formula: find all keys with the same name and replace | OPEN | — |
+| ED-6 | Medium | Formula: copy a value and add/sub/mul/div | OPEN | — |
+
+### ED-1 — Secret env vars not usable as `{{variables}}` in requests
+- Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
+- Cause: `app.resolve_variables` already decrypts secrets (`try_decrypt`) and `substitute()` replaces `{{key}}` in URL, headers, query, multipart text, XML/raw text. JSON object bodies skip that path: `serializeBody` does `JSON.stringify(request.body_json)` with no walk of string values, so `"token": "{{apiKey}}"` is sent literally. GraphQL `variables` are also left unsubstituted. Auth token JSON bodies have the same gap (`runTokenRequest`).
+- Fix: `substituteJson()` walks string leaves in JSON bodies and GraphQL `variables`; `runTokenRequest` uses `serializeBody` plus header substitute. Secrets need no extra vault change.
+- Test: `backend/src/api/__tests__/bodyCodec.test.cjs` (9/9).
+- Status: FIXED
+
+### ED-2 — Request save sometimes fails (suspected large raw JSON)
+- Files: `frontend/src/store/WorkspaceStore.tsx` (`toServerPatch` / `saveActiveRequest`), `frontend/src/lib/api.ts`, `backend/src/api/server.js` (`express.json({ limit: '25mb' })`), `frontend/next.config.mjs` (rewrite `/api` → `:3001`).
+- Cause (suspected): save is `PUT /api/requests/:id` with the parsed JSON body. Express already allows 25 MB; Next rewrites and production reverse-proxy may still reject or truncate large payloads, and invalid JSON (unquoted `{{vars}}`) is stored as `bodyText` which can surprise the editor on reload. Confirm against a large paste before changing limits.
+- Intended fix: raise/align proxy + parser limits; keep invalid JSON as text without failing the save; surface the real HTTP error in the toast.
+
+### ED-3 — Cannot scroll JSON request body
+- File: `frontend/app/globals.css`.
+- Cause: `.code-editor { overflow: hidden }` with no scroller. `.response-body .code-editor .cm-scroller` and `.formula-editor .code-editor .cm-scroller` already set `overflow: auto`; `.body-editor` does not, so a tall JSON body is clipped.
+- Intended fix: mirror the response/formula scroller rules onto `.body-editor .code-editor`.
+
+### ED-4 — Autocomplete env keys while typing inside `{{}}`
+- Files: `frontend/src/lib/formulaCompletions.js`, `frontend/src/components/CodeEditor.tsx`, URL/header/body editors.
+- Cause: autocomplete is formula-only (`req`, `$vars`, `$utils`, JS builtins, snippets). Typing `{{` in URL, headers, or JSON body does not suggest environment keys.
+- Intended fix: a `{{` completion source fed by the active environment's variable keys (names only; never secret values).
+
+### ED-5 — Formula: find all keys with the same name and replace
+- Files: `backend/src/sandbox/formulaRunner.js` (`$utils`), `frontend/src/lib/formulaSnippets.js`, `frontend/src/lib/formulaCompletions.js`.
+- Cause: `$utils` has round/date/string/base64 helpers only. No walk of `req.body` (or any object) that replaces every property matching a key.
+- Intended fix: `$utils.replaceKeys(obj, key, value)` (deep, arrays included) plus a helper snippet.
+
+### ED-6 — Formula: copy a value and add/sub/mul/div
+- Files: same as ED-5.
+- Cause: arithmetic is only raw JS (`req.body.qty * 12`). No helpers to copy a numeric field (qty, primary-key id) and add/sub/mul/div.
+- Intended fix: `$utils.add` / `sub` / `mul` / `div` (numeric coerce; `div` by zero → error) plus snippets such as `req.body.qty = $utils.mul(req.body.qty, 2)` and `req.body.id = $utils.add(req.body.id, 1)`.

@@ -24,12 +24,25 @@ function ensureSoapEnvelope(xml) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">\n  <soap:Body>\n${src}\n  </soap:Body>\n</soap:Envelope>`;
 }
 
+function substituteJson(value, substitute, vars) {
+  if (typeof value === 'string') return substitute(value, vars);
+  if (Array.isArray(value)) return value.map((item) => substituteJson(item, substitute, vars));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) {
+      out[key] = substituteJson(item, substitute, vars);
+    }
+    return out;
+  }
+  return value;
+}
+
 function graphqlPayload(request, substitute, vars) {
   const rawJson = request.body_json;
   if (rawJson && typeof rawJson === 'object' && !Array.isArray(rawJson)) {
     const query = substitute(String(rawJson.query ?? ''), vars);
     const out = { query };
-    if (rawJson.variables !== undefined) out.variables = rawJson.variables;
+    if (rawJson.variables !== undefined) out.variables = substituteJson(rawJson.variables, substitute, vars);
     if (rawJson.operationName) out.operationName = substitute(String(rawJson.operationName), vars);
     return out;
   }
@@ -54,7 +67,7 @@ function serializeBody(request, { substitute = (s) => s, vars = {} } = {}) {
     return { body, contentType: 'application/json', snapshot: body };
   }
   if (bodyType === 'JSON' && request.body_json && typeof request.body_json === 'object') {
-    const body = JSON.stringify(request.body_json);
+    const body = JSON.stringify(substituteJson(request.body_json, substitute, vars));
     return { body, contentType: 'application/json', snapshot: body };
   }
   let text = request.body_text ?? (typeof request.body_json === 'string' ? request.body_json : null);
@@ -77,4 +90,5 @@ module.exports = {
   serializeBody,
   ensureSoapEnvelope,
   graphqlPayload,
+  substituteJson,
 };

@@ -178,15 +178,16 @@ async function runTokenRequest(tokenRequestId, userId) {
   const vars = await resolveVariables({ requestId: tokenReq.id }, userId);
   const url = substitute(tokenReq.url, vars);
   const method = (tokenReq.method || 'POST').toUpperCase();
-  const headers = headersObject(tokenReq.headers);
-  const body =
-    tokenReq.body_type === 'JSON' && tokenReq.body_json
-      ? JSON.stringify(tokenReq.body_json)
-      : tokenReq.body_text || null;
+  const headers = Object.fromEntries(
+    Object.entries(headersObject(tokenReq.headers)).map(([key, value]) => [key, substitute(value, vars)])
+  );
+  const encoded = serializeBody(tokenReq, { substitute, vars });
+  const body = encoded.body ?? tokenReq.body_text ?? null;
   const fetchHeaders = { ...headers };
   if (body && !Object.keys(fetchHeaders).some((k) => k.toLowerCase() === 'content-type')) {
     fetchHeaders['Content-Type'] =
-      tokenReq.body_type === 'JSON' ? 'application/json' : 'text/plain';
+      encoded.contentType ||
+      (tokenReq.body_type === 'JSON' ? 'application/json' : 'text/plain');
   }
   const response = await fetch(url, {
     method,

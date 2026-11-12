@@ -50,6 +50,48 @@ test('serialize JSON object body keeps the snapshot as text', () => {
   assert.deepEqual(JSON.parse(snapshot), { amount: 19.99 });
 });
 
+test('serialize JSON object body substitutes {{vars}} in nested strings', () => {
+  const { substitute } = require('../runner');
+  const vars = { apiKey: 'secret-value', userId: '42' };
+  const { body, snapshot } = serializeBody(
+    {
+      body_type: 'JSON',
+      api_type: 'REST',
+      body_json: {
+        token: '{{apiKey}}',
+        nested: { id: '{{userId}}', n: 1 },
+        list: ['{{apiKey}}', 2],
+      },
+      body_text: null,
+    },
+    { substitute, vars }
+  );
+  const parsed = JSON.parse(body);
+  assert.deepEqual(parsed, {
+    token: 'secret-value',
+    nested: { id: '42', n: 1 },
+    list: ['secret-value', 2],
+  });
+  assert.equal(snapshot, body);
+});
+
+test('serialize GraphQL variables substitutes {{vars}}', () => {
+  const { substitute } = require('../runner');
+  const { body } = serializeBody(
+    {
+      body_type: 'GRAPHQL',
+      api_type: 'GRAPHQL',
+      body_json: { query: 'query Q($t: String!) { ping(token: $t) }', variables: { t: '{{apiKey}}' } },
+      body_text: null,
+    },
+    { substitute, vars: { apiKey: 'secret-value' } }
+  );
+  assert.deepEqual(JSON.parse(body), {
+    query: 'query Q($t: String!) { ping(token: $t) }',
+    variables: { t: 'secret-value' },
+  });
+});
+
 test('serialize GraphQL raw query text as {query}', () => {
   const { body } = serializeBody(
     { body_type: 'GRAPHQL', api_type: 'GRAPHQL', body_json: null, body_text: '{ ping }' },
