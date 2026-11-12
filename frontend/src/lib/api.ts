@@ -450,6 +450,28 @@ export const navOrderApi = {
     }),
 };
 
+export interface FormulaSnippet {
+  title: string;
+  code: string;
+  description?: string;
+}
+
+export interface FormulaSnippetsResponse {
+  ok: true;
+  snippets: FormulaSnippet[];
+}
+
+// Per-user custom formula helpers, persisted server-side so they apply on
+// every device the user signs in on.
+export const formulaSnippetsApi = {
+  get: () => apiFetch<FormulaSnippetsResponse>('/api/profile/formula-snippets'),
+  save: (snippets: FormulaSnippet[]) =>
+    apiFetch<FormulaSnippetsResponse>('/api/profile/formula-snippets', {
+      method: 'PUT',
+      body: { snippets },
+    }),
+};
+
 export const workspaceApi = {
   list: () => apiFetch<{ workspaces: Workspace[] }>('/api/workspaces'),
   create: (input: { name: string; visibility?: WorkspaceVisibility; organizationId?: string }) =>

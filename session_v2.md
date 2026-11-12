@@ -633,3 +633,16 @@ Six editor fixes on `master`, one Conventional Commit each as
 - ED-6 `446311d` — `$utils.add/sub/mul/div` (`Number()` coerce; div-by-zero errors).
 
 Tests: bodyCodec 9/9, envCompletions 5/5, formulaCompletions 5/5, sandbox 25/25.
+
+### Request editor / env / formula (ED-7–ED-11, 2026-11-12)
+
+- ED-7 `ab3d869` — hide solo presence chip.
+- ED-8 `3194078` — formula top/bottom splitter fills and resizes.
+- ED-9 `9e6162f` — `$utils.formatDate` + formatted addDays/Hours/Minutes/Months.
+- ED-10 `66e8c3f` — Create formula in the helper panel (initially localStorage).
+- ED-11 — custom snippets persist on the signed-in user via
+  `GET/PUT /api/profile/formula-snippets` (`users.formula_snippets`, migration 064).
+  One-time migrate of leftover `mockshift.formula.customSnippets` localStorage.
+
+Tests: realtime 4/4, formulaCompletions 5/5, sandbox.rce 29/29,
+formulaSnippets integration 4/4 on `apihub_test`.

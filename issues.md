@@ -522,6 +522,7 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-8 | Medium | Formula top/bottom splitter broken | FIXED | 3194078 |
 | ED-9 | Medium | Formula: add date/months with format | FIXED | 9e6162f |
 | ED-10 | Medium | Formula: create custom snippet | FIXED | 66e8c3f |
+| ED-11 | Medium | Formula custom snippets follow the signed-in account | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -586,5 +587,12 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 ### ED-10 — Formula: create custom snippet
 - Files: `frontend/src/components/FormulaHelper.tsx`, `frontend/app/globals.css`.
 - Cause: helper panel only listed built-in snippets.
-- Fix: "Create formula" saves name+code to `localStorage` (`mockshift.formula.customSnippets`) and lists them with a delete control.
+- Fix: "Create formula" saves name+code and lists them with a delete control. Initially localStorage; ED-11 moved persistence onto the user account.
+- Status: FIXED
+
+### ED-11 — Formula custom snippets follow the signed-in account
+- Files: `db/migrations/064_user_formula_snippets.sql`, `backend/src/api/routes/profile.js`, `frontend/src/lib/api.ts`, `frontend/src/components/FormulaHelper.tsx`.
+- Cause: ED-10 stored custom snippets in `localStorage`, so they stayed on one browser and did not follow the account.
+- Fix: `GET/PUT /api/profile/formula-snippets` stores a JSON array on `users.formula_snippets` (same pattern as nav-order). FormulaHelper loads/saves via the API; one-time migrate of leftover localStorage snippets onto the account, then drop the key. Invalid/oversize payloads 400; empty array clears; accounts are isolated.
+- Test: `backend/tests/formulaSnippets.integration.test.cjs` (4/4) on `apihub_test`.
 - Status: FIXED

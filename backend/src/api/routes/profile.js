@@ -208,6 +208,70 @@ router.put('/nav-order', async (req, res, next) => {
   }
 });
 
+const MAX_FORMULA_SNIPPETS = 50;
+const MAX_SNIPPET_TITLE = 80;
+const MAX_SNIPPET_CODE = 4000;
+const MAX_SNIPPET_DESCRIPTION = 200;
+
+function normalizeFormulaSnippets(input) {
+  if (!Array.isArray(input)) return { error: 'snippets must be an array' };
+  if (input.length > MAX_FORMULA_SNIPPETS) {
+    return { error: `at most ${MAX_FORMULA_SNIPPETS} custom snippets` };
+  }
+  const snippets = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return { error: 'each snippet must be an object with title and code' };
+    }
+    const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+    const code = typeof raw.code === 'string' ? raw.code.trim() : '';
+    if (!title) return { error: 'snippet title is required' };
+    if (!code) return { error: 'snippet code is required' };
+    if (title.length > MAX_SNIPPET_TITLE) {
+      return { error: `snippet title must be <= ${MAX_SNIPPET_TITLE} characters` };
+    }
+    if (code.length > MAX_SNIPPET_CODE) {
+      return { error: `snippet code must be <= ${MAX_SNIPPET_CODE} characters` };
+    }
+    let description = 'Custom formula';
+    if (typeof raw.description === 'string' && raw.description.trim()) {
+      description = raw.description.trim().slice(0, MAX_SNIPPET_DESCRIPTION);
+    }
+    snippets.push({ title, code, description });
+  }
+  return { snippets };
+}
+
+// GET/PUT /api/profile/formula-snippets — the user's custom formula helpers,
+// shared across every device they sign in on. GET returns [] when the user
+// has never created any.
+router.get('/formula-snippets', async (req, res, next) => {
+  try {
+    const { rows } = await query('SELECT formula_snippets FROM users WHERE id = $1', [req.user.id]);
+    const stored = rows[0] ? rows[0].formula_snippets : null;
+    const parsed = normalizeFormulaSnippets(Array.isArray(stored) ? stored : []);
+    res.json({ ok: true, snippets: parsed.snippets || [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/formula-snippets', async (req, res, next) => {
+  try {
+    const parsed = normalizeFormulaSnippets((req.body || {}).snippets);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    await query('UPDATE users SET formula_snippets = $2 WHERE id = $1', [
+      req.user.id,
+      parsed.snippets.length ? JSON.stringify(parsed.snippets) : null,
+    ]);
+    res.json({ ok: true, snippets: parsed.snippets });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     await respondProfile(req.user.id, res);

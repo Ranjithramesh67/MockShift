@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { FormulaIcon, ChevronIcon, XIcon } from './icons';
 import { SNIPPETS } from '@/lib/formulaSnippets';
+import { formulaSnippetsApi, type FormulaSnippet } from '@/lib/api';
 
 interface HelperSnippet {
   title: string;
@@ -11,22 +12,37 @@ interface HelperSnippet {
   custom?: boolean;
 }
 
-const CUSTOM_KEY = 'mockshift.formula.customSnippets';
+const LEGACY_KEY = 'mockshift.formula.customSnippets';
 
-function loadCustom(): HelperSnippet[] {
+function fromApi(items: FormulaSnippet[]): HelperSnippet[] {
+  return items
+    .filter((s) => s && typeof s.title === 'string' && typeof s.code === 'string')
+    .map((s) => ({
+      title: s.title,
+      code: s.code,
+      description: typeof s.description === 'string' && s.description ? s.description : 'Custom formula',
+      custom: true,
+    }));
+}
+
+function loadLegacy(): HelperSnippet[] {
   try {
-    const raw = localStorage.getItem(CUSTOM_KEY);
+    const raw = localStorage.getItem(LEGACY_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((s) => s && typeof s.title === 'string' && typeof s.code === 'string');
+    return fromApi(parsed);
   } catch {
     return [];
   }
 }
 
-function saveCustom(items: HelperSnippet[]) {
-  localStorage.setItem(CUSTOM_KEY, JSON.stringify(items));
+function clearLegacy() {
+  try {
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function FormulaHelper({ onInsert }: { onInsert: (code: string) => void }) {
@@ -37,12 +53,40 @@ export function FormulaHelper({ onInsert }: { onInsert: (code: string) => void }
   const [code, setCode] = useState('');
 
   useEffect(() => {
-    setCustom(loadCustom());
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await formulaSnippetsApi.get();
+        if (cancelled) return;
+        let items = fromApi(Array.isArray(res.snippets) ? res.snippets : []);
+        const legacy = loadLegacy();
+        if (items.length === 0 && legacy.length > 0) {
+          try {
+            const saved = await formulaSnippetsApi.save(legacy);
+            if (cancelled) return;
+            items = fromApi(saved.snippets);
+            clearLegacy();
+          } catch {
+            items = legacy;
+          }
+        } else if (legacy.length) {
+          clearLegacy();
+        }
+        setCustom(items);
+      } catch {
+        if (!cancelled) setCustom(loadLegacy());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const persist = (items: HelperSnippet[]) => {
     setCustom(items);
-    saveCustom(items);
+    formulaSnippetsApi.save(items).catch(() => {
+      /* keep the optimistic list; it will re-sync on the next load */
+    });
   };
 
   const onSave = () => {
