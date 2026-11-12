@@ -23,6 +23,8 @@ import { GraphqlBodyEditor } from './GraphqlBodyEditor';
 import { KeyValueRows } from './KeyValueRows';
 import { MultipartRows } from './MultipartRows';
 import { CodeEditor } from './CodeEditor';
+import { VarSuggestInput } from './VarSuggestInput';
+import { useEnvVarKeys } from '@/lib/useEnvVarKeys';
 import { TabBar } from './TabBar';
 import { SplitPane } from './SplitPane';
 import { CodeGenModal } from './CodeGenModal';
@@ -54,6 +56,7 @@ export function RequestConfigurator() {
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
   const { user } = useAuth();
+  const envKeys = useEnvVarKeys();
   const [remoteUpdate, setRemoteUpdate] = useState(false);
   const { viewers } = useRoomEvents(roomFor('request', ws.activeRequestId), (event) => {
     const byId = (event.by as { id?: string } | undefined)?.id;
@@ -250,7 +253,7 @@ export function RequestConfigurator() {
             </option>
           ))}
         </select>
-        <input
+        <VarSuggestInput
           className="url-input"
           type="text"
           value={request.url}
@@ -258,7 +261,8 @@ export function RequestConfigurator() {
           spellCheck={false}
           aria-label="Request URL"
           data-testid="url-input"
-          onChange={(e) => onUrlChange(e.target.value)}
+          envKeys={envKeys}
+          onValueChange={onUrlChange}
         />
         <MockRoutePicker
           projectId={mockProjectId}
@@ -348,6 +352,7 @@ export function RequestConfigurator() {
             keyPlaceholder="e.g. include"
             valuePlaceholder="e.g. line_items"
             testIdPrefix="params"
+            envKeys={envKeys}
           />
         )}
         {activeTab === 'headers' && (
@@ -357,6 +362,7 @@ export function RequestConfigurator() {
             keyPlaceholder="e.g. Authorization"
             valuePlaceholder="e.g. Bearer {{token}}"
             testIdPrefix="headers"
+            envKeys={envKeys}
           />
         )}
         {activeTab === 'body' && (
@@ -384,6 +390,7 @@ export function RequestConfigurator() {
                 onChange={(parts) => update({ bodyParts: parts })}
                 files={ws.selectedFiles?.[request.id] ?? {}}
                 onFileChange={(partId, file) => ws.setFileForPart(request.id, partId, file)}
+                envKeys={envKeys}
               />
             ) : bodyKind === 'GRAPHQL' ? (
               <GraphqlBodyEditor
@@ -392,6 +399,7 @@ export function RequestConfigurator() {
                   update({ bodyJson, bodyType: 'GRAPHQL', contentType: 'application/json' })
                 }
                 onModEnter={runActive}
+                envKeys={envKeys}
               />
             ) : (
               <CodeEditor
@@ -401,6 +409,7 @@ export function RequestConfigurator() {
                 height="100%"
                 ariaLabel="Request body editor"
                 onModEnter={runActive}
+                envKeys={envKeys}
               />
             )}
           </div>

@@ -3,6 +3,7 @@
 import React from 'react';
 import type { KeyValueEntry } from '@/lib/types';
 import { XIcon, PlusIcon } from './icons';
+import { VarSuggestInput } from './VarSuggestInput';
 
 interface KeyValueRowsProps {
   entries: KeyValueEntry[];
@@ -10,6 +11,7 @@ interface KeyValueRowsProps {
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   testIdPrefix: string;
+  envKeys?: string[];
 }
 
 export function KeyValueRows({
@@ -18,6 +20,7 @@ export function KeyValueRows({
   keyPlaceholder = 'Key',
   valuePlaceholder = 'Value',
   testIdPrefix,
+  envKeys = [],
 }: KeyValueRowsProps) {
   const update = (index: number, patch: Partial<KeyValueEntry>) => {
     onChange(entries.map((entry, i) => (i === index ? { ...entry, ...patch } : entry)));
@@ -59,14 +62,15 @@ export function KeyValueRows({
             aria-label="Key"
             onChange={(e) => update(index, { key: e.target.value })}
           />
-          <input
+          <VarSuggestInput
             className="kv-cell"
             type="text"
             value={entry.value}
             placeholder={valuePlaceholder}
             spellCheck={false}
             aria-label="Value"
-            onChange={(e) => update(index, { value: e.target.value })}
+            envKeys={envKeys}
+            onValueChange={(value) => update(index, { value })}
           />
           <div className="kv-actions">
             <button

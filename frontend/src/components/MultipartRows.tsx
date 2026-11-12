@@ -4,6 +4,7 @@ import React, { useRef } from 'react';
 import type { BodyFormPart } from '@/lib/types';
 import { newTextPart } from '@/lib/multipartParts';
 import { XIcon, PlusIcon, FileIcon } from './icons';
+import { VarSuggestInput } from './VarSuggestInput';
 
 interface MultipartRowsProps {
   parts: BodyFormPart[];
@@ -11,6 +12,7 @@ interface MultipartRowsProps {
   files: Record<string, File>;
   onFileChange: (partId: string, file: File | null) => void;
   testIdPrefix?: string;
+  envKeys?: string[];
 }
 
 function formatFileSize(size: number | undefined): string {
@@ -32,6 +34,7 @@ export function MultipartRows({
   files,
   onFileChange,
   testIdPrefix = 'multipart',
+  envKeys = [],
 }: MultipartRowsProps) {
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -202,7 +205,7 @@ export function MultipartRows({
                 </div>
               </div>
             ) : (
-              <input
+              <VarSuggestInput
                 className="multipart-cell"
                 type="text"
                 value={part.value ?? ''}
@@ -210,7 +213,8 @@ export function MultipartRows({
                 spellCheck={false}
                 aria-label="Value"
                 data-testid={`${testIdPrefix}-value-${index}`}
-                onChange={(e) => updateRow(index, { value: e.target.value })}
+                envKeys={envKeys}
+                onValueChange={(value) => updateRow(index, { value })}
               />
             )}
 

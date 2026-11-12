@@ -8,10 +8,12 @@ export function GraphqlBodyEditor({
   value,
   onChange,
   onModEnter,
+  envKeys,
 }: {
   value: string | null | undefined;
   onChange: (bodyJson: string) => void;
   onModEnter?: () => void;
+  envKeys?: string[];
 }) {
   const gql = parseGraphqlBody(value ?? '');
   const write = (patch: { query?: string; variables?: string }) =>
@@ -26,6 +28,7 @@ export function GraphqlBodyEditor({
           height="100%"
           ariaLabel="GraphQL query"
           onModEnter={onModEnter}
+          envKeys={envKeys}
         />
       </div>
       <div data-testid="graphql-variables-editor" style={{ height: '45%' }}>
@@ -36,6 +39,7 @@ export function GraphqlBodyEditor({
           height="100%"
           ariaLabel="GraphQL variables"
           onModEnter={onModEnter}
+          envKeys={envKeys}
         />
       </div>
     </div>

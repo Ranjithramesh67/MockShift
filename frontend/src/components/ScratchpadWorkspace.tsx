@@ -20,6 +20,8 @@ import { TabBar } from './TabBar';
 import { KeyValueRows } from './KeyValueRows';
 import { MultipartRows } from './MultipartRows';
 import { CodeEditor } from './CodeEditor';
+import { VarSuggestInput } from './VarSuggestInput';
+import { useEnvVarKeys } from '@/lib/useEnvVarKeys';
 import { FormulaHelper } from './FormulaHelper';
 import { AssertionsEditor } from './AssertionsEditor';
 import { SplitPane } from './SplitPane';
@@ -53,6 +55,7 @@ interface ScratchDraft {
 export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
   const { dispatch } = useApp();
   const ws = useWorkspace();
+  const envKeys = useEnvVarKeys();
   const [draft, setDraft] = useState<ScratchDraft>(() => {
     const initial = defaultScratchDraft() as ScratchDraft;
     return { ...initial, bodyParts: initial.bodyParts ?? [] };
@@ -189,7 +192,7 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
             </option>
           ))}
         </select>
-        <input
+        <VarSuggestInput
           className="url-input"
           type="text"
           value={draft.url}
@@ -197,7 +200,8 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
           spellCheck={false}
           aria-label="Request URL"
           data-testid="scratchpad-url"
-          onChange={(e) => onUrlChange(e.target.value)}
+          envKeys={envKeys}
+          onValueChange={onUrlChange}
         />
         <div className="request-bar-actions" style={{ display: 'contents' }}>
           <button
@@ -263,6 +267,7 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
                 keyPlaceholder="e.g. include"
                 valuePlaceholder="e.g. line_items"
                 testIdPrefix="params"
+                envKeys={envKeys}
               />
             )}
             {activeTab === 'headers' && (
@@ -272,6 +277,7 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
                 keyPlaceholder="e.g. Authorization"
                 valuePlaceholder="e.g. Bearer {{token}}"
                 testIdPrefix="headers"
+                envKeys={envKeys}
               />
             )}
             {activeTab === 'body' && (
@@ -306,12 +312,14 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
                         return next;
                       })
                     }
+                    envKeys={envKeys}
                   />
                 ) : bodyKind === 'GRAPHQL' ? (
                   <GraphqlBodyEditor
                     value={draft.bodyJson}
                     onChange={(bodyJson) => update({ bodyJson, bodyType: 'GRAPHQL', contentType: 'application/json' })}
                     onModEnter={onSend}
+                    envKeys={envKeys}
                   />
                 ) : (
                   <CodeEditor
@@ -321,6 +329,7 @@ export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
                     height="100%"
                     ariaLabel="Request body editor"
                     onModEnter={onSend}
+                    envKeys={envKeys}
                   />
                 )}
               </div>

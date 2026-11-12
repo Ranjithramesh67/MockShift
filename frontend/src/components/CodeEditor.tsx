@@ -9,6 +9,7 @@ import { Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { autocompletion } from '@codemirror/autocomplete';
 import { formulaCompletionSource } from '@/lib/formulaCompletions';
+import { envCompletionSource } from '@/lib/envCompletions';
 
 export type EditorLanguage = 'json' | 'xml' | 'javascript' | 'text';
 
@@ -44,6 +45,11 @@ interface CodeEditorProps {
    * `$vars`, `$utils`), JavaScript built-ins and the shared snippet list.
    */
   completions?: boolean;
+  /**
+   * Environment variable keys offered when the caret is inside `{{...}}`.
+   * Names only — secret values are never inserted.
+   */
+  envKeys?: string[];
 }
 
 export function CodeEditor({
@@ -56,6 +62,7 @@ export function CodeEditor({
   ariaLabel,
   onModEnter,
   completions = false,
+  envKeys = [],
 }: CodeEditorProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -64,9 +71,13 @@ export function CodeEditor({
   // always be wrapped in an array before spreading into the extensions list.
   const baseExtensions = [extensionFor(language)] as any[];
 
+  const completionSources = [
+    ...(completions ? [formulaCompletionSource] : []),
+    ...(envKeys.length ? [envCompletionSource(envKeys)] : []),
+  ];
   const extensions = [
     ...baseExtensions,
-    ...(completions ? [autocompletion({ override: [formulaCompletionSource] })] : []),
+    ...(completionSources.length ? [autocompletion({ override: completionSources })] : []),
     ...(onModEnter
       ? [
           // Highest precedence so this binding wins over the default Mod-Enter

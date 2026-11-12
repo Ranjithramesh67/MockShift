@@ -1848,6 +1848,54 @@ body.is-col-dragging .sidebar {
   transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
 }
 
+.var-suggest {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.request-bar > .var-suggest {
+  min-width: 240px;
+}
+.var-suggest .url-input,
+.var-suggest .kv-cell,
+.var-suggest .multipart-cell {
+  width: 100%;
+}
+.var-suggest-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  max-height: 180px;
+  overflow: auto;
+}
+.var-suggest-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+.var-suggest-item:hover,
+.var-suggest-item:focus {
+  background: var(--bg-input);
+}
+
 .url-input:focus,
 .text-input:focus,
 .kv-cell:focus,

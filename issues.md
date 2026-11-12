@@ -515,7 +515,7 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-1 | High | Secret (and all) env vars not substituted in JSON request bodies | FIXED | — |
 | ED-2 | High | Request save sometimes fails on large raw JSON | FIXED | — |
 | ED-3 | Medium | Cannot scroll JSON request body | FIXED | — |
-| ED-4 | Medium | No env-key autocomplete while typing inside `{{}}` | OPEN | — |
+| ED-4 | Medium | No env-key autocomplete while typing inside `{{}}` | FIXED | — |
 | ED-5 | Medium | Formula: find all keys with the same name and replace | OPEN | — |
 | ED-6 | Medium | Formula: copy a value and add/sub/mul/div | OPEN | — |
 
@@ -541,7 +541,9 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 ### ED-4 — Autocomplete env keys while typing inside `{{}}`
 - Files: `frontend/src/lib/formulaCompletions.js`, `frontend/src/components/CodeEditor.tsx`, URL/header/body editors.
 - Cause: autocomplete is formula-only (`req`, `$vars`, `$utils`, JS builtins, snippets). Typing `{{` in URL, headers, or JSON body does not suggest environment keys.
-- Intended fix: a `{{` completion source fed by the active environment's variable keys (names only; never secret values).
+- Fix: `envCompletions.js` plus `VarSuggestInput` / `useEnvVarKeys` wired into URL, headers, params, body, GraphQL, multipart, scratchpad, and CreateModal. CodeEditor uses `autocompletion({ override })` for env+formula. Names only; never secret values.
+- Test: `frontend/src/lib/__tests__/envCompletions.test.cjs` (5/5); `tsc` clean.
+- Status: FIXED
 
 ### ED-5 — Formula: find all keys with the same name and replace
 - Files: `backend/src/sandbox/formulaRunner.js` (`$utils`), `frontend/src/lib/formulaSnippets.js`, `frontend/src/lib/formulaCompletions.js`.

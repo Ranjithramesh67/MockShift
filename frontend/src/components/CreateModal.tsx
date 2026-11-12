@@ -12,6 +12,8 @@ import { Modal } from './Modal';
 import { TabBar, type TabItem } from './TabBar';
 import { KeyValueRows } from './KeyValueRows';
 import { MockRoutePicker } from './mocks/MockRoutePicker';
+import { VarSuggestInput } from './VarSuggestInput';
+import { useEnvVarKeys } from '@/lib/useEnvVarKeys';
 import { RestIcon, SoapIcon, GraphqlIcon, KeyIcon, RowsIcon, ListIcon, CodeIcon } from './icons';
 
 const API_TYPE_OPTIONS: Array<{ id: ApiType; label: string; hint: string; icon: typeof RestIcon }> = [
@@ -70,6 +72,7 @@ export function CreateModal({
 }) {
   const ws = useWorkspace();
   const { organizations } = useAuth();
+  const envKeys = useEnvVarKeys();
   const mockProjectId =
     ws.activeProjectId ??
     ws.tree?.collections.find((c) => c.id === (collectionId ?? ws.activeCollectionId))?.project_id ??
@@ -456,12 +459,13 @@ export function CreateModal({
                   </label>
                   <label className="auth-field url-field">
                     <span>URL</span>
-                    <input
+                    <VarSuggestInput
                       type="text"
                       data-testid="create-url"
                       value={url}
                       placeholder={'https://api.example.com/path'}
-                      onChange={(e) => onUrlChange(e.target.value)}
+                      envKeys={envKeys}
+                      onValueChange={onUrlChange}
                     />
                   </label>
                 </div>
@@ -488,6 +492,7 @@ export function CreateModal({
                       keyPlaceholder="e.g. page"
                       valuePlaceholder="e.g. 1"
                       testIdPrefix="create-params"
+                      envKeys={envKeys}
                     />
                   )}
                   {activeTab === 'headers' && (
@@ -497,6 +502,7 @@ export function CreateModal({
                       keyPlaceholder="e.g. Authorization"
                       valuePlaceholder="e.g. Bearer token"
                       testIdPrefix="create-headers"
+                      envKeys={envKeys}
                     />
                   )}
                   {activeTab === 'body' && (
