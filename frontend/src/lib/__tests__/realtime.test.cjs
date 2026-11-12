@@ -32,7 +32,7 @@ test('parseSseFrame extracts the JSON data line', () => {
 test('viewerSummary excludes self and labels the count', () => {
   const viewers = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
   assert.deepEqual(viewerSummary(viewers, 'a'), { count: 2, label: '2 others viewing' });
-  assert.deepEqual(viewerSummary([{ id: 'a' }], 'a'), { count: 0, label: 'You are the only one here' });
+  assert.deepEqual(viewerSummary([{ id: 'a' }], 'a'), { count: 0, label: '' });
   assert.deepEqual(viewerSummary([{ id: 'a' }, { id: 'b' }], 'a'), { count: 1, label: '1 other viewing' });
   assert.deepEqual(viewerSummary(null, 'a'), { count: 0, label: '' });
 });

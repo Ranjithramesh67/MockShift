@@ -26,7 +26,7 @@ function parseSseFrame(frame) {
 function viewerSummary(viewers, selfId) {
   if (!Array.isArray(viewers)) return { count: 0, label: '' };
   const others = viewers.filter((v) => v && v.id && v.id !== selfId).length;
-  if (others === 0) return { count: 0, label: 'You are the only one here' };
+  if (others === 0) return { count: 0, label: '' };
   if (others === 1) return { count: 1, label: '1 other viewing' };
   return { count: others, label: `${others} others viewing` };
 }
