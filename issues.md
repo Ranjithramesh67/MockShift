@@ -523,7 +523,7 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-9 | Medium | Formula: add date/months with format | FIXED | 9e6162f |
 | ED-10 | Medium | Formula: create custom snippet | FIXED | 66e8c3f |
 | ED-11 | Medium | Formula custom snippets follow the signed-in account | FIXED | 327b829 |
-| ED-12 | Medium | Formula: write code, share, and import via link | FIXED | |
+| ED-12 | Medium | Formula: write code, share, and import via link | FIXED | 859b3c0 |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
