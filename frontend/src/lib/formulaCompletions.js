@@ -6,7 +6,7 @@ const REQUEST_PROPERTIES = ['body', 'headers', 'query', 'queryParams', 'url', 'm
 
 const UTILITIES = [
   'uuid', 'randomInt', 'now', 'timestamp', 'addDays', 'addHours', 'addMinutes',
-  'addMonths', 'round', 'replaceKeys',
+  'addMonths', 'round', 'add', 'sub', 'mul', 'div', 'replaceKeys',
   'capitalize', 'lower', 'upper', 'trim', 'base64Encode',
   'base64Decode',
 ];

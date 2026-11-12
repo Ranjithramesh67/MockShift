@@ -517,7 +517,7 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-3 | Medium | Cannot scroll JSON request body | FIXED | — |
 | ED-4 | Medium | No env-key autocomplete while typing inside `{{}}` | FIXED | — |
 | ED-5 | Medium | Formula: find all keys with the same name and replace | FIXED | — |
-| ED-6 | Medium | Formula: copy a value and add/sub/mul/div | OPEN | — |
+| ED-6 | Medium | Formula: copy a value and add/sub/mul/div | FIXED | — |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -555,4 +555,6 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 ### ED-6 — Formula: copy a value and add/sub/mul/div
 - Files: same as ED-5.
 - Cause: arithmetic is only raw JS (`req.body.qty * 12`). No helpers to copy a numeric field (qty, primary-key id) and add/sub/mul/div.
-- Intended fix: `$utils.add` / `sub` / `mul` / `div` (numeric coerce; `div` by zero → error) plus snippets such as `req.body.qty = $utils.mul(req.body.qty, 2)` and `req.body.id = $utils.add(req.body.id, 1)`.
+- Fix: `$utils.add` / `sub` / `mul` / `div` coerce with `Number()`; div-by-zero raises a sandbox error. Snippets and `$utils.` completions included.
+- Test: `backend/tests/sandbox.rce.test.js` arithmetic + div-by-zero (sandbox 25/25); formulaCompletions 5/5.
+- Status: FIXED

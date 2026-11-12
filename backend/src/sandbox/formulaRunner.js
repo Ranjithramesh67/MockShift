@@ -151,6 +151,14 @@ const HELPERS_SOURCE = `
       return target.toISOString();
     },
     round: (n, precision) => Number(n.toFixed(precision)),
+    add: (a, b) => Number(a) + Number(b),
+    sub: (a, b) => Number(a) - Number(b),
+    mul: (a, b) => Number(a) * Number(b),
+    div: (a, b) => {
+      const d = Number(b);
+      if (d === 0) throw new Error('Division by zero');
+      return Number(a) / d;
+    },
     replaceKeys: (obj, key, value) => {
       const walk = (node) => {
         if (Array.isArray(node)) {

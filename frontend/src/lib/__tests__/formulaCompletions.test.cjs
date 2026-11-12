@@ -21,6 +21,7 @@ test('$utils. suggests utility helpers', () => {
   const labels = completionsFor('$utils.').map((c) => c.label);
   assert.ok(labels.includes('uuid'));
   assert.ok(labels.includes('now'));
+  assert.ok(labels.includes('add'));
   assert.ok(labels.includes('replaceKeys'));
 });
 

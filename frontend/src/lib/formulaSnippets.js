@@ -99,6 +99,26 @@ const SNIPPETS = [
     description: 'Return value is merged into the request context',
   },
   {
+    title: 'Add to a number',
+    code: 'req.body.id = $utils.add(req.body.id, 1)',
+    description: 'Copy a numeric field (qty, id) and add to it',
+  },
+  {
+    title: 'Subtract from a number',
+    code: 'req.body.qty = $utils.sub(req.body.qty, 1)',
+    description: 'Copy a numeric field and subtract from it',
+  },
+  {
+    title: 'Multiply a number',
+    code: 'req.body.qty = $utils.mul(req.body.qty, 2)',
+    description: 'Copy a numeric field and multiply it',
+  },
+  {
+    title: 'Divide a number',
+    code: 'req.body.qty = $utils.div(req.body.qty, 2)',
+    description: 'Copy a numeric field and divide it',
+  },
+  {
     title: 'Replace every matching key',
     code: '$utils.replaceKeys(req.body, "id", $utils.add(req.body.id, 1))',
     description: 'Find every property with the same name and replace its value',

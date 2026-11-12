@@ -148,6 +148,31 @@ describe('sandbox legitimate usage', () => {
     expect(outcome.req.body.b64dec).toBe('hello world');
   });
 
+  test('arithmetic helpers add sub mul div', async () => {
+    const outcome = await runner.run({
+      source: [
+        'req.body.sum = $utils.add(req.body.qty, 3);',
+        'req.body.diff = $utils.sub(req.body.qty, 1);',
+        'req.body.prod = $utils.mul(req.body.qty, 2);',
+        'req.body.quot = $utils.div(req.body.qty, 2);',
+        'req.body.nextId = $utils.add(req.body.id, 1);',
+      ].join('\n'),
+      req: { body: { qty: '10', id: '100' } },
+      vars: {},
+    });
+    expect(outcome.req.body.sum).toBe(13);
+    expect(outcome.req.body.diff).toBe(9);
+    expect(outcome.req.body.prod).toBe(20);
+    expect(outcome.req.body.quot).toBe(5);
+    expect(outcome.req.body.nextId).toBe(101);
+  });
+
+  test('div by zero raises a sandbox error', async () => {
+    await expect(
+      runner.run({ source: '$utils.div(1, 0)', req: {}, vars: {} })
+    ).rejects.toBeInstanceOf(SandboxExecutionError);
+  });
+
   test('replaceKeys replaces every matching key at any depth', async () => {
     const outcome = await runner.run({
       source: '$utils.replaceKeys(req.body, "id", 6);',
