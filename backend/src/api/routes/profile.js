@@ -20,6 +20,7 @@
 // plan supersede rule); this route only surfaces the current state.
 
 const { Router } = require('express');
+const crypto = require('crypto');
 const { query } = require('../db');
 const { requireAuth } = require('../access');
 const { hashPassword, verifyPassword, createSessionToken, sessionCookieHeaders } = require('../authLib');
@@ -210,8 +211,29 @@ router.put('/nav-order', async (req, res, next) => {
 
 const MAX_FORMULA_SNIPPETS = 50;
 const MAX_SNIPPET_TITLE = 80;
-const MAX_SNIPPET_CODE = 4000;
+const MAX_SNIPPET_CODE = 16000;
 const MAX_SNIPPET_DESCRIPTION = 200;
+
+function normalizeFormulaSnippet(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: 'snippet must be an object with title and code' };
+  }
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const code = typeof raw.code === 'string' ? raw.code.trim() : '';
+  if (!title) return { error: 'snippet title is required' };
+  if (!code) return { error: 'snippet code is required' };
+  if (title.length > MAX_SNIPPET_TITLE) {
+    return { error: `snippet title must be <= ${MAX_SNIPPET_TITLE} characters` };
+  }
+  if (code.length > MAX_SNIPPET_CODE) {
+    return { error: `snippet code must be <= ${MAX_SNIPPET_CODE} characters` };
+  }
+  let description = 'Custom formula';
+  if (typeof raw.description === 'string' && raw.description.trim()) {
+    description = raw.description.trim().slice(0, MAX_SNIPPET_DESCRIPTION);
+  }
+  return { snippet: { title, code, description } };
+}
 
 function normalizeFormulaSnippets(input) {
   if (!Array.isArray(input)) return { error: 'snippets must be an array' };
@@ -220,26 +242,47 @@ function normalizeFormulaSnippets(input) {
   }
   const snippets = [];
   for (const raw of input) {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      return { error: 'each snippet must be an object with title and code' };
-    }
-    const title = typeof raw.title === 'string' ? raw.title.trim() : '';
-    const code = typeof raw.code === 'string' ? raw.code.trim() : '';
-    if (!title) return { error: 'snippet title is required' };
-    if (!code) return { error: 'snippet code is required' };
-    if (title.length > MAX_SNIPPET_TITLE) {
-      return { error: `snippet title must be <= ${MAX_SNIPPET_TITLE} characters` };
-    }
-    if (code.length > MAX_SNIPPET_CODE) {
-      return { error: `snippet code must be <= ${MAX_SNIPPET_CODE} characters` };
-    }
-    let description = 'Custom formula';
-    if (typeof raw.description === 'string' && raw.description.trim()) {
-      description = raw.description.trim().slice(0, MAX_SNIPPET_DESCRIPTION);
-    }
-    snippets.push({ title, code, description });
+    const one = normalizeFormulaSnippet(raw);
+    if (one.error) return { error: one.error };
+    snippets.push(one.snippet);
   }
   return { snippets };
+}
+
+function extractShareToken(body) {
+  const input = body || {};
+  const candidates = [input.token, input.url];
+  for (const raw of candidates) {
+    if (typeof raw !== 'string') continue;
+    const value = raw.trim();
+    if (!value) continue;
+    const match = value.match(
+      /(?:^|\/)(?:s\/formula\/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$|\?|#)/i
+    );
+    if (match) return match[1];
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+      return value;
+    }
+  }
+  return '';
+}
+
+async function loadUserSnippets(userId) {
+  const { rows } = await query('SELECT formula_snippets FROM users WHERE id = $1', [userId]);
+  const stored = rows[0] ? rows[0].formula_snippets : null;
+  const parsed = normalizeFormulaSnippets(Array.isArray(stored) ? stored : []);
+  return parsed.snippets || [];
+}
+
+async function saveUserSnippets(userId, snippets) {
+  await query('UPDATE users SET formula_snippets = $2 WHERE id = $1', [
+    userId,
+    snippets.length ? JSON.stringify(snippets) : null,
+  ]);
+}
+
+function formulaShareUrl(token) {
+  return `/s/formula/${token}`;
 }
 
 // GET/PUT /api/profile/formula-snippets — the user's custom formula helpers,
@@ -247,10 +290,8 @@ function normalizeFormulaSnippets(input) {
 // has never created any.
 router.get('/formula-snippets', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT formula_snippets FROM users WHERE id = $1', [req.user.id]);
-    const stored = rows[0] ? rows[0].formula_snippets : null;
-    const parsed = normalizeFormulaSnippets(Array.isArray(stored) ? stored : []);
-    res.json({ ok: true, snippets: parsed.snippets || [] });
+    const snippets = await loadUserSnippets(req.user.id);
+    res.json({ ok: true, snippets });
   } catch (err) {
     next(err);
   }
@@ -262,11 +303,57 @@ router.put('/formula-snippets', async (req, res, next) => {
     if (parsed.error) {
       return res.status(400).json({ error: parsed.error });
     }
-    await query('UPDATE users SET formula_snippets = $2 WHERE id = $1', [
-      req.user.id,
-      parsed.snippets.length ? JSON.stringify(parsed.snippets) : null,
-    ]);
+    await saveUserSnippets(req.user.id, parsed.snippets);
     res.json({ ok: true, snippets: parsed.snippets });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/formula-snippets/share', async (req, res, next) => {
+  try {
+    const parsed = normalizeFormulaSnippet(req.body || {});
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const token = crypto.randomUUID();
+    await query(
+      `INSERT INTO formula_shares (token, snippet, created_by) VALUES ($1, $2, $3)`,
+      [token, JSON.stringify(parsed.snippet), req.user.id]
+    );
+    res.status(201).json({
+      ok: true,
+      share: { token, url: formulaShareUrl(token), snippet: parsed.snippet },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/formula-snippets/import', async (req, res, next) => {
+  try {
+    const token = extractShareToken(req.body);
+    if (!token) {
+      return res.status(400).json({ error: 'token or /s/formula/:token url is required' });
+    }
+    const { rows } = await query('SELECT snippet FROM formula_shares WHERE token = $1', [token]);
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Formula share not found' });
+    }
+    const parsed = normalizeFormulaSnippet(rows[0].snippet);
+    if (parsed.error) {
+      return res.status(404).json({ error: 'Formula share not found' });
+    }
+    const current = await loadUserSnippets(req.user.id);
+    const exists = current.some(
+      (s) => s.title === parsed.snippet.title && s.code === parsed.snippet.code
+    );
+    const snippets = exists ? current : [...current, parsed.snippet];
+    if (snippets.length > MAX_FORMULA_SNIPPETS) {
+      return res.status(400).json({ error: `at most ${MAX_FORMULA_SNIPPETS} custom snippets` });
+    }
+    if (!exists) await saveUserSnippets(req.user.id, snippets);
+    res.json({ ok: true, snippets });
   } catch (err) {
     next(err);
   }
@@ -460,4 +547,32 @@ router.post('/password', async (req, res, next) => {
   }
 });
 
+const publicFormulaShareRouter = Router();
+
+publicFormulaShareRouter.get('/:token', async (req, res, next) => {
+  try {
+    const token = String(req.params.token || '').trim();
+    const { rows } = await query(
+      'SELECT token, snippet, created_at FROM formula_shares WHERE token = $1',
+      [token]
+    );
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Formula share not found' });
+    }
+    const parsed = normalizeFormulaSnippet(rows[0].snippet);
+    if (parsed.error) {
+      return res.status(404).json({ error: 'Formula share not found' });
+    }
+    res.json({
+      ok: true,
+      snippet: parsed.snippet,
+      createdAt: rows[0].created_at,
+      url: formulaShareUrl(rows[0].token),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
+module.exports.publicFormulaShareRouter = publicFormulaShareRouter;

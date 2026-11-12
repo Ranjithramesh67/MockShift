@@ -4809,10 +4809,10 @@ body.is-col-dragging .sidebar {
   position: relative;
 }
 
-.formula-helper-delete {
+.formula-helper-delete,
+.formula-helper-share {
   position: absolute;
   top: 4px;
-  right: 4px;
   width: 18px;
   height: 18px;
   padding: 0;
@@ -4826,7 +4826,16 @@ body.is-col-dragging .sidebar {
   justify-content: center;
 }
 
-.formula-helper-delete:hover {
+.formula-helper-delete {
+  right: 4px;
+}
+
+.formula-helper-share {
+  right: 24px;
+}
+
+.formula-helper-delete:hover,
+.formula-helper-share:hover {
   background: var(--bg-input);
   color: var(--text);
 }
@@ -4845,6 +4854,30 @@ body.is-col-dragging .sidebar {
 
 .formula-create-open {
   margin-top: 10px;
+}
+
+.formula-create-editor {
+  min-height: 140px;
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.formula-create-editor .code-editor,
+.formula-create-editor .code-editor .cm-editor,
+.formula-create-editor .code-editor .cm-scroller {
+  min-height: 140px;
+}
+
+.formula-helper-notice {
+  margin-top: 8px;
+}
+
+.formula-share-code {
+  margin-top: 12px;
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 /* ==========================================================================

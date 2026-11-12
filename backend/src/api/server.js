@@ -101,6 +101,7 @@ function createApp() {
   // Public doc-share viewer (no auth by design): registered before the
   // authenticated /api routers so requireAuth does not intercept it.
   app.use('/api/docs/public', docsRoutes.publicRouter);
+  app.use('/api/formula-shares', profileRoutes.publicFormulaShareRouter);
 
   app.use('/api/auth', authRoutes);
   // Effective feature flags for the current user (rail + route guards).

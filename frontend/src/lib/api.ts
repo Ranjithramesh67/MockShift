@@ -463,6 +463,18 @@ export interface FormulaSnippetsResponse {
 
 // Per-user custom formula helpers, persisted server-side so they apply on
 // every device the user signs in on.
+export interface FormulaShareResponse {
+  ok: true;
+  share: { token: string; url: string; snippet: FormulaSnippet };
+}
+
+export interface FormulaSharePublic {
+  ok: true;
+  snippet: FormulaSnippet;
+  createdAt?: string;
+  url?: string;
+}
+
 export const formulaSnippetsApi = {
   get: () => apiFetch<FormulaSnippetsResponse>('/api/profile/formula-snippets'),
   save: (snippets: FormulaSnippet[]) =>
@@ -470,6 +482,17 @@ export const formulaSnippetsApi = {
       method: 'PUT',
       body: { snippets },
     }),
+  share: (snippet: FormulaSnippet) =>
+    apiFetch<FormulaShareResponse>('/api/profile/formula-snippets/share', {
+      method: 'POST',
+      body: snippet,
+    }),
+  import: (input: { token?: string; url?: string }) =>
+    apiFetch<FormulaSnippetsResponse>('/api/profile/formula-snippets/import', {
+      method: 'POST',
+      body: input,
+    }),
+  publicShare: (token: string) => apiFetch<FormulaSharePublic>(`/api/formula-shares/${token}`),
 };
 
 export const workspaceApi = {

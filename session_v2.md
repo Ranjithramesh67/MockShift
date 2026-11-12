@@ -646,3 +646,11 @@ Tests: bodyCodec 9/9, envCompletions 5/5, formulaCompletions 5/5, sandbox 25/25.
 
 Tests: realtime 4/4, formulaCompletions 5/5, sandbox.rce 29/29,
 formulaSnippets integration 4/4 on `apihub_test`.
+
+### Formula share / import (ED-12, 2026-11-12)
+
+Create formula is a JS code editor (not a one-line input). Sharing uses a
+server snapshot (`formula_shares` + unguessable token, `/s/formula/:token`)
+rather than stuffing code into a URL. Import by pasted link or token copies
+the snapshot onto the signed-in account. Public GET needs no login; import
+does. Tests: formulaShare 4/4 + formulaSnippets 4/4.
