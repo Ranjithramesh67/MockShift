@@ -1871,6 +1871,19 @@ body.is-col-dragging .sidebar {
   padding: 14px;
 }
 
+.request-tab-body:has(.body-editor),
+.request-tab-body:has(.formula-editor) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.request-tab-body:has(.body-editor) .body-editor,
+.request-tab-body:has(.formula-editor) .formula-editor {
+  flex: 1;
+  min-height: 0;
+}
+
 /* ---- Key/value rows ------------------------------------------------------- */
 .kv-rows {
   display: flex;
@@ -2092,6 +2105,7 @@ body.is-col-dragging .sidebar {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
   gap: 10px;
 }
 
@@ -2139,6 +2153,20 @@ body.is-col-dragging .sidebar {
   height: 100% !important;
 }
 .response-body .code-editor .cm-scroller {
+  overflow: auto !important;
+}
+
+.body-editor .code-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.body-editor .code-editor .cm-theme,
+.body-editor .code-editor .cm-theme-dark,
+.body-editor .code-editor .cm-editor {
+  height: 100% !important;
+}
+.body-editor .code-editor .cm-scroller {
   overflow: auto !important;
 }
 
