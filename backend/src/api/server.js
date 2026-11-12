@@ -169,7 +169,8 @@ function createApp() {
   // invalid-input codes are mapped to 400 (e.g. a malformed uuid in a path).
   app.use((err, req, res, next) => {
     const badInput = PG_INVALID_INPUT_CODES.has(err.code);
-    const status = err.status || (badInput ? 400 : 500);
+    const tooLarge = err.type === 'entity.too.large' || err.status === 413 || err.statusCode === 413;
+    const status = tooLarge ? 413 : err.status || (badInput ? 400 : 500);
     if (status >= 500) {
       // eslint-disable-next-line no-console
       console.error('[api] error', err);
@@ -177,11 +178,13 @@ function createApp() {
     // Route-level 4xx errors carry a purposeful message; malformed-input errors
     // straight from Postgres are replaced with a generic one so schema details
     // never reach the client.
-    const message = err.status
-      ? err.message || 'Request failed'
-      : badInput
-        ? 'Invalid request'
-        : 'Internal server error';
+    const message = tooLarge
+      ? 'Request body is too large to save (max 25 MB).'
+      : err.status
+        ? err.message || 'Request failed'
+        : badInput
+          ? 'Invalid request'
+          : 'Internal server error';
     res.status(status).json({ error: message });
   });
 

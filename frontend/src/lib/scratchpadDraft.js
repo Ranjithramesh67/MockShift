@@ -133,6 +133,7 @@ function scratchDraftToServerPatch(draft) {
     if (typeof bodyJson === 'string' && bodyJson.length > 0) {
       try {
         patch.bodyJson = JSON.parse(bodyJson);
+        patch.bodyText = null;
       } catch {
         patch.bodyJson = null;
         patch.bodyText = bodyJson;

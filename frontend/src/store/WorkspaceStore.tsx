@@ -126,6 +126,7 @@ export function toServerPatch(r: ApiRequest): Record<string, unknown> {
     if (r.bodyJson) {
       try {
         patch.bodyJson = JSON.parse(r.bodyJson);
+        patch.bodyText = null;
       } catch {
         patch.bodyJson = null;
         patch.bodyText = r.bodyJson;

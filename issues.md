@@ -513,7 +513,7 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ID | Severity | Title | Status | Commit |
 |----|----------|-------|--------|--------|
 | ED-1 | High | Secret (and all) env vars not substituted in JSON request bodies | FIXED | — |
-| ED-2 | High | Request save sometimes fails on large raw JSON | OPEN | — |
+| ED-2 | High | Request save sometimes fails on large raw JSON | FIXED | — |
 | ED-3 | Medium | Cannot scroll JSON request body | OPEN | — |
 | ED-4 | Medium | No env-key autocomplete while typing inside `{{}}` | OPEN | — |
 | ED-5 | Medium | Formula: find all keys with the same name and replace | OPEN | — |
@@ -529,7 +529,8 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 ### ED-2 — Request save sometimes fails (suspected large raw JSON)
 - Files: `frontend/src/store/WorkspaceStore.tsx` (`toServerPatch` / `saveActiveRequest`), `frontend/src/lib/api.ts`, `backend/src/api/server.js` (`express.json({ limit: '25mb' })`), `frontend/next.config.mjs` (rewrite `/api` → `:3001`).
 - Cause (suspected): save is `PUT /api/requests/:id` with the parsed JSON body. Express already allows 25 MB; Next rewrites and production reverse-proxy may still reject or truncate large payloads, and invalid JSON (unquoted `{{vars}}`) is stored as `bodyText` which can surprise the editor on reload. Confirm against a large paste before changing limits.
-- Intended fix: raise/align proxy + parser limits; keep invalid JSON as text without failing the save; surface the real HTTP error in the toast.
+- Fix: clear `bodyText` when JSON parses so a later valid save does not resurrect stale text; Express `entity.too.large` returns 413 `"Request body is too large to save (max 25 MB)."`; `apiFetch` maps non-JSON 413 the same way. Cap stays 25 MB.
+- Status: FIXED
 
 ### ED-3 — Cannot scroll JSON request body
 - File: `frontend/app/globals.css`.

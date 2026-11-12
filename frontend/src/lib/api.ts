@@ -358,19 +358,24 @@ export async function apiFetch<T = unknown>(
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     credentials: 'include',
   });
-  if (!res.ok) {
-    let message = `HTTP ${res.status}`;
-    let data: unknown = null;
-    try {
-      data = await res.json();
-      if (data && typeof data === 'object' && 'error' in data && (data as { error?: unknown }).error) {
-        message = String((data as { error: unknown }).error);
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`;
+      let data: unknown = null;
+      try {
+        data = await res.json();
+        if (data && typeof data === 'object' && 'error' in data && (data as { error?: unknown }).error) {
+          message = String((data as { error: unknown }).error);
+        }
+      } catch {
+        if (res.status === 413) {
+          message = 'Request body is too large to save (max 25 MB).';
+        }
       }
-    } catch {
-      // non-JSON error body
+      if (res.status === 413 && message === `HTTP ${res.status}`) {
+        message = 'Request body is too large to save (max 25 MB).';
+      }
+      throw new ApiError(res.status, message, data);
     }
-    throw new ApiError(res.status, message, data);
-  }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
