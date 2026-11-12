@@ -617,3 +617,19 @@ Live E2E against production: first run 55/56 (only `functional.scratchpad`,
 rerun passed **56/56 with 0 warnings**. Treated as a transient DB blip, not a
 regression. Remaining risk: Aiven connectivity drops briefly whenever the
 managed instance reconnects; the scheduler logs the retry but the API recovers.
+
+### Request editor / env / formula (ED-1–ED-6, 2026-11-12)
+
+Six editor fixes on `master`, one Conventional Commit each as
+`Ranjithramesh67 <Ranjithramesh67@users.noreply.github.com>`:
+
+- ED-1 `46d0bf8` — JSON/GraphQL bodies deep-substitute `{{vars}}` via
+  `substituteJson()`; token-request JSON uses `serializeBody`.
+- ED-2 `66c78dd` — valid JSON clears `bodyText`; Express 413 /
+  `entity.too.large` returns `"Request body is too large to save (max 25 MB)."`.
+- ED-3 `e6f1841` — `.body-editor` scroller so tall JSON is not clipped.
+- ED-4 `6b7ec96` — env-key autocomplete inside `{{}}` (names only).
+- ED-5 `7319364` — `$utils.replaceKeys(obj, key, value)` (deep, arrays included).
+- ED-6 `446311d` — `$utils.add/sub/mul/div` (`Number()` coerce; div-by-zero errors).
+
+Tests: bodyCodec 9/9, envCompletions 5/5, formulaCompletions 5/5, sandbox 25/25.

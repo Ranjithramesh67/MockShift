@@ -512,12 +512,12 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 
 | ID | Severity | Title | Status | Commit |
 |----|----------|-------|--------|--------|
-| ED-1 | High | Secret (and all) env vars not substituted in JSON request bodies | FIXED | — |
-| ED-2 | High | Request save sometimes fails on large raw JSON | FIXED | — |
-| ED-3 | Medium | Cannot scroll JSON request body | FIXED | — |
-| ED-4 | Medium | No env-key autocomplete while typing inside `{{}}` | FIXED | — |
-| ED-5 | Medium | Formula: find all keys with the same name and replace | FIXED | — |
-| ED-6 | Medium | Formula: copy a value and add/sub/mul/div | FIXED | — |
+| ED-1 | High | Secret (and all) env vars not substituted in JSON request bodies | FIXED | 46d0bf8 |
+| ED-2 | High | Request save sometimes fails on large raw JSON | FIXED | 66c78dd |
+| ED-3 | Medium | Cannot scroll JSON request body | FIXED | e6f1841 |
+| ED-4 | Medium | No env-key autocomplete while typing inside `{{}}` | FIXED | 6b7ec96 |
+| ED-5 | Medium | Formula: find all keys with the same name and replace | FIXED | 7319364 |
+| ED-6 | Medium | Formula: copy a value and add/sub/mul/div | FIXED | 446311d |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
