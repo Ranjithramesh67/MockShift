@@ -4657,6 +4657,21 @@ body.is-col-dragging .sidebar {
 }
 
 /* The code editor fills its split pane so the divider can be dragged. */
+.formula-editor > .split-pane {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.formula-editor .split-pane-vertical .split-pane-first {
+  overflow: hidden;
+}
+
+.formula-editor .split-pane-second {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .formula-code-pane {
   flex: 1;
   min-height: 0;

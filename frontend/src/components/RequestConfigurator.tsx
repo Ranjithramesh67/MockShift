@@ -430,6 +430,7 @@ export function RequestConfigurator() {
               </button>
             </div>
             <SplitPane
+              key={formulaLayout}
               orientation={formulaLayout}
               initialRatio={formulaLayout === 'vertical' ? 0.6 : 0.62}
               minRatio={0.25}

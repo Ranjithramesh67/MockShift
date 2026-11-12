@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * A resizable two-pane split. `orientation="vertical"` stacks the panes
@@ -25,6 +25,10 @@ export function SplitPane({
 }) {
   const [ratio, setRatio] = useState(initialRatio);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setRatio(initialRatio);
+  }, [orientation, initialRatio]);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
