@@ -5,7 +5,7 @@ const { SNIPPETS } = require('./formulaSnippets');
 const REQUEST_PROPERTIES = ['body', 'headers', 'query', 'queryParams', 'url', 'method', 'name'];
 
 const UTILITIES = [
-  'uuid', 'randomInt', 'now', 'timestamp', 'addDays', 'addHours', 'addMinutes',
+  'uuid', 'randomInt', 'now', 'timestamp', 'formatDate', 'addDays', 'addHours', 'addMinutes',
   'addMonths', 'round', 'add', 'sub', 'mul', 'div', 'replaceKeys',
   'capitalize', 'lower', 'upper', 'trim', 'base64Encode',
   'base64Decode',

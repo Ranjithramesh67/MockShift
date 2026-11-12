@@ -128,6 +128,22 @@ const HELPERS_SOURCE = `
     }
     return bytes;
   };
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const formatDate = (value, format) => {
+    const d = typeof value === 'number' ? new Date(value) : new Date(Date.parse(value));
+    if (Number.isNaN(d.getTime())) throw new Error('Invalid date');
+    if (!format) return d.toISOString();
+    const tokens = {
+      YYYY: String(d.getUTCFullYear()),
+      YY: String(d.getUTCFullYear()).slice(-2),
+      MM: pad2(d.getUTCMonth() + 1),
+      DD: pad2(d.getUTCDate()),
+      HH: pad2(d.getUTCHours()),
+      mm: pad2(d.getUTCMinutes()),
+      ss: pad2(d.getUTCSeconds()),
+    };
+    return String(format).replace(/YYYY|YY|MM|DD|HH|mm|ss/g, (m) => tokens[m]);
+  };
   const $utils = Object.freeze({
     uuid: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
       const r = Math.floor(Math.random() * 16);
@@ -137,10 +153,11 @@ const HELPERS_SOURCE = `
     randomInt: (min, max) => Math.floor(Math.random() * (max - min + 1)) + min,
     now: () => new Date().toISOString(),
     timestamp: () => Date.now(),
-    addDays: (iso, days) => new Date(Date.parse(iso) + days * 86400000).toISOString(),
-    addHours: (iso, hours) => new Date(Date.parse(iso) + hours * 3600000).toISOString(),
-    addMinutes: (iso, minutes) => new Date(Date.parse(iso) + minutes * 60000).toISOString(),
-    addMonths: (iso, months) => {
+    formatDate,
+    addDays: (iso, days, format) => formatDate(Date.parse(iso) + days * 86400000, format),
+    addHours: (iso, hours, format) => formatDate(Date.parse(iso) + hours * 3600000, format),
+    addMinutes: (iso, minutes, format) => formatDate(Date.parse(iso) + minutes * 60000, format),
+    addMonths: (iso, months, format) => {
       const d = new Date(Date.parse(iso));
       const target = new Date(Date.UTC(
         d.getUTCFullYear(), d.getUTCMonth() + months, 1,
@@ -148,7 +165,7 @@ const HELPERS_SOURCE = `
       ));
       const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
       target.setUTCDate(Math.min(d.getUTCDate(), lastDay));
-      return target.toISOString();
+      return formatDate(target.toISOString(), format);
     },
     round: (n, precision) => Number(n.toFixed(precision)),
     add: (a, b) => Number(a) + Number(b),

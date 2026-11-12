@@ -23,6 +23,7 @@ test('$utils. suggests utility helpers', () => {
   assert.ok(labels.includes('now'));
   assert.ok(labels.includes('add'));
   assert.ok(labels.includes('replaceKeys'));
+  assert.ok(labels.includes('formatDate'));
 });
 
 test('explicit completion after a bare dot returns options', () => {

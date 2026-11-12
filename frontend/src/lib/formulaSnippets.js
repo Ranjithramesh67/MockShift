@@ -123,6 +123,21 @@ const SNIPPETS = [
     code: '$utils.replaceKeys(req.body, "id", $utils.add(req.body.id, 1))',
     description: 'Find every property with the same name and replace its value',
   },
+  {
+    title: 'Format a date',
+    code: '$utils.formatDate($utils.now(), "YYYY-MM-DD")',
+    description: 'Format a timestamp with YYYY MM DD HH mm ss tokens',
+  },
+  {
+    title: 'Add days with format',
+    code: '$utils.addDays($utils.now(), 7, "YYYY-MM-DD")',
+    description: 'Add days and format the result',
+  },
+  {
+    title: 'Add months with format',
+    code: '$utils.addMonths($utils.now(), 3, "YYYY-MM-DD")',
+    description: 'Add months and format the result',
+  },
 ];
 
 module.exports = { SNIPPETS };

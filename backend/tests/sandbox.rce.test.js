@@ -191,4 +191,41 @@ describe('sandbox legitimate usage', () => {
       items: [{ id: 6 }, { id: 6, inner: { id: 6 } }],
     });
   });
+
+  test('formatDate formats ISO values with YYYY-MM-DD and DD/MM/YYYY HH:mm', async () => {
+    const outcome = await runner.run({
+      source: [
+        'req.body.ymd = $utils.formatDate("2026-01-08T00:00:00.000Z", "YYYY-MM-DD");',
+        'req.body.dmy = $utils.formatDate("2026-01-08T13:04:05.000Z", "DD/MM/YYYY HH:mm");',
+      ].join('\n'),
+      req: { body: {} },
+      vars: {},
+    });
+    expect(outcome.req.body.ymd).toBe('2026-01-08');
+    expect(outcome.req.body.dmy).toBe('08/01/2026 13:04');
+  });
+
+  test('addMonths with format clamps January 31 to February', async () => {
+    const outcome = await runner.run({
+      source: 'req.body.month = $utils.addMonths("2026-01-31T00:00:00.000Z", 1, "YYYY-MM");',
+      req: { body: {} },
+      vars: {},
+    });
+    expect(outcome.req.body.month).toBe('2026-02');
+  });
+
+  test('addDays with format returns YYYY-MM-DD', async () => {
+    const outcome = await runner.run({
+      source: 'req.body.day = $utils.addDays("2026-01-01T00:00:00.000Z", 7, "YYYY-MM-DD");',
+      req: { body: {} },
+      vars: {},
+    });
+    expect(outcome.req.body.day).toBe('2026-01-08');
+  });
+
+  test('invalid date throws SandboxExecutionError', async () => {
+    await expect(
+      runner.run({ source: '$utils.formatDate("not-a-date", "YYYY-MM-DD")', req: {}, vars: {} })
+    ).rejects.toBeInstanceOf(SandboxExecutionError);
+  });
 });
