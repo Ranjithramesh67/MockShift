@@ -548,6 +548,7 @@ Full-site MockShift module analysis. One commit per fix.
 | REQUEST-2 | High | Formula `returned` unused (return body/object does nothing) | FIXED | |
 | PORTAL-2 | High | Checkout PENDING insert has no existing-PENDING guard | FIXED | |
 | PORTAL-3 | High | Refund is local only (no Cashfree/PSP call) | FIXED | |
+| AUTH-5 | High | Portal login ignores 402 (unpaid customers see a generic error) | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -732,4 +733,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `POST /orders/:id/refund` voided the invoice, cancelled the subscription, and set REFUNDED with no Cashfree (or other PSP) call, so the ledger said refunded while the capture stayed at the provider.
 - Fix: Cashfree orders call `refundOrder` (merchant `gateway_reference`) before the local void. PSP failure returns 502 and leaves the order PAID. Simulated/manual orders still refund locally.
 - Test: `backend/tests/portalCashfreeRefund.integration.test.cjs` (2/2) on `apihub_test`.
+- Status: FIXED
+
+### AUTH-5 — portal login ignores 402
+- Files: `portal/frontend/src/components/LoginView.tsx`, `portal/frontend/src/lib/loginRedirect.js`, `portal/frontend/src/lib/portalApi.ts`.
+- Cause: portal `signIn` only `setError` on failure. Main-app login redirects 402 `payment_required` to `/pay`. Unpaid customers on the portal saw a generic error instead of checkout.
+- Fix: `payPathFromLoginError` maps 402 + `portal_path`/`order_id` to `/pay?...` (else `/#pricing`). `ApiError` keeps the response body. LoginView `router.push`s that path.
+- Test: `portal/frontend/src/lib/__tests__/loginRedirect.test.cjs` (5/5).
 - Status: FIXED

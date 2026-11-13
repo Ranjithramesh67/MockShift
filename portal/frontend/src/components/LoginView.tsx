@@ -6,6 +6,8 @@
 import { useCallback, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from '@/lib/checkoutApi';
+import { ApiError } from '@/lib/portalApi';
+import { payPathFromLoginError } from '@/lib/loginRedirect';
 
 export default function LoginView() {
   const router = useRouter();
@@ -27,6 +29,13 @@ export default function LoginView() {
         const target = next.startsWith('/') && !next.startsWith('//') ? next : '/account';
         router.push(target);
       } catch (err) {
+        const payPath = payPathFromLoginError(
+          err instanceof ApiError ? { status: err.status, body: err.body } : err
+        );
+        if (payPath) {
+          router.push(payPath);
+          return;
+        }
         setError(err instanceof Error ? err.message : 'Could not sign in');
         setBusy(false);
       }

@@ -746,3 +746,9 @@ second PENDING row. Tests: portalCheckoutPending 1/1.
 `POST /orders/{id}/refunds` before voiding the invoice when
 `gateway_provider` is CASHFREE. A PSP failure leaves the order PAID.
 Tests: portalCashfreeRefund 2/2.
+
+### Portal login 402 goes to checkout (AUTH-5, 2026-11-13)
+
+Portal `LoginView` now routes 402 `payment_required` to `/pay?orderId=...`
+(or `/#pricing` when no order is attached), matching the main-app login
+gate. Tests: loginRedirect 5/5.
