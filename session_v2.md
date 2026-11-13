@@ -733,3 +733,9 @@ monthly quota with manual workflow runs. Tests: automationRunMeter 1/1.
 (object or JSON/raw string) after sandbox `req` mutation. Leftover
 primitives are ignored so mutating `req` stays the primary API.
 Tests: runnerReturnedBody 4/4.
+
+### Guard duplicate PENDING checkout (PORTAL-2, 2026-11-13)
+
+`POST /api/public/checkout` now takes a per-user advisory lock and returns
+409 `pending_payment` (with the existing order) instead of inserting a
+second PENDING row. Tests: portalCheckoutPending 1/1.

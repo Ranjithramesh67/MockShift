@@ -546,6 +546,7 @@ Full-site MockShift module analysis. One commit per fix.
 | ENV-1 | High | GET environment variables decrypts secrets for any reader | FIXED | |
 | AUTO-2 | High | Automation / event / cron / monitor runs bypass run quota | FIXED | |
 | REQUEST-2 | High | Formula `returned` unused (return body/object does nothing) | FIXED | |
+| PORTAL-2 | High | Checkout PENDING insert has no existing-PENDING guard | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -716,4 +717,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `formulaRunner.run` captures `returned` (`$__return = eval(source)`), but `preparePipeline` only did `Object.assign(req, outcome.req)`. A formula that `return`s a body/object never reached the wire.
 - Fix: if `outcome.returned` is an object, use it as `req.body`. If it is a JSON string, parse it; otherwise keep the raw string. Leftover primitives (e.g. a trailing `1`) are ignored so `req` mutation stays the primary API.
 - Test: `backend/src/api/__tests__/runnerReturnedBody.test.cjs` (4/4).
+- Status: FIXED
+
+### PORTAL-2 — checkout PENDING insert has no existing-PENDING guard
+- File: `portal/backend/src/routes/publicCheckout.js`.
+- Cause: `INSERT ... status='PENDING'` had no open-PENDING check. HIGH-4 made confirm race-safe; create still multiplied PENDING orders so two confirms could both settle.
+- Fix: advisory lock per user, then if a paid PENDING order exists return 409 `pending_payment` with that order (no second insert).
+- Test: `backend/tests/portalCheckoutPending.integration.test.cjs` (1/1) on `apihub_test`.
 - Status: FIXED

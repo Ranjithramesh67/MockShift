@@ -385,6 +385,29 @@ router.post('/checkout', async (req, res, next) => {
         charge = resolved.total;
       }
 
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`checkout-pending:${userId}`]);
+      const { rows: openPending } = await client.query(
+        `SELECT ${ORDER_COLUMNS}
+           FROM orders o JOIN plans p ON p.id = o.plan_id
+          WHERE o.user_id = $1 AND o.status = 'PENDING' AND o.amount > 0
+          ORDER BY o.created_at DESC
+          LIMIT 1
+          FOR UPDATE OF o`,
+        [userId]
+      );
+      if (openPending[0]) {
+        const pendingOrder = openPending[0];
+        const { rows: pendingInvoice } = await client.query(
+          `SELECT ${INVOICE_COLUMNS} FROM invoices i WHERE i.order_id = $1`,
+          [pendingOrder.id]
+        );
+        return {
+          kind: 'pending',
+          order: toOrderShape(pendingOrder),
+          invoice: pendingInvoice[0] ? toInvoiceShape(pendingInvoice[0]) : null,
+        };
+      }
+
       if (amount === 0 || charge < 1) {
         // Free plan, a promo covering the whole charge, or an upgrade fully
         // covered by the unused current period — no order/invoice; activate (or
@@ -468,6 +491,15 @@ router.post('/checkout', async (req, res, next) => {
 
     if (result.kind === 'blocked') {
       return res.status(409).json({ error: result.message, code: result.code });
+    }
+
+    if (result.kind === 'pending') {
+      return res.status(409).json({
+        error: 'You already have a pending payment. Finish or cancel it before starting another checkout.',
+        code: 'pending_payment',
+        order: result.order,
+        invoice: result.invoice,
+      });
     }
 
     if (accountSummary.created) {
