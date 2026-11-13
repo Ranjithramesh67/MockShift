@@ -130,6 +130,20 @@ function applyQueryToUrl(url, query, vars) {
   return u.toString();
 }
 
+function applyReturnedBody(req, returned) {
+  if (returned === undefined || returned === null) return;
+  if (typeof returned === 'object') {
+    req.body = returned;
+    return;
+  }
+  if (typeof returned !== 'string') return;
+  try {
+    req.body = JSON.parse(returned);
+  } catch {
+    req.body = returned;
+  }
+}
+
 // True when a request carries structured multipart parts (the body_parts path).
 // Legacy MULTIPART requests that only have raw text (body_text) keep their old
 // text/plain serialisation so nothing pre-existing regresses.
@@ -312,6 +326,7 @@ async function preparePipeline({ request, vars, userId }) {
   if (request.formula) {
     const outcome = await formulaRunner.run({ source: request.formula, req, vars });
     if (outcome.req !== undefined) Object.assign(req, outcome.req);
+    applyReturnedBody(req, outcome.returned);
     if (outcome.vars !== undefined) vars = outcome.vars;
   }
 

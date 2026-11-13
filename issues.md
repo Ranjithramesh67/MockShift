@@ -545,6 +545,7 @@ Full-site MockShift module analysis. One commit per fix.
 | AUTH-4 | High | Portal checkout/resume mints session with sv=0 | FIXED | |
 | ENV-1 | High | GET environment variables decrypts secrets for any reader | FIXED | |
 | AUTO-2 | High | Automation / event / cron / monitor runs bypass run quota | FIXED | |
+| REQUEST-2 | High | Formula `returned` unused (return body/object does nothing) | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -708,4 +709,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `chargeRuns` only ran on content/serverRuns and MANUAL `POST /workflows/:id/run`. Cron, webhook, event, automation trigger, and monitor workflow targets started the engine without metering.
 - Fix: `runWorkflow` charges the org pool before `engine.start`. Cron ticks go through the same path. Plan-limit errors return the 403 body from the API error handler. Manual workflow run no longer double-charges.
 - Test: `backend/tests/automationRunMeter.integration.test.cjs` (1/1) on `apihub_test`.
+- Status: FIXED
+
+### REQUEST-2 — formula `returned` unused
+- File: `backend/src/api/runner.js`.
+- Cause: `formulaRunner.run` captures `returned` (`$__return = eval(source)`), but `preparePipeline` only did `Object.assign(req, outcome.req)`. A formula that `return`s a body/object never reached the wire.
+- Fix: if `outcome.returned` is an object, use it as `req.body`. If it is a JSON string, parse it; otherwise keep the raw string. Leftover primitives (e.g. a trailing `1`) are ignored so `req` mutation stays the primary API.
+- Test: `backend/src/api/__tests__/runnerReturnedBody.test.cjs` (4/4).
 - Status: FIXED

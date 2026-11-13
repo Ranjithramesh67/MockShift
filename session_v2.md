@@ -726,3 +726,10 @@ Tests: environments.integration 4/4.
 `runWorkflow` now calls `chargeRuns` before starting the engine, so cron,
 webhook, event, trigger-now, and monitor workflow targets share the
 monthly quota with manual workflow runs. Tests: automationRunMeter 1/1.
+
+### Apply formula `returned` as request body (REQUEST-2, 2026-11-13)
+
+`preparePipeline` now copies a formula return value onto `req.body`
+(object or JSON/raw string) after sandbox `req` mutation. Leftover
+primitives are ignored so mutating `req` stays the primary API.
+Tests: runnerReturnedBody 4/4.
