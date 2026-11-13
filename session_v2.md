@@ -708,3 +708,9 @@ Tests: runnerQueryParams 3/3.
 `POST /manage/access-requests/:id/review` now runs `checkSeatGate` before
 writing APPROVED. Seat fail leaves the request PENDING so a later retry
 can succeed. Tests: accessRequests.integration 6/6.
+
+### Portal checkout session epoch (AUTH-4, 2026-11-13)
+
+Checkout (new account) and `POST /checkout/resume` now stamp
+`createSessionToken` with `users.session_epoch` so password-change
+revocation still works. Tests: portalCheckoutSession 1/1.

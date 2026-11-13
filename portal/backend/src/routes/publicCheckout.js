@@ -471,7 +471,15 @@ router.post('/checkout', async (req, res, next) => {
     }
 
     if (accountSummary.created) {
-      res.setHeader('Set-Cookie', authLib.sessionCookieHeaders(authLib.createSessionToken(userId), req));
+      const { rows: epochRows } = await query(
+        'SELECT session_epoch FROM users WHERE id = $1',
+        [userId]
+      );
+      const epoch = epochRows[0] ? epochRows[0].session_epoch : 0;
+      res.setHeader(
+        'Set-Cookie',
+        authLib.sessionCookieHeaders(authLib.createSessionToken(userId, epoch), req)
+      );
       // This is the production account-creation path (self-service signup is
       // closed), so the buyer is the one who sees the "verify your email"
       // banner. Issue the link here or nobody ever gets one. Best-effort: a
@@ -612,7 +620,7 @@ router.post('/checkout/resume', async (req, res, next) => {
       return res.status(400).json({ error: 'A valid email and password are required' });
     }
     const { rows: users } = await query(
-      'SELECT id, email, name, password_hash, is_active FROM users WHERE lower(email) = $1',
+      'SELECT id, email, name, password_hash, is_active, session_epoch FROM users WHERE lower(email) = $1',
       [email]
     );
     const user = users[0];
@@ -638,7 +646,10 @@ router.post('/checkout/resume', async (req, res, next) => {
       });
     }
 
-    res.setHeader('Set-Cookie', authLib.sessionCookieHeaders(authLib.createSessionToken(user.id), req));
+    res.setHeader(
+      'Set-Cookie',
+      authLib.sessionCookieHeaders(authLib.createSessionToken(user.id, user.session_epoch), req)
+    );
     res.json({
       ok: true,
       requiresPayment: true,

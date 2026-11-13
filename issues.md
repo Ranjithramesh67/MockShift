@@ -542,6 +542,7 @@ Full-site MockShift module analysis. One commit per fix.
 | REQUEST-1 | High | Params tab ignored on Send (query_params never appended to URL) | FIXED | |
 | IAM-2 | High | MANAGER can assign ADMIN | FIXED | |
 | IAM-3 | High | Seat-gate after APPROVED leaves request stuck | FIXED | |
+| AUTH-4 | High | Portal checkout/resume mints session with sv=0 | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -684,4 +685,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `POST /access-requests/:requestId/review` set status `APPROVED` then `checkSeatGate`. Seat fail returned 403 without inserting `project_members`, so retry was 409.
 - Fix: seat-gate before the status write; on fail leave PENDING.
 - Test: `backend/tests/accessRequests.integration.test.cjs` (6/6) on `apihub_test`.
+- Status: FIXED
+
+### AUTH-4 — portal checkout/resume mints sv=0
+- File: `portal/backend/src/routes/publicCheckout.js`.
+- Cause: checkout (new account) and `POST /checkout/resume` called `createSessionToken(userId)` without `session_epoch`, so `sv` defaulted to 0. After an epoch bump, `requireAuth` rejected the cookie.
+- Fix: pass `users.session_epoch` into `createSessionToken` on both paths.
+- Test: `backend/tests/portalCheckoutSession.integration.test.cjs` (1/1) on `apihub_test`.
 - Status: FIXED
