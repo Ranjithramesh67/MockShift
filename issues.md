@@ -539,16 +539,16 @@ Full-site MockShift module analysis. One commit per fix.
 
 | ID | Severity | Title | Status | Commit |
 |----|----------|-------|--------|--------|
-| REQUEST-1 | High | Params tab ignored on Send (query_params never appended to URL) | FIXED | |
-| IAM-2 | High | MANAGER can assign ADMIN | FIXED | |
-| IAM-3 | High | Seat-gate after APPROVED leaves request stuck | FIXED | |
-| AUTH-4 | High | Portal checkout/resume mints session with sv=0 | FIXED | |
-| ENV-1 | High | GET environment variables decrypts secrets for any reader | FIXED | |
-| AUTO-2 | High | Automation / event / cron / monitor runs bypass run quota | FIXED | |
-| REQUEST-2 | High | Formula `returned` unused (return body/object does nothing) | FIXED | |
-| PORTAL-2 | High | Checkout PENDING insert has no existing-PENDING guard | FIXED | |
-| PORTAL-3 | High | Refund is local only (no Cashfree/PSP call) | FIXED | |
-| AUTH-5 | High | Portal login ignores 402 (unpaid customers see a generic error) | FIXED | |
+| REQUEST-1 | High | Params tab ignored on Send (query_params never appended to URL) | FIXED | 0f1da34 |
+| IAM-2 | High | MANAGER can assign ADMIN | FIXED | 5be7d0c |
+| IAM-3 | High | Seat-gate after APPROVED leaves request stuck | FIXED | 8f37a4c |
+| AUTH-4 | High | Portal checkout/resume mints session with sv=0 | FIXED | 1e2ca95 |
+| ENV-1 | High | GET environment variables decrypts secrets for any reader | FIXED | 8b03cae |
+| AUTO-2 | High | Automation / event / cron / monitor runs bypass run quota | FIXED | 02a5556 |
+| REQUEST-2 | High | Formula `returned` unused (return body/object does nothing) | FIXED | 23f9f71 |
+| PORTAL-2 | High | Checkout PENDING insert has no existing-PENDING guard | FIXED | 6e64eef |
+| PORTAL-3 | High | Refund is local only (no Cashfree/PSP call) | FIXED | 7b8f043 |
+| AUTH-5 | High | Portal login ignores 402 (unpaid customers see a generic error) | FIXED | dd4189a |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
