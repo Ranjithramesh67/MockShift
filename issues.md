@@ -547,6 +547,7 @@ Full-site MockShift module analysis. One commit per fix.
 | AUTO-2 | High | Automation / event / cron / monitor runs bypass run quota | FIXED | |
 | REQUEST-2 | High | Formula `returned` unused (return body/object does nothing) | FIXED | |
 | PORTAL-2 | High | Checkout PENDING insert has no existing-PENDING guard | FIXED | |
+| PORTAL-3 | High | Refund is local only (no Cashfree/PSP call) | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -724,4 +725,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `INSERT ... status='PENDING'` had no open-PENDING check. HIGH-4 made confirm race-safe; create still multiplied PENDING orders so two confirms could both settle.
 - Fix: advisory lock per user, then if a paid PENDING order exists return 409 `pending_payment` with that order (no second insert).
 - Test: `backend/tests/portalCheckoutPending.integration.test.cjs` (1/1) on `apihub_test`.
+- Status: FIXED
+
+### PORTAL-3 — refund is local only
+- Files: `portal/backend/src/routes/subscribers.js`, `portal/backend/src/cashfree.js`.
+- Cause: `POST /orders/:id/refund` voided the invoice, cancelled the subscription, and set REFUNDED with no Cashfree (or other PSP) call, so the ledger said refunded while the capture stayed at the provider.
+- Fix: Cashfree orders call `refundOrder` (merchant `gateway_reference`) before the local void. PSP failure returns 502 and leaves the order PAID. Simulated/manual orders still refund locally.
+- Test: `backend/tests/portalCashfreeRefund.integration.test.cjs` (2/2) on `apihub_test`.
 - Status: FIXED

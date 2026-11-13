@@ -169,6 +169,14 @@ function fetchOrderPayments(cfOrderId) {
   return request('GET', `/orders/${encodeURIComponent(cfOrderId)}/payments`);
 }
 
+function refundOrder({ orderId, refundId, amount, note }) {
+  return request('POST', `/orders/${encodeURIComponent(orderId)}/refunds`, {
+    refund_id: refundId,
+    refund_amount: Number(amount),
+    refund_note: note || undefined,
+  });
+}
+
 // Cashfree order/payment statuses that mean "money captured".
 function isPaidStatus(status) {
   return ['PAID', 'SUCCESS', 'SUCCEEDED', 'CAPTURED', 'COMPLETED'].includes(
@@ -276,6 +284,7 @@ module.exports = {
   createOrder,
   fetchOrder,
   fetchOrderPayments,
+  refundOrder,
   isPaidStatus,
   isFailedStatus,
   isPendingStatus,

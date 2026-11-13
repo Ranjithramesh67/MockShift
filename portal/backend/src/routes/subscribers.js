@@ -11,6 +11,7 @@ const { pool, query, authLib } = require('../shared');
 const { access, roleAtLeast, requirePortalRole } = require('../portalAccess');
 const { logAudit } = require('../auditLog');
 const { allocateUsername } = require('../../../../backend/src/api/username');
+const cashfree = require('../cashfree');
 
 const router = Router();
 
@@ -88,13 +89,21 @@ async function fetchOrder(id) {
   const { rows } = await query(
     `SELECT o.id, p.key AS plan_key, p.name AS plan_name, o.billing_cycle,
             o.amount::text AS amount, o.currency, o.status, o.payment_method,
-            o.created_at
+            o.created_at, o.gateway_provider, o.gateway_reference, o.gateway_order_id
        FROM orders o
        JOIN plans p ON p.id = o.plan_id
       WHERE o.id = $1`,
     [id]
   );
-  return rows[0] ? toOrderShape(rows[0]) : null;
+  if (!rows[0]) return null;
+  return {
+    ...toOrderShape(rows[0]),
+    _gateway: {
+      provider: rows[0].gateway_provider,
+      reference: rows[0].gateway_reference,
+      orderId: rows[0].gateway_order_id,
+    },
+  };
 }
 
 async function fetchInvoice(id) {
@@ -849,6 +858,25 @@ router.post('/orders/:id/refund', requirePortalRole('ADMIN'), async (req, res, n
       return res.status(409).json({ error: conflict });
     }
 
+    // Cashfree captures must be refunded at the PSP first. A local-only void
+    // would leave the capture with the provider. Simulated/manual orders skip
+    // this (no provider charge). A PSP failure must not flip the local ledger.
+    if (String((before._gateway && before._gateway.provider) || '').toUpperCase() === 'CASHFREE') {
+      const merchantRef = (before._gateway && (before._gateway.reference || before._gateway.orderId)) || null;
+      if (!merchantRef) {
+        return res.status(409).json({
+          error: 'This Cashfree order has no provider reference to refund',
+          code: 'gateway_reference_missing',
+        });
+      }
+      await cashfree.refundOrder({
+        orderId: merchantRef,
+        refundId: `rf_${before.id.replace(/-/g, '').slice(0, 20)}`,
+        amount: before.amount,
+        note: 'Admin refund',
+      });
+    }
+
     // Refund is terminal for the order: void the invoice AND cancel the
     // subscription this order created, so a refunded customer does not keep
     // paid entitlements. The order row is locked FOR UPDATE so concurrent
@@ -905,6 +933,7 @@ router.post('/orders/:id/refund', requirePortalRole('ADMIN'), async (req, res, n
       after: { status: 'REFUNDED', cancelled_subscription_id: cancelledSubscriptionId },
     });
     const order = await fetchOrder(req.params.id);
+    if (order) delete order._gateway;
     res.json({ ok: true, order, cancelledSubscriptionId });
   } catch (err) {
     next(err);

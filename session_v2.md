@@ -739,3 +739,10 @@ Tests: runnerReturnedBody 4/4.
 `POST /api/public/checkout` now takes a per-user advisory lock and returns
 409 `pending_payment` (with the existing order) instead of inserting a
 second PENDING row. Tests: portalCheckoutPending 1/1.
+
+### Refund via Cashfree then local void (PORTAL-3, 2026-11-13)
+
+`POST /api/subscribers/orders/:id/refund` now calls Cashfree
+`POST /orders/{id}/refunds` before voiding the invoice when
+`gateway_provider` is CASHFREE. A PSP failure leaves the order PAID.
+Tests: portalCashfreeRefund 2/2.
