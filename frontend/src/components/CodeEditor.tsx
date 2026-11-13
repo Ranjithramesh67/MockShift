@@ -5,18 +5,20 @@ import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
 import { xml } from '@codemirror/lang-xml';
 import { javascript } from '@codemirror/lang-javascript';
+import { linter } from '@codemirror/lint';
 import { Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { autocompletion } from '@codemirror/autocomplete';
 import { formulaCompletionSource } from '@/lib/formulaCompletions';
 import { envCompletionSource } from '@/lib/envCompletions';
+import { jsonLint } from '@/lib/jsonLint';
 
 export type EditorLanguage = 'json' | 'xml' | 'javascript' | 'text';
 
 function extensionFor(language: EditorLanguage) {
   switch (language) {
     case 'json':
-      return json();
+      return [json(), linter(jsonLint)];
     case 'xml':
       return xml();
     case 'javascript':
@@ -67,9 +69,7 @@ export function CodeEditor({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // extensionFor returns a single (non-iterable) Extension object, so it must
-  // always be wrapped in an array before spreading into the extensions list.
-  const baseExtensions = [extensionFor(language)] as any[];
+  const baseExtensions = ([] as any[]).concat(extensionFor(language));
 
   const completionSources = [
     ...(completions ? [formulaCompletionSource] : []),
