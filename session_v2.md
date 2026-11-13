@@ -675,3 +675,9 @@ instead of `JSON.parse(req.body)`. Tests: sandbox.rce 31/31.
 Tests: splitPane 2/2, jsonLint 4/4, codeEditorLint 1/1, authToken 8/8.
 Frontend unit 203/205 (2 pre-existing scratchpad `null` vs `undefined`).
 Backend `test:api:unit` 150/150. `tsc --noEmit` clean.
+
+### Formula side splitter grip (ED-17, 2026-11-13)
+
+Helpers-right still drew the stacked 36×3 handle. Divider now has
+`data-orientation` and the horizontal grip is a 3×36 vertical bar
+with `col-resize`. Commit `af003e6`. Tests: splitPane 3/3.
