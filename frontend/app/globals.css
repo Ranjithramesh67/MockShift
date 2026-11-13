@@ -1778,7 +1778,8 @@ body.is-col-dragging .sidebar {
 }
 
 .split-pane-horizontal .split-pane-divider,
-.split-pane-divider[data-orientation='horizontal'] {
+.split-pane-divider[data-orientation='horizontal'],
+.split-pane-divider-col {
   width: 7px;
   height: auto;
   align-self: stretch;
@@ -1790,7 +1791,8 @@ body.is-col-dragging .sidebar {
 }
 
 .split-pane-horizontal .split-pane-divider::after,
-.split-pane-divider[data-orientation='horizontal']::after {
+.split-pane-divider[data-orientation='horizontal']::after,
+.split-pane-divider-col::after {
   width: 3px;
   height: 36px;
 }

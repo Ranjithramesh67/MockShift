@@ -52,7 +52,7 @@ export function RequestConfigurator() {
   const ws = useWorkspace();
   const [codegenOpen, setCodegenOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [formulaLayout, setFormulaLayout] = useState<'vertical' | 'horizontal'>('vertical');
+  const [formulaLayout, setFormulaLayout] = useState<'vertical' | 'horizontal'>('horizontal');
   const activeTab = state.activeRequestTab;
   const request = ws.activeRequest;
   const { user } = useAuth();

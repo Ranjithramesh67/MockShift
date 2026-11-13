@@ -681,3 +681,11 @@ Backend `test:api:unit` 150/150. `tsc --noEmit` clean.
 Helpers-right still drew the stacked 36×3 handle. Divider now has
 `data-orientation` and the horizontal grip is a 3×36 vertical bar
 with `col-resize`. Commit `af003e6`. Tests: splitPane 3/3.
+
+### Formula default helpers-right + dedicated col grip (ED-18, 2026-11-13)
+
+Formula still opened stacked (button said "Helpers right") so the 36×3
+row handle was what users saw. Default `formulaLayout` is now
+`'horizontal'`. Horizontal dividers also get `split-pane-divider-col`
+so the 3×36 `col-resize` grip cannot lose to the base divider CSS.
+Tests: splitPane 5/5.

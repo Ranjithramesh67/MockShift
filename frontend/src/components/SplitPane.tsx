@@ -71,7 +71,7 @@ export function SplitPane({
         {top}
       </div>
       <div
-        className="split-pane-divider"
+        className={`split-pane-divider${orientation === 'horizontal' ? ' split-pane-divider-col' : ''}`}
         data-orientation={orientation}
         onPointerDown={onPointerDown}
         role="separator"

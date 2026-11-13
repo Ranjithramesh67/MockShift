@@ -529,6 +529,7 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-15 | Medium | JSON request body has no parse-error lint | FIXED | 607aa8b |
 | ED-16 | High | Folder auth-token failures map to HTTP 500 | FIXED | ceebd2b |
 | ED-17 | Low | Formula side splitter grip still looks like a row-resize handle | FIXED | af003e6 |
+| ED-18 | Low | Formula tab still opens helpers below with a 36x3 row grip | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -643,4 +644,11 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 - Cause: the default `.split-pane-divider::after` is a 36×3 horizontal bar. Nested CSS for `.split-pane-horizontal` did not override the visible grip in production, so Helpers-right still showed a stacked (vertical) handle.
 - Fix: set `data-orientation` on the divider and pin the horizontal grip to a 3×36 vertical bar with `col-resize`.
 - Test: `frontend/src/lib/__tests__/splitPane.test.cjs` (3/3).
+- Status: FIXED
+
+### ED-18 — Formula tab still opens helpers below with a 36x3 row grip
+- Files: `frontend/src/components/RequestConfigurator.tsx`, `frontend/src/components/SplitPane.tsx`, `frontend/app/globals.css`.
+- Cause: `formulaLayout` defaulted to `'vertical'`, so the Formula tab opened helpers stacked below and drew the default 36×3 row handle. Attribute selectors for the side splitter also lost to the base divider CSS in production.
+- Fix: default helpers to the right (`'horizontal'`). Horizontal dividers also get `split-pane-divider-col` so the 3×36 `col-resize` grip cannot lose.
+- Test: `frontend/src/lib/__tests__/splitPane.test.cjs` (5/5).
 - Status: FIXED
