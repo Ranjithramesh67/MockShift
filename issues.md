@@ -525,6 +525,9 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-11 | Medium | Formula custom snippets follow the signed-in account | FIXED | 327b829 |
 | ED-12 | Medium | Formula: write code, share, and import via link | FIXED | 859b3c0 |
 | ED-13 | High | Formula `JSON.parse(req.body)` 500s on RAW JSON / object body | FIXED | ff40fc8 |
+| ED-14 | Medium | Formula horizontal splitter uses row-resize and cannot drag | FIXED | 498d103 |
+| ED-15 | Medium | JSON request body has no parse-error lint | FIXED | 607aa8b |
+| ED-16 | High | Folder auth-token failures map to HTTP 500 | FIXED | ceebd2b |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -611,4 +614,25 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 - Cause: ZOR (and similar) bodies are `RAW_TEXT`, so `req.body` is a string. `JSON.parse(req.body)` 500s when Send already parsed JSON (`"[object Object]"`) or the text is invalid JSON. Sandbox errors had no `status`, so the API mapped them to generic 500.
 - Fix: `$utils.replaceKeys` parses a JSON string, walks it, and stringifies back; object bodies still mutate in place. `SandboxError.status = 400` so formula failures return the message, not Internal server error. Formula timeout raised to 1000ms for large payloads.
 - Test: `backend/tests/sandbox.rce.test.js` (31/31).
+- Status: FIXED
+
+### ED-14 — Formula horizontal splitter cannot drag
+- Files: `frontend/src/components/SplitPane.tsx`, `frontend/app/globals.css`.
+- Cause: horizontal drag added `is-dragging` (row-resize cursor / body lock). The formula first pane also overflowed, so the divider could not resize.
+- Fix: horizontal drag uses `is-col-dragging`; formula horizontal first pane is `overflow: hidden`.
+- Test: `frontend/src/lib/__tests__/splitPane.test.cjs` (2/2).
+- Status: FIXED
+
+### ED-15 — JSON request body has no parse-error lint
+- Files: `frontend/src/lib/jsonLint.js`, `frontend/src/components/CodeEditor.tsx`, `frontend/package.json` (`@codemirror/lint`).
+- Cause: JSON language mode highlighted syntax but did not surface `JSON.parse` errors, so invalid bodies were easy to send.
+- Fix: `linter(jsonLint)` on json editors. Empty/whitespace is OK; `{{env}}` placeholders are substituted to `null` before parse so they are not flagged.
+- Test: `frontend/src/lib/__tests__/jsonLint.test.cjs` (4/4), `codeEditorLint.test.cjs` (1/1).
+- Status: FIXED
+
+### ED-16 — Folder auth-token failures map to HTTP 500
+- Files: `backend/src/api/authToken.js`, `backend/src/api/runner.js`.
+- Cause: missing token request, failed token HTTP, non-JSON body, missing path, and non-scalar token threw untagged `Error`s, so the API handler mapped them to 500.
+- Fix: throw `{ status: 400 }` so Send returns the message as a client error.
+- Test: `backend/src/api/__tests__/authToken.test.cjs` (8/8).
 - Status: FIXED

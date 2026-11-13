@@ -662,3 +662,16 @@ object. Formula sandbox errors return HTTP 400 with the formula message
 instead of a generic 500. Runner timeout 150ms → 1000ms. Use
 `req.body = $utils.replaceKeys(req.body, "LastChangeDateTime", ...)`
 instead of `JSON.parse(req.body)`. Tests: sandbox.rce 31/31.
+
+### Formula splitter, JSON lint, auth-token 400s (ED-14–ED-16, 2026-11-13)
+
+- ED-14 `498d103` — horizontal formula splitter uses `is-col-dragging`;
+  first pane `overflow: hidden` so the divider can resize.
+- ED-15 `607aa8b` — JSON CodeEditor lints with `JSON.parse`; empty bodies
+  and `{{env}}` placeholders are not flagged.
+- ED-16 `ceebd2b` — folder auth-token failures (missing request, failed
+  HTTP, non-JSON, missing/non-scalar token) return HTTP 400, not 500.
+
+Tests: splitPane 2/2, jsonLint 4/4, codeEditorLint 1/1, authToken 8/8.
+Frontend unit 203/205 (2 pre-existing scratchpad `null` vs `undefined`).
+Backend `test:api:unit` 150/150. `tsc --noEmit` clean.
