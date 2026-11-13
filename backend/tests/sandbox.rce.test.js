@@ -192,6 +192,28 @@ describe('sandbox legitimate usage', () => {
     });
   });
 
+  test('replaceKeys parses a JSON string body and stringifies the result', async () => {
+    const outcome = await runner.run({
+      source: 'req.body = $utils.replaceKeys(req.body, "LastChangeDateTime", "2026-11-13T00:00:00.000");',
+      req: {
+        body: JSON.stringify([{ id: 1, LastChangeDateTime: 'old', nested: { LastChangeDateTime: 'old' } }]),
+      },
+      vars: {},
+    });
+    expect(JSON.parse(outcome.req.body)).toEqual([
+      { id: 1, LastChangeDateTime: '2026-11-13T00:00:00.000', nested: { LastChangeDateTime: '2026-11-13T00:00:00.000' } },
+    ]);
+  });
+
+  test('sandbox errors carry HTTP 400 so formula failures are not 500s', async () => {
+    await expect(
+      runner.run({ source: 'JSON.parse(req.body)', req: { body: { a: 1 } }, vars: {} })
+    ).rejects.toMatchObject({
+      name: 'SandboxExecutionError',
+      status: 400,
+    });
+  });
+
   test('formatDate formats ISO values with YYYY-MM-DD and DD/MM/YYYY HH:mm', async () => {
     const outcome = await runner.run({
       source: [

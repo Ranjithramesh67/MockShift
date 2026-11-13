@@ -120,8 +120,8 @@ const SNIPPETS = [
   },
   {
     title: 'Replace every matching key',
-    code: '$utils.replaceKeys(req.body, "id", $utils.add(req.body.id, 1))',
-    description: 'Find every property with the same name and replace its value',
+    code: 'req.body = $utils.replaceKeys(req.body, "id", $utils.add(req.body.id, 1))',
+    description: 'Find every property with the same name and replace its value (JSON object or RAW JSON text)',
   },
   {
     title: 'Format a date',

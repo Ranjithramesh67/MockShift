@@ -654,3 +654,11 @@ server snapshot (`formula_shares` + unguessable token, `/s/formula/:token`)
 rather than stuffing code into a URL. Import by pasted link or token copies
 the snapshot onto the signed-in account. Public GET needs no login; import
 does. Tests: formulaShare 4/4 + formulaSnippets 4/4.
+
+### Formula 500 on RAW JSON (ED-13, 2026-11-13)
+
+`$utils.replaceKeys` now accepts a JSON string (RAW_TEXT) as well as an
+object. Formula sandbox errors return HTTP 400 with the formula message
+instead of a generic 500. Runner timeout 150ms → 1000ms. Use
+`req.body = $utils.replaceKeys(req.body, "LastChangeDateTime", ...)`
+instead of `JSON.parse(req.body)`. Tests: sandbox.rce 31/31.

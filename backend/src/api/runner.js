@@ -13,7 +13,7 @@ const TEMPLATE_RE = /\{\{\s*([A-Za-z0-9_\-\.]+)\s*\}\}/g;
 const MAX_FILE_PART_BYTES = 10 * 1024 * 1024; // 10 MB per file part
 const MAX_TOTAL_FILE_BYTES = 20 * 1024 * 1024; // 20 MB of file bytes per request
 
-const formulaRunner = new FormulaRunner({ timeoutMs: 150 });
+const formulaRunner = new FormulaRunner({ timeoutMs: 1000 });
 
 function substitute(input, variables) {
   if (typeof input !== 'string') return input;

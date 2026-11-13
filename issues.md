@@ -524,6 +524,7 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-10 | Medium | Formula: create custom snippet | FIXED | 66e8c3f |
 | ED-11 | Medium | Formula custom snippets follow the signed-in account | FIXED | 327b829 |
 | ED-12 | Medium | Formula: write code, share, and import via link | FIXED | 859b3c0 |
+| ED-13 | High | Formula `JSON.parse(req.body)` 500s on RAW JSON / object body | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -603,4 +604,11 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 - Cause: Create formula was a single-line name+code field with no way to write a real script or send it to another account. Encoding a whole formula in a URL would break on length; a snapshot token does not.
 - Fix: Create form uses the JS CodeEditor (multiline, `$utils` completions). Share copies a snapshot into `formula_shares` and returns `/s/formula/:token`. Public `GET /api/formula-shares/:token` (no login). Import by token or pasted link copies onto the signed-in account (duplicate is a no-op). Share page shows the code and Import to my account.
 - Test: `backend/tests/formulaShare.integration.test.cjs` (4/4) plus existing formulaSnippets 4/4 on `apihub_test`.
+- Status: FIXED
+
+### ED-13 — Formula 500 on RAW JSON `JSON.parse(req.body)`
+- Files: `backend/src/sandbox/formulaRunner.js`, `backend/src/api/runner.js`, `frontend/src/lib/formulaSnippets.js`.
+- Cause: ZOR (and similar) bodies are `RAW_TEXT`, so `req.body` is a string. `JSON.parse(req.body)` 500s when Send already parsed JSON (`"[object Object]"`) or the text is invalid JSON. Sandbox errors had no `status`, so the API mapped them to generic 500.
+- Fix: `$utils.replaceKeys` parses a JSON string, walks it, and stringifies back; object bodies still mutate in place. `SandboxError.status = 400` so formula failures return the message, not Internal server error. Formula timeout raised to 1000ms for large payloads.
+- Test: `backend/tests/sandbox.rce.test.js` (31/31).
 - Status: FIXED

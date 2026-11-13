@@ -6,6 +6,7 @@ class SandboxError extends Error {
   constructor(message, name) {
     super(message);
     this.name = name;
+    this.status = 400;
   }
 }
 
@@ -187,6 +188,11 @@ const HELPERS_SOURCE = `
           }
         }
       };
+      if (typeof obj === 'string') {
+        const parsed = JSON.parse(obj);
+        walk(parsed);
+        return typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+      }
       walk(obj);
       return obj;
     },
