@@ -138,13 +138,18 @@ router.get('/environments/:environmentId/variables', async (req, res, next) => {
     if (!(await canReadWorkspace(req.user.id, envs[0].workspace_id))) {
       return res.status(403).json({ error: 'No access to this workspace' });
     }
+    const canRevealSecrets = await canMutateWorkspace(req.user.id, envs[0].workspace_id);
     const { rows } = await query(
       `SELECT id, key, is_secret,
-              CASE WHEN is_secret THEN app.try_decrypt(value_encrypted, app.vault_key()) ELSE value_plain END AS value
+              CASE
+                WHEN is_secret AND $2 THEN app.try_decrypt(value_encrypted, app.vault_key())
+                WHEN is_secret THEN NULL
+                ELSE value_plain
+              END AS value
          FROM variables
         WHERE scope = 'ENVIRONMENT' AND environment_id = $1
         ORDER BY key`,
-      [environmentId],
+      [environmentId, canRevealSecrets],
       { userId: req.user.id }
     );
     res.json({ variables: rows });

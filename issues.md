@@ -543,6 +543,7 @@ Full-site MockShift module analysis. One commit per fix.
 | IAM-2 | High | MANAGER can assign ADMIN | FIXED | |
 | IAM-3 | High | Seat-gate after APPROVED leaves request stuck | FIXED | |
 | AUTH-4 | High | Portal checkout/resume mints session with sv=0 | FIXED | |
+| ENV-1 | High | GET environment variables decrypts secrets for any reader | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -692,4 +693,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: checkout (new account) and `POST /checkout/resume` called `createSessionToken(userId)` without `session_epoch`, so `sv` defaulted to 0. After an epoch bump, `requireAuth` rejected the cookie.
 - Fix: pass `users.session_epoch` into `createSessionToken` on both paths.
 - Test: `backend/tests/portalCheckoutSession.integration.test.cjs` (1/1) on `apihub_test`.
+- Status: FIXED
+
+### ENV-1 — decrypted secrets on GET
+- File: `backend/src/api/routes/environments.js`.
+- Cause: `GET /environments/:id/variables` decrypted secrets for any workspace reader (`canReadWorkspace`). Write still required EDITOR.
+- Fix: decrypt only when `canMutateWorkspace` (EDITOR+); VIEWER/SUPPORT get `value: null` for secrets, keys still listed.
+- Test: `backend/tests/environments.integration.test.cjs` (4/4) on `apihub_test`.
 - Status: FIXED

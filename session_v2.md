@@ -714,3 +714,9 @@ can succeed. Tests: accessRequests.integration 6/6.
 Checkout (new account) and `POST /checkout/resume` now stamp
 `createSessionToken` with `users.session_epoch` so password-change
 revocation still works. Tests: portalCheckoutSession 1/1.
+
+### Mask env secrets for non-editors (ENV-1, 2026-11-13)
+
+`GET /environments/:id/variables` decrypts secrets only for EDITOR+.
+VIEWER/SUPPORT still see keys and `is_secret`, with `value: null`.
+Tests: environments.integration 4/4.

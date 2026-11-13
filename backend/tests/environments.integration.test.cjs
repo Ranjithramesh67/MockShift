@@ -243,11 +243,26 @@ test('non-editor cannot mutate environments', async () => {
   assert.equal(invite.status, 201);
   await admin.api('POST', `/api/workspaces/${workspaceId}/teams`, { teamId, role: 'VIEWER' });
 
+  const secret = await admin.api('POST', `/api/environments/${prodId}/variables`, {
+    key: 'API_TOKEN',
+    value: 's3cr3t-tok',
+    isSecret: true,
+  });
+  assert.equal(secret.status, 201);
+
   // Viewer can list environments and variables...
   const list = await viewer.api('GET', `/api/workspaces/${workspaceId}/environments`);
   assert.equal(list.status, 200);
   const vars = await viewer.api('GET', `/api/environments/${prodId}/variables`);
   assert.equal(vars.status, 200);
+  const viewerSecret = vars.json.variables.find((v) => v.key === 'API_TOKEN');
+  assert.ok(viewerSecret);
+  assert.equal(viewerSecret.is_secret, true);
+  assert.notEqual(viewerSecret.value, 's3cr3t-tok');
+  assert.equal(viewerSecret.value, null);
+
+  const ownerVars = await admin.api('GET', `/api/environments/${prodId}/variables`);
+  assert.equal(ownerVars.json.variables.find((v) => v.key === 'API_TOKEN').value, 's3cr3t-tok');
 
   // ...but cannot create, activate, or write variables.
   const create = await viewer.api('POST', `/api/workspaces/${workspaceId}/environments`, { name: 'Hijack' });
