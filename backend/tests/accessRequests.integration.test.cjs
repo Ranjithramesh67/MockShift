@@ -6,6 +6,7 @@ const {
   startApp,
   makeClient,
   signupAndLogin,
+  psql,
 } = require('./support/harness.cjs');
 
 let base;
@@ -229,4 +230,71 @@ test('manage lists and reviews workspace access requests', async () => {
     { approve: true }
   );
   assert.equal(reReview.status, 409);
+});
+
+test('seat-limit reject leaves the access request PENDING (IAM-3)', async () => {
+  const mgrCreate = await manager.client.api('POST', '/api/admin/users', {
+    email: 'ar-seat-mgr@seat-mgr.io',
+    name: 'Seat Mgr',
+    role: 'MANAGER',
+    password: 'managerpass123',
+  });
+  assert.equal(mgrCreate.status, 201);
+
+  const outsider = await signupAndLogin(
+    base,
+    'ar-seat-out@outsider-iam3.io',
+    'outsiderpass123',
+    'Seat Outsider'
+  );
+
+  const ws = await manager.client.api('POST', '/api/workspaces', { name: 'IAM-3 WS' });
+  assert.equal(ws.status, 201);
+  const tree = await manager.client.api('GET', `/api/workspaces/${ws.json.workspace.id}/content`);
+  const projectId = tree.json.projects[0].id;
+
+  const assign = await manager.client.api('POST', `/api/manage/projects/${projectId}/managers`, {
+    userId: mgrCreate.json.user.id,
+  });
+  assert.equal(assign.status, 200);
+
+  const created = await outsider.client.api('POST', `/api/projects/${projectId}/access-requests`, {
+    reason: 'need a seat',
+    role: 'VIEWER',
+  });
+  assert.equal(created.status, 201);
+  const requestId = created.json.accessRequest.id;
+
+  const reviewer = makeClient(base);
+  const login = await reviewer.api('POST', '/api/auth/login', {
+    email: 'ar-seat-mgr@seat-mgr.io',
+    password: 'managerpass123',
+  });
+  assert.equal(login.status, 200);
+
+  psql('UPDATE portal_settings SET restrictions_enforced = true;');
+  try {
+    const blocked = await reviewer.api(
+      'POST',
+      `/api/manage/access-requests/${requestId}/review`,
+      { approve: true }
+    );
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.json.code, 'plan_limit');
+    assert.equal(blocked.json.key, 'seats');
+
+    const mine = await outsider.client.api('GET', '/api/access-requests/mine');
+    assert.equal(mine.status, 200);
+    assert.equal(mine.json.accessRequests.find((r) => r.id === requestId).status, 'PENDING');
+  } finally {
+    psql('UPDATE portal_settings SET restrictions_enforced = false;');
+  }
+
+  const allowed = await reviewer.api(
+    'POST',
+    `/api/manage/access-requests/${requestId}/review`,
+    { approve: true }
+  );
+  assert.equal(allowed.status, 200);
+  assert.equal(allowed.json.status, 'APPROVED');
 });

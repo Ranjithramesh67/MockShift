@@ -541,6 +541,7 @@ Full-site MockShift module analysis. One commit per fix.
 |----|----------|-------|--------|--------|
 | REQUEST-1 | High | Params tab ignored on Send (query_params never appended to URL) | FIXED | |
 | IAM-2 | High | MANAGER can assign ADMIN | FIXED | |
+| IAM-3 | High | Seat-gate after APPROVED leaves request stuck | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -676,4 +677,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `PUT /orgs/:orgId/members/:userId/roles` is gated on `org.manage_members` only. MANAGER has that key and the assign path did not reject `system_key === 'ADMIN'`.
 - Fix: assigning ADMIN requires `org.manage_roles` (or global/org ADMIN). MANAGER still assigns other roles.
 - Test: `backend/tests/iam.integration.test.cjs` (11/11) on `apihub_test`.
+- Status: FIXED
+
+### IAM-3 — seat-gate after APPROVED
+- File: `backend/src/api/routes/manage.js`.
+- Cause: `POST /access-requests/:requestId/review` set status `APPROVED` then `checkSeatGate`. Seat fail returned 403 without inserting `project_members`, so retry was 409.
+- Fix: seat-gate before the status write; on fail leave PENDING.
+- Test: `backend/tests/accessRequests.integration.test.cjs` (6/6) on `apihub_test`.
 - Status: FIXED

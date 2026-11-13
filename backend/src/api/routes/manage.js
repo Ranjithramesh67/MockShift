@@ -200,13 +200,6 @@ router.post('/access-requests/:requestId/review', requireReviewer, async (req, r
     if (request.status !== 'PENDING') {
       return res.status(409).json({ error: 'Request already reviewed' });
     }
-    const status = approve ? 'APPROVED' : 'DENIED';
-    await query(
-      `UPDATE access_requests
-          SET status = $1, reviewed_by = $2, reviewed_at = now()
-        WHERE id = $3`,
-      [status, req.user.id, requestId]
-    );
     if (approve) {
       const orgId = await require('../entitlements').orgOfProject(request.project_id);
       const seatGate = await require('../entitlements').checkSeatGate({
@@ -215,6 +208,15 @@ router.post('/access-requests/:requestId/review', requireReviewer, async (req, r
         targetUserId: request.user_id,
       });
       if (seatGate) return res.status(403).json(seatGate);
+    }
+    const status = approve ? 'APPROVED' : 'DENIED';
+    await query(
+      `UPDATE access_requests
+          SET status = $1, reviewed_by = $2, reviewed_at = now()
+        WHERE id = $3`,
+      [status, req.user.id, requestId]
+    );
+    if (approve) {
       await query(
         `INSERT INTO project_members (project_id, user_id, role, granted_by)
          VALUES ($1, $2, $3, $4)

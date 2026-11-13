@@ -702,3 +702,9 @@ Tests: runnerQueryParams 3/3.
 `PUT /orgs/:orgId/members/:userId/roles` now requires `org.manage_roles`
 (or ADMIN) to include the ADMIN system role. MANAGER still has
 `org.manage_members` for other assignments. Tests: iam.integration 11/11.
+
+### Seat-gate before access-request APPROVED (IAM-3, 2026-11-13)
+
+`POST /manage/access-requests/:id/review` now runs `checkSeatGate` before
+writing APPROVED. Seat fail leaves the request PENDING so a later retry
+can succeed. Tests: accessRequests.integration 6/6.
