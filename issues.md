@@ -529,7 +529,7 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-15 | Medium | JSON request body has no parse-error lint | FIXED | 607aa8b |
 | ED-16 | High | Folder auth-token failures map to HTTP 500 | FIXED | ceebd2b |
 | ED-17 | Low | Formula side splitter grip still looks like a row-resize handle | FIXED | af003e6 |
-| ED-18 | Low | Formula tab still opens helpers below with a 36x3 row grip | FIXED | |
+| ED-18 | Low | Formula tab still opens helpers below with a 36x3 row grip | FIXED | 67e5d76 |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
