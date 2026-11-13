@@ -179,6 +179,9 @@ function createApp() {
     // Route-level 4xx errors carry a purposeful message; malformed-input errors
     // straight from Postgres are replaced with a generic one so schema details
     // never reach the client.
+    if (err.body && err.body.code === 'plan_limit') {
+      return res.status(status).json(err.body);
+    }
     const message = tooLarge
       ? 'Request body is too large to save (max 25 MB).'
       : err.status

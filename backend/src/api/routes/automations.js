@@ -337,6 +337,7 @@ router.post('/automations/:automationId/trigger', async (req, res, next) => {
       workflowId: automation.workflow_id,
       trigger: automation.trigger_type === 'WEBHOOK' ? 'WEBHOOK' : 'CRON',
       inputVars: automation.input_vars || {},
+      userId: req.user.id,
     });
     await logAudit({
       actorId: req.user.id,

@@ -720,3 +720,9 @@ revocation still works. Tests: portalCheckoutSession 1/1.
 `GET /environments/:id/variables` decrypts secrets only for EDITOR+.
 VIEWER/SUPPORT still see keys and `is_secret`, with `value: null`.
 Tests: environments.integration 4/4.
+
+### Meter automation and monitor workflow runs (AUTO-2 / MON-4, 2026-11-13)
+
+`runWorkflow` now calls `chargeRuns` before starting the engine, so cron,
+webhook, event, trigger-now, and monitor workflow targets share the
+monthly quota with manual workflow runs. Tests: automationRunMeter 1/1.

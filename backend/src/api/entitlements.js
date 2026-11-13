@@ -31,7 +31,8 @@
 //
 // Runs (R5): plan_usage holds calendar-month buckets per org. Runs are
 // charged through chargeRuns() at the route choke points that invoke a stored
-// request send, a collection runner invocation or a manual workflow run.
+// request send, a collection runner invocation, and through runWorkflow()
+// (manual, cron, webhook, event, monitor).
 // ---------------------------------------------------------------------------
 
 const { query, pool } = require('./db');

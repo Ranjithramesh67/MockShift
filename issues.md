@@ -544,6 +544,7 @@ Full-site MockShift module analysis. One commit per fix.
 | IAM-3 | High | Seat-gate after APPROVED leaves request stuck | FIXED | |
 | AUTH-4 | High | Portal checkout/resume mints session with sv=0 | FIXED | |
 | ENV-1 | High | GET environment variables decrypts secrets for any reader | FIXED | |
+| AUTO-2 | High | Automation / event / cron / monitor runs bypass run quota | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -700,4 +701,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `GET /environments/:id/variables` decrypted secrets for any workspace reader (`canReadWorkspace`). Write still required EDITOR.
 - Fix: decrypt only when `canMutateWorkspace` (EDITOR+); VIEWER/SUPPORT get `value: null` for secrets, keys still listed.
 - Test: `backend/tests/environments.integration.test.cjs` (4/4) on `apihub_test`.
+- Status: FIXED
+
+### AUTO-2 / MON-4 — unmetered automation and monitor runs
+- Files: `backend/src/api/workflowService.js`, `backend/src/api/routes/workflows.js`, `backend/src/api/routes/automations.js`, `backend/src/api/server.js`.
+- Cause: `chargeRuns` only ran on content/serverRuns and MANUAL `POST /workflows/:id/run`. Cron, webhook, event, automation trigger, and monitor workflow targets started the engine without metering.
+- Fix: `runWorkflow` charges the org pool before `engine.start`. Cron ticks go through the same path. Plan-limit errors return the 403 body from the API error handler. Manual workflow run no longer double-charges.
+- Test: `backend/tests/automationRunMeter.integration.test.cjs` (1/1) on `apihub_test`.
 - Status: FIXED

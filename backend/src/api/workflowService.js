@@ -19,6 +19,7 @@ const { NodeHttpExecutor } = require('../engine/httpExecutor');
 const { RequestDispatcher } = require('../engine/requestDispatcher');
 const { query } = require('./db');
 const { loadRequest } = require('./runner');
+const { chargeRuns, orgOfProject } = require('./entitlements');
 
 // ------------------------------------------------------------- Repositories
 const workflowRepository = {
@@ -322,13 +323,24 @@ function getScheduler() {
   schedulerConnection = new Redis(redisConfig());
   scheduler = new WorkflowScheduler({
     name: 'api',
-    engine: getEngine(),
+    engine: {
+      start: (opts) => runWorkflow(opts),
+    },
     connection: schedulerConnection,
   });
   return scheduler;
 }
 
 async function runWorkflow({ workflowId, trigger = 'MANUAL', inputVars = {}, userId = null }) {
+  const wf = await workflowRepository.findById(workflowId);
+  const orgId = wf ? await orgOfProject(wf.projectId) : null;
+  const runCharge = await chargeRuns({ userId, orgId });
+  if (!runCharge.ok) {
+    const err = new Error((runCharge.body && runCharge.body.error) || 'Plan limit reached');
+    err.status = 403;
+    err.body = runCharge.body;
+    throw err;
+  }
   return getEngine().start({ workflowId, inputVars, trigger, userId });
 }
 
