@@ -1777,9 +1777,11 @@ body.is-col-dragging .sidebar {
   background: var(--accent);
 }
 
-.split-pane-horizontal .split-pane-divider {
+.split-pane-horizontal .split-pane-divider,
+.split-pane-divider[data-orientation='horizontal'] {
   width: 7px;
   height: auto;
+  align-self: stretch;
   border-top: none;
   border-bottom: none;
   border-left: 1px solid var(--border-soft);
@@ -1787,7 +1789,8 @@ body.is-col-dragging .sidebar {
   cursor: col-resize;
 }
 
-.split-pane-horizontal .split-pane-divider::after {
+.split-pane-horizontal .split-pane-divider::after,
+.split-pane-divider[data-orientation='horizontal']::after {
   width: 3px;
   height: 36px;
 }

@@ -70,7 +70,12 @@ export function SplitPane({
       <div className="split-pane-first" style={{ [orientation === 'vertical' ? 'height' : 'width']: `${ratio * 100}%` }}>
         {top}
       </div>
-      <div className="split-pane-divider" onPointerDown={onPointerDown} role="separator" />
+      <div
+        className="split-pane-divider"
+        data-orientation={orientation}
+        onPointerDown={onPointerDown}
+        role="separator"
+      />
       <div className="split-pane-second">{bottom}</div>
     </div>
   );
