@@ -38,6 +38,32 @@ test('resolveAuthHeader throws when the token is missing', () => {
   assert.throws(() => resolveAuthHeader(provider, { code: 'error' }), /could not find token/);
 });
 
+test('auth token failures are client errors (HTTP 400), not 500s', () => {
+  const provider = {
+    authType: 'BEARER_TOKEN',
+    tokenPath: 'access_token',
+    headerKey: 'Authorization',
+    headerPrefix: 'Bearer',
+  };
+  try {
+    resolveAuthHeader(provider, { code: 'error' });
+    assert.fail('expected throw');
+  } catch (err) {
+    assert.equal(err.status, 400);
+  }
+  try {
+    resolveAuthHeader(provider, { access_token: null });
+    assert.fail('expected throw');
+  } catch (err) {
+    assert.equal(err.status, 400);
+  }
+
+  const runner = require('node:fs').readFileSync(require('node:path').join(__dirname, '../runner.js'), 'utf8');
+  assert.match(runner, /Auth token request not found[\s\S]{0,80}status:\s*400/);
+  assert.match(runner, /Auth token request failed[\s\S]{0,120}status:\s*400/);
+  assert.match(runner, /Auth token request did not return a JSON body[\s\S]{0,80}status:\s*400/);
+});
+
 test('resolveAuthHeader returns null for NONE', () => {
   assert.equal(resolveAuthHeader({ authType: 'NONE' }, { access_token: 'x' }), null);
 });

@@ -68,13 +68,18 @@ function resolveAuthHeader(provider, tokenBody) {
 
   const token = extractToken(tokenBody, provider.tokenPath || '');
   if (token === undefined) {
-    throw new Error(
-      `Auth provider could not find token at path "${provider.tokenPath || ''}" in the token response.`
+    throw Object.assign(
+      new Error(
+        `Auth provider could not find token at path "${provider.tokenPath || ''}" in the token response.`
+      ),
+      { status: 400 }
     );
   }
   const raw = tokenToHeaderValue(token, provider.headerPrefix);
   if (raw === null) {
-    throw new Error(`Auth provider token at "${provider.tokenPath}" is not a scalar value.`);
+    throw Object.assign(new Error(`Auth provider token at "${provider.tokenPath}" is not a scalar value.`), {
+      status: 400,
+    });
   }
   const prefix = (provider.headerPrefix || '').trim();
   return { headerKey, headerValue: prefix ? `${prefix} ${raw}` : raw };

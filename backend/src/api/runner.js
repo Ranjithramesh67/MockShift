@@ -174,7 +174,7 @@ async function buildMultipartBody(request, vars) {
 
 async function runTokenRequest(tokenRequestId, userId) {
   const tokenReq = await loadRequest(tokenRequestId);
-  if (!tokenReq) throw new Error('Auth token request not found');
+  if (!tokenReq) throw Object.assign(new Error('Auth token request not found'), { status: 400 });
   const vars = await resolveVariables({ requestId: tokenReq.id }, userId);
   const url = substitute(tokenReq.url, vars);
   const method = (tokenReq.method || 'POST').toUpperCase();
@@ -267,10 +267,13 @@ async function preparePipeline({ request, vars, userId }) {
   if (provider && provider.authType !== 'NONE' && provider.tokenRequestId) {
     const tokenRun = await runTokenRequest(provider.tokenRequestId, userId);
     if (tokenRun.status >= 400) {
-      throw new Error(`Auth token request failed with HTTP ${tokenRun.status}: ${tokenRun.body}`);
+      throw Object.assign(
+        new Error(`Auth token request failed with HTTP ${tokenRun.status}: ${tokenRun.body}`),
+        { status: 400 }
+      );
     }
     if (!tokenRun.parsed || typeof tokenRun.parsed !== 'object') {
-      throw new Error('Auth token request did not return a JSON body');
+      throw Object.assign(new Error('Auth token request did not return a JSON body'), { status: 400 });
     }
     resolvedAuth = resolveAuthHeader(provider, tokenRun.parsed);
   }
