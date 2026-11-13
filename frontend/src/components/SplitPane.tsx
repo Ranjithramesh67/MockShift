@@ -38,6 +38,7 @@ export function SplitPane({
       const clamp = (pct: number) => Math.min(maxRatio, Math.max(minRatio, pct));
       const axis = orientation === 'vertical' ? rect.height : rect.width;
       const start = orientation === 'vertical' ? rect.top : rect.left;
+      const dragClass = orientation === 'vertical' ? 'is-dragging' : 'is-col-dragging';
       const move = (ev: PointerEvent) => {
         setRatio(clamp((ev.clientY - start) / axis));
       };
@@ -48,9 +49,9 @@ export function SplitPane({
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointermove', moveX);
         window.removeEventListener('pointerup', up);
-        document.body.classList.remove('is-dragging');
+        document.body.classList.remove(dragClass);
       };
-      document.body.classList.add('is-dragging');
+      document.body.classList.add(dragClass);
       window.addEventListener('pointermove', orientation === 'vertical' ? move : moveX);
       window.addEventListener('pointerup', up);
       e.preventDefault();

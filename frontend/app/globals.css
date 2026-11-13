@@ -4662,7 +4662,8 @@ body.is-col-dragging .sidebar {
   min-width: 0;
 }
 
-.formula-editor .split-pane-vertical .split-pane-first {
+.formula-editor .split-pane-vertical .split-pane-first,
+.formula-editor .split-pane-horizontal .split-pane-first {
   overflow: hidden;
 }
 
