@@ -531,6 +531,16 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 | ED-17 | Low | Formula side splitter grip still looks like a row-resize handle | FIXED | af003e6 |
 | ED-18 | Low | Formula tab still opens helpers below with a 36x3 row grip | FIXED | 67e5d76 |
 
+---
+
+## Analysis pass — 2026-11-13
+
+Full-site MockShift module analysis. One commit per fix.
+
+| ID | Severity | Title | Status | Commit |
+|----|----------|-------|--------|--------|
+| REQUEST-1 | High | Params tab ignored on Send (query_params never appended to URL) | FIXED | |
+
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
 - Cause: `app.resolve_variables` already decrypts secrets (`try_decrypt`) and `substitute()` replaces `{{key}}` in URL, headers, query, multipart text, XML/raw text. JSON object bodies skip that path: `serializeBody` does `JSON.stringify(request.body_json)` with no walk of string values, so `"token": "{{apiKey}}"` is sent literally. GraphQL `variables` are also left unsubstituted. Auth token JSON bodies have the same gap (`runTokenRequest`).
@@ -651,4 +661,11 @@ User-reported MockShift editor issues. One commit per fix. Do not push this regi
 - Cause: `formulaLayout` defaulted to `'vertical'`, so the Formula tab opened helpers stacked below and drew the default 36×3 row handle. Attribute selectors for the side splitter also lost to the base divider CSS in production.
 - Fix: default helpers to the right (`'horizontal'`). Horizontal dividers also get `split-pane-divider-col` so the 3×36 `col-resize` grip cannot lose.
 - Test: `frontend/src/lib/__tests__/splitPane.test.cjs` (5/5).
+- Status: FIXED
+
+### REQUEST-1 — Params tab ignored on Send
+- File: `backend/src/api/runner.js`.
+- Cause: `preparePipeline` built `req.query` from `query_params` for the formula sandbox but fetched `prepared.url` from `req.url` only, so Params-tab rows never reached the wire. Disabled rows were also copied into `req.query`.
+- Fix: `queryObject()` keeps enabled keys; `applyQueryToUrl()` appends them after template substitution and skips keys already present on the URL.
+- Test: `backend/src/api/__tests__/runnerQueryParams.test.cjs` (3/3).
 - Status: FIXED

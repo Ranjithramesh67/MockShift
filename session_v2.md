@@ -689,3 +689,10 @@ row handle was what users saw. Default `formulaLayout` is now
 `'horizontal'`. Horizontal dividers also get `split-pane-divider-col`
 so the 3×36 `col-resize` grip cannot lose to the base divider CSS.
 Commit `67e5d76`. Tests: splitPane 5/5.
+
+### Params tab on Send (REQUEST-1, 2026-11-13)
+
+`preparePipeline` now appends enabled `query_params` / formula `req.query`
+onto the fetch URL after `{{var}}` substitution, without duplicating keys
+already in the URL. Disabled rows stay off the wire and out of `req.query`.
+Tests: runnerQueryParams 3/3.

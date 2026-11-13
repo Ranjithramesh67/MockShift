@@ -110,6 +110,26 @@ function headersObject(headersArray) {
   return out;
 }
 
+function queryObject(queryParams) {
+  const out = {};
+  for (const q of queryParams || []) {
+    if (q && q.enabled !== false && q.key) out[q.key] = q.value;
+  }
+  return out;
+}
+
+function applyQueryToUrl(url, query, vars) {
+  if (!query || typeof query !== 'object') return url;
+  const entries = Object.entries(query).filter(([key]) => key);
+  if (entries.length === 0) return url;
+  const u = new URL(url);
+  for (const [key, value] of entries) {
+    if (u.searchParams.has(key)) continue;
+    u.searchParams.append(key, substitute(value == null ? '' : String(value), vars));
+  }
+  return u.toString();
+}
+
 // True when a request carries structured multipart parts (the body_parts path).
 // Legacy MULTIPART requests that only have raw text (body_text) keep their old
 // text/plain serialisation so nothing pre-existing regresses.
@@ -282,7 +302,7 @@ async function preparePipeline({ request, vars, userId }) {
     method: (request.method || 'GET').toUpperCase(),
     url: request.url,
     headers: headersObject(request.headers),
-    query: Object.fromEntries((request.query_params || []).map((q) => [q.key, q.value])),
+    query: queryObject(request.query_params),
     body:
       (request.body_type === 'JSON' || request.body_type === 'GRAPHQL') && request.body_json
         ? JSON.parse(JSON.stringify(request.body_json))
@@ -295,7 +315,7 @@ async function preparePipeline({ request, vars, userId }) {
     if (outcome.vars !== undefined) vars = outcome.vars;
   }
 
-  const url = substitute(req.url, vars);
+  const url = applyQueryToUrl(substitute(req.url, vars), req.query, vars);
   if (!/^https?:\/\//i.test(url)) {
     throw Object.assign(new Error(`Unsupported URL scheme: ${url}`), { status: 400 });
   }
