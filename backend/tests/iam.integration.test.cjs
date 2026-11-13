@@ -5,6 +5,7 @@
 // loads db.js) so the app under test targets the scratch cluster rather than
 // the dev database on 5432.
 if (process.env.INTEGRATION_PGPORT) process.env.PGPORT = process.env.INTEGRATION_PGPORT;
+if (process.env.INTEGRATION_PGDATABASE) process.env.PGDATABASE = process.env.INTEGRATION_PGDATABASE;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -195,4 +196,29 @@ test('assigning roles to a non-member returns 404', async () => {
     { roleIds: [] }
   );
   assert.equal(res.status, 404);
+});
+
+test('a MANAGER cannot assign the ADMIN role (IAM-2)', async () => {
+  const roles = await owner.client.api('GET', `/api/orgs/${orgId}/roles`);
+  assert.equal(roles.status, 200);
+  const managerRoleId = roles.json.roles.find((r) => r.systemKey === 'MANAGER').id;
+
+  const demote = await owner.client.api(
+    'PUT',
+    `/api/orgs/${orgId}/members/${colleague.id}/roles`,
+    { roleIds: [managerRoleId] }
+  );
+  assert.equal(demote.status, 200);
+
+  const escalate = await colleague.client.api(
+    'PUT',
+    `/api/orgs/${orgId}/members/${colleague.id}/roles`,
+    { roleIds: [adminRoleId] }
+  );
+  assert.equal(escalate.status, 403);
+  assert.match(escalate.json.error, /ADMIN/i);
+
+  const me = await colleague.client.api('GET', `/api/orgs/${orgId}/me/permissions`);
+  assert.equal(me.status, 200);
+  assert.ok(!me.json.roles.some((r) => r.systemKey === 'ADMIN'));
 });

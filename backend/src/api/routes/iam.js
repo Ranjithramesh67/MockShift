@@ -414,6 +414,13 @@ router.put(
         return res.status(400).json({ error: 'One or more roles do not belong to this organization' });
       }
 
+      if (roleRows.some((r) => r.system_key === 'ADMIN')) {
+        const { isAdmin, permissions } = await getEffectivePermissions(req.user.id, orgId);
+        if (!isAdmin && !permissions.has('org.manage_roles')) {
+          return res.status(403).json({ error: 'Only an ADMIN can assign the ADMIN role' });
+        }
+      }
+
       const { rows: orgRows } = await query(`SELECT owner_id FROM organizations WHERE id = $1`, [
         orgId,
       ]);

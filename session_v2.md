@@ -696,3 +696,9 @@ Commit `67e5d76`. Tests: splitPane 5/5.
 onto the fetch URL after `{{var}}` substitution, without duplicating keys
 already in the URL. Disabled rows stay off the wire and out of `req.query`.
 Tests: runnerQueryParams 3/3.
+
+### MANAGER cannot assign ADMIN (IAM-2, 2026-11-13)
+
+`PUT /orgs/:orgId/members/:userId/roles` now requires `org.manage_roles`
+(or ADMIN) to include the ADMIN system role. MANAGER still has
+`org.manage_members` for other assignments. Tests: iam.integration 11/11.

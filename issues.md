@@ -540,6 +540,7 @@ Full-site MockShift module analysis. One commit per fix.
 | ID | Severity | Title | Status | Commit |
 |----|----------|-------|--------|--------|
 | REQUEST-1 | High | Params tab ignored on Send (query_params never appended to URL) | FIXED | |
+| IAM-2 | High | MANAGER can assign ADMIN | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -668,4 +669,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `preparePipeline` built `req.query` from `query_params` for the formula sandbox but fetched `prepared.url` from `req.url` only, so Params-tab rows never reached the wire. Disabled rows were also copied into `req.query`.
 - Fix: `queryObject()` keeps enabled keys; `applyQueryToUrl()` appends them after template substitution and skips keys already present on the URL.
 - Test: `backend/src/api/__tests__/runnerQueryParams.test.cjs` (3/3).
+- Status: FIXED
+
+### IAM-2 — MANAGER can assign ADMIN
+- File: `backend/src/api/routes/iam.js`.
+- Cause: `PUT /orgs/:orgId/members/:userId/roles` is gated on `org.manage_members` only. MANAGER has that key and the assign path did not reject `system_key === 'ADMIN'`.
+- Fix: assigning ADMIN requires `org.manage_roles` (or global/org ADMIN). MANAGER still assigns other roles.
+- Test: `backend/tests/iam.integration.test.cjs` (11/11) on `apihub_test`.
 - Status: FIXED
