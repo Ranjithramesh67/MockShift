@@ -550,6 +550,7 @@ Full-site MockShift module analysis. One commit per fix.
 | PORTAL-3 | High | Refund is local only (no Cashfree/PSP call) | FIXED | 7b8f043 |
 | AUTH-5 | High | Portal login ignores 402 (unpaid customers see a generic error) | FIXED | dd4189a |
 | SHARE-1 | Medium | Share revisions leak unredacted diffs and author ids | FIXED | |
+| CON-1 | Medium | Contract checks never run on Send | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -748,4 +749,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `GET /api/shares/:token/revisions` returned raw `changed_fields` (header/url/body diffs) and `createdBy.id` to any signed-in token holder. Item GET already used `redactRequestRecord` / `redactSnapshot`.
 - Fix: `redactRevisionMeta` scrubs field diffs with the same credential rules and drops author ids (name kept). Share serialize runs it; project-ACL revision list is unchanged.
 - Test: `backend/src/api/__tests__/redact.test.cjs` (22/22), `backend/tests/shares.integration.test.cjs` (2/2) on `apihub_test`.
+- Status: FIXED
+
+### CON-1 — contract checks never run on Send
+- Files: `backend/src/api/runner.js`.
+- Cause: `POST /contracts/validate-request` evaluated attached OpenAPI checks, but `finalizeRun` only ran `evaluateAssertions` on `request.assertions`. Send / collection / browser-complete never loaded `contract_checks`.
+- Fix: `loadContractChecks` + `collectRunAssertions` merge contract results into `testResults` on every `finalizeRun` (stored Send, collection run, in-memory/browser complete). A failed check fails `assertionsPassed`.
+- Test: `backend/src/api/__tests__/runnerContractChecks.test.cjs` (3/3), `backend/tests/contracts.integration.test.cjs` (9/9) on `apihub_test`.
 - Status: FIXED

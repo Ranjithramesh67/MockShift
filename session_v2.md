@@ -758,3 +758,9 @@ gate. Tests: loginRedirect 5/5.
 `GET /api/shares/:token/revisions` now runs `redactRevisionMeta` so header
 and URL secrets in field diffs are marked and author ids are omitted.
 Tests: redact 22/22, shares integration 2/2.
+
+### Contract checks run on Send (CON-1, 2026-11-14)
+
+`finalizeRun` loads attached `contract_checks` and evaluates them against
+the live response so Send / collection / browser-complete include them in
+`testResults`. Tests: runnerContractChecks 3/3, contracts integration 9/9.

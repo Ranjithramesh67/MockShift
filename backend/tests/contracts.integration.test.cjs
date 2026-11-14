@@ -7,6 +7,7 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -370,6 +371,50 @@ test('contract checks attach to a request and evaluate on demand', async () => {
   assert.equal(removed.status, 200);
   const after = await admin.api('GET', `/api/contracts/checks?requestId=${request.id}`);
   assert.equal(after.json.checks.length, 0);
+});
+
+test('Send evaluates attached contract checks against the live response (CON-1)', async () => {
+  const admin = globalThis.__admin;
+  const mock = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ items: [{ id: '1', name: 'Rex' }] }));
+  });
+  await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve));
+  const mockBase = `http://127.0.0.1:${mock.address().port}`;
+  try {
+    const col = await admin.api('POST', '/api/collections', {
+      projectId: globalThis.__projectId,
+      name: 'CON-1 send col',
+    });
+    assert.equal(col.status, 201, `create collection: ${JSON.stringify(col.json)}`);
+    const created = await admin.api('POST', '/api/requests', {
+      collectionId: col.json.collection.id,
+      name: 'CON-1 pets',
+      method: 'GET',
+      url: `${mockBase}/pets`,
+    });
+    assert.equal(created.status, 201, `create request: ${JSON.stringify(created.json)}`);
+    const requestId = created.json.request.id;
+
+    const attach = await admin.api('POST', '/api/contracts/checks', {
+      requestId,
+      specId: globalThis.__specId,
+      method: 'GET',
+      path: '/pets',
+      statusCode: '200',
+    });
+    assert.equal(attach.status, 201, `attach failed: ${JSON.stringify(attach.json)}`);
+
+    const run = await admin.api('POST', `/api/requests/${requestId}/run`);
+    assert.equal(run.status, 200, `send failed: ${JSON.stringify(run.json)}`);
+    assert.equal(run.json.httpStatus, 200);
+    const contractResult = (run.json.testResults || []).find((t) => t.id === attach.json.check.id);
+    assert.ok(contractResult, 'Send testResults must include the attached contract check');
+    assert.equal(contractResult.passed, true);
+    assert.equal(run.json.assertionsPassed, true);
+  } finally {
+    await new Promise((r) => mock.close(r));
+  }
 });
 
 test('diff endpoint flags breaking changes between two versions', async () => {

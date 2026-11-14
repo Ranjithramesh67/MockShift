@@ -4,6 +4,7 @@ const { query } = require('./db');
 const { resolveAuthHeader, applyAuthHeader, normalizeProvider } = require('./authToken');
 const { FormulaRunner } = require('../sandbox/formulaRunner');
 const { evaluateAssertions } = require('../engine/assertions');
+const { evaluateContractAssertion } = require('./openapi');
 const { serializeBody, methodsWithoutBody, defaultContentType } = require('./bodyCodec');
 
 const TEMPLATE_RE = /\{\{\s*([A-Za-z0-9_\-\.]+)\s*\}\}/g;
@@ -90,6 +91,35 @@ async function loadRequest(requestId) {
     [requestId]
   );
   return rows[0] || null;
+}
+
+async function loadContractChecks(requestId) {
+  if (!requestId) return [];
+  const { rows } = await query(
+    `SELECT cc.id, cc.method, cc.path, cc.status_code, cs.spec
+       FROM contract_checks cc
+       JOIN contract_specs cs ON cs.id = cc.spec_id
+      WHERE cc.request_id = $1
+      ORDER BY cc.created_at`,
+    [requestId]
+  );
+  return rows;
+}
+
+function collectRunAssertions(request, responseSnapshot, contractChecks) {
+  const testResults = evaluateAssertions(request.assertions || [], responseSnapshot || {});
+  for (const row of contractChecks || []) {
+    testResults.push(
+      evaluateContractAssertion(row.spec, {
+        id: row.id,
+        method: row.method,
+        path: row.path,
+        statusCode: row.status_code ?? row.statusCode,
+      }, responseSnapshot || {})
+    );
+  }
+  const assertionsPassed = testResults.length > 0 && testResults.every((t) => t.passed);
+  return { testResults, assertionsPassed };
 }
 
 async function loadAuthProvider(collectionId) {
@@ -461,8 +491,12 @@ async function finalizeRun({ request, prepared, fetchResult, userId, persistHist
   const { httpStatus, responseSnapshot, error, startedAt, finishedAt } = fetchResult;
   const status = error ? 'FAILED' : httpStatus >= 400 ? 'FAILED' : 'SUCCESS';
 
-  const testResults = evaluateAssertions(request.assertions || [], responseSnapshot || {});
-  const assertionsPassed = testResults.length > 0 && testResults.every((t) => t.passed);
+  const contractChecks = await loadContractChecks(request.id);
+  const { testResults, assertionsPassed } = collectRunAssertions(
+    request,
+    responseSnapshot,
+    contractChecks
+  );
   const requestSnapshot = requestSnapshotOf(prepared);
 
   let runId = null;
@@ -656,6 +690,8 @@ module.exports = {
   executePipeline,
   preparePipeline,
   finalizeRun,
+  collectRunAssertions,
+  loadContractChecks,
   isMultipartPartsRequest,
   buildMultipartBody,
   MAX_FILE_PART_BYTES,
