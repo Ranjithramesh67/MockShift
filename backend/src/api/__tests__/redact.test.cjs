@@ -10,6 +10,7 @@ const {
   redactJsonValue,
   redactBody,
   redactUrl,
+  redactRevisionMeta,
   DEFAULT_MARKER,
 } = require('../redact');
 
@@ -240,4 +241,48 @@ test('redactSnapshot skips base64 response bodies', () => {
   const out = redactSnapshot(snap, {});
   assert.equal(out.headers['set-cookie'], M);
   assert.equal(out.body, 'iVBORw0KGgoAAAANSUhEUgAAAA==');
+});
+
+test('redactRevisionMeta redacts header secrets and strips author ids (SHARE-1)', () => {
+  const meta = {
+    id: 'rev-1',
+    requestId: 'req-1',
+    revisionNumber: 2,
+    changeKind: 'update',
+    changedFields: [
+      {
+        field: 'headers',
+        from: [],
+        to: [
+          { key: 'X-Demo', value: 'hello', enabled: true },
+          { key: 'Authorization', value: 'Bearer super-secret-token', enabled: true },
+        ],
+      },
+      {
+        field: 'url',
+        from: 'https://api.example.com/v1?access_token=abc123&page=2',
+        to: 'https://api.example.com/v1?access_token=abc123&page=3',
+      },
+      { field: 'name', from: 'Shareable', to: 'Shareable 2' },
+    ],
+    rolledBackFrom: null,
+    createdBy: { id: 'user-uuid-should-not-leak', name: 'Share Admin' },
+    createdAt: '2026-11-13T00:00:00.000Z',
+  };
+  const out = redactRevisionMeta(meta);
+  assert.equal(out.createdBy.name, 'Share Admin');
+  assert.equal(out.createdBy.id, undefined);
+  const dumped = JSON.stringify(out);
+  assert.ok(!dumped.includes('super-secret-token'));
+  assert.ok(!dumped.includes('abc123'));
+  assert.ok(!dumped.includes('user-uuid-should-not-leak'));
+  const headers = out.changedFields.find((f) => f.field === 'headers');
+  const auth = headers.to.find((h) => h.key === 'Authorization');
+  assert.equal(auth.value, M);
+  const demo = headers.to.find((h) => h.key === 'X-Demo');
+  assert.equal(demo.value, 'hello');
+  const url = out.changedFields.find((f) => f.field === 'url');
+  assert.ok(url.to.includes(encodeURIComponent(M)));
+  assert.equal(out.changedFields.find((f) => f.field === 'name').to, 'Shareable 2');
+  assert.deepEqual(meta.createdBy, { id: 'user-uuid-should-not-leak', name: 'Share Admin' });
 });

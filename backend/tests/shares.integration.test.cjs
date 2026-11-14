@@ -185,6 +185,15 @@ test('create, read (login-gated, redacted), and revoke a share link', async () =
   assert.equal(history.status, 200);
   assert.ok(Array.isArray(history.json.revisions));
   assert.ok(history.json.revisions.length >= 1, 'create + update revisions recorded');
+  const dumped = JSON.stringify(history.json.revisions);
+  assert.ok(!dumped.includes('super-secret-token'), 'share revision diffs must not leak header secrets');
+  for (const rev of history.json.revisions) {
+    if (rev.createdBy) assert.equal(rev.createdBy.id, undefined);
+    const headersChange = (rev.changedFields || []).find((f) => f.field === 'headers');
+    if (!headersChange) continue;
+    const auth = (headersChange.to || []).find((h) => h.key === 'Authorization');
+    if (auth) assert.equal(auth.value, '\u00abredacted\u00bb');
+  }
 
   // Bad token -> 404 (for a signed-in user).
   const missing = await reader.api('GET', '/api/shares/00000000-0000-0000-0000-000000000000');

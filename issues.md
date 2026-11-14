@@ -549,6 +549,7 @@ Full-site MockShift module analysis. One commit per fix.
 | PORTAL-2 | High | Checkout PENDING insert has no existing-PENDING guard | FIXED | 6e64eef |
 | PORTAL-3 | High | Refund is local only (no Cashfree/PSP call) | FIXED | 7b8f043 |
 | AUTH-5 | High | Portal login ignores 402 (unpaid customers see a generic error) | FIXED | dd4189a |
+| SHARE-1 | Medium | Share revisions leak unredacted diffs and author ids | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -740,4 +741,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: portal `signIn` only `setError` on failure. Main-app login redirects 402 `payment_required` to `/pay`. Unpaid customers on the portal saw a generic error instead of checkout.
 - Fix: `payPathFromLoginError` maps 402 + `portal_path`/`order_id` to `/pay?...` (else `/#pricing`). `ApiError` keeps the response body. LoginView `router.push`s that path.
 - Test: `portal/frontend/src/lib/__tests__/loginRedirect.test.cjs` (5/5).
+- Status: FIXED
+
+### SHARE-1 — share revisions leak unredacted diffs and author ids
+- Files: `backend/src/api/redact.js`, `backend/src/api/routes/shares.js`, `frontend/src/lib/api.ts`.
+- Cause: `GET /api/shares/:token/revisions` returned raw `changed_fields` (header/url/body diffs) and `createdBy.id` to any signed-in token holder. Item GET already used `redactRequestRecord` / `redactSnapshot`.
+- Fix: `redactRevisionMeta` scrubs field diffs with the same credential rules and drops author ids (name kept). Share serialize runs it; project-ACL revision list is unchanged.
+- Test: `backend/src/api/__tests__/redact.test.cjs` (22/22), `backend/tests/shares.integration.test.cjs` (2/2) on `apihub_test`.
 - Status: FIXED

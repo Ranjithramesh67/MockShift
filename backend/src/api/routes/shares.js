@@ -21,7 +21,7 @@ const { query } = require('../db');
 const { requireAuth, getProjectAccess, getWorkspaceRole, roleAtLeast } = require('../access');
 const { logAudit } = require('../audit');
 const { checkPublicSharingGate, orgOfProject } = require('../entitlements');
-const { redactSnapshot, redactRequestRecord } = require('../redact');
+const { redactSnapshot, redactRequestRecord, redactRevisionMeta } = require('../redact');
 
 const router = Router();
 
@@ -34,7 +34,7 @@ const REVISION_META_SQL = `
     JOIN users u ON u.id = r.created_by`;
 
 function serializeRevisionMeta(row) {
-  return {
+  return redactRevisionMeta({
     id: row.id,
     requestId: row.request_id,
     revisionNumber: row.revision_number,
@@ -43,7 +43,7 @@ function serializeRevisionMeta(row) {
     rolledBackFrom: row.rolled_back_from ?? null,
     createdBy: { id: row.created_by, name: row.created_by_name ?? null },
     createdAt: row.created_at,
-  };
+  });
 }
 
 // Resolve an item's name + owning project/workspace for access checks.

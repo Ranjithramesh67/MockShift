@@ -752,3 +752,9 @@ Tests: portalCashfreeRefund 2/2.
 Portal `LoginView` now routes 402 `payment_required` to `/pay?orderId=...`
 (or `/#pricing` when no order is attached), matching the main-app login
 gate. Tests: loginRedirect 5/5.
+
+### Share revisions redacted (SHARE-1, 2026-11-14)
+
+`GET /api/shares/:token/revisions` now runs `redactRevisionMeta` so header
+and URL secrets in field diffs are marked and author ids are omitted.
+Tests: redact 22/22, shares integration 2/2.

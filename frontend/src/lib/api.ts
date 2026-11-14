@@ -1402,7 +1402,7 @@ export interface SharedRevision {
   changeKind: 'create' | 'update' | 'rollback';
   changedFields: Array<{ field: string; from: unknown; to: unknown }>;
   rolledBackFrom: string | null;
-  createdBy: { id: string; name: string | null };
+  createdBy: { name: string | null };
   createdAt: string;
 }
 

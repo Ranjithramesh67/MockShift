@@ -347,6 +347,74 @@ function redactSnapshot(snapshot, options = {}) {
   return out;
 }
 
+function redactBodyParts(parts, secretValues, patterns, marker) {
+  if (!Array.isArray(parts)) return parts;
+  return parts.map((p) => {
+    if (!p || typeof p !== 'object') return p;
+    const next = { ...p };
+    if (next.kind !== 'file' && typeof next.value === 'string' && next.value !== '') {
+      next.value = redactBody(next.value, secretValues, patterns, marker);
+    }
+    return next;
+  });
+}
+
+function redactDiffValue(field, value, secretValues, patterns, marker) {
+  if (value == null) return value;
+  switch (field) {
+    case 'url':
+      return typeof value === 'string' ? redactUrl(value, secretValues, patterns, marker) : value;
+    case 'headers':
+    case 'queryParams':
+    case 'query_params':
+      return redactKvArray(value, secretValues, patterns, marker);
+    case 'bodyJson':
+    case 'body_json':
+      return redactJsonValue(value, secretValues, patterns, marker);
+    case 'bodyText':
+    case 'body_text':
+    case 'formula':
+      return typeof value === 'string' ? redactBody(value, secretValues, patterns, marker) : value;
+    case 'bodyParts':
+    case 'body_parts':
+      return redactBodyParts(value, secretValues, patterns, marker);
+    default:
+      if (typeof value === 'object') return redactJsonValue(value, secretValues, patterns, marker);
+      return value;
+  }
+}
+
+/**
+ * Redact share-facing revision metadata (who/when/kind + field diffs).
+ * Snapshots are never included on the share revisions endpoint; diffs still
+ * carry prior header/body/url values and must be scrubbed. Author ids are
+ * dropped so a share token cannot enumerate workspace members.
+ */
+function redactRevisionMeta(meta, options = {}) {
+  if (!meta || typeof meta !== 'object') return meta;
+  const secretValues = (Array.isArray(options.secretValues) ? options.secretValues : []).filter(
+    (s) => typeof s === 'string'
+  );
+  const patterns = toPatterns(options.extraKeyPatterns);
+  const marker = typeof options.marker === 'string' && options.marker !== '' ? options.marker : DEFAULT_MARKER;
+
+  const createdBy = meta.createdBy && typeof meta.createdBy === 'object'
+    ? { name: meta.createdBy.name ?? null }
+    : meta.createdBy;
+  const changedFields = Array.isArray(meta.changedFields)
+    ? meta.changedFields.map((change) => {
+        if (!change || typeof change !== 'object') return change;
+        const field = change.field;
+        return {
+          ...change,
+          from: redactDiffValue(field, change.from, secretValues, patterns, marker),
+          to: redactDiffValue(field, change.to, secretValues, patterns, marker),
+        };
+      })
+    : meta.changedFields;
+  return { ...meta, createdBy, changedFields };
+}
+
 module.exports = {
   redactSnapshot,
   redactRequestRecord,
@@ -355,5 +423,6 @@ module.exports = {
   redactJsonValue,
   redactBody,
   redactUrl,
+  redactRevisionMeta,
   DEFAULT_MARKER,
 };
