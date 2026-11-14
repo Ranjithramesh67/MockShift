@@ -2,10 +2,10 @@ import { test, expect } from '@playwright/test';
 import { signupFreshUser } from './helpers';
 
 /**
- * M14: scratchpad — full-width editor pane + save location picker.
- * - TopBar "Test cURL" opens the full-width ScratchpadWorkspace pane (not a
- *   modal): method select, URL input, Params/Headers/Body/Formula/Tests tabs,
- *   Send / Save / Close controls, response split below.
+ * M14: scratchpad — split editor pane + save location picker.
+ * - TopBar "Test cURL" opens ScratchpadWorkspace beside the request editor
+ *   (not a modal, not a full-workspace replace): method select, URL input,
+ *   Params/Headers/Body/Formula/Tests tabs, Send / Save / Close, response below.
  * - pasting a cURL command into the URL input auto-parses method + URL
  * - Send stays ephemeral (POST /api/runs, persistHistory false) — no request
  *   is created

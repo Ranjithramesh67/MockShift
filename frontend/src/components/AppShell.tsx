@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -79,9 +79,6 @@ function WorkspaceArea({
 }) {
   const { state } = useApp();
   const ws = useWorkspace();
-  if (scratchpadOpen) {
-    return <ScratchpadWorkspace onClose={onCloseScratchpad} />;
-  }
   // The project overview replaces the request editor whenever it is open (or
   // still loading) and no request tab is being edited. Requests opened from the
   // tree / tab strip take priority and close the overview.
@@ -89,7 +86,7 @@ function WorkspaceArea({
     (ws.overview !== null || ws.overviewLoading || ws.overviewError !== null) &&
     ws.activeRequestId === null &&
     ws.openRequestIds.length === 0;
-  return (
+  const editor = (
     <>
       {state.activeTab === 'request' ? (
         projectOverviewActive ? (
@@ -123,6 +120,17 @@ function WorkspaceArea({
       )}
     </>
   );
+  if (scratchpadOpen) {
+    return (
+      <SplitPane
+        orientation="horizontal"
+        initialRatio={0.5}
+        top={editor}
+        bottom={<ScratchpadWorkspace onClose={onCloseScratchpad} />}
+      />
+    );
+  }
+  return editor;
 }
 
 export function AppShell() {
@@ -136,7 +144,6 @@ export function AppShell() {
   const [scratchpadOpen, setScratchpadOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const prevRequestId = useRef<string | null>(null);
   const mockProjectId = ws.overview?.project?.id ?? ws.tree?.projects?.[0]?.id ?? '';
 
   useCloseRequestTabShortcut();
@@ -146,12 +153,6 @@ export function AppShell() {
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
   }, [loading, user, router]);
-
-  useEffect(() => {
-    if (ws.activeRequestId && ws.activeRequestId !== prevRequestId.current)
-      setScratchpadOpen(false);
-    prevRequestId.current = ws.activeRequestId;
-  }, [ws.activeRequestId]);
 
   // Close the mobile drawer when the user presses Escape.
   useEffect(() => {

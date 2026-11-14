@@ -47,10 +47,10 @@ interface ScratchDraft {
 }
 
 /**
- * M14: full-width scratchpad — a request-editor pane that runs an in-memory
- * request without creating or saving anything. The draft lives entirely in
- * local state (never the store working copy); Send executes it via the
- * ephemeral `POST /api/runs` endpoint and Save opens the save modal.
+ * M14: scratchpad pane — a request-editor that runs an in-memory request
+ * without creating or saving anything. Opens beside the collection editor.
+ * The draft lives entirely in local state (never the store working copy);
+ * Send executes it via ephemeral `POST /api/runs` and Save opens the modal.
  */
 export function ScratchpadWorkspace({ onClose }: { onClose: () => void }) {
   const { dispatch } = useApp();

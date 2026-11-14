@@ -769,3 +769,8 @@ the live response so Send / collection / browser-complete include them in
 
 The Express adapter now re-syncs when routes are registered after
 `app.listen` (coalesced). Tests: sdk express 12/12.
+
+### Scratchpad beside the editor (SCRATCH-1, 2026-11-14)
+
+Opening Test cURL splits the main area horizontally so the collection
+editor stays visible next to the scratchpad. Tests: scratchpadLayout 1/1.

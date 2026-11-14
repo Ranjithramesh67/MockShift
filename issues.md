@@ -552,6 +552,7 @@ Full-site MockShift module analysis. One commit per fix.
 | SHARE-1 | Medium | Share revisions leak unredacted diffs and author ids | FIXED | |
 | CON-1 | Medium | Contract checks never run on Send | FIXED | |
 | SDK-1 | Medium | Express autoSync is listen-once | FIXED | |
+| SCRATCH-1 | Medium | Scratchpad replaces the whole workspace | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -764,4 +765,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `app.listen` called `hub.syncSoon()` once. Routes registered after listen were recorded on the hub but never synced.
 - Fix: mark listening after `listen`, then coalesce `syncSoon` on later `registerRoute` so post-listen routes re-sync.
 - Test: `sdk/test/express.test.js` (12/12).
+- Status: FIXED
+
+### SCRATCH-1 — scratchpad replaces the whole workspace
+- Files: `frontend/src/components/AppShell.tsx`.
+- Cause: `WorkspaceArea` returned only `ScratchpadWorkspace` when open, hiding the collection tree editor. Opening a request also closed the scratchpad.
+- Fix: open the scratchpad in a horizontal `SplitPane` beside the existing editor. Sidebar stays. Opening a request no longer closes the pane.
+- Test: `frontend/src/lib/__tests__/scratchpadLayout.test.cjs` (1/1).
 - Status: FIXED
