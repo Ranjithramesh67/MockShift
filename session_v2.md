@@ -774,3 +774,10 @@ The Express adapter now re-syncs when routes are registered after
 
 Opening Test cURL splits the main area horizontally so the collection
 editor stays visible next to the scratchpad. Tests: scratchpadLayout 1/1.
+
+### Persist WorkflowBuilder graphs (WF-1, 2026-11-14)
+
+Save/delete now go through `workflowApi` so builder graphs live on the
+server instead of `localStorage`. Sidebar reloads the project list and
+keeps untitled local drafts. Tests: workflowPersist 13/13.
+

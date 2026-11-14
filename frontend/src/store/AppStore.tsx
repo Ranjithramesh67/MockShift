@@ -23,6 +23,7 @@ type Action =
   | { type: 'DELETE_REQUEST'; id: string }
   | { type: 'SELECT_WORKFLOW'; id: string }
   | { type: 'SAVE_WORKFLOW'; workflow: Workflow }
+  | { type: 'SET_WORKFLOWS'; workflows: Workflow[]; activeWorkflowId?: string }
   | { type: 'RENAME_WORKFLOW'; id: string; name: string }
   | { type: 'DELETE_WORKFLOW'; id: string }
   | { type: 'SET_RESPONSE'; response: MockResponse | null }
@@ -35,7 +36,8 @@ function loadInitialState(): AppState {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultState() as AppState;
     const parsed = JSON.parse(raw);
-    return { ...defaultState(), ...parsed } as AppState;
+    const { workflows: _ignoredWorkflows, activeWorkflowId: _ignoredActive, ...rest } = parsed;
+    return { ...defaultState(), ...rest } as AppState;
   } catch {
     return defaultState() as AppState;
   }
@@ -81,6 +83,16 @@ function reducer(state: AppState, action: Action): AppState {
         : [...state.workflows, action.workflow];
       return { ...state, workflows, activeWorkflowId: action.workflow.id };
     }
+    case 'SET_WORKFLOWS': {
+      const workflows = action.workflows;
+      const activeWorkflowId =
+        action.activeWorkflowId !== undefined
+          ? action.activeWorkflowId
+          : workflows.some((w) => w.id === state.activeWorkflowId)
+            ? state.activeWorkflowId
+            : workflows[0]?.id ?? '';
+      return { ...state, workflows, activeWorkflowId };
+    }
     case 'RENAME_WORKFLOW':
       return {
         ...state,
@@ -122,7 +134,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const { workflows: _w, activeWorkflowId: _aw, ...rest } = state;
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
     } catch {
       // storage may be unavailable (private mode); persist best-effort.
     }

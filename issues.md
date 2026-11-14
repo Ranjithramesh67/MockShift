@@ -553,6 +553,7 @@ Full-site MockShift module analysis. One commit per fix.
 | CON-1 | Medium | Contract checks never run on Send | FIXED | |
 | SDK-1 | Medium | Express autoSync is listen-once | FIXED | |
 | SCRATCH-1 | Medium | Scratchpad replaces the whole workspace | FIXED | |
+| WF-1 | Medium | WorkflowBuilder is local-only | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -772,4 +773,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `WorkspaceArea` returned only `ScratchpadWorkspace` when open, hiding the collection tree editor. Opening a request also closed the scratchpad.
 - Fix: open the scratchpad in a horizontal `SplitPane` beside the existing editor. Sidebar stays. Opening a request no longer closes the pane.
 - Test: `frontend/src/lib/__tests__/scratchpadLayout.test.cjs` (1/1).
+- Status: FIXED
+
+### WF-1 — WorkflowBuilder is local-only
+- Files: `frontend/src/lib/workflowPersist.js`, `frontend/src/components/WorkflowBuilder.tsx`, `frontend/src/components/Sidebar.tsx`, `frontend/src/store/AppStore.tsx`.
+- Cause: Save/delete dispatched `SAVE_WORKFLOW` / `DELETE_WORKFLOW` into `AppStore` → `localStorage` `mockshift.state.v1`. `workflowApi` was used by Automations / Monitors, not the builder.
+- Fix: `persistWorkflow` POSTs local drafts and PUTs server UUIDs; Sidebar loads `GET /api/workflows` per project; graphs are no longer written to localStorage.
+- Test: `frontend/src/lib/__tests__/workflowPersist.test.cjs` (13/13).
 - Status: FIXED

@@ -12,7 +12,8 @@ import { normalizeRailOrder } from '@/lib/menuKeys';
 import { useAuth } from '@/lib/auth';
 import { useTreeRenameShortcut } from './useTreeRenameShortcut';
 import { isUntitledWorkflow, UNTITLED_WORKFLOW_NAME } from '@/lib/workflowValidation';
-import { type ContentTree } from '@/lib/api';
+import { deletePersistedWorkflow, storedToWorkflow, mergeLoadedWorkflows } from '@/lib/workflowPersist';
+import { type ContentTree, workflowApi } from '@/lib/api';
 import { docsSharedApi } from '@/lib/docsApi';
 import { CreateModal, type CreateKind } from './CreateModal';
 import { SharingModal } from './SharingModal';
@@ -1131,6 +1132,29 @@ function TeamsPanel({ onManage, onOpenTeam }: { onManage: () => void; onOpenTeam
 
 function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
   const { state, dispatch } = useApp();
+  const ws = useWorkspace();
+
+  useEffect(() => {
+    const projectId = ws.activeProjectId;
+    if (!projectId) return;
+    let cancelled = false;
+    workflowApi
+      .list(projectId)
+      .then((res) => {
+        if (cancelled) return;
+        const server = (res.workflows || []).map(storedToWorkflow);
+        dispatch({
+          type: 'SET_WORKFLOWS',
+          workflows: mergeLoadedWorkflows(server, state.workflows),
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // Reload when the project changes; local drafts are merged in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ws.activeProjectId]);
 
   const startNewWorkflow = () => {
     const existing = state.workflows.find((w) => isUntitledWorkflow(w.name));
@@ -1153,10 +1177,19 @@ function WorkflowsPanel({ onBackToApis }: { onBackToApis: () => void }) {
     dispatch({ type: 'SET_TAB', tab: 'workflow' });
   };
 
-  const deleteWorkflow = (id: string, name: string) => {
+  const deleteWorkflow = async (id: string, name: string) => {
     if (!window.confirm(`Delete workflow "${name}"?`)) return;
-    dispatch({ type: 'DELETE_WORKFLOW', id });
-    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow deleted.' });
+    try {
+      await deletePersistedWorkflow({ workflowId: id, api: workflowApi });
+      dispatch({ type: 'DELETE_WORKFLOW', id });
+      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow deleted.' });
+    } catch (err) {
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Workflow not deleted.',
+      });
+    }
   };
 
   return (

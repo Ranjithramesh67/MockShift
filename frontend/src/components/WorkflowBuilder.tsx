@@ -3,6 +3,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { LoopConfig, StepPassInput, Workflow, WorkflowStep } from '@/lib/types';
 import { useApp } from '@/store/AppStore';
+import { useWorkspace } from '@/store/WorkspaceStore';
+import { workflowApi } from '@/lib/api';
+import { persistWorkflow, deletePersistedWorkflow, isPersistedWorkflowId } from '@/lib/workflowPersist';
 import { validateWorkflow, sanitizeLabel, workflowNameTaken } from '@/lib/workflowValidation';
 import { makeId } from '@/lib/defaultState';
 import { CodeEditor } from './CodeEditor';
@@ -217,10 +220,12 @@ function PassInputSection({
 
 export function WorkflowBuilder() {
   const { state, dispatch } = useApp();
+  const ws = useWorkspace();
   const workflow = state.workflows.find((w) => w.id === state.activeWorkflowId);
   const [draft, setDraft] = useState<Workflow | null>(null);
   const [errors, setErrors] = useState<Array<{ stepId: string | null; message: string }>>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!workflow) {
@@ -236,7 +241,15 @@ export function WorkflowBuilder() {
   }, [workflow?.id]);
 
   const steps = useMemo(() => draft?.steps ?? [], [draft]);
-  const requestOptions = state.requests;
+  const requestOptions = useMemo(() => {
+    const treeReqs = (ws.projectTree?.requests ?? ws.tree?.requests ?? []).map((r) => ({
+      id: r.id,
+      name: r.name,
+      method: r.method,
+      url: r.url,
+    }));
+    return treeReqs.length > 0 ? treeReqs : state.requests;
+  }, [ws.projectTree, ws.tree, state.requests]);
 
   if (!workflow || !draft) {
     return (
@@ -278,7 +291,7 @@ export function WorkflowBuilder() {
     updateStep(index, { loop });
   };
 
-  const onSave = () => {
+  const onSave = async () => {
     if (workflowNameTaken(state.workflows, draft.name, draft.id)) {
       dispatch({
         type: 'SHOW_TOAST',
@@ -297,15 +310,52 @@ export function WorkflowBuilder() {
       });
       return;
     }
-    dispatch({ type: 'SAVE_WORKFLOW', workflow: draft });
-    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow saved.' });
+    const projectId = ws.activeProjectId;
+    if (!projectId) {
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'error',
+        message: 'Select a project before saving a workflow.',
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      const saved = await persistWorkflow({ workflow: draft, projectId, api: workflowApi });
+      if (draft.id !== saved.id) {
+        dispatch({ type: 'DELETE_WORKFLOW', id: draft.id });
+      }
+      dispatch({ type: 'SAVE_WORKFLOW', workflow: saved });
+      setDraft(JSON.parse(JSON.stringify(saved)));
+      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow saved.' });
+    } catch (err) {
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Workflow not saved.',
+      });
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const onDelete = () => {
+  const onDelete = async () => {
     if (!workflow) return;
     if (!window.confirm(`Delete workflow "${workflow.name}"?`)) return;
-    dispatch({ type: 'DELETE_WORKFLOW', id: workflow.id });
-    dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow deleted.' });
+    setBusy(true);
+    try {
+      await deletePersistedWorkflow({ workflowId: workflow.id, api: workflowApi });
+      dispatch({ type: 'DELETE_WORKFLOW', id: workflow.id });
+      dispatch({ type: 'SHOW_TOAST', kind: 'success', message: 'Workflow deleted.' });
+    } catch (err) {
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Workflow not deleted.',
+      });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -331,12 +381,25 @@ export function WorkflowBuilder() {
               return;
             }
             dispatch({ type: 'RENAME_WORKFLOW', id: workflow.id, name });
+            if (isPersistedWorkflowId(workflow.id) && ws.activeProjectId) {
+              persistWorkflow({
+                workflow: { ...draft, name },
+                projectId: ws.activeProjectId,
+                api: workflowApi,
+              }).catch((err) => {
+                dispatch({
+                  type: 'SHOW_TOAST',
+                  kind: 'error',
+                  message: err instanceof Error ? err.message : 'Workflow rename failed.',
+                });
+              });
+            }
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           }}
         />
-        <button type="button" className="primary-button" data-testid="workflow-save-button" onClick={onSave} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <button type="button" className="primary-button" data-testid="workflow-save-button" onClick={onSave} disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <SaveIcon size={14} />
           Save workflow
         </button>
@@ -349,6 +412,7 @@ export function WorkflowBuilder() {
           className="ghost-button danger"
           data-testid="workflow-delete-button"
           onClick={onDelete}
+          disabled={busy}
           style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >
           <TrashIcon size={14} />
