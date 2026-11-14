@@ -154,6 +154,16 @@ function createExpressAdapter(hub, app, options = {}) {
 
   // router -> { prefixes: Set<string>, mounts: Map<router, Set<mountPath>> }
   const nodes = new WeakMap();
+  let listening = false;
+  let pendingResync = null;
+
+  function scheduleResync() {
+    if (!listening || !hub.config.autoSync || pendingResync) return;
+    pendingResync = setImmediate(() => {
+      pendingResync = null;
+      hub.syncSoon();
+    });
+  }
 
   function registerRoute(method, path) {
     if (typeof path !== 'string' || !path.startsWith('/')) return;
@@ -163,6 +173,7 @@ function createExpressAdapter(hub, app, options = {}) {
       path,
       name: typeof hub.config.name === 'function' ? hub.config.name({ method, path }) : undefined,
     });
+    scheduleResync();
   }
 
   function patchRouter(router, node) {
@@ -253,6 +264,7 @@ function createExpressAdapter(hub, app, options = {}) {
   app.listen = function patchedListen(...args) {
     const server = originalListen(...args);
     if (hub.config.capture && hub.config.capture.enabled) attachHttp(hub, server, { autoSync: false });
+    listening = true;
     if (hub.config.autoSync) hub.syncSoon();
     return server;
   };

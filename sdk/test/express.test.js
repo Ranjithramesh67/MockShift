@@ -45,6 +45,32 @@ test('autoSync triggers a sync when the server starts listening', async () => {
   assert.equal(synced, 1);
 });
 
+test('autoSync re-syncs routes registered after listen (SDK-1)', async () => {
+  const app = express();
+  const hub = createHub({ apiKey: 'k', autoSync: true });
+  hub.express(app);
+  let synced = 0;
+  let lastKeys = [];
+  hub.client = {
+    sync: async (manifest) => {
+      synced += 1;
+      lastKeys = (manifest.requests || []).map((r) => r.key).sort();
+      return { summary: {} };
+    },
+  };
+  app.get('/ping', (req, res) => res.end());
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(synced, 1);
+  assert.deepEqual(lastKeys, ['GET /ping']);
+
+  app.get('/later', (req, res) => res.end());
+  await new Promise((r) => setTimeout(r, 50));
+  server.close();
+  assert.ok(synced >= 2, 'should re-sync after a post-listen route');
+  assert.ok(lastKeys.includes('GET /later'));
+});
+
 test('records routes on a router mounted after attach', () => {
   const app = express();
   const hub = createHub({ apiKey: 'k', autoSync: false });

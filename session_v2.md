@@ -764,3 +764,8 @@ Tests: redact 22/22, shares integration 2/2.
 `finalizeRun` loads attached `contract_checks` and evaluates them against
 the live response so Send / collection / browser-complete include them in
 `testResults`. Tests: runnerContractChecks 3/3, contracts integration 9/9.
+
+### Express autoSync after listen (SDK-1, 2026-11-14)
+
+The Express adapter now re-syncs when routes are registered after
+`app.listen` (coalesced). Tests: sdk express 12/12.

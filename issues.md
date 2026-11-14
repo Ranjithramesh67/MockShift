@@ -551,6 +551,7 @@ Full-site MockShift module analysis. One commit per fix.
 | AUTH-5 | High | Portal login ignores 402 (unpaid customers see a generic error) | FIXED | dd4189a |
 | SHARE-1 | Medium | Share revisions leak unredacted diffs and author ids | FIXED | |
 | CON-1 | Medium | Contract checks never run on Send | FIXED | |
+| SDK-1 | Medium | Express autoSync is listen-once | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -756,4 +757,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: `POST /contracts/validate-request` evaluated attached OpenAPI checks, but `finalizeRun` only ran `evaluateAssertions` on `request.assertions`. Send / collection / browser-complete never loaded `contract_checks`.
 - Fix: `loadContractChecks` + `collectRunAssertions` merge contract results into `testResults` on every `finalizeRun` (stored Send, collection run, in-memory/browser complete). A failed check fails `assertionsPassed`.
 - Test: `backend/src/api/__tests__/runnerContractChecks.test.cjs` (3/3), `backend/tests/contracts.integration.test.cjs` (9/9) on `apihub_test`.
+- Status: FIXED
+
+### SDK-1 — Express autoSync is listen-once
+- File: `sdk/src/adapters/express.js`.
+- Cause: `app.listen` called `hub.syncSoon()` once. Routes registered after listen were recorded on the hub but never synced.
+- Fix: mark listening after `listen`, then coalesce `syncSoon` on later `registerRoute` so post-listen routes re-sync.
+- Test: `sdk/test/express.test.js` (12/12).
 - Status: FIXED
