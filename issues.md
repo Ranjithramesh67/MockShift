@@ -555,6 +555,7 @@ Full-site MockShift module analysis. One commit per fix.
 | SCRATCH-1 | Medium | Scratchpad replaces the whole workspace | FIXED | 521181f |
 | WF-1 | Medium | WorkflowBuilder is local-only | FIXED | 50a430a |
 | RENAME-1 | Medium | Collection and workspace cannot be renamed in the sidebar | FIXED | c562db1 |
+| FILE-1 | Medium | Docs/Notes have no file-upload block (10 MB) | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -788,4 +789,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: Folders and requests already had inline rename (F2 + ⋮). Collections had no PUT/PATCH and no Rename menu item. Workspace `PATCH /api/workspaces/:id` existed but `workspaceApi` and the chip actions never called it; blank names were treated as no-op.
 - Fix: `PUT /api/collections/:id` (EDITOR+) updates `name`; workspace PATCH rejects blank names; Sidebar ⋮/F2 renames collections; workspace chips expose Rename.
 - Test: `backend/tests/renameContent.integration.test.cjs` (6/6), `frontend/src/lib/__tests__/renameCollectionWorkspace.test.cjs` (6/6), `frontend/e2e/rename-collection-workspace.spec.ts` (2/2).
+- Status: FIXED
+
+### FILE-1 — Docs/Notes file upload (10 MB)
+- Files: `db/migrations/066_docs_file_blocks.sql`, `backend/src/api/routes/docs.js`, `frontend/src/lib/docsApi.ts`, `frontend/src/components/docs/BlockEditor.tsx`, `frontend/src/components/docs/Mentions.tsx`, `frontend/src/components/docs/docs.module.css`.
+- Cause: Docs only admitted an `image` block (5 MB, `data:image` / http(s)). Notes needed a generic file attachment next to Image.
+- Fix: `'file'` block with `{ src, fileName, mime?, caption? }`; http(s) or data URL; decoded payload capped at 10 MB. Add-block menu, editor upload, viewer download, markdown/html export.
+- Test: `backend/tests/docsFileBlocks.integration.test.cjs` (4/4), `frontend/src/lib/__tests__/docsFileBlock.test.cjs` (3/3).
 - Status: FIXED

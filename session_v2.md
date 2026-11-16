@@ -788,3 +788,10 @@ PATCH now rejects blank names. Sidebar collection ⋮/F2 and workspace
 chip Rename call the new store methods. Tests: renameContent 6/6,
 renameCollectionWorkspace 6/6, e2e 2/2.
 
+### Docs file attachments (FILE-1, 2026-11-16)
+
+Docs/Notes pages can attach a File block beside Image. Content is
+`{ src, fileName, mime?, caption? }` with a 10 MB decoded-payload cap.
+Migration 066 widens `doc_blocks_type_check`. Tests: docsFileBlocks 4/4,
+docsFileBlock 3/3.
+

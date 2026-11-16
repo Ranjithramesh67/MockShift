@@ -8,13 +8,14 @@ import { apiFetch, ApiError } from './api';
 // payload/response/schema examples, lists). Pages can also carry mentions —
 // either of a user (@Name chip) or of an API request (chip that deep-links
 // into the workspace when the reader has access).
-export type DocsBlockType = 'heading' | 'text' | 'code' | 'payload' | 'response' | 'schema' | 'list' | 'image' | 'table';
+export type DocsBlockType = 'heading' | 'text' | 'code' | 'payload' | 'response' | 'schema' | 'list' | 'image' | 'table' | 'file';
 
 // Table guardrails mirror the backend (TABLE_MAX_* in routes/docs.js): the
 // editor clamps to the same bounds so a round-trip never trips a 400.
 export const TABLE_MAX_ROWS = 50;
 export const TABLE_MAX_COLS = 12;
 export const TABLE_MAX_CELL = 2000;
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export interface DocsPerson {
   id: string;
@@ -264,6 +265,7 @@ export const BLOCK_LABELS: Array<{ type: DocsBlockType; label: string }> = [
   { type: 'list', label: 'List' },
   { type: 'image', label: 'Image' },
   { type: 'table', label: 'Table' },
+  { type: 'file', label: 'File' },
 ];
 
 export function defaultContent(type: DocsBlockType): DocsBlockContent {
@@ -286,6 +288,8 @@ export function defaultContent(type: DocsBlockType): DocsBlockContent {
       return { src: '', alt: '', caption: '', size: 'full' };
     case 'table':
       return { rows: [['', ''], ['', '']], caption: '' };
+    case 'file':
+      return { src: '', fileName: '', mime: '', caption: '' };
   }
 }
 

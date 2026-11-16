@@ -8,7 +8,7 @@ import { blockMethod, blockNum, blockStrings, blockText } from '@/lib/docsApi';
 import { imageSizeOf, IMAGE_SIZE_PCT, tableRows } from '@/lib/docsApi';
 import { formatBody } from './helpers';
 import styles from './docs.module.css';
-import { LockIcon, XIcon } from '@/components/icons';
+import { FileIcon, LockIcon, XIcon } from '@/components/icons';
 
 const METHOD_COLORS: Record<string, string> = {
   GET: '#1f6feb',
@@ -178,6 +178,21 @@ function Block({ block }: { block: DocsBlock }) {
               </tbody>
             </table>
           </div>
+          {caption && <figcaption className={styles.imgCaption}>{caption}</figcaption>}
+        </figure>
+      );
+    }
+    case 'file': {
+      const src = blockText(c, 'src');
+      const fileName = blockText(c, 'fileName') || 'Download file';
+      const caption = blockText(c, 'caption');
+      if (!src) return null;
+      return (
+        <figure className={styles.fileBlock} data-testid="docs-block-file">
+          <a className={styles.fileLink} href={src} download={fileName}>
+            <FileIcon size={14} />
+            {fileName}
+          </a>
           {caption && <figcaption className={styles.imgCaption}>{caption}</figcaption>}
         </figure>
       );

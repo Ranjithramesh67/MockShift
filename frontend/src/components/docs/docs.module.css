@@ -1094,6 +1094,23 @@ button.chip:hover {
   background: color-mix(in srgb, var(--bg-panel-2) 45%, transparent);
 }
 
+.fileBlock {
+  margin: 10px 0;
+}
+
+.fileLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.fileLink:hover {
+  text-decoration: underline;
+}
+
 /* Editor controls. */
 .imgEditRow {
   display: flex;

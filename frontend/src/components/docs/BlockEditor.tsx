@@ -10,6 +10,7 @@ import {
   IMAGE_SIZES,
   imageSizeOf,
   newBlock,
+  MAX_FILE_BYTES,
   TABLE_MAX_CELL,
   TABLE_MAX_COLS,
   TABLE_MAX_ROWS,
@@ -315,6 +316,91 @@ function TableBlockFields({
   );
 }
 
+function FileBlockFields({
+  content,
+  onChange,
+}: {
+  content: DocsBlockContent;
+  onChange: (content: DocsBlockContent) => void;
+}) {
+  const { dispatch } = useApp();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const src = blockText(content, 'src');
+  const fileName = blockText(content, 'fileName');
+  const mime = blockText(content, 'mime');
+  const caption = blockText(content, 'caption');
+
+  const onFile = (file: File | null) => {
+    if (!file) return;
+    if (file.size > MAX_FILE_BYTES) {
+      dispatch({
+        type: 'SHOW_TOAST',
+        kind: 'error',
+        message: 'File is larger than 10 MB — choose a smaller file or paste a file URL instead.',
+      });
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return;
+      onChange({
+        ...content,
+        src: reader.result,
+        fileName: file.name,
+        mime: file.type || '',
+      });
+    };
+    reader.onerror = () => {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: 'Could not read that file.' });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <>
+      <div className={styles.imgEditRow}>
+        <input
+          ref={fileRef}
+          type="file"
+          className={styles.imgFileInput}
+          data-testid="docs-field-file-upload"
+          aria-label="Upload file"
+          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+        />
+        <button type="button" className="ghost-button small" data-testid="docs-field-file-choose" onClick={() => fileRef.current?.click()}>
+          Choose file
+        </button>
+        <span className={styles.imgFileHint}>Max 10 MB — stored inline in the page</span>
+      </div>
+      <EditorText
+        value={src.startsWith('data:') ? '' : src}
+        onChange={(v) => onChange(setField(content, 'src', v))}
+        placeholder="…or paste a file URL (https://…)"
+        testId="docs-field-file-src"
+      />
+      {src.startsWith('data:') && src.length > 0 && (
+        <span className={styles.imgEmbeddedNote}>File embedded from upload</span>
+      )}
+      <div className={styles.fieldRow}>
+        <EditorText
+          value={fileName}
+          onChange={(v) => onChange(setField(content, 'fileName', v))}
+          placeholder="File name"
+          testId="docs-field-file-name"
+        />
+        <EditorText
+          value={caption}
+          onChange={(v) => onChange(setField(content, 'caption', v))}
+          placeholder="Caption (optional)"
+          testId="docs-field-file-caption"
+        />
+      </div>
+      {mime && <span className={styles.imgFileHint}>{mime}</span>}
+    </>
+  );
+}
+
 function BlockFields({
   block,
   onChange,
@@ -439,6 +525,8 @@ function BlockFields({
       return <ImageBlockFields content={c} onChange={onChange} />;
     case 'table':
       return <TableBlockFields content={c} onChange={onChange} />;
+    case 'file':
+      return <FileBlockFields content={c} onChange={onChange} />;
   }
 }
 

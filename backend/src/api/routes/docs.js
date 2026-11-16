@@ -89,8 +89,9 @@ accessRequestRouter.use(requireAuth);
 // paths can never be shadowed by a page lookup.
 router.use('/workspace-access-requests', accessRequestRouter);
 
-const BLOCK_TYPES = ['heading', 'text', 'code', 'payload', 'response', 'schema', 'list', 'image', 'table'];
+const BLOCK_TYPES = ['heading', 'text', 'code', 'payload', 'response', 'schema', 'list', 'image', 'table', 'file'];
 const IMG_SIZES = ['small', 'medium', 'large', 'full'];
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
 // Table guardrails (DR6, O6): bounded so a page payload and every export stay
 // reasonable. Cells may be empty; rows are padded to a rectangle on export.
 const TABLE_MAX_ROWS = 50;
@@ -418,6 +419,36 @@ function blockContentError(type, content) {
       }
       if (content.caption !== undefined && content.caption !== null && typeof content.caption !== 'string') {
         return 'table content caption must be a string';
+      }
+      return null;
+    }
+    case 'file': {
+      if (typeof content.src !== 'string' || !String(content.src).trim()) {
+        return 'file content requires a non-empty src';
+      }
+      const src = String(content.src).trim();
+      const isHttp = /^https?:\/\//i.test(src);
+      const isData = /^data:/i.test(src);
+      if (!isHttp && !isData) {
+        return 'file content src must be an http(s) URL or a data URL';
+      }
+      if (isData) {
+        const bytes = dataUrlPayloadBytes(src);
+        if (bytes === null) {
+          return 'file content src must be a valid data URL';
+        }
+        if (bytes > MAX_FILE_BYTES) {
+          return 'file content must be at most 10 MB';
+        }
+      }
+      if (typeof content.fileName !== 'string' || !String(content.fileName).trim()) {
+        return 'file content requires a non-empty fileName';
+      }
+      if (content.mime !== undefined && content.mime !== null && typeof content.mime !== 'string') {
+        return 'file content mime must be a string';
+      }
+      if (content.caption !== undefined && content.caption !== null && typeof content.caption !== 'string') {
+        return 'file content caption must be a string';
       }
       return null;
     }
@@ -816,6 +847,25 @@ function tableCellEsc(s) {
   return String(s).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
+function dataUrlPayloadBytes(src) {
+  const m = /^data:([^,]*),(.*)$/i.exec(src);
+  if (!m) return null;
+  const meta = m[1];
+  const data = m[2];
+  if (/;base64/i.test(meta)) {
+    try {
+      return Buffer.from(data, 'base64').length;
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return Buffer.byteLength(decodeURIComponent(data), 'utf8');
+  } catch {
+    return Buffer.byteLength(data, 'utf8');
+  }
+}
+
 function blockToMarkdown(b) {
   const c = b.content || {};
   switch (b.type) {
@@ -859,6 +909,12 @@ function blockToMarkdown(b) {
       for (const row of rows.slice(1)) lines.push(`| ${row.map(tableCellEsc).join(' | ')} |`);
       if (typeof c.caption === 'string' && c.caption) lines.push('', `*${c.caption}*`);
       return lines.join('\n');
+    }
+    case 'file': {
+      const name = typeof c.fileName === 'string' && c.fileName.trim() ? c.fileName.trim() : 'file';
+      const src = typeof c.src === 'string' ? c.src : '';
+      const caption = typeof c.caption === 'string' && c.caption ? ` *${c.caption}*` : '';
+      return `[${name}](${src})${caption}`;
     }
     default:
       return '';
@@ -911,6 +967,13 @@ function blockToHtml(b) {
       const caption =
         typeof c.caption === 'string' && c.caption ? `<caption>${escHtml(c.caption)}</caption>` : '';
       return `<table>${caption}<thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+    case 'file': {
+      const name = typeof c.fileName === 'string' && c.fileName.trim() ? c.fileName.trim() : 'file';
+      const src = typeof c.src === 'string' ? c.src : '';
+      const caption =
+        typeof c.caption === 'string' && c.caption ? `<figcaption>${escHtml(c.caption)}</figcaption>` : '';
+      return `<figure class="file-fig"><a href="${escHtml(src)}" download="${escHtml(name)}">${escHtml(name)}</a>${caption}</figure>`;
     }
     default:
       return '';
@@ -1075,6 +1138,9 @@ figure.image-fig img {
   background: #111814;
 }
 figure.image-fig figcaption { color: #8e9b94; font-size: 12px; text-align: center; margin-top: 6px; }
+figure.file-fig { margin: 14px 0; }
+figure.file-fig a { color: #7ee787; }
+figure.file-fig figcaption { color: #8e9b94; font-size: 12px; margin-top: 6px; }
 @media print {
   body { padding: 0; }
   .doc-card { box-shadow: none; border-radius: 0; }
