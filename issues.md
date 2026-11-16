@@ -555,7 +555,7 @@ Full-site MockShift module analysis. One commit per fix.
 | SCRATCH-1 | Medium | Scratchpad replaces the whole workspace | FIXED | 521181f |
 | WF-1 | Medium | WorkflowBuilder is local-only | FIXED | 50a430a |
 | RENAME-1 | Medium | Collection and workspace cannot be renamed in the sidebar | FIXED | c562db1 |
-| FILE-1 | Medium | Docs/Notes have no file-upload block (10 MB) | FIXED | |
+| FILE-1 | Medium | Docs/Notes have no file-upload block (10 MB) | FIXED | 86b7e73 |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
