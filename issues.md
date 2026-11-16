@@ -549,12 +549,12 @@ Full-site MockShift module analysis. One commit per fix.
 | PORTAL-2 | High | Checkout PENDING insert has no existing-PENDING guard | FIXED | 6e64eef |
 | PORTAL-3 | High | Refund is local only (no Cashfree/PSP call) | FIXED | 7b8f043 |
 | AUTH-5 | High | Portal login ignores 402 (unpaid customers see a generic error) | FIXED | dd4189a |
-| SHARE-1 | Medium | Share revisions leak unredacted diffs and author ids | FIXED | |
-| CON-1 | Medium | Contract checks never run on Send | FIXED | |
-| SDK-1 | Medium | Express autoSync is listen-once | FIXED | |
-| SCRATCH-1 | Medium | Scratchpad replaces the whole workspace | FIXED | |
-| WF-1 | Medium | WorkflowBuilder is local-only | FIXED | |
-| RENAME-1 | Medium | Collection and workspace cannot be renamed in the sidebar | FIXED | |
+| SHARE-1 | Medium | Share revisions leak unredacted diffs and author ids | FIXED | 723edf0 |
+| CON-1 | Medium | Contract checks never run on Send | FIXED | f2184d7 |
+| SDK-1 | Medium | Express autoSync is listen-once | FIXED | 79d89e1 |
+| SCRATCH-1 | Medium | Scratchpad replaces the whole workspace | FIXED | 521181f |
+| WF-1 | Medium | WorkflowBuilder is local-only | FIXED | 50a430a |
+| RENAME-1 | Medium | Collection and workspace cannot be renamed in the sidebar | FIXED | c562db1 |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
