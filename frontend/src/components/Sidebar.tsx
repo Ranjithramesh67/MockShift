@@ -84,9 +84,38 @@ function WorkspaceChips({
   workspaces: Array<{ id: string; name: string; visibility: string; role: string | null }>;
 }) {
   const ws = useWorkspace();
+  const { dispatch } = useApp();
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const commitWorkspaceRename = async (id: string) => {
+    const name = renameValue.trim();
+    setRenamingId(null);
+    if (!name) return;
+    try {
+      await ws.renameWorkspace(id, name);
+    } catch (err) {
+      dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Rename failed' });
+    }
+  };
 
   const renderChip = (w: { id: string; name: string; visibility: string; role: string | null }) => (
     <div key={w.id} className={`workspace-chip-wrap${ws.activeWorkspaceId === w.id ? ' is-active' : ''}`}>
+      {renamingId === w.id ? (
+        <input
+          type="text"
+          className="tree-rename-input"
+          autoFocus
+          defaultValue={w.name}
+          data-testid={`rename-workspace-input-${w.name}`}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitWorkspaceRename(w.id);
+            if (e.key === 'Escape') setRenamingId(null);
+          }}
+          onBlur={() => commitWorkspaceRename(w.id)}
+        />
+      ) : (
       <button
         type="button"
         className={`workspace-chip ${ws.activeWorkspaceId === w.id ? 'active' : ''}`}
@@ -103,7 +132,8 @@ function WorkspaceChips({
         <span className="workspace-chip-name">{w.name}</span>
         <span className={`vis-dot vis-${w.visibility.toLowerCase()}`} title={`${w.visibility} visibility`} />
       </button>
-      {!w.role && (
+      )}
+      {!w.role && renamingId !== w.id && (
         <button
           type="button"
           className="ghost-button small"
@@ -115,8 +145,21 @@ function WorkspaceChips({
           <LockIcon size={12} />
         </button>
       )}
-      {w.role && (
+      {w.role && renamingId !== w.id && (
         <span className="workspace-chip-actions">
+          <button
+            type="button"
+            className="icon-button"
+            title={`Rename ${w.name}`}
+            aria-label={`Rename workspace ${w.name}`}
+            data-testid={`rename-workspace-${w.name}`}
+            onClick={() => {
+              setRenamingId(w.id);
+              setRenameValue(w.name);
+            }}
+          >
+            <PencilIcon size={12} />
+          </button>
           <button
             type="button"
             className="icon-button workspace-chip-share"
@@ -274,18 +317,18 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, 
   const ws = useWorkspace();
   const { dispatch } = useApp();
   const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({});
-  const [renaming, setRenaming] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
+  const [renaming, setRenaming] = useState<{ kind: 'request' | 'folder' | 'collection'; id: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [menuFor, setMenuFor] = useState<{ kind: 'request' | 'folder' | 'collection'; id: string } | null>(null);
   const [sendTarget, setSendTarget] = useState<SendableItem | null>(null);
   const [shareTarget, setShareTarget] = useState<SendableItem | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [selectedRow, setSelectedRow] = useState<{ kind: 'request' | 'folder'; id: string } | null>(null);
+  const [selectedRow, setSelectedRow] = useState<{ kind: 'request' | 'folder' | 'collection'; id: string } | null>(null);
 
   // M11: Ctrl/Cmd+C duplicates the currently selected request or folder.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!selectedRow) return;
+      if (!selectedRow || selectedRow.kind === 'collection') return;
       if (!(e.ctrlKey || e.metaKey) || (e.key !== 'c' && e.key !== 'C')) return;
       const target = e.target as HTMLElement | null;
       if (!target) return;
@@ -339,7 +382,7 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, 
     onRequestClose?.();
   };
 
-  const startRename = (kind: 'request' | 'folder', id: string, name: string) => {
+  const startRename = (kind: 'request' | 'folder' | 'collection', id: string, name: string) => {
     setMenuFor(null);
     setRenaming({ kind, id });
     setRenameValue(name);
@@ -356,8 +399,10 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, 
     try {
       if (renaming.kind === 'request') {
         await ws.renameRequest(renaming.id, name);
-      } else {
+      } else if (renaming.kind === 'folder') {
         await ws.renameFolder(renaming.id, name);
+      } else {
+        await ws.renameCollection(renaming.id, name);
       }
     } catch (err) {
       dispatch({ type: 'SHOW_TOAST', kind: 'error', message: err instanceof Error ? err.message : 'Rename failed' });
@@ -810,6 +855,8 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, 
 
   const renderCollection = (c: { id: string; name: string; has_auth: string | null }) => {
     const isCollapsed = !!collapsedNodes[c.id];
+    const isRenaming = renaming?.kind === 'collection' && renaming.id === c.id;
+    const isSelected = selectedRow?.kind === 'collection' && selectedRow.id === c.id;
     const rootFolders = tree.folders.filter(
       (f) => f.collection_id === c.id && !f.parent_id
     );
@@ -819,16 +866,32 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, 
     return (
       <div key={c.id} className="tree-collection">
         <div
-          className={`tree-collection-row ${dropTarget === `collection:${c.id}` ? 'tree-drop-target' : ''}`}
+          className={`tree-collection-row ${isSelected ? 'selected' : ''} ${dropTarget === `collection:${c.id}` ? 'tree-drop-target' : ''}`}
           onDragOver={(e) => handleDragOver(e, `collection:${c.id}`)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, null)}
         >
+          {isRenaming ? (
+            <input
+              type="text"
+              className="tree-rename-input"
+              autoFocus
+              defaultValue={c.name}
+              data-testid={`rename-collection-input-${c.name}`}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+              onBlur={commitRename}
+            />
+          ) : (
           <button
             type="button"
             className={`tree-collection-name ${ws.activeCollectionId === c.id ? 'active' : ''}`}
             data-testid={`collection-${c.name}`}
             onClick={() => {
+              setSelectedRow({ kind: 'collection', id: c.id });
               toggle(c.id);
               ws.selectCollection(c.id, c.name).catch(() => undefined);
               onNavigate();
@@ -843,6 +906,8 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, 
             <span className="name">{c.name}</span>
             {c.has_auth && <span className="vis-badge auth-badge">AUTH</span>}
           </button>
+          )}
+          {!isRenaming && (
           <div className="tree-collection-actions">
             <button
               type="button"
@@ -872,8 +937,17 @@ function CollectionsTree({ onOpenCreate, onOpenSharing, onOpenAuth, onNavigate, 
               <DotsIcon size={13} />
             </button>
           </div>
+          )}
           {menuFor?.kind === 'collection' && menuFor.id === c.id && (
             <div className="tree-menu" data-testid={`collection-menu-${c.name}`}>
+              <button
+                type="button"
+                data-testid={`rename-collection-${c.name}`}
+                onClick={() => startRename('collection', c.id, c.name)}
+              >
+                <PencilIcon size={13} />
+                Rename
+              </button>
               <button
                 type="button"
                 data-testid={`new-folder-${c.name}`}

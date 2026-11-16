@@ -949,6 +949,29 @@ router.post('/requests/:requestId/duplicate', async (req, res, next) => {
   }
 });
 
+router.put('/collections/:collectionId', async (req, res, next) => {
+  try {
+    const { collectionId } = req.params;
+    const projectId = await projectOfCollection(collectionId);
+    if (!projectId) return res.status(404).json({ error: 'Collection not found' });
+    if (!(await canWriteProjectContent(req.user.id, projectId))) {
+      return res.status(403).json({ error: 'Editor, manager or admin access required' });
+    }
+    const b = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+    if (typeof b.name !== 'string' || b.name.trim() === '') {
+      return res.status(400).json({ error: 'name cannot be blank' });
+    }
+    const { rows } = await query(
+      `UPDATE collections SET name = $2 WHERE id = $1
+       RETURNING id, name, project_id, workspace_id`,
+      [collectionId, b.name.trim()]
+    );
+    res.json({ collection: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.delete('/collections/:collectionId', async (req, res, next) => {
   try {
     const { collectionId } = req.params;

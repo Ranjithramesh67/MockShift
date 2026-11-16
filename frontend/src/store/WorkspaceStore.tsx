@@ -263,6 +263,8 @@ interface WorkspaceState {
   renameProject: (projectId: string, name: string) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   createCollection: (name: string, workspaceId?: string) => Promise<void>;
+  renameCollection: (collectionId: string, name: string) => Promise<void>;
+  renameWorkspace: (workspaceId: string, name: string) => Promise<void>;
   createRequest: (input: { name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) => Promise<void>;
   createFolder: (input: { name: string; collectionId: string; parentId?: string | null }) => Promise<void>;
   renameFolder: (folderId: string, name: string) => Promise<void>;
@@ -1308,6 +1310,23 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setProjectTree((prev) => (prev ? { ...prev, folders: [...prev.folders, folder] } : prev));
   }, []);
 
+  const renameCollection = useCallback(async (collectionId: string, name: string) => {
+    const { collection } = await contentApi.updateCollection(collectionId, name);
+    const apply = <T extends { collections: Array<{ id: string; name: string }> }>(prev: T): T => ({
+      ...prev,
+      collections: prev.collections.map((c) => (c.id === collectionId ? { ...c, name: collection.name } : c)),
+    });
+    setTree((prev) => (prev ? apply(prev) : prev));
+    setProjectTree((prev) => (prev ? apply(prev) : prev));
+    setActiveCollectionName((prev) => (activeCollectionId === collectionId ? collection.name : prev));
+  }, [activeCollectionId]);
+
+  const renameWorkspace = useCallback(async (workspaceId: string, name: string) => {
+    await workspaceApi.rename(workspaceId, name);
+    setWorkspaces((prev) => prev.map((w) => (w.id === workspaceId ? { ...w, name } : w)));
+    await Promise.all([loadGroups(), loadAllProjects()]);
+  }, [loadGroups, loadAllProjects]);
+
   const renameFolder = useCallback(async (folderId: string, name: string) => {
     const { folder } = await folderApi.update(folderId, { name });
     const apply = <T extends { folders: Array<{ id: string; name: string }> }>(prev: T): T => ({
@@ -1769,6 +1788,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       renameProject,
       deleteProject,
       createCollection,
+      renameCollection,
+      renameWorkspace,
       createRequest,
       createFolder,
       renameFolder,
@@ -1804,7 +1825,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       undoActiveRequest, redoActiveRequest, goBackRequest,
       refresh, selectWorkspace, selectProject, selectProjectById, loadProjectTree, selectRequest, reloadActiveRequest, selectCollection, updateActiveRequest,
       saveActiveRequest, runActiveRequest, runScratchpad, runCollection, clearCollectionRun, clearScratchpadRun,
-      createWorkspace, createWorkspaceInProject, createProject, renameProject, deleteProject, createCollection, createRequest,
+      createWorkspace, createWorkspaceInProject, createProject, renameProject, deleteProject, createCollection, renameCollection, renameWorkspace, createRequest,
       createFolder, renameFolder, deleteFolder, renameRequest, moveRequest, moveFolder, duplicateRequest, duplicateFolder,
       deleteRequest, deleteCollection, deleteWorkspace, deleteTeam,
       loadAuthProvider, saveAuthProvider, testAuthProvider, reloadTree,

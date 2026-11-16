@@ -499,6 +499,8 @@ export const workspaceApi = {
   list: () => apiFetch<{ workspaces: Workspace[] }>('/api/workspaces'),
   create: (input: { name: string; visibility?: WorkspaceVisibility; organizationId?: string }) =>
     apiFetch<{ workspace: Workspace }>('/api/workspaces', { method: 'POST', body: input }),
+  rename: (workspaceId: string, name: string) =>
+    apiFetch<{ ok: true }>(`/api/workspaces/${workspaceId}`, { method: 'PATCH', body: { name } }),
   remove: (workspaceId: string) => apiFetch(`/api/workspaces/${workspaceId}`, { method: 'DELETE' }),
   content: (workspaceId: string) => apiFetch<ContentTree>(`/api/workspaces/${workspaceId}/content`),
   share: (workspaceId: string, teamId: string, role: UserRole) =>
@@ -544,6 +546,11 @@ export const contentApi = {
       method: 'POST',
       body: workspaceId ? { workspaceId, name } : { projectId, name },
     }),
+  updateCollection: (collectionId: string, name: string) =>
+    apiFetch<{ collection: { id: string; name: string; project_id: string; workspace_id: string } }>(
+      `/api/collections/${collectionId}`,
+      { method: 'PUT', body: { name } }
+    ),
   deleteCollection: (collectionId: string) =>
     apiFetch(`/api/collections/${collectionId}`, { method: 'DELETE' }),
   createRequest: (input: { collectionId: string; name: string; method: string; url: string; apiType: ApiType; folderId?: string | null }) =>

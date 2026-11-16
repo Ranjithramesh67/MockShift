@@ -554,6 +554,7 @@ Full-site MockShift module analysis. One commit per fix.
 | SDK-1 | Medium | Express autoSync is listen-once | FIXED | |
 | SCRATCH-1 | Medium | Scratchpad replaces the whole workspace | FIXED | |
 | WF-1 | Medium | WorkflowBuilder is local-only | FIXED | |
+| RENAME-1 | Medium | Collection and workspace cannot be renamed in the sidebar | FIXED | |
 
 ### ED-1 — Secret env vars not usable as `{{variables}}` in requests
 - Files: `backend/src/api/bodyCodec.js`, `backend/src/api/runner.js`.
@@ -780,4 +781,11 @@ Full-site MockShift module analysis. One commit per fix.
 - Cause: Save/delete dispatched `SAVE_WORKFLOW` / `DELETE_WORKFLOW` into `AppStore` → `localStorage` `mockshift.state.v1`. `workflowApi` was used by Automations / Monitors, not the builder.
 - Fix: `persistWorkflow` POSTs local drafts and PUTs server UUIDs; Sidebar loads `GET /api/workflows` per project; graphs are no longer written to localStorage.
 - Test: `frontend/src/lib/__tests__/workflowPersist.test.cjs` (13/13).
+- Status: FIXED
+
+### RENAME-1 — collection and workspace cannot be renamed in the sidebar
+- Files: `backend/src/api/routes/content.js`, `backend/src/api/routes/workspaces.js`, `frontend/src/lib/api.ts`, `frontend/src/store/WorkspaceStore.tsx`, `frontend/src/components/Sidebar.tsx`, `frontend/src/components/useTreeRenameShortcut.ts`.
+- Cause: Folders and requests already had inline rename (F2 + ⋮). Collections had no PUT/PATCH and no Rename menu item. Workspace `PATCH /api/workspaces/:id` existed but `workspaceApi` and the chip actions never called it; blank names were treated as no-op.
+- Fix: `PUT /api/collections/:id` (EDITOR+) updates `name`; workspace PATCH rejects blank names; Sidebar ⋮/F2 renames collections; workspace chips expose Rename.
+- Test: `backend/tests/renameContent.integration.test.cjs` (6/6), `frontend/src/lib/__tests__/renameCollectionWorkspace.test.cjs` (6/6), `frontend/e2e/rename-collection-workspace.spec.ts` (2/2).
 - Status: FIXED

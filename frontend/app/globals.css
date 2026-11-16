@@ -1176,6 +1176,7 @@ body.is-col-dragging .sidebar {
 
 /* M11: highlight the row selected for Ctrl/Cmd+C duplication. */
 .tree-folder-row.selected .tree-folder-name,
+.tree-collection-row.selected .tree-collection-name,
 .sidebar-row.selected .sidebar-item {
   background: var(--accent-soft);
 }
@@ -1327,7 +1328,7 @@ body.is-col-dragging .sidebar {
    workspace leaves the chip button focused, which pinned the actions open. */
 .workspace-chip-wrap:hover .workspace-chip-actions,
 .workspace-chip-actions:focus-within {
-  max-width: 44px;
+  max-width: 66px;
   opacity: 1;
 }
 
@@ -1335,7 +1336,7 @@ body.is-col-dragging .sidebar {
    selected chip only, so they are not shown against every workspace. */
 @media (hover: none) {
   .workspace-chip-wrap.is-active .workspace-chip-actions {
-    max-width: 44px;
+    max-width: 66px;
     opacity: 1;
   }
 }

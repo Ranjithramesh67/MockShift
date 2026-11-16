@@ -781,3 +781,10 @@ Save/delete now go through `workflowApi` so builder graphs live on the
 server instead of `localStorage`. Sidebar reloads the project list and
 keeps untitled local drafts. Tests: workflowPersist 13/13.
 
+### Collection and workspace rename (RENAME-1, 2026-11-16)
+
+`PUT /api/collections/:id` renames a collection (EDITOR+). Workspace
+PATCH now rejects blank names. Sidebar collection ⋮/F2 and workspace
+chip Rename call the new store methods. Tests: renameContent 6/6,
+renameCollectionWorkspace 6/6, e2e 2/2.
+

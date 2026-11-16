@@ -134,9 +134,11 @@ router.patch('/:workspaceId', requireResourcePermission('workspace', 'workspace.
     const { name, visibility } = req.body || {};
     const sets = [];
     const params = [workspaceId];
-    if (name) {
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (!trimmed) return res.status(400).json({ error: 'name cannot be blank' });
       sets.push(`name = $${params.length + 1}`);
-      params.push(String(name).trim());
+      params.push(trimmed);
     }
     if (visibility) {
       const newVis = visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE';

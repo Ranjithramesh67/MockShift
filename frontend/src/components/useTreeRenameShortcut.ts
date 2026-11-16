@@ -8,18 +8,19 @@ export interface TreeRenameRow {
 export interface TreeRenameShortcutTree {
   requests: TreeRenameRow[];
   folders: TreeRenameRow[];
+  collections?: TreeRenameRow[];
 }
 
 export interface TreeRenameShortcutOptions {
-  selectedRow: { kind: 'request' | 'folder'; id: string } | null;
+  selectedRow: { kind: 'request' | 'folder' | 'collection'; id: string } | null;
   tree: TreeRenameShortcutTree | null;
-  onStartRename: (kind: 'request' | 'folder', id: string, name: string) => void;
+  onStartRename: (kind: 'request' | 'folder' | 'collection', id: string, name: string) => void;
 }
 
 /**
- * M12: pressing F2 on the currently selected sidebar row (request or folder)
- * starts its inline rename. F2 is ignored while the event target is a text
- * input (e.g. the rename input itself or the request URL field).
+ * M12: pressing F2 on the currently selected sidebar row (request, folder or
+ * collection) starts its inline rename. F2 is ignored while the event target
+ * is a text input (e.g. the rename input itself or the request URL field).
  */
 export function useTreeRenameShortcut(options: TreeRenameShortcutOptions): void {
   const { selectedRow, tree, onStartRename } = options;
@@ -33,7 +34,12 @@ export function useTreeRenameShortcut(options: TreeRenameShortcutOptions): void 
       const tag = target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
       e.preventDefault();
-      const rows = selectedRow.kind === 'request' ? tree?.requests : tree?.folders;
+      const rows =
+        selectedRow.kind === 'request'
+          ? tree?.requests
+          : selectedRow.kind === 'folder'
+            ? tree?.folders
+            : tree?.collections;
       const row = rows?.find((r) => r.id === selectedRow.id);
       if (!row) return;
       onStartRename(selectedRow.kind, selectedRow.id, row.name);
